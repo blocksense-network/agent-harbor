@@ -4,7 +4,7 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use ah_tui::settings::{KeyboardOperation, KeymapConfig};
-use ah_tui::view_model::input::{InputMinorMode, InputResult, minor_modes, operations};
+use ah_tui::view_model::input::{InputMinorMode, minor_modes, operations};
 use ah_tui::view_model::session_viewer_model::SESSION_VIEWER_MODE;
 
 /// Test helper to create a mock settings object with minimal key bindings
@@ -34,14 +34,16 @@ fn create_mock_settings() -> ah_tui::Settings {
         None,
     );
 
-    // Create keymap with bindings
-    let mut keymap = KeymapConfig::default();
-    keymap.move_to_next_line = Some(vec![down_matcher]);
-    keymap.move_to_previous_line = Some(vec![up_matcher]);
-    keymap.dismiss_overlay = Some(vec![esc_matcher]);
-    keymap.select_all = Some(vec![ctrl_a_matcher]);
-    keymap.incremental_search_forward = Some(vec![ctrl_s_matcher]);
-    keymap.draft_new_task = Some(vec![ctrl_n_matcher]);
+    // Create keymap with bindings using struct literal to avoid field_reassign_with_default
+    let keymap = KeymapConfig {
+        move_to_next_line: Some(vec![down_matcher]),
+        move_to_previous_line: Some(vec![up_matcher]),
+        dismiss_overlay: Some(vec![esc_matcher]),
+        select_all: Some(vec![ctrl_a_matcher]),
+        incremental_search_forward: Some(vec![ctrl_s_matcher]),
+        draft_new_task: Some(vec![ctrl_n_matcher]),
+        ..Default::default()
+    };
 
     ah_tui::Settings {
         keymap: Some(keymap),

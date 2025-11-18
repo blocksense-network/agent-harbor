@@ -5,44 +5,29 @@ use ah_domain_types::AgentChoice;
 use serde::{Deserialize, Serialize};
 
 /// Font style for displaying symbols and icons
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum FontStyle {
+    #[default]
     Unicode,
     NerdFont,
     Ascii,
 }
 
-impl Default for FontStyle {
-    fn default() -> Self {
-        FontStyle::Unicode
-    }
-}
-
 /// Dialog style for selection interfaces
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum SelectionDialogStyle {
     Modal,
     Inline,
+    #[default]
     Default,
 }
 
-impl Default for SelectionDialogStyle {
-    fn default() -> Self {
-        SelectionDialogStyle::Default
-    }
-}
-
 /// Meta key configuration
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum MetaKey {
+    #[default]
     Alt,
     Option,
-}
-
-impl Default for MetaKey {
-    fn default() -> Self {
-        MetaKey::Alt
-    }
 }
 
 /// Platform-specific keyboard shortcut support
@@ -355,51 +340,7 @@ impl KeyMatcher {
         }
     }
 
-    /// Convert back to a displayable string representation
-    pub fn to_string(&self) -> String {
-        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
-
-        let mut parts = Vec::new();
-
-        // Add required modifiers
-        if self.required.contains(KeyModifiers::CONTROL) {
-            parts.push("Ctrl");
-        }
-        if self.required.contains(KeyModifiers::ALT) {
-            parts.push("Alt");
-        }
-        if self.required.contains(KeyModifiers::SHIFT) {
-            parts.push("Shift");
-        }
-        if self.required.contains(KeyModifiers::SUPER) {
-            parts.push("Cmd");
-        }
-
-        // Add key code
-        let key_str = match &self.code {
-            KeyCode::Char(c) => c.to_string(),
-            KeyCode::Enter => "Enter".to_string(),
-            KeyCode::Tab => "Tab".to_string(),
-            KeyCode::Esc => "Esc".to_string(),
-            KeyCode::Backspace => "Backspace".to_string(),
-            KeyCode::Delete => "Delete".to_string(),
-            KeyCode::Up => "Up".to_string(),
-            KeyCode::Down => "Down".to_string(),
-            KeyCode::Left => "Left".to_string(),
-            KeyCode::Right => "Right".to_string(),
-            KeyCode::Home => "Home".to_string(),
-            KeyCode::End => "End".to_string(),
-            KeyCode::PageUp => "PageUp".to_string(),
-            KeyCode::PageDown => "PageDown".to_string(),
-            _ => "Unknown".to_string(),
-        };
-
-        if !parts.is_empty() {
-            format!("{}+{}", parts.join("+"), key_str)
-        } else {
-            key_str
-        }
-    }
+    // Display impl provided below
 
     /// Check if this matcher matches a crossterm KeyEvent
     pub fn matches(&self, event: &ratatui::crossterm::event::KeyEvent) -> bool {
@@ -613,29 +554,7 @@ impl KeyBinding {
         })
     }
 
-    /// Convert back to string representation
-    pub fn to_string(&self) -> String {
-        let mut parts = Vec::new();
-
-        if self.ctrl {
-            parts.push("Ctrl");
-        }
-        if self.alt {
-            parts.push("Alt");
-        }
-        if self.shift {
-            parts.push("Shift");
-        }
-        if self.super_key {
-            parts.push("Cmd");
-        }
-
-        if !parts.is_empty() {
-            format!("{}+{}", parts.join("+"), self.key)
-        } else {
-            self.key.clone()
-        }
-    }
+    // Display impl provided below
 
     /// Convert to a KeyMatcher for advanced matching
     pub fn to_matcher(&self) -> Result<KeyMatcher, KeyboardShortcutError> {
@@ -1137,10 +1056,6 @@ impl KeymapConfig {
             KeyboardOperation::MoveToEndOfParagraph => &self.move_to_end_of_paragraph,
             KeyboardOperation::GoToLineNumber => &self.go_to_line_number,
             KeyboardOperation::MoveToMatchingParenthesis => &self.move_to_matching_parenthesis,
-            KeyboardOperation::MoveToBeginningOfSentence => &self.move_to_beginning_of_sentence,
-            KeyboardOperation::MoveToEndOfSentence => &self.move_to_end_of_sentence,
-            KeyboardOperation::MoveToBeginningOfParagraph => &self.move_to_beginning_of_paragraph,
-            KeyboardOperation::MoveToEndOfParagraph => &self.move_to_end_of_paragraph,
             KeyboardOperation::DeleteCharacterForward => &self.delete_character_forward,
             KeyboardOperation::DeleteCharacterBackward => &self.delete_character_backward,
             KeyboardOperation::DeleteWordForward => &self.delete_word_forward,
@@ -1284,18 +1199,6 @@ impl KeymapConfig {
             KeyboardOperation::GoToLineNumber => self.go_to_line_number.clone().unwrap_or_default(),
             KeyboardOperation::MoveToMatchingParenthesis => {
                 self.move_to_matching_parenthesis.clone().unwrap_or_default()
-            }
-            KeyboardOperation::MoveToBeginningOfSentence => {
-                self.move_to_beginning_of_sentence.clone().unwrap_or_default()
-            }
-            KeyboardOperation::MoveToEndOfSentence => {
-                self.move_to_end_of_sentence.clone().unwrap_or_default()
-            }
-            KeyboardOperation::MoveToBeginningOfParagraph => {
-                self.move_to_beginning_of_paragraph.clone().unwrap_or_default()
-            }
-            KeyboardOperation::MoveToEndOfParagraph => {
-                self.move_to_end_of_paragraph.clone().unwrap_or_default()
             }
             KeyboardOperation::DeleteCharacterForward => {
                 self.delete_character_forward.clone().unwrap_or_default()
@@ -1574,18 +1477,7 @@ impl Default for KeymapConfig {
                     KeyboardOperation::MoveToMatchingParenthesis => {
                         config.move_to_matching_parenthesis = Some(matchers)
                     }
-                    KeyboardOperation::MoveToBeginningOfSentence => {
-                        config.move_to_beginning_of_sentence = Some(matchers)
-                    }
-                    KeyboardOperation::MoveToEndOfSentence => {
-                        config.move_to_end_of_sentence = Some(matchers)
-                    }
-                    KeyboardOperation::MoveToBeginningOfParagraph => {
-                        config.move_to_beginning_of_paragraph = Some(matchers)
-                    }
-                    KeyboardOperation::MoveToEndOfParagraph => {
-                        config.move_to_end_of_paragraph = Some(matchers)
-                    }
+                    // Duplicate unreachable patterns removed
                     KeyboardOperation::DeleteCharacterForward => {
                         config.delete_character_forward = Some(matchers)
                     }
@@ -1867,6 +1759,76 @@ impl Settings {
 
     /// Get the keymap configuration, with default fallback
     pub fn keymap(&self) -> KeymapConfig {
-        self.keymap.clone().unwrap_or_else(KeymapConfig::default)
+        self.keymap.clone().unwrap_or_default()
+    }
+}
+
+// Display implementations replacing inherent to_string methods
+impl std::fmt::Display for KeyMatcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+
+        let mut parts = Vec::new();
+
+        if self.required.contains(KeyModifiers::CONTROL) {
+            parts.push("Ctrl");
+        }
+        if self.required.contains(KeyModifiers::ALT) {
+            parts.push("Alt");
+        }
+        if self.required.contains(KeyModifiers::SHIFT) {
+            parts.push("Shift");
+        }
+        if self.required.contains(KeyModifiers::SUPER) {
+            parts.push("Cmd");
+        }
+
+        let key_str = match &self.code {
+            KeyCode::Char(c) => c.to_string(),
+            KeyCode::Enter => "Enter".to_string(),
+            KeyCode::Tab => "Tab".to_string(),
+            KeyCode::Esc => "Esc".to_string(),
+            KeyCode::Backspace => "Backspace".to_string(),
+            KeyCode::Delete => "Delete".to_string(),
+            KeyCode::Up => "Up".to_string(),
+            KeyCode::Down => "Down".to_string(),
+            KeyCode::Left => "Left".to_string(),
+            KeyCode::Right => "Right".to_string(),
+            KeyCode::Home => "Home".to_string(),
+            KeyCode::End => "End".to_string(),
+            KeyCode::PageUp => "PageUp".to_string(),
+            KeyCode::PageDown => "PageDown".to_string(),
+            _ => "Unknown".to_string(),
+        };
+
+        if !parts.is_empty() {
+            write!(f, "{}+{}", parts.join("+"), key_str)
+        } else {
+            write!(f, "{}", key_str)
+        }
+    }
+}
+
+impl std::fmt::Display for KeyBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts = Vec::new();
+        if self.ctrl {
+            parts.push("Ctrl");
+        }
+        if self.alt {
+            parts.push("Alt");
+        }
+        if self.shift {
+            parts.push("Shift");
+        }
+        if self.super_key {
+            parts.push("Cmd");
+        }
+
+        if !parts.is_empty() {
+            write!(f, "{}+{}", parts.join("+"), self.key)
+        } else {
+            write!(f, "{}", self.key)
+        }
     }
 }

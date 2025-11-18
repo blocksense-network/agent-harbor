@@ -45,7 +45,6 @@
 //! - **Testable**: Rendering logic can be tested independently
 
 use ratatui::{prelude::*, widgets::*};
-use tracing;
 
 use crate::settings::Settings;
 use ah_core::{TaskManager, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator};
@@ -129,9 +128,11 @@ impl ViewCache {
         new_style: crossterm::cursor::SetCursorStyle,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Use discriminant for comparison since SetCursorStyle doesn't implement PartialEq
-        let new_discriminant = unsafe { std::mem::transmute::<_, u8>(new_style) };
-        let current_discriminant =
-            self.current_cursor_style.map(|s| unsafe { std::mem::transmute::<_, u8>(s) });
+        let new_discriminant =
+            unsafe { std::mem::transmute::<crossterm::cursor::SetCursorStyle, u8>(new_style) };
+        let current_discriminant = self
+            .current_cursor_style
+            .map(|s| unsafe { std::mem::transmute::<crossterm::cursor::SetCursorStyle, u8>(s) });
 
         if current_discriminant != Some(new_discriminant) {
             use crossterm::execute;
@@ -178,9 +179,15 @@ impl Default for Theme {
     }
 }
 
+impl Default for ViewCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Theme {
     /// Create a card block with Charm-style rounded borders and padding
-    pub fn card_block(&self, title: &str) -> Block {
+    pub fn card_block(&self, title: &str) -> Block<'_> {
         let title_line = Line::from(vec![
             Span::raw("┤").fg(self.border),
             Span::raw(format!(" {} ", title))
@@ -204,7 +211,7 @@ impl Theme {
         title: &str,
         button_text: &str,
         button_focused: bool,
-    ) -> Block {
+    ) -> Block<'_> {
         let button_style = if button_focused {
             Style::default().fg(self.bg).bg(self.error).add_modifier(Modifier::BOLD)
         } else {

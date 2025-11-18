@@ -115,21 +115,20 @@ impl EventHandler {
     }
 
     fn should_quit(event: &CrosstermEvent) -> bool {
-        match event {
+        matches!(
+            event,
             CrosstermEvent::Key(KeyEvent {
                 code: KeyCode::Char('c'),
                 modifiers: KeyModifiers::CONTROL,
                 ..
-            }) => true,
-            CrosstermEvent::Key(KeyEvent {
+            }) | CrosstermEvent::Key(KeyEvent {
                 code: KeyCode::Char('q'),
                 ..
-            }) => true,
-            CrosstermEvent::Key(KeyEvent {
-                code: KeyCode::Esc, ..
-            }) => true,
-            _ => false,
-        }
+            }) | CrosstermEvent::Key(KeyEvent {
+                code: KeyCode::Esc,
+                ..
+            })
+        )
     }
 }
 

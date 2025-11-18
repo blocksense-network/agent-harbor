@@ -14,8 +14,7 @@ use crate::viewer::{
     ViewerConfig, build_session_viewer_view_model, handle_mouse_click_for_view,
     launch_task_from_instruction, render_view_frame, update_row_metadata_with_autofollow,
 };
-use ah_core::{AgentExecutionConfig, local_task_manager::GenericLocalTaskManager};
-use ah_mux::TmuxMultiplexer;
+use ah_core;
 use ah_recorder::{
     AhrWriter, PtyEvent, PtyRecorder, PtyRecorderConfig, RecordingSession, TerminalState,
     WriterConfig,
@@ -27,7 +26,7 @@ use crossterm::event::{Event, MouseButton, MouseEventKind};
 use ratatui;
 use ssz::Encode;
 use std::env;
-use std::os::fd::{FromRawFd, IntoRawFd};
+// no std::os::fd items needed currently
 use std::path::PathBuf;
 use std::sync::{
     Arc,
@@ -395,11 +394,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
     );
 
     // Determine output file path
-    let out_file = if let Some(path) = args.out_file {
-        Some(path)
-    } else {
-        None
-    };
+    let out_file = args.out_file;
 
     // Parse environment variables
     let env_vars = args
@@ -740,7 +735,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                             }
 
                             // First try view model's keyboard operation handling
-                            let msgs = view_model.update(SessionViewerMsg::Key(key.clone()));
+                            let msgs = view_model.update(SessionViewerMsg::Key(key));
                             if !msgs.is_empty() {
                                 // View model handled the key
                                 continue;
@@ -973,6 +968,7 @@ pub async fn execute_branch_points(args: BranchPointsArgs) -> Result<()> {
 }
 
 /// Output branch points in JSON format
+#[allow(clippy::disallowed_methods)]
 fn output_json(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
     use serde_json::json;
 
@@ -1011,6 +1007,7 @@ fn output_json(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
 }
 
 /// Output branch points in Markdown format
+#[allow(clippy::disallowed_methods)]
 fn output_markdown(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
     println!("# Branch Points");
     println!("Total bytes processed: {}", branch_points.total_bytes);
@@ -1038,6 +1035,7 @@ fn output_markdown(branch_points: &ah_recorder::BranchPointsResult) -> Result<()
 }
 
 /// Output branch points in CSV format
+#[allow(clippy::disallowed_methods)]
 fn output_csv(branch_points: &ah_recorder::BranchPointsResult) -> Result<()> {
     // CSV header
     println!("kind,index_or_id,text_or_label,line,column");

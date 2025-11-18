@@ -184,8 +184,10 @@ fn workspace_terms_menu_tracks_selected_item() {
 
 #[test]
 fn workspace_terms_menu_can_be_disabled() {
-    let mut settings = Settings::default();
-    settings.workspace_terms_menu = Some(false);
+    let settings = Settings {
+        workspace_terms_menu: Some(false),
+        ..Default::default()
+    };
     let mut vm =
         common::build_view_model_with_terms_and_settings(vec!["helloWorld".to_string()], settings);
     vm.focus_element = DashboardFocusState::DraftTask(0);

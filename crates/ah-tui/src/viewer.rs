@@ -93,7 +93,7 @@ pub(crate) fn build_session_viewer_view_model(
 
 pub fn update_row_metadata_with_autofollow(
     view_model: &mut SessionViewerViewModel,
-    config: &ViewerConfig,
+    _config: &ViewerConfig,
 ) {
     let previous_total = view_model.total_rows();
 
@@ -223,7 +223,7 @@ pub(crate) async fn launch_task_from_instruction(
     }
 }
 
-/// Viewer state for the terminal display
+// Viewer state for the terminal display
 
 // Restore terminal state when the event loop drops
 impl Drop for ViewerEventLoop {
@@ -261,7 +261,7 @@ impl ViewerEventLoop {
     ) -> io::Result<Self> {
         // Enter alternate screen and enable raw mode before building Terminal
         if let Err(e) = terminal::setup_terminal(terminal_config) {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("{}", e)));
+            return Err(io::Error::other(format!("{}", e)));
         }
 
         let backend = CrosstermBackend::new(std::io::stdout());
@@ -341,14 +341,14 @@ impl ViewerEventLoop {
             return false;
         }
 
-        // Third priority: handle exit confirmation
+        // Third priority: handle exit confirmation (return expression style)
         if self.view_model.exit_confirmation_armed {
             // Second ESC - quit
-            return true;
+            true
         } else {
             // First ESC - arm confirmation
             self.view_model.exit_confirmation_armed = true;
-            return false;
+            false
         }
     }
 
@@ -379,10 +379,8 @@ impl ViewerEventLoop {
                 let msgs = self.view_model.update(SessionViewerMsg::Key(key));
                 // Process any returned messages (though these operations typically return empty vec)
                 for msg in msgs {
-                    match msg {
-                        super::Msg::Quit => return Ok(true),
-                        // Other messages can be handled here if needed
-                        _ => {}
+                    if msg == super::Msg::Quit {
+                        return Ok(true);
                     }
                 }
                 return Ok(false);
@@ -463,16 +461,13 @@ impl ViewerEventLoop {
 
     /// Handle mouse input
     fn handle_mouse(&mut self, mouse: MouseEvent) {
-        match mouse.kind {
-            event::MouseEventKind::Down(MouseButton::Left) => {
-                handle_mouse_click_for_view(
-                    &mut self.view_model,
-                    &self.config,
-                    mouse.column,
-                    mouse.row,
-                );
-            }
-            _ => {}
+        if let event::MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+            handle_mouse_click_for_view(
+                &mut self.view_model,
+                &self.config,
+                mouse.column,
+                mouse.row,
+            );
         }
     }
 }

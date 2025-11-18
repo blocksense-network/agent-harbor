@@ -17,7 +17,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::{
     Theme, ViewCache,
@@ -97,7 +97,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                 };
 
                 if let Err(error) = view_model.update(msg) {
-                    eprintln!("Error handling UI message: {}", error);
+                    error!("Error handling UI message: {}", error);
                 }
 
                 if view_model.take_exit_request() {
@@ -131,7 +131,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                         );
 
                         if let Err(error) = view_model.update(ViewModelMsg::Key(processed_key)) {
-                            eprintln!("Error handling key event: {}", error);
+                            error!("Error handling key event: {}", error);
                         }
 
                         if view_model.take_exit_request() {
@@ -158,7 +158,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                                         row: mouse_event.row,
                                         bounds: hit.rect,
                                     }) {
-                                        eprintln!("Error handling mouse click: {}", error);
+                                        error!("Error handling mouse click: {}", error);
                                     }
                                     handled = true;
                                 } else {
@@ -174,7 +174,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                                     row: mouse_event.row,
                                     bounds: view_model.last_textarea_area.unwrap_or_default(),
                                 }) {
-                                    eprintln!("Error handling mouse drag: {}", error);
+                                    error!("Error handling mouse drag: {}", error);
                                 }
                                 handled = true;
                             }
@@ -184,19 +184,19 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                                     column: mouse_event.column,
                                     row: mouse_event.row,
                                 }) {
-                                    eprintln!("Error handling mouse up: {}", error);
+                                    error!("Error handling mouse up: {}", error);
                                 }
                                 handled = true;
                             }
                             MouseEventKind::ScrollUp => {
                                 if let Err(error) = view_model.update(ViewModelMsg::MouseScrollUp) {
-                                    eprintln!("Error handling mouse scroll up: {}", error);
+                                    error!("Error handling mouse scroll up: {}", error);
                                 }
                                 handled = true;
                             }
                             MouseEventKind::ScrollDown => {
                                 if let Err(error) = view_model.update(ViewModelMsg::MouseScrollDown) {
-                                    eprintln!("Error handling mouse scroll down: {}", error);
+                                    error!("Error handling mouse scroll down: {}", error);
                                 }
                                 handled = true;
                             }
@@ -221,7 +221,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
             }
             recv(rx_tick) -> _ => {
                 if let Err(error) = view_model.update(ViewModelMsg::Tick) {
-                    eprintln!("Error handling tick event: {}", error);
+                    error!("Error handling tick event: {}", error);
                 }
 
                 if view_model.take_exit_request() {

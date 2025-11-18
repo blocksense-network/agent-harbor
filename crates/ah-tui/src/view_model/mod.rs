@@ -53,7 +53,7 @@
 //! - **Data Transformation**: Domain → UI data structure conversions
 //! - **Event-Driven**: Clear separation of input → processing → output
 //! - **Testability**: Fully headless testing with mocked external APIs
-//!                    and simulated time
+//!   and simulated time
 
 pub mod autocomplete;
 pub mod dashboard_model;

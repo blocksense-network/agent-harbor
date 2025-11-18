@@ -3,17 +3,10 @@
 
 //! Layout rendering tests for the TUI dashboard
 
-use ah_core::TaskManager;
-use ah_core::WorkspaceFilesEnumerator;
-use ah_repo::VcsRepo;
-use ah_rest_mock_client::MockRestClient;
-use ah_tui::settings::Settings;
-use ah_tui::view_model::ViewModel;
-use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use std::io::Result;
-use std::sync::Arc;
+// Removed unused import: Arc
 
 /// Test that the dashboard renders correctly on different terminal sizes
 #[test]
@@ -23,7 +16,7 @@ fn test_dashboard_layout_small_terminal() -> Result<()> {
 
     // Test basic rendering setup - simplified test for now
     terminal.draw(|f| {
-        let size = f.size();
+        let size = f.area();
         // Just render a simple paragraph for now to test terminal setup
         let paragraph = ratatui::widgets::Paragraph::new("Test content");
         f.render_widget(paragraph, size);
@@ -47,7 +40,7 @@ fn test_dashboard_layout_large_terminal() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     terminal.draw(|f| {
-        let size = f.size();
+        let size = f.area();
         // Test with larger terminal
         let paragraph = ratatui::widgets::Paragraph::new("Large terminal test");
         f.render_widget(paragraph, size);
@@ -68,7 +61,7 @@ fn test_focus_indication() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     terminal.draw(|f| {
-        let size = f.size();
+        let size = f.area();
         // Test basic rendering
         let paragraph = ratatui::widgets::Paragraph::new("Focus test");
         f.render_widget(paragraph, size);

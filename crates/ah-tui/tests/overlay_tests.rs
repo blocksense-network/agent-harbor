@@ -7,7 +7,7 @@ mod common;
 
 use ah_tui::settings::KeyboardOperation;
 use ah_tui::view_model::task_entry::CardFocusElement;
-use ah_tui::view_model::{DashboardFocusState, ModalState, ViewModel};
+use ah_tui::view_model::{DashboardFocusState, ModalState};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::io::Write;
 
@@ -73,7 +73,7 @@ async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
 
     let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::empty());
     assert!(
-        vm.handle_key_event(esc_key.clone()),
+        vm.handle_key_event(esc_key),
         "ESC should dismiss settings modal (log: {log_hint})"
     );
     writeln!(
@@ -123,7 +123,7 @@ async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
         "menu should be open before ESC (log: {log_hint})"
     );
     assert!(
-        vm.handle_key_event(esc_key.clone()),
+        vm.handle_key_event(esc_key),
         "ESC should close autocomplete first (log: {log_hint})"
     );
     assert!(
@@ -137,7 +137,7 @@ async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
 
     // First ESC should arm exit state
     assert!(
-        vm.handle_key_event(esc_key.clone()),
+        vm.handle_key_event(esc_key),
         "ESC should arm exit when nothing else is open (log: {log_hint})"
     );
     assert!(
@@ -160,12 +160,12 @@ async fn dismiss_overlay_behaviour_follows_priority_and_exit_rules() {
     );
 
     // Arm again and confirm second ESC requests exit
-    vm.handle_key_event(esc_key.clone());
+    vm.handle_key_event(esc_key);
     assert!(
         vm.exit_confirmation_armed,
         "exit re-armed (log: {log_hint})"
     );
-    vm.handle_key_event(esc_key.clone());
+    vm.handle_key_event(esc_key);
     writeln!(
         log,
         "After second ESC -> armed {} requested {}",

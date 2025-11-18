@@ -181,7 +181,7 @@ mod keyboard {
         }
 
         let shift_up = KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT);
-        assert!(vm.handle_key_event(shift_up.clone()));
+        assert!(vm.handle_key_event(shift_up));
 
         if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.cursor(), (1, 4));
@@ -189,7 +189,7 @@ mod keyboard {
             assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
-        assert!(vm.handle_key_event(shift_up.clone()));
+        assert!(vm.handle_key_event(shift_up));
         if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.cursor(), (0, 4));
             assert!(card.description.selection_range().is_some());
@@ -197,7 +197,7 @@ mod keyboard {
         }
 
         let up = KeyEvent::new(KeyCode::Up, KeyModifiers::empty());
-        let stayed = vm.handle_key_event(up.clone());
+        let stayed = vm.handle_key_event(up);
         assert!(
             stayed,
             "first non-shift Up should move caret to column 0 before bubbling"
@@ -206,7 +206,7 @@ mod keyboard {
             assert_eq!(card.description.cursor(), (0, 0));
         }
 
-        let bubbled = vm.handle_key_event(up.clone());
+        let bubbled = vm.handle_key_event(up);
         assert!(
             bubbled,
             "second non-shift Up should bubble to dashboard and be handled"
@@ -259,7 +259,7 @@ mod keyboard {
 
         // Tab 1: RepositorySelector
         expect_screen_redraw(&mut vm, "pressing Tab to focus RepositorySelector", |vm| {
-            assert!(vm.handle_key_event(tab.clone()));
+            assert!(vm.handle_key_event(tab));
         });
         assert_eq!(
             vm.draft_cards[0].focus_element,
@@ -268,7 +268,7 @@ mod keyboard {
 
         // Tab 2: BranchSelector
         expect_screen_redraw(&mut vm, "pressing Tab to focus BranchSelector", |vm| {
-            assert!(vm.handle_key_event(tab.clone()));
+            assert!(vm.handle_key_event(tab));
         });
         assert_eq!(
             vm.draft_cards[0].focus_element,
@@ -277,7 +277,7 @@ mod keyboard {
 
         // Tab 3: ModelSelector
         expect_screen_redraw(&mut vm, "pressing Tab to focus ModelSelector", |vm| {
-            assert!(vm.handle_key_event(tab.clone()));
+            assert!(vm.handle_key_event(tab));
         });
         assert_eq!(
             vm.draft_cards[0].focus_element,
@@ -286,7 +286,7 @@ mod keyboard {
 
         // Tab 4: GoButton
         expect_screen_redraw(&mut vm, "pressing Tab to focus GoButton", |vm| {
-            assert!(vm.handle_key_event(tab.clone()));
+            assert!(vm.handle_key_event(tab));
         });
         assert_eq!(vm.draft_cards[0].focus_element, CardFocusElement::GoButton);
 
@@ -295,7 +295,7 @@ mod keyboard {
             &mut vm,
             "pressing Tab to wrap around to TaskDescription",
             |vm| {
-                assert!(vm.handle_key_event(tab.clone()));
+                assert!(vm.handle_key_event(tab));
             },
         );
         assert_eq!(
@@ -308,13 +308,13 @@ mod keyboard {
 
         // Currently at TaskDescription, Shift+Tab should go to GoButton
         expect_screen_redraw(&mut vm, "pressing Shift+Tab to focus GoButton", |vm| {
-            assert!(vm.handle_key_event(shift_tab.clone()));
+            assert!(vm.handle_key_event(shift_tab));
         });
         assert_eq!(vm.draft_cards[0].focus_element, CardFocusElement::GoButton);
 
         // Shift+Tab: ModelSelector
         expect_screen_redraw(&mut vm, "pressing Shift+Tab to focus ModelSelector", |vm| {
-            assert!(vm.handle_key_event(shift_tab.clone()));
+            assert!(vm.handle_key_event(shift_tab));
         });
         assert_eq!(
             vm.draft_cards[0].focus_element,
@@ -326,7 +326,7 @@ mod keyboard {
             &mut vm,
             "pressing Shift+Tab to focus BranchSelector",
             |vm| {
-                assert!(vm.handle_key_event(shift_tab.clone()));
+                assert!(vm.handle_key_event(shift_tab));
             },
         );
         assert_eq!(
@@ -339,7 +339,7 @@ mod keyboard {
             &mut vm,
             "pressing Shift+Tab to focus RepositorySelector",
             |vm| {
-                assert!(vm.handle_key_event(shift_tab.clone()));
+                assert!(vm.handle_key_event(shift_tab));
             },
         );
         assert_eq!(
@@ -352,7 +352,7 @@ mod keyboard {
             &mut vm,
             "pressing Shift+Tab to wrap around to TaskDescription",
             |vm| {
-                assert!(vm.handle_key_event(shift_tab.clone()));
+                assert!(vm.handle_key_event(shift_tab));
             },
         );
         assert_eq!(
@@ -368,7 +368,7 @@ mod keyboard {
             &mut vm,
             "pressing Tab arrow to focus RepositorySelector",
             |vm| {
-                assert!(vm.handle_key_event(right_arrow.clone()));
+                assert!(vm.handle_key_event(right_arrow));
             },
         );
         assert_eq!(
@@ -381,7 +381,7 @@ mod keyboard {
             &mut vm,
             "pressing Right arrow to focus BranchSelector",
             |vm| {
-                assert!(vm.handle_key_event(right_arrow.clone()));
+                assert!(vm.handle_key_event(right_arrow));
             },
         );
         assert_eq!(
@@ -394,7 +394,7 @@ mod keyboard {
             &mut vm,
             "pressing Right arrow to focus ModelSelector",
             |vm| {
-                assert!(vm.handle_key_event(right_arrow.clone()));
+                assert!(vm.handle_key_event(right_arrow));
             },
         );
         assert_eq!(
@@ -404,7 +404,7 @@ mod keyboard {
 
         // Right arrow: GoButton
         expect_screen_redraw(&mut vm, "pressing Right arrow to focus GoButton", |vm| {
-            assert!(vm.handle_key_event(right_arrow.clone()));
+            assert!(vm.handle_key_event(right_arrow));
         });
         assert_eq!(vm.draft_cards[0].focus_element, CardFocusElement::GoButton);
 
@@ -416,7 +416,7 @@ mod keyboard {
             &mut vm,
             "pressing Left arrow to focus ModelSelector",
             |vm| {
-                assert!(vm.handle_key_event(left_arrow.clone()));
+                assert!(vm.handle_key_event(left_arrow));
             },
         );
         assert_eq!(
@@ -429,7 +429,7 @@ mod keyboard {
             &mut vm,
             "pressing Left arrow to focus BranchSelector",
             |vm| {
-                assert!(vm.handle_key_event(left_arrow.clone()));
+                assert!(vm.handle_key_event(left_arrow));
             },
         );
         assert_eq!(
@@ -442,7 +442,7 @@ mod keyboard {
             &mut vm,
             "pressing Left arrow to focus RepositorySelector",
             |vm| {
-                assert!(vm.handle_key_event(left_arrow.clone()));
+                assert!(vm.handle_key_event(left_arrow));
             },
         );
         assert_eq!(
@@ -455,7 +455,7 @@ mod keyboard {
             &mut vm,
             "pressing Left arrow to go back to TaskDescription",
             |vm| {
-                assert!(vm.handle_key_event(left_arrow.clone()));
+                assert!(vm.handle_key_event(left_arrow));
             },
         );
         assert_eq!(
@@ -470,25 +470,25 @@ mod keyboard {
         vm.focus_element = DashboardFocusState::FilterBarLine;
 
         let right_event = KeyEvent::new(KeyCode::Right, KeyModifiers::empty());
-        vm.handle_key_event(right_event.clone());
+        vm.handle_key_event(right_event);
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Repository)
         );
 
-        vm.handle_key_event(right_event.clone());
+        vm.handle_key_event(right_event);
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Status)
         );
 
-        vm.handle_key_event(right_event.clone());
+        vm.handle_key_event(right_event);
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Creator)
         );
 
-        vm.handle_key_event(right_event.clone());
+        vm.handle_key_event(right_event);
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Repository)
@@ -501,13 +501,13 @@ mod keyboard {
         vm.focus_element = DashboardFocusState::Filter(FilterControl::Repository);
 
         let left_event = KeyEvent::new(KeyCode::Left, KeyModifiers::empty());
-        vm.handle_key_event(left_event.clone());
+        vm.handle_key_event(left_event);
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Creator)
         );
 
-        vm.handle_key_event(left_event.clone());
+        vm.handle_key_event(left_event);
         assert_eq!(
             vm.focus_element,
             DashboardFocusState::Filter(FilterControl::Status)
@@ -543,7 +543,7 @@ mod keyboard {
         use ah_tui::view_model::FilterControl;
 
         // Test that FilterControl enum has the expected values and ordering
-        let controls = vec![
+        let controls = [
             FilterControl::Repository,
             FilterControl::Status,
             FilterControl::Creator,
@@ -771,7 +771,7 @@ mod keyboard {
         assert_eq!(initial_cursor.1, 9); // End of "test text"
 
         // Send Home key (MoveToBeginningOfLine)
-        let home_event = KeyEvent::new(KeyCode::Home, KeyModifiers::empty());
+        let _home_event = KeyEvent::new(KeyCode::Home, KeyModifiers::empty());
         send_key(&mut vm, KeyCode::Home, KeyModifiers::empty());
 
         // Verify cursor moved to beginning
@@ -795,7 +795,7 @@ mod keyboard {
         assert_eq!(initial_cursor.1, 0); // Beginning of "test text"
 
         // Send End key (MoveToEndOfLine)
-        let end_event = KeyEvent::new(KeyCode::End, KeyModifiers::empty());
+        let _end_event = KeyEvent::new(KeyCode::End, KeyModifiers::empty());
         send_key(&mut vm, KeyCode::End, KeyModifiers::empty());
 
         // Verify cursor moved to end
@@ -819,7 +819,7 @@ mod keyboard {
         assert_eq!(initial_cursor.1, 13); // End of "/test command"
 
         // Send Home key (MoveToBeginningOfLine)
-        let home_event = KeyEvent::new(KeyCode::Home, KeyModifiers::empty());
+        let _home_event = KeyEvent::new(KeyCode::Home, KeyModifiers::empty());
         send_key(&mut vm, KeyCode::Home, KeyModifiers::empty());
 
         // Verify cursor moved to beginning
@@ -848,7 +848,7 @@ mod keyboard {
         assert_eq!(initial_cursor.1, 0); // Beginning of "/test command"
 
         // Send End key (MoveToEndOfLine)
-        let end_event = KeyEvent::new(KeyCode::End, KeyModifiers::empty());
+        let _end_event = KeyEvent::new(KeyCode::End, KeyModifiers::empty());
         send_key(&mut vm, KeyCode::End, KeyModifiers::empty());
 
         // Verify cursor moved to end
@@ -859,14 +859,16 @@ mod keyboard {
 }
 
 mod autocomplete_ghost {
-    use super::common::{build_view_model_with_terms, build_view_model_with_terms_and_settings};
+    use super::common::build_view_model_with_terms_and_settings;
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     #[test]
     fn plaintext_terms_ghost_accepts_with_right_arrow() {
-        let mut settings = Settings::default();
-        settings.workspace_terms_menu = Some(false);
+        let settings = Settings {
+            workspace_terms_menu: Some(false),
+            ..Default::default()
+        };
         let mut vm = build_view_model_with_terms_and_settings(
             vec!["helloWorld".to_string(), "helloUniverse".to_string()],
             settings,
@@ -899,8 +901,10 @@ mod autocomplete_ghost {
 
     #[test]
     fn tab_steps_through_shared_and_shortest_completion() {
-        let mut settings = Settings::default();
-        settings.workspace_terms_menu = Some(false);
+        let settings = Settings {
+            workspace_terms_menu: Some(false),
+            ..Default::default()
+        };
         let mut vm = build_view_model_with_terms_and_settings(
             vec!["helloWorld".to_string(), "helloWarehouse".to_string()],
             settings,
@@ -2129,7 +2133,7 @@ mod mouse {
 
         // Word operations may not work perfectly with current tui-textarea implementation
         // Just check that the operation doesn't crash
-        // assert!(true); // Operation completed without panic
+        // Operation completed without panic
     }
 
     #[test]
@@ -2147,7 +2151,7 @@ mod mouse {
             let cursor = card.description.cursor();
             // tui-textarea may handle cursor positioning differently
             // Just check that we have a valid cursor position
-            assert!(cursor.0 >= 0 && cursor.1 >= 0);
+            let _ = cursor; // Access to ensure the cursor tuple is obtained without panicking
         }
 
         // Press Ctrl+Left to move backward one word
@@ -2155,7 +2159,7 @@ mod mouse {
 
         // Word operations may not work perfectly with current tui-textarea implementation
         // Just check that the operation doesn't crash
-        // assert!(true); // Operation completed without panic
+        // Operation completed without panic
     }
 
     #[test]
@@ -2176,7 +2180,7 @@ mod mouse {
 
         // Word delete operations may not work with current tui-textarea implementation
         // Just check that the operation doesn't crash
-        // assert!(true); // Operation completed without panic
+        // Operation completed without panic
     }
 
     #[test]
@@ -2197,7 +2201,7 @@ mod mouse {
 
         // Word delete operations may not work with current tui-textarea implementation
         // Just check that the operation doesn't crash
-        // assert!(true); // Operation completed without panic
+        // Operation completed without panic
     }
 
     #[test]
@@ -2259,7 +2263,7 @@ mod mouse {
             let (start, end) = card.description.selection_range().unwrap();
             // From end of text, Shift+Ctrl+Left selects the last word
             // This depends on how tui-textarea implements word boundaries
-            println!("Selection range: start={:?}, end={:?}", start, end);
+            // Removed diagnostic println! to keep tests quiet and satisfy lint hygiene.
             assert!(start < end); // At minimum, some selection should exist
         }
     }
@@ -2281,7 +2285,7 @@ mod mouse {
 
         // Operation should complete without error (sentence approximated as line)
         // The exact behavior may vary in test environment
-        assert!(true);
+        // Removed meaningless assertion
     }
 
     #[test]
@@ -2301,7 +2305,7 @@ mod mouse {
 
         // Operation should complete without error (sentence approximated as line)
         // The exact behavior may vary in test environment
-        assert!(true);
+        // Removed meaningless assertion
     }
 
     #[test]
@@ -2321,7 +2325,7 @@ mod mouse {
         }
 
         // Send MoveToBeginningOfSentence operation
-        let alt_a_event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::ALT);
+        let _alt_a_event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::ALT);
         send_key(&mut vm, KeyCode::Char('a'), KeyModifiers::ALT);
 
         // Cursor should now be at beginning of line
@@ -2348,7 +2352,7 @@ mod mouse {
         }
 
         // Send MoveToEndOfSentence operation
-        let alt_e_event = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::ALT);
+        let _alt_e_event = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::ALT);
         send_key(&mut vm, KeyCode::Char('e'), KeyModifiers::ALT);
 
         // Cursor should now be at end of line
@@ -2375,7 +2379,7 @@ mod mouse {
         }
 
         // Send MoveToBeginningOfParagraph operation (Opt+Up on macOS)
-        let opt_up_event = KeyEvent::new(KeyCode::Up, KeyModifiers::ALT);
+        let _opt_up_event = KeyEvent::new(KeyCode::Up, KeyModifiers::ALT);
         send_key(&mut vm, KeyCode::Up, KeyModifiers::ALT);
 
         // Cursor should now be at beginning of line
@@ -2402,7 +2406,7 @@ mod mouse {
         }
 
         // Send MoveToEndOfParagraph operation (Opt+Down on macOS)
-        let opt_down_event = KeyEvent::new(KeyCode::Down, KeyModifiers::ALT);
+        let _opt_down_event = KeyEvent::new(KeyCode::Down, KeyModifiers::ALT);
         send_key(&mut vm, KeyCode::Down, KeyModifiers::ALT);
 
         // Cursor should now be at end of line
@@ -2750,7 +2754,7 @@ mod mouse {
 
         // Operation should complete without error (paragraph approximated as line)
         // The exact behavior may vary in test environment
-        assert!(true);
+        // Removed meaningless assertion
     }
 
     #[test]
@@ -2770,7 +2774,7 @@ mod mouse {
 
         // Operation should complete without error (paragraph approximated as line)
         // The exact behavior may vary in test environment
-        assert!(true);
+        // Removed meaningless assertion
     }
 
     #[test]
@@ -2905,7 +2909,7 @@ mod mouse {
         // Viewport should have scrolled to center the cursor
         if let Some(card) = vm.draft_cards.first() {
             let new_viewport = card.description.viewport_origin();
-            let _cursor_row = card.description.cursor().0 as usize;
+            let _cursor_row = card.description.cursor().0; // remove unnecessary cast
 
             // The viewport should have adjusted to center the cursor (row 2)
             // Since we can't easily test the exact centering logic, we verify that the viewport changed
@@ -2945,7 +2949,7 @@ mod mouse {
         }
 
         // Get initial line count
-        let initial_line_count = if let Some(card) = vm.draft_cards.first() {
+        let _initial_line_count = if let Some(card) = vm.draft_cards.first() {
             card.description.lines().len()
         } else {
             0
@@ -3136,7 +3140,7 @@ mod mouse {
         // Since the search implementation is basic, we just verify the operation completed
         if let Some(_card) = vm.draft_cards.first() {
             // Basic check that the operation executed (cursor may or may not move depending on search results)
-            assert!(true, "Find next operation should execute without error");
+            // Find next operation should execute without error (no-op assertion removed)
         }
     }
 
@@ -3315,7 +3319,7 @@ mod mouse {
         vm.handle_key_event(left_key);
 
         // The count should be back to its original value (incremented then decremented)
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             if let Some(selected_model) = card.selected_agents.first() {
                 // Count should be 1 (was incremented from 0 to 1, then decremented from 1 to 0,
                 // but since we selected it with Enter, it should be 1)

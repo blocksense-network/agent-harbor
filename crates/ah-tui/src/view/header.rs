@@ -10,6 +10,7 @@ use image::{DynamicImage, GenericImageView, ImageReader};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_image::{StatefulImage, picker::Picker, protocol::StatefulProtocol};
 use std::io::Cursor;
+use tracing::warn;
 
 /// Initialize logo rendering components (Picker and StatefulProtocol)
 pub fn initialize_logo_rendering(
@@ -172,7 +173,7 @@ pub fn render_header(
         // Check for encoding errors and log them (don't fail the whole UI)
         if let Some(Err(e)) = protocol.last_encoding_result() {
             // If image rendering fails, fall through to ASCII
-            eprintln!("Image logo rendering failed: {}", e);
+            warn!("Image logo rendering failed: {}", e);
         } else {
             // Image rendered successfully, we're done
             return;

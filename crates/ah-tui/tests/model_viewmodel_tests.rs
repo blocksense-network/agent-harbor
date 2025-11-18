@@ -14,10 +14,7 @@ use ah_core::{
     BranchesEnumerator, DefaultWorkspaceTermsEnumerator, RepositoriesEnumerator, TaskManager,
     WorkspaceFilesEnumerator, WorkspaceTermsEnumerator, task_manager::SaveDraftResult,
 };
-use ah_domain_types::{
-    AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, DraftTask, TaskExecution,
-    TaskState,
-};
+use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::KeyboardOperation;
@@ -30,7 +27,6 @@ use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerat
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Helper function to create a test ViewModel with mock dependencies
-
 fn create_test_view_model() -> ViewModel {
     let (vm, _rx) = create_test_view_model_with_channel();
     vm
@@ -38,7 +34,7 @@ fn create_test_view_model() -> ViewModel {
 
 fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Receiver<Msg>) {
     let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-        Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
+        Arc::new(VcsRepo::new(std::path::PathBuf::from(".")).unwrap());
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
         Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
     let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
@@ -118,7 +114,7 @@ mod viewmodel_tests {
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
 
         // Check that the draft card's internal focus starts on TaskDescription
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
@@ -127,32 +123,32 @@ mod viewmodel_tests {
         // Global focus should remain on the draft task
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
         // But internal focus should move to RepositorySelector
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::RepositorySelector);
         }
 
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::BranchSelector);
         }
 
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
         }
 
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::GoButton);
         }
 
         // Next tab should cycle back to TaskDescription
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
     }
@@ -170,32 +166,32 @@ mod viewmodel_tests {
         // Global focus should remain on the draft task
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
         // But internal focus should move to GoButton
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::GoButton);
         }
 
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
         }
 
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::BranchSelector);
         }
 
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::RepositorySelector);
         }
 
         // Next shift+tab should cycle back to TaskDescription
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
     }
@@ -209,7 +205,7 @@ mod viewmodel_tests {
         vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Verify the card's internal focus is on TaskDescription
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
@@ -221,7 +217,7 @@ mod viewmodel_tests {
         assert!(vm.handle_char_input('o'));
 
         // Check that the draft description was updated
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.lines().join("\n"), "Hello");
         } else {
             panic!("Expected draft card");
@@ -242,18 +238,18 @@ mod viewmodel_tests {
         vm.handle_char_input('o');
 
         // Check initial state
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.lines().join("\n"), "Hello");
         }
 
         // Backspace should remove characters
         assert!(vm.handle_backspace());
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.lines().join("\n"), "Hell");
         }
 
         assert!(vm.handle_backspace());
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.lines().join("\n"), "Hel");
         }
     }
@@ -272,14 +268,14 @@ mod viewmodel_tests {
         vm.handle_char_input(' ');
 
         // Check initial state
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.lines().join("\n"), "Line ");
         }
 
         // Shift+Enter should add a newline
         assert!(vm.handle_enter(true)); // true = shift modifier
 
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.description.lines().join("\n"), "Line \n");
         } else {
             panic!("Expected draft card");
@@ -331,7 +327,7 @@ mod viewmodel_tests {
         vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Initially, card internal focus should be on TaskDescription
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
@@ -520,7 +516,7 @@ mod viewmodel_tests {
         vm.handle_char_input('t');
 
         // Auto-save timer should be set on the draft card
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert!(card.auto_save_timer.is_some());
             assert_eq!(card.save_state, DraftSaveState::Unsaved);
             assert_eq!(card.dirty_generation, 4);
@@ -569,7 +565,7 @@ mod viewmodel_tests {
         }
 
         // Check the first draft card
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.save_state, DraftSaveState::Saved);
             assert!(card.auto_save_timer.is_none());
             assert_eq!(card.dirty_generation, card.last_saved_generation);
@@ -726,7 +722,7 @@ mod viewmodel_tests {
         }
 
         // Initially, draft card buttons should not be pressed (no focus on them)
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
             // Buttons should not be focused/pressed
             assert_ne!(card.focus_element, CardFocusElement::GoButton);
@@ -743,12 +739,12 @@ mod viewmodel_tests {
 
         // Focus should return to the model selector button
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
         }
 
         // Verify that the selected model was applied to the card
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             // Should have at least one model selected
             assert!(!card.selected_agents.is_empty());
             // The first model should be the one that was selected
@@ -798,21 +794,17 @@ mod viewmodel_tests {
 
         // Test delete character backward
         let backspace_event = key_event(KeyCode::Backspace, KeyModifiers::empty());
-        let result = vm.handle_keyboard_operation(
+        let _ = vm.handle_keyboard_operation(
             KeyboardOperation::DeleteCharacterBackward,
             &backspace_event,
         );
-        // Just check that the operation was processed (we can't check the result type directly due to privacy)
-        assert!(result == true || result == false); // Operation was handled
 
         // Verify character was deleted
         assert_eq!(vm.active_modal.as_ref().unwrap().input_value, "tes");
 
         // Test delete to end of line
         let ctrl_k_event = key_event(KeyCode::Char('k'), KeyModifiers::CONTROL); // Ctrl+K
-        let result2 =
-            vm.handle_keyboard_operation(KeyboardOperation::DeleteToEndOfLine, &ctrl_k_event);
-        assert!(result2 == true || result2 == false); // Operation was handled
+        let _ = vm.handle_keyboard_operation(KeyboardOperation::DeleteToEndOfLine, &ctrl_k_event);
 
         // Verify line was cleared
         assert_eq!(vm.active_modal.as_ref().unwrap().input_value, "");

@@ -8,7 +8,7 @@
 
 use similar::{ChangeTag, TextDiff};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Golden file management for golden file testing
 pub struct GoldenManager {
@@ -77,7 +77,7 @@ impl GoldenManager {
         if self.update_mode {
             // In update mode, save the new golden
             self.save_golden(scenario_name, step_name, actual_content)?;
-            println!("✅ Updated golden: {} -> {}", scenario_name, step_name);
+            tracing::info!("✅ Updated golden: {} -> {}", scenario_name, step_name);
             return Ok(());
         }
 
@@ -120,7 +120,7 @@ fn normalize_golden(content: &str) -> String {
     // Split into lines and process each line
     let normalized_lines: Vec<String> = content
         .lines()
-        .map(|line| {
+        .filter_map(|line| {
             // Remove trailing whitespace
             let trimmed = line.trim_end();
             // Skip empty lines at the end
@@ -130,7 +130,6 @@ fn normalize_golden(content: &str) -> String {
                 Some(trimmed.to_string())
             }
         })
-        .flatten()
         .collect();
 
     // Remove trailing empty lines
@@ -152,7 +151,7 @@ mod tests {
     #[test]
     fn test_golden_save_load() {
         let temp_dir = tempdir().unwrap();
-        let mut manager = GoldenManager {
+        let manager = GoldenManager {
             base_dir: temp_dir.path().to_path_buf(),
             update_mode: false,
         };
@@ -170,7 +169,7 @@ mod tests {
     #[test]
     fn test_golden_comparison() {
         let temp_dir = tempdir().unwrap();
-        let mut manager = GoldenManager {
+        let manager = GoldenManager {
             base_dir: temp_dir.path().to_path_buf(),
             update_mode: false,
         };
@@ -193,7 +192,7 @@ mod tests {
     #[test]
     fn test_update_mode() {
         let temp_dir = tempdir().unwrap();
-        let mut manager = GoldenManager {
+        let manager = GoldenManager {
             base_dir: temp_dir.path().to_path_buf(),
             update_mode: true,
         };

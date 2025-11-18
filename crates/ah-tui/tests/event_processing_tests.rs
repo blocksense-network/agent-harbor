@@ -10,16 +10,11 @@ use ah_core::{
     BranchesEnumerator, DefaultWorkspaceTermsEnumerator, LogLevel, RepositoriesEnumerator,
     TaskEvent, TaskManager, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
 };
-use ah_domain_types::{
-    AgentChoice, AgentSoftware, AgentSoftwareBuild, TaskState, task::ToolStatus,
-};
+use ah_domain_types::{AgentSoftware, AgentSoftwareBuild, TaskState, task::ToolStatus};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::Settings;
-use ah_tui::view_model::{
-    AgentActivityRow, DashboardFocusState, TaskCardType, TaskExecutionFocusState,
-    TaskExecutionViewModel, ViewModel,
-};
+use ah_tui::view_model::{AgentActivityRow, TaskCardType, TaskExecutionFocusState, ViewModel};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use chrono::Utc;
 use std::sync::Arc;
@@ -31,7 +26,7 @@ mod event_processing_tests {
     // Helper function to create a test ViewModel with a running task
     fn create_test_view_model_with_active_task() -> ViewModel {
         let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-            Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
+            Arc::new(VcsRepo::new(std::path::Path::new(".")).unwrap());
         let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
             Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
@@ -47,8 +42,10 @@ mod event_processing_tests {
         let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
             ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
         );
-        let mut settings = Settings::default();
-        settings.active_sessions_activity_rows = Some(3); // Set activity rows for testing
+        let settings = Settings {
+            active_sessions_activity_rows: Some(3),
+            ..Default::default()
+        }; // Set activity rows for testing
 
         let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
@@ -228,7 +225,7 @@ mod event_processing_tests {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
                     assert_eq!(*last_line, None); // Initially no output
-                    assert_eq!(*completed, false);
+                    assert!(!*completed);
                     assert_eq!(*status, ToolStatus::Started);
                 }
                 _ => panic!("Expected ToolUse activity entry"),
@@ -280,7 +277,7 @@ mod event_processing_tests {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
                     assert_eq!(last_line, &Some("Found 42 files in directory".to_string()));
-                    assert_eq!(*completed, false);
+                    assert!(!*completed);
                     assert_eq!(*status, ToolStatus::Started);
                 }
                 _ => panic!("Expected ToolUse activity entry"),
@@ -345,7 +342,7 @@ mod event_processing_tests {
                         last_line,
                         &Some("Command completed successfully".to_string())
                     );
-                    assert_eq!(*completed, true);
+                    assert!(*completed);
                     assert_eq!(*status, ToolStatus::Completed);
                 }
                 _ => panic!("Expected ToolUse activity entry"),
@@ -507,7 +504,7 @@ mod event_processing_tests {
     #[test]
     fn events_for_draft_tasks_are_ignored() {
         let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-            Arc::new(VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
+            Arc::new(VcsRepo::new(std::path::Path::new(".")).unwrap());
         let workspace_workflows = Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
         let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
             DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
@@ -661,7 +658,7 @@ mod event_processing_tests {
                     ..
                 } => {
                     assert_eq!(last_line, &Some("total 42".to_string()));
-                    assert_eq!(*completed, true);
+                    assert!(*completed);
                 }
                 _ => panic!("Expected ToolUse activity entry"),
             }
@@ -743,7 +740,7 @@ mod event_processing_tests {
                     last_line,
                     ..
                 } => {
-                    assert_eq!(*completed, true);
+                    assert!(*completed);
                     assert_eq!(*status, ToolStatus::Failed);
                     assert_eq!(
                         last_line,

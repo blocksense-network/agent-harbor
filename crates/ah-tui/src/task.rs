@@ -6,7 +6,7 @@
 //! This module defines the data models for different types of tasks
 //! displayed in the task-centric interface.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 /// Represents a model selection with instance count
 #[derive(Debug, Clone, PartialEq)]
@@ -217,6 +217,12 @@ impl Task {
     /// Check if this task is selectable
     pub fn is_selectable(&self) -> bool {
         !matches!(self.state, TaskState::New { .. })
+    }
+}
+
+impl Default for Task {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

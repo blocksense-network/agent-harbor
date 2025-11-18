@@ -574,7 +574,7 @@ pub fn render_find_replace_modal(
 /// Render shortcut help modal
 pub fn render_shortcut_help_modal(
     frame: &mut Frame,
-    modal: &ShortcutHelpModal,
+    _modal: &ShortcutHelpModal,
     area: Rect,
     theme: &Theme,
 ) {
@@ -624,7 +624,9 @@ pub fn render_shortcut_help_modal(
     frame.render_widget(content, inner_area);
 }
 
-/// Render modal input line helper
+/// Render modal input line helper.
+/// Not yet integrated; planned for richer settings dialog input rendering.
+#[allow(dead_code)]
 fn render_modal_input_line<'a>(
     label: &'a str,
     value: &'a str,

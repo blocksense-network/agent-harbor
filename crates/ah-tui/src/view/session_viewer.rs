@@ -19,9 +19,9 @@ use ah_recorder::{LineIndex, ScreenLineIndex, TerminalState};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span, Text};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
-use tracing::debug;
+// tracing::debug not currently used in this module
 use vt100;
 
 /// Convert ANSI bytes to Ratatui spans using manual ANSI parsing
@@ -223,6 +223,7 @@ fn render_instruction_entry(frame: &mut Frame<'_>, area: Rect, task_entry: &Task
 /// Renders all lines within the given TerminalOutputSpan, handling both gutter and terminal content
 /// If suppress_snapshot_line is provided, the snapshot indicator will be suppressed for that line
 /// If focus_element is Terminal, positions the cursor on the line where the terminal cursor is located
+#[allow(clippy::too_many_arguments)] // High-arity kept: rendering needs parallel data slices & context objects; future refactor may introduce a struct param.
 fn render_terminal_lines_span_with_snapshot_suppression(
     frame: &mut Frame<'_>,
     span: &TerminalOutputSpan,
@@ -277,19 +278,19 @@ fn render_terminal_lines_span_with_snapshot_suppression(
         }
 
         // Check if we should position the cursor on this line (only when terminal is focused)
-        if matches!(focus_element, SessionViewerFocusState::Terminal) {
-            if cursor_line_index == LineIndex(current_line_idx) {
-                // Cursor is on this line - position it
-                let cursor_x = terminal_chunk.x + cursor_col as u16;
-                let cursor_y = terminal_chunk.y;
-                frame.set_cursor_position((cursor_x, cursor_y));
-            }
+        if matches!(focus_element, SessionViewerFocusState::Terminal)
+            && cursor_line_index == LineIndex(current_line_idx)
+        {
+            // Cursor is on this line - position it
+            let cursor_x = terminal_chunk.x + cursor_col;
+            let cursor_y = terminal_chunk.y;
+            frame.set_cursor_position((cursor_x, cursor_y));
         }
 
         // Render terminal content
         let line_content_formatted = recording_state
             .line_content_by_line_index_formatted(LineIndex(current_line_idx))
-            .unwrap_or_else(|| vec![]);
+            .unwrap_or_default();
 
         // Convert ANSI bytes to spans using manual ANSI parsing
         let spans = ansi_bytes_to_spans(&line_content_formatted);
@@ -312,12 +313,12 @@ fn render_terminal_content(
     theme: &Theme,
 ) {
     let recorded_cols = view_model.display_cols();
-    let recorded_rows = view_model.display_rows() as usize;
+    let recorded_rows = view_model.display_rows();
     let gutter_width = view_model.gutter_config.width();
 
     let show_frame = matches!(view_model.session_mode, SessionViewerMode::SessionReview)
-        && (recorded_cols as u16 != area.width.saturating_sub(2 + gutter_width as u16)
-            || recorded_rows as u16 != area.height.saturating_sub(2));
+        && (recorded_cols != area.width.saturating_sub(2 + gutter_width as u16)
+            || recorded_rows != area.height.saturating_sub(2));
 
     // Apply frame around entire terminal area if needed
     let content_area = if show_frame {
@@ -498,6 +499,7 @@ fn render_gutter_item_for_line_with_suppression(
 /// state by absolute line number to determine if a gutter indicator (like snapshot marker)
 /// should be displayed at a particular line. This ensures snapshot positioning remains consistent
 /// and meaningful regardless of scrolling.
+#[allow(dead_code)] // Simple wrapper retained for potential gutter customization without suppression flag.
 fn render_gutter_item_for_line(
     frame: &mut Frame<'_>,
     area: Rect,
