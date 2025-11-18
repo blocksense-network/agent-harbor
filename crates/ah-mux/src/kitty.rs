@@ -283,6 +283,350 @@ impl KittyMultiplexer {
     }
 }
 
+impl Multiplexer for KittyMultiplexer {
+    fn id(&self) -> &'static str {
+        "kitty"
+    }
+
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "is_available"))]
+    fn is_available(&self) -> bool {
+        debug!("Checking kitty availability");
+
+        // Check if kitty command exists
+        let kitty_exists = std::process::Command::new("kitty")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        if !kitty_exists {
+            debug!("kitty command not found");
+            return false;
+        }
+
+        // Check if remote control is available
+        let remote_control_available = self.is_remote_control_available();
+
+        if !remote_control_available {
+            warn!("kitty remote control is not available");
+            // Log helpful message for debugging
+            eprintln!("⚠️  Kitty remote control is not available.");
+            eprintln!(
+                "   Run 'bin/setup-kitty' to configure, or manually add to ~/.config/kitty/kitty.conf:"
+            );
+            eprintln!("   allow_remote_control yes");
+            eprintln!("   listen_on unix:/tmp/kitty-ah.sock");
+            eprintln!("   Then restart kitty or reload config (Cmd/Ctrl+Shift+F5)");
+        } else {
+            debug!("kitty remote control is available");
+        }
+
+        debug!(available = %remote_control_available, "kitty availability check completed");
+        remote_control_available
+    }
+
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "open_window", title = ?opts.title, focus = %opts.focus))]
+    fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
+        info!("Opening new kitty window");
+
+        // Instead of creating a new tab, we'll use the current window for task layouts
+        // This provides a better user experience by keeping everything in one view
+        // The layout will be: TUI on left, lazygit + agent on right (split vertically)
+
+        // Get the current window ID
+        if let Some(window_id) = self.current_window()? {
+            debug!(window_id = %window_id, "Using current kitty window");
+            // If focus is requested, focus the window
+            if opts.focus {
+                debug!("Focusing current window");
+                self.focus_window(&window_id)?;
+            }
+            info!(window_id = %window_id, "kitty window opened successfully");
+            Ok(window_id)
+        } else {
+            debug!("No current window found, creating new tab");
+            // Fallback: if no current window exists, create a new tab
+            let mut args = vec![
+                "launch".to_string(),
+                "--type".to_string(),
+                "tab".to_string(),
+            ];
+
+            // Add title if specified
+            if let Some(title) = opts.title {
+                args.extend_from_slice(&["--title".to_string(), title.to_string()]);
+            }
+
+            // Add working directory if specified
+            if let Some(cwd) = opts.cwd {
+                args.extend_from_slice(&["--cwd".to_string(), cwd.to_string_lossy().to_string()]);
+            }
+
+            // Convert to slice of &str for the command
+            let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+            // Run the command and capture the window ID
+            debug!(args = ?args_str, "Running kitty launch command");
+            let output = self.run_kitty_command(&args_str)?;
+            let window_id = self.parse_window_id_from_output(&output)?;
+
+            // Focus the window if requested
+            if opts.focus {
+                debug!("Focusing newly created window");
+                self.focus_window(&window_id)?;
+            }
+
+            info!(window_id = %window_id, "kitty window opened successfully");
+            Ok(window_id)
+        }
+    }
+
+    #[instrument(skip(self, opts), fields(component = "ah_mux", operation = "split_pane", direction = ?dir, percent = ?percent, has_initial_cmd = %initial_cmd.is_some()))]
+    fn split_pane(
+        &self,
+        window: Option<&WindowId>,
+        target: Option<&PaneId>,
+        dir: SplitDirection,
+        percent: Option<u8>,
+        opts: &CommandOptions,
+        initial_cmd: Option<&str>,
+    ) -> Result<PaneId, MuxError> {
+        info!("Splitting kitty pane");
+
+        let mut args = vec![
+            "launch".to_string(),
+            "--type".to_string(),
+            "window".to_string(),
+        ];
+
+        // Set location based on direction
+        // For the desired layout (TUI left, Lazygit top-right, Agent bottom-right),
+        // we swap horizontal to vertical when no target is specified.
+        // This makes the agent pane split below the lazygit pane instead of beside it.
+        // See: https://sw.kovidgoyal.net/kitty/launch/
+        let location = if target.is_none() && window.is_none() {
+            // When operating on "current" (which will be the lazygit pane after run_command),
+            // use vsplit to create agent below it, regardless of requested direction
+            debug!("Using vsplit for current pane to create bottom split");
+            "vsplit".to_string()
+        } else {
+            let loc = match dir {
+                SplitDirection::Horizontal => "hsplit".to_string(),
+                SplitDirection::Vertical => "vsplit".to_string(),
+            };
+            debug!(direction = ?dir, location = %loc, "Using explicit split direction");
+            loc
+        };
+        args.extend_from_slice(&["--location".to_string(), location]);
+
+        // Note: kitty does not support --size option for splits
+        // Split sizes are determined automatically by kitty's layout algorithm
+        // The percent parameter is ignored for kitty
+        if cfg!(debug_assertions) && percent.is_some() {
+            warn!("kitty does not support custom split sizes, ignoring percent parameter");
+            eprintln!(
+                "DEBUG: kitty does not support custom split sizes, ignoring percent parameter"
+            );
+        }
+
+        // Target the specific pane/window if specified, otherwise operate on current window
+        if let Some(target_pane) = target {
+            args.extend_from_slice(&["--match".to_string(), format!("id:{}", target_pane)]);
+        } else if let Some(window_id) = window {
+            args.extend_from_slice(&["--match".to_string(), format!("id:{}", window_id)]);
+        }
+        // If neither target nor window is specified, kitty will operate on the current window
+
+        // Add working directory if specified
+        if let Some(cwd) = opts.cwd {
+            args.extend_from_slice(&["--cwd".to_string(), cwd.to_string_lossy().to_string()]);
+        }
+
+        // Add environment variables if specified
+        // See: https://sw.kovidgoyal.net/kitty/launch/
+        if let Some(env_vars) = opts.env {
+            for (key, value) in env_vars {
+                args.extend_from_slice(&["--env".to_string(), format!("{}={}", key, value)]);
+            }
+        }
+
+        // Add initial command if specified (after -- separator as documented)
+        // See: https://sw.kovidgoyal.net/kitty/launch/
+        // Note: We wrap the command in bash -c to handle complex command lines with arguments
+        if let Some(cmd) = initial_cmd {
+            args.push("--".to_string());
+            args.push("bash".to_string());
+            args.push("-c".to_string());
+            args.push(cmd.to_string());
+        }
+
+        // Convert to slice of &str for the command
+        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+        // Run the command and capture the pane ID
+        debug!(args = ?args_str, "Running kitty launch command for pane split");
+        let output = self.run_kitty_command(&args_str)?;
+        let pane_id = self.parse_pane_id_from_output(&output)?;
+
+        info!(pane_id = %pane_id, "kitty pane split successfully");
+        Ok(pane_id)
+    }
+
+    fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
+        // For kitty, when ah-tui-multiplexer tries to run a command in the "editor pane"
+        // (where the TUI is running), we need to create a NEW pane with the command
+        // instead of sending text to the TUI.
+        //
+        // Special case: if the command is "lazygit", create a new split pane instead of sending text.
+        //
+        // See: https://sw.kovidgoyal.net/kitty/launch/
+
+        eprintln!("DEBUG run_command: pane={:?}, cmd={:?}", pane, cmd);
+
+        if cmd == "lazygit" || cmd.starts_with("lazygit ") {
+            eprintln!("DEBUG: Detected lazygit, creating split");
+            // This is the editor pane setup - create a new split with the command
+            let mut args = vec![
+                "launch".to_string(),
+                "--type".to_string(),
+                "window".to_string(),
+                "--location".to_string(),
+                "hsplit".to_string(), // Split horizontally (left/right)
+                "--cwd".to_string(),
+                opts.cwd
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| ".".to_string()),
+            ];
+
+            // Add the command to execute (wrapped in bash -c)
+            args.push("--".to_string());
+            args.push("bash".to_string());
+            args.push("-c".to_string());
+            args.push(cmd.to_string());
+
+            // Convert to slice of &str
+            let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+            // Create the split and get its pane ID
+            let output = self.run_kitty_command(&args_str)?;
+            let new_pane_id = self.parse_pane_id_from_output(&output)?;
+
+            // Focus the newly created pane so the next split targets it
+            // This is crucial for the layout: TUI | Lazygit
+            //                                         | Agent
+            self.focus_pane(&new_pane_id)?;
+
+            Ok(())
+        } else {
+            // For other panes, send the command text normally
+            // Build the full command with working directory if specified
+            let full_cmd = if let Some(cwd) = opts.cwd {
+                format!("cd {} && {}", cwd.display(), cmd)
+            } else {
+                cmd.to_string()
+            };
+
+            let match_arg = format!("id:{}", pane);
+            let text_arg = format!("{}\r", full_cmd); // \r is carriage return (Enter key)
+
+            // Give the pane a moment to be ready (similar to iTerm2's 100ms delay)
+            std::thread::sleep(std::time::Duration::from_millis(100));
+
+            self.run_kitty_command(&["send-text", "--match", &match_arg, &text_arg])?;
+            Ok(())
+        }
+    }
+
+    fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
+        // Send literal text to the pane
+        let match_arg = format!("id:{}", pane);
+        self.run_kitty_command(&["send-text", "--match", &match_arg, "--no-newline", text])?;
+        Ok(())
+    }
+
+    fn focus_window(&self, window: &WindowId) -> Result<(), MuxError> {
+        let match_arg = format!("id:{}", window);
+        self.run_kitty_command(&["focus-window", "--match", &match_arg])?;
+        Ok(())
+    }
+
+    fn focus_pane(&self, pane: &PaneId) -> Result<(), MuxError> {
+        // In kitty, focusing a pane is the same as focusing its window
+        self.focus_window(pane)
+    }
+
+    fn current_window(&self) -> Result<Option<WindowId>, MuxError> {
+        // First try using kitty's get-focused-window-id command
+        match self.get_focused_window_id() {
+            Ok(window_id) if !window_id.is_empty() => {
+                eprintln!(
+                    "DEBUG current_window: got from get_focused_window_id: {:?}",
+                    window_id
+                );
+                return Ok(Some(window_id));
+            }
+            Err(e) => {
+                eprintln!(
+                    "DEBUG current_window: get_focused_window_id failed: {:?}",
+                    e
+                );
+            }
+            _ => {
+                eprintln!("DEBUG current_window: get_focused_window_id returned empty");
+            }
+        }
+
+        // Fallback: Try the KITTY_WINDOW_ID environment variable
+        // This is set by kitty for all processes running inside it
+        if let Ok(window_id) = std::env::var("KITTY_WINDOW_ID") {
+            if !window_id.is_empty() {
+                eprintln!(
+                    "DEBUG current_window: got from KITTY_WINDOW_ID env: {:?}",
+                    window_id
+                );
+                return Ok(Some(window_id));
+            }
+        }
+
+        eprintln!("DEBUG current_window: no window found");
+        Ok(None)
+    }
+
+    fn current_pane(&self) -> Result<Option<PaneId>, MuxError> {
+        // In kitty, each pane is effectively a window, so the focused window ID
+        // is the same as the focused pane ID
+        self.current_window()
+    }
+
+    fn list_windows(&self, title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
+        // Get detailed window info via list_windows_detailed which parses JSON from kitty @ ls
+        let windows = self.list_windows_detailed()?;
+
+        // Filter by title substring if specified
+        let filtered: Vec<WindowId> = if let Some(substr) = title_substr {
+            windows
+                .into_iter()
+                .filter(|(_, title)| title.contains(substr))
+                .map(|(id, _)| id)
+                .collect()
+        } else {
+            windows.into_iter().map(|(id, _)| id).collect()
+        };
+
+        Ok(filtered)
+    }
+
+    fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
+        // In kitty, each "pane" is actually a separate window, but we can treat
+        // all windows as panes for compatibility. For now, return all windows.
+        // This is a simplification - in a real implementation, we might need to
+        // track which windows belong to which "logical" panes.
+        self.list_windows(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1233,349 +1577,5 @@ mod tests {
             result.is_err(),
             "Opening window with invalid socket should fail"
         );
-    }
-}
-
-impl Multiplexer for KittyMultiplexer {
-    fn id(&self) -> &'static str {
-        "kitty"
-    }
-
-    #[instrument(skip(self), fields(component = "ah_mux", operation = "is_available"))]
-    fn is_available(&self) -> bool {
-        debug!("Checking kitty availability");
-
-        // Check if kitty command exists
-        let kitty_exists = std::process::Command::new("kitty")
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-
-        if !kitty_exists {
-            debug!("kitty command not found");
-            return false;
-        }
-
-        // Check if remote control is available
-        let remote_control_available = self.is_remote_control_available();
-
-        if !remote_control_available {
-            warn!("kitty remote control is not available");
-            // Log helpful message for debugging
-            eprintln!("⚠️  Kitty remote control is not available.");
-            eprintln!(
-                "   Run 'bin/setup-kitty' to configure, or manually add to ~/.config/kitty/kitty.conf:"
-            );
-            eprintln!("   allow_remote_control yes");
-            eprintln!("   listen_on unix:/tmp/kitty-ah.sock");
-            eprintln!("   Then restart kitty or reload config (Cmd/Ctrl+Shift+F5)");
-        } else {
-            debug!("kitty remote control is available");
-        }
-
-        debug!(available = %remote_control_available, "kitty availability check completed");
-        remote_control_available
-    }
-
-    #[instrument(skip(self), fields(component = "ah_mux", operation = "open_window", title = ?opts.title, focus = %opts.focus))]
-    fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
-        info!("Opening new kitty window");
-
-        // Instead of creating a new tab, we'll use the current window for task layouts
-        // This provides a better user experience by keeping everything in one view
-        // The layout will be: TUI on left, lazygit + agent on right (split vertically)
-
-        // Get the current window ID
-        if let Some(window_id) = self.current_window()? {
-            debug!(window_id = %window_id, "Using current kitty window");
-            // If focus is requested, focus the window
-            if opts.focus {
-                debug!("Focusing current window");
-                self.focus_window(&window_id)?;
-            }
-            info!(window_id = %window_id, "kitty window opened successfully");
-            Ok(window_id)
-        } else {
-            debug!("No current window found, creating new tab");
-            // Fallback: if no current window exists, create a new tab
-            let mut args = vec![
-                "launch".to_string(),
-                "--type".to_string(),
-                "tab".to_string(),
-            ];
-
-            // Add title if specified
-            if let Some(title) = opts.title {
-                args.extend_from_slice(&["--title".to_string(), title.to_string()]);
-            }
-
-            // Add working directory if specified
-            if let Some(cwd) = opts.cwd {
-                args.extend_from_slice(&["--cwd".to_string(), cwd.to_string_lossy().to_string()]);
-            }
-
-            // Convert to slice of &str for the command
-            let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-            // Run the command and capture the window ID
-            debug!(args = ?args_str, "Running kitty launch command");
-            let output = self.run_kitty_command(&args_str)?;
-            let window_id = self.parse_window_id_from_output(&output)?;
-
-            // Focus the window if requested
-            if opts.focus {
-                debug!("Focusing newly created window");
-                self.focus_window(&window_id)?;
-            }
-
-            info!(window_id = %window_id, "kitty window opened successfully");
-            Ok(window_id)
-        }
-    }
-
-    #[instrument(skip(self, opts), fields(component = "ah_mux", operation = "split_pane", direction = ?dir, percent = ?percent, has_initial_cmd = %initial_cmd.is_some()))]
-    fn split_pane(
-        &self,
-        window: Option<&WindowId>,
-        target: Option<&PaneId>,
-        dir: SplitDirection,
-        percent: Option<u8>,
-        opts: &CommandOptions,
-        initial_cmd: Option<&str>,
-    ) -> Result<PaneId, MuxError> {
-        info!("Splitting kitty pane");
-
-        let mut args = vec![
-            "launch".to_string(),
-            "--type".to_string(),
-            "window".to_string(),
-        ];
-
-        // Set location based on direction
-        // For the desired layout (TUI left, Lazygit top-right, Agent bottom-right),
-        // we swap horizontal to vertical when no target is specified.
-        // This makes the agent pane split below the lazygit pane instead of beside it.
-        // See: https://sw.kovidgoyal.net/kitty/launch/
-        let location = if target.is_none() && window.is_none() {
-            // When operating on "current" (which will be the lazygit pane after run_command),
-            // use vsplit to create agent below it, regardless of requested direction
-            debug!("Using vsplit for current pane to create bottom split");
-            "vsplit".to_string()
-        } else {
-            let loc = match dir {
-                SplitDirection::Horizontal => "hsplit".to_string(),
-                SplitDirection::Vertical => "vsplit".to_string(),
-            };
-            debug!(direction = ?dir, location = %loc, "Using explicit split direction");
-            loc
-        };
-        args.extend_from_slice(&["--location".to_string(), location]);
-
-        // Note: kitty does not support --size option for splits
-        // Split sizes are determined automatically by kitty's layout algorithm
-        // The percent parameter is ignored for kitty
-        if cfg!(debug_assertions) && percent.is_some() {
-            warn!("kitty does not support custom split sizes, ignoring percent parameter");
-            eprintln!(
-                "DEBUG: kitty does not support custom split sizes, ignoring percent parameter"
-            );
-        }
-
-        // Target the specific pane/window if specified, otherwise operate on current window
-        if let Some(target_pane) = target {
-            args.extend_from_slice(&["--match".to_string(), format!("id:{}", target_pane)]);
-        } else if let Some(window_id) = window {
-            args.extend_from_slice(&["--match".to_string(), format!("id:{}", window_id)]);
-        }
-        // If neither target nor window is specified, kitty will operate on the current window
-
-        // Add working directory if specified
-        if let Some(cwd) = opts.cwd {
-            args.extend_from_slice(&["--cwd".to_string(), cwd.to_string_lossy().to_string()]);
-        }
-
-        // Add environment variables if specified
-        // See: https://sw.kovidgoyal.net/kitty/launch/
-        if let Some(env_vars) = opts.env {
-            for (key, value) in env_vars {
-                args.extend_from_slice(&["--env".to_string(), format!("{}={}", key, value)]);
-            }
-        }
-
-        // Add initial command if specified (after -- separator as documented)
-        // See: https://sw.kovidgoyal.net/kitty/launch/
-        // Note: We wrap the command in bash -c to handle complex command lines with arguments
-        if let Some(cmd) = initial_cmd {
-            args.push("--".to_string());
-            args.push("bash".to_string());
-            args.push("-c".to_string());
-            args.push(cmd.to_string());
-        }
-
-        // Convert to slice of &str for the command
-        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-        // Run the command and capture the pane ID
-        debug!(args = ?args_str, "Running kitty launch command for pane split");
-        let output = self.run_kitty_command(&args_str)?;
-        let pane_id = self.parse_pane_id_from_output(&output)?;
-
-        info!(pane_id = %pane_id, "kitty pane split successfully");
-        Ok(pane_id)
-    }
-
-    fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
-        // For kitty, when ah-tui-multiplexer tries to run a command in the "editor pane"
-        // (where the TUI is running), we need to create a NEW pane with the command
-        // instead of sending text to the TUI.
-        //
-        // Special case: if the command is "lazygit", create a new split pane instead of sending text.
-        //
-        // See: https://sw.kovidgoyal.net/kitty/launch/
-
-        eprintln!("DEBUG run_command: pane={:?}, cmd={:?}", pane, cmd);
-
-        if cmd == "lazygit" || cmd.starts_with("lazygit ") {
-            eprintln!("DEBUG: Detected lazygit, creating split");
-            // This is the editor pane setup - create a new split with the command
-            let mut args = vec![
-                "launch".to_string(),
-                "--type".to_string(),
-                "window".to_string(),
-                "--location".to_string(),
-                "hsplit".to_string(), // Split horizontally (left/right)
-                "--cwd".to_string(),
-                opts.cwd
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| ".".to_string()),
-            ];
-
-            // Add the command to execute (wrapped in bash -c)
-            args.push("--".to_string());
-            args.push("bash".to_string());
-            args.push("-c".to_string());
-            args.push(cmd.to_string());
-
-            // Convert to slice of &str
-            let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-            // Create the split and get its pane ID
-            let output = self.run_kitty_command(&args_str)?;
-            let new_pane_id = self.parse_pane_id_from_output(&output)?;
-
-            // Focus the newly created pane so the next split targets it
-            // This is crucial for the layout: TUI | Lazygit
-            //                                         | Agent
-            self.focus_pane(&new_pane_id)?;
-
-            Ok(())
-        } else {
-            // For other panes, send the command text normally
-            // Build the full command with working directory if specified
-            let full_cmd = if let Some(cwd) = opts.cwd {
-                format!("cd {} && {}", cwd.display(), cmd)
-            } else {
-                cmd.to_string()
-            };
-
-            let match_arg = format!("id:{}", pane);
-            let text_arg = format!("{}\r", full_cmd); // \r is carriage return (Enter key)
-
-            // Give the pane a moment to be ready (similar to iTerm2's 100ms delay)
-            std::thread::sleep(std::time::Duration::from_millis(100));
-
-            self.run_kitty_command(&["send-text", "--match", &match_arg, &text_arg])?;
-            Ok(())
-        }
-    }
-
-    fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
-        // Send literal text to the pane
-        let match_arg = format!("id:{}", pane);
-        self.run_kitty_command(&["send-text", "--match", &match_arg, "--no-newline", text])?;
-        Ok(())
-    }
-
-    fn focus_window(&self, window: &WindowId) -> Result<(), MuxError> {
-        let match_arg = format!("id:{}", window);
-        self.run_kitty_command(&["focus-window", "--match", &match_arg])?;
-        Ok(())
-    }
-
-    fn focus_pane(&self, pane: &PaneId) -> Result<(), MuxError> {
-        // In kitty, focusing a pane is the same as focusing its window
-        self.focus_window(pane)
-    }
-
-    fn current_window(&self) -> Result<Option<WindowId>, MuxError> {
-        // First try using kitty's get-focused-window-id command
-        match self.get_focused_window_id() {
-            Ok(window_id) if !window_id.is_empty() => {
-                eprintln!(
-                    "DEBUG current_window: got from get_focused_window_id: {:?}",
-                    window_id
-                );
-                return Ok(Some(window_id));
-            }
-            Err(e) => {
-                eprintln!(
-                    "DEBUG current_window: get_focused_window_id failed: {:?}",
-                    e
-                );
-            }
-            _ => {
-                eprintln!("DEBUG current_window: get_focused_window_id returned empty");
-            }
-        }
-
-        // Fallback: Try the KITTY_WINDOW_ID environment variable
-        // This is set by kitty for all processes running inside it
-        if let Ok(window_id) = std::env::var("KITTY_WINDOW_ID") {
-            if !window_id.is_empty() {
-                eprintln!(
-                    "DEBUG current_window: got from KITTY_WINDOW_ID env: {:?}",
-                    window_id
-                );
-                return Ok(Some(window_id));
-            }
-        }
-
-        eprintln!("DEBUG current_window: no window found");
-        Ok(None)
-    }
-
-    fn current_pane(&self) -> Result<Option<PaneId>, MuxError> {
-        // In kitty, each pane is effectively a window, so the focused window ID
-        // is the same as the focused pane ID
-        self.current_window()
-    }
-
-    fn list_windows(&self, title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
-        // Get detailed window info via list_windows_detailed which parses JSON from kitty @ ls
-        let windows = self.list_windows_detailed()?;
-
-        // Filter by title substring if specified
-        let filtered: Vec<WindowId> = if let Some(substr) = title_substr {
-            windows
-                .into_iter()
-                .filter(|(_, title)| title.contains(substr))
-                .map(|(id, _)| id)
-                .collect()
-        } else {
-            windows.into_iter().map(|(id, _)| id).collect()
-        };
-
-        Ok(filtered)
-    }
-
-    fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
-        // In kitty, each "pane" is actually a separate window, but we can treat
-        // all windows as panes for compatibility. For now, return all windows.
-        // This is a simplification - in a real implementation, we might need to
-        // track which windows belong to which "logical" panes.
-        self.list_windows(None)
     }
 }
