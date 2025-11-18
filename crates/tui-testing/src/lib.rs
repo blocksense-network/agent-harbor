@@ -109,8 +109,6 @@ pub use insta;
 /// Re-export regex for content normalization
 pub use regex;
 
-/// Re-export ratatui types for testing
-
 /// Re-export expectrl session types for process control
 pub use expectrl::session;
 

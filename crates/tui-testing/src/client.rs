@@ -8,12 +8,13 @@ use anyhow::{Context, Result};
 use std::time::Duration;
 use tmq::{AsZmqSocket, Context as TmqContext, request, request_reply::RequestSender};
 use tokio::time;
+use tracing::info;
 
 /// Client for communicating with the TUI test runner from child processes
 pub struct TuiTestClient {
     socket: Option<RequestSender>,
-    context: TmqContext,
-    endpoint: String,
+    _context: TmqContext,
+    _endpoint: String,
     timeout: Duration,
 }
 
@@ -23,7 +24,7 @@ impl TuiTestClient {
         let context = TmqContext::new();
 
         // Create the socket
-        let mut socket = request(&context)
+        let socket = request(&context)
             .connect(uri)
             .with_context(|| format!("Failed to create connection to {}", uri))?;
 
@@ -33,8 +34,8 @@ impl TuiTestClient {
 
         Ok(Self {
             socket: Some(socket),
-            context,
-            endpoint: uri.to_string(),
+            _context: context,
+            _endpoint: uri.to_string(),
             timeout: Duration::from_millis(500),
         })
     }
@@ -78,13 +79,13 @@ impl TuiTestClient {
             TestCommand::Ping => "ping".to_string(),
         };
 
-        println!("TuiTestClient: Sending command: {}", message);
+        info!("TuiTestClient: Sending command: {}", message);
 
         // Get the current socket
         let socket = self.socket.take().context("No socket available")?;
 
         // Send request and receive response with timeout using select
-        println!(
+        info!(
             "TuiTestClient: Sending request and waiting for response with timeout {}ms",
             self.timeout.as_millis()
         );
@@ -114,7 +115,7 @@ impl TuiTestClient {
         }?;
 
         let (response_msg, new_sender) = result;
-        println!("TuiTestClient: Received response");
+        info!("TuiTestClient: Received response");
 
         // Store the new sender for the next request
         self.socket = Some(new_sender);
@@ -122,7 +123,7 @@ impl TuiTestClient {
         // Parse response
         let response_bytes = response_msg.iter().next().map(|m| m.as_ref()).unwrap_or(&[][..]);
         let response_str = String::from_utf8_lossy(response_bytes);
-        println!(
+        info!(
             "TuiTestClient: Parsed response: '{}' ({} bytes)",
             response_str,
             response_bytes.len()

@@ -4,6 +4,7 @@
 //! Simple command-line client for sending commands to TUI test runner
 
 use clap::Parser;
+use std::io::{self, Write};
 use std::time::Duration;
 use tmq::{Context as TmqContext, request};
 
@@ -44,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Send command request
     let message = args.cmd.clone();
-    println!("Sending command: {}", message);
+    writeln!(io::stdout(), "Sending command: {}", message)?;
 
     let receiver = socket
         .send(tmq::Multipart::from(vec![message.as_bytes()]))
@@ -52,32 +53,36 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to send request: {}", e))?;
 
     // Receive response with timeout
-    let timeout_duration = Duration::from_secs(args.timeout as u64);
+    let timeout_duration = Duration::from_secs(args.timeout);
     match tokio::time::timeout(timeout_duration, receiver.recv()).await {
         Ok(Ok((response_msg, _))) => {
             let response_bytes = response_msg.iter().next().map(|m| m.as_ref()).unwrap_or(&[][..]);
             let response = String::from_utf8_lossy(response_bytes);
             match response.as_ref() {
                 "ok" => {
-                    println!("✓ Command '{}' executed successfully", args.cmd);
+                    writeln!(
+                        io::stdout(),
+                        "✓ Command '{}' executed successfully",
+                        args.cmd
+                    )?;
                     Ok(())
                 }
                 s if s.starts_with("error:") => {
-                    eprintln!("✗ Command '{}' failed: {}", args.cmd, &s[6..]);
+                    writeln!(io::stderr(), "✗ Command '{}' failed: {}", args.cmd, &s[6..])?;
                     std::process::exit(1);
                 }
                 _ => {
-                    eprintln!("✗ Unexpected response: {}", response);
+                    writeln!(io::stderr(), "✗ Unexpected response: {}", response)?;
                     std::process::exit(1);
                 }
             }
         }
         Ok(Err(e)) => {
-            eprintln!("✗ Failed to receive response: {}", e);
+            writeln!(io::stderr(), "✗ Failed to receive response: {}", e)?;
             std::process::exit(1);
         }
         Err(_) => {
-            eprintln!("✗ Timeout waiting for response");
+            writeln!(io::stderr(), "✗ Timeout waiting for response")?;
             std::process::exit(1);
         }
     }
