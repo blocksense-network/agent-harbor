@@ -3,7 +3,7 @@
 
 //! Business logic services
 
-use crate::models::{InternalSession, SessionStore};
+use crate::models::SessionStore;
 use ah_core::{
     BranchesEnumerator, WorkspaceFilesEnumerator,
     local_branches_enumerator::LocalBranchesEnumerator,
@@ -128,6 +128,12 @@ impl TaskService {
     }
 
     // TODO: Implement draft task methods
+}
+
+impl Default for TaskService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Repository service for repository-related operations

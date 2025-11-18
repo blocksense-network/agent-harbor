@@ -3,12 +3,11 @@
 
 //! Data models and business logic
 
-use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
+use ah_domain_types::{AgentSoftware, AgentSoftwareBuild};
 use ah_local_db::{
     Database, SessionRecord, SessionStore as DbSessionStore, TaskRecord, TaskStore as DbTaskStore,
 };
 use ah_rest_api_contract::*;
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -59,6 +58,12 @@ impl InMemorySessionStore {
     }
 }
 
+impl Default for InMemorySessionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait::async_trait]
 impl SessionStore for InMemorySessionStore {
     async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<Vec<String>> {
@@ -75,17 +80,12 @@ impl SessionStore for InMemorySessionStore {
                     // Single instance per agent - include agent index
                     let agent_index =
                         request.agents.iter().position(|a| a == agent_config).unwrap();
-                    format!("{}-{}", uuid::Uuid::new_v4().to_string(), agent_index)
+                    format!("{}-{}", uuid::Uuid::new_v4(), agent_index)
                 } else {
                     // Multiple instances - include agent index and instance index
                     let agent_index =
                         request.agents.iter().position(|a| a == agent_config).unwrap();
-                    format!(
-                        "{}-{}-{}",
-                        uuid::Uuid::new_v4().to_string(),
-                        agent_index,
-                        instance
-                    )
+                    format!("{}-{}-{}", uuid::Uuid::new_v4(), agent_index, instance)
                 };
 
                 let session = Session {
@@ -200,9 +200,9 @@ impl SessionStore for InMemorySessionStore {
         Ok(())
     }
 
-    async fn add_session_log(&self, session_id: &str, log: LogEntry) -> anyhow::Result<()> {
+    async fn add_session_log(&self, _session_id: &str, log: LogEntry) -> anyhow::Result<()> {
         let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(session_id) {
+        if let Some(session) = sessions.get_mut(_session_id) {
             session.logs.push(log);
             session.updated_at = Utc::now();
         }
@@ -294,14 +294,13 @@ impl DatabaseSessionStore {
             status: Self::session_status_to_string(session.session.status.clone()),
             log_path: None,       // Will be set when recording starts
             workspace_path: None, // Will be set when workspace is provisioned
-            started_at: session.session.started_at.unwrap_or_else(|| Utc::now()).to_rfc3339(),
+            started_at: session.session.started_at.unwrap_or_else(Utc::now).to_rfc3339(),
             ended_at: session.session.ended_at.map(|dt| dt.to_rfc3339()),
             agent_config: Some(
-                serde_json::to_string(&session.session.agent).unwrap_or_else(|_| "{}".to_string()),
+                serde_json::to_string(&session.session.agent).unwrap_or("{}".to_string()),
             ),
             runtime_config: Some(
-                serde_json::to_string(&session.session.runtime)
-                    .unwrap_or_else(|_| "{}".to_string()),
+                serde_json::to_string(&session.session.runtime).unwrap_or("{}".to_string()),
             ),
         }
     }
@@ -358,16 +357,14 @@ impl DatabaseSessionStore {
                     .runtime_config
                     .as_ref()
                     .and_then(|config| serde_json::from_str(config).ok())
-                    .unwrap_or_else(|| RuntimeConfig {
+                    .unwrap_or(RuntimeConfig {
                         runtime_type: RuntimeType::Local,
                         devcontainer_path: None,
                         resources: None,
                     }),
                 workspace: WorkspaceInfo {
                     snapshot_provider: "git".to_string(),
-                    mount_path: record
-                        .workspace_path
-                        .unwrap_or_else(|| "/tmp/workspace".to_string()),
+                    mount_path: record.workspace_path.unwrap_or("/tmp/workspace".to_string()),
                     host: None,
                     devcontainer_details: None,
                 },
@@ -425,16 +422,11 @@ impl SessionStore for DatabaseSessionStore {
                 } else if agent_config.count == 1 {
                     let agent_index =
                         request.agents.iter().position(|a| a == agent_config).unwrap();
-                    format!("{}-{}", uuid::Uuid::new_v4().to_string(), agent_index)
+                    format!("{}-{}", uuid::Uuid::new_v4(), agent_index)
                 } else {
                     let agent_index =
                         request.agents.iter().position(|a| a == agent_config).unwrap();
-                    format!(
-                        "{}-{}-{}",
-                        uuid::Uuid::new_v4().to_string(),
-                        agent_index,
-                        instance
-                    )
+                    format!("{}-{}-{}", uuid::Uuid::new_v4(), agent_index, instance)
                 };
 
                 // Create session record
@@ -456,11 +448,10 @@ impl SessionStore for DatabaseSessionStore {
                     started_at: Utc::now().to_rfc3339(),
                     ended_at: None,
                     agent_config: Some(
-                        serde_json::to_string(agent_config).unwrap_or_else(|_| "{}".to_string()),
+                        serde_json::to_string(agent_config).unwrap_or("{}".to_string()),
                     ),
                     runtime_config: Some(
-                        serde_json::to_string(&request.runtime)
-                            .unwrap_or_else(|_| "{}".to_string()),
+                        serde_json::to_string(&request.runtime).unwrap_or("{}".to_string()),
                     ),
                 };
 
@@ -481,8 +472,7 @@ impl SessionStore for DatabaseSessionStore {
                         None
                     } else {
                         Some(
-                            serde_json::to_string(&request.labels)
-                                .unwrap_or_else(|_| "default".to_string()),
+                            serde_json::to_string(&request.labels).unwrap_or("default".to_string()),
                         )
                     },
                     browser_automation: 1, // Default enabled
@@ -521,7 +511,7 @@ impl SessionStore for DatabaseSessionStore {
 
     async fn update_session(
         &self,
-        session_id: &str,
+        _session_id: &str,
         session: &InternalSession,
     ) -> anyhow::Result<()> {
         let record = Self::internal_session_to_record(session);
@@ -572,26 +562,30 @@ impl SessionStore for DatabaseSessionStore {
         Ok(sessions)
     }
 
-    async fn add_session_event(&self, session_id: &str, event: SessionEvent) -> anyhow::Result<()> {
+    async fn add_session_event(
+        &self,
+        _session_id: &str,
+        _event: SessionEvent,
+    ) -> anyhow::Result<()> {
         // TODO: Implement event storage in database
         Ok(())
     }
 
-    async fn add_session_log(&self, session_id: &str, log: LogEntry) -> anyhow::Result<()> {
+    async fn add_session_log(&self, _session_id: &str, _log: LogEntry) -> anyhow::Result<()> {
         // TODO: Implement log storage in database
         Ok(())
     }
 
     async fn get_session_logs(
         &self,
-        session_id: &str,
-        query: &LogQuery,
+        _session_id: &str,
+        _query: &LogQuery,
     ) -> anyhow::Result<Vec<LogEntry>> {
         // TODO: Implement log retrieval from database
         Ok(vec![])
     }
 
-    async fn get_session_events(&self, session_id: &str) -> anyhow::Result<Vec<SessionEvent>> {
+    async fn get_session_events(&self, _session_id: &str) -> anyhow::Result<Vec<SessionEvent>> {
         // TODO: Implement event retrieval from database
         Ok(vec![])
     }

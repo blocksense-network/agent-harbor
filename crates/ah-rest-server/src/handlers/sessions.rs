@@ -16,7 +16,6 @@ use axum::{
 use futures::stream::{self, Stream};
 use std::convert::Infallible;
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
 /// List sessions with optional filtering
 pub async fn list_sessions(

@@ -72,7 +72,7 @@ impl ServerError {
                 detail: msg.clone(),
                 errors: Default::default(),
             },
-            ServerError::Validation(err) => ProblemDetails {
+            ServerError::Validation(_err) => ProblemDetails {
                 problem_type: "https://docs.example.com/errors/validation".to_string(),
                 title: "Validation Error".to_string(),
                 status: Some(StatusCode::BAD_REQUEST.as_u16()),

@@ -102,7 +102,7 @@ pub struct Claims {
 /// Authentication middleware
 pub async fn auth_middleware(
     auth_config: AuthConfig,
-    mut req: Request,
+    req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
     // Skip authentication for health checks and OpenAPI docs

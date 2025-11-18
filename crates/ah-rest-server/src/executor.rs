@@ -6,29 +6,31 @@
 //! This module implements the task lifecycle state machine:
 //! queued → provisioning → running → completed/failed
 
-use crate::models::{DatabaseSessionStore, InternalSession, SessionStore};
+use crate::models::{DatabaseSessionStore, SessionStore};
 use ah_core::{AgentExecutionConfig, AgentExecutor};
 use ah_local_db::Database;
-use ah_rest_api_contract::{Session, SessionStatus, TaskInfo};
+use ah_rest_api_contract::{Session, SessionStatus};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{Duration, sleep};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid;
 
 /// Global snapshot cache for workspace snapshots
 #[derive(Debug)]
 struct SnapshotCache {
     /// Base directory for all snapshots
+    #[allow(dead_code)]
     base_dir: PathBuf,
     /// Maximum disk space to use for snapshots (in bytes)
+    #[allow(dead_code)]
     max_size: u64,
     /// Current size of all snapshots (in bytes)
+    #[allow(dead_code)]
     current_size: u64,
     /// LRU tracking: (repo_url, commit) -> (snapshot_path, last_used, size)
     entries: HashMap<(String, String), (PathBuf, DateTime<Utc>, u64)>,
@@ -52,6 +54,7 @@ impl SnapshotCache {
     }
 
     /// Add or update a snapshot in the cache
+    #[allow(dead_code)]
     fn add_snapshot(
         &mut self,
         repo_url: String,
@@ -76,6 +79,7 @@ impl SnapshotCache {
     }
 
     /// Evict least recently used snapshots if over size limit
+    #[allow(dead_code)]
     fn evict_if_needed(&mut self) {
         while self.current_size > self.max_size && !self.entries.is_empty() {
             // Find the oldest entry
