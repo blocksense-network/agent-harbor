@@ -38,6 +38,18 @@
       ]
     },
     {
+      "program": "resources/pjdfstest/tests/open/07.t           (Wstat: 0 Tests: 25 Failed: 1)",
+      "details": [
+        "Failed test:  4"
+      ]
+    },
+    {
+      "program": "resources/pjdfstest/tests/unlink/14.t         (Wstat: 0 Tests: 7 Failed: 1)",
+      "details": [
+        "Failed test:  6"
+      ]
+    },
+    {
       "program": "resources/pjdfstest/tests/rename/00.t         (Wstat: 0 Tests: 122 Failed: 27)",
       "details": [
         "Failed tests:  7, 9-10, 12, 14, 22, 24-25, 27, 29, 37",
@@ -182,7 +194,7 @@
     }
   ],
   "skipped_programs": [],
-  "failed_program_count": 11,
+  "failed_program_count": 13,
   "failed_subtests": null,
-  "log_file": "logs/pjdfstest-full-20251118-080215/pjdfstest.log"
+  "log_file": "logs/pjdfstest-full-20251118-103504/pjdfstest.log"
 }
