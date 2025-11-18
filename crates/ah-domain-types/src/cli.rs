@@ -7,7 +7,6 @@
 //! They can be reused across different CLI applications in the Agent Harbor suite.
 
 use clap::ValueEnum;
-use serde::{Deserialize, Serialize};
 
 /// Log verbosity level for CLI argument parsing
 ///
