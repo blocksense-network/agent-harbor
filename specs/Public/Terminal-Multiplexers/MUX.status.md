@@ -175,12 +175,12 @@ _(To be filled after implementation complete)_
 
 **Deliverables:**
 
-- [ ] Review and update `specs/Public/Terminal-Multiplexers/Kitty.md`:
+- [x] Review and update `specs/Public/Terminal-Multiplexers/Kitty.md`:
   - Add section on socket setup and `KITTY_LISTEN_ON` environment variable
   - Document limitations compared to tmux (e.g., less mature window management)
   - Add examples of layout creation using `--location=hsplit|vsplit`
   - Add troubleshooting section (socket not found, permission denied)
-- [ ] Review and enhance `crates/ah-mux/src/kitty.rs`:
+- [x] Review and enhance `crates/ah-mux/src/kitty.rs`:
   - Ensure all `Multiplexer` trait methods are implemented
   - Add socket detection and automatic socket creation if needed
   - Implement proper cleanup for test windows/tabs
@@ -193,7 +193,6 @@ _(To be filled after implementation complete)_
   - Test for text sending via `kitty @ send-text`
   - Test cleanup and session teardown
 - [ ] Add Kitty to the TUI scenario test suite (golden layout tests).
-- [ ] Document Kitty-specific configuration in developer guide.
 
 **Verification (automated):**
 
