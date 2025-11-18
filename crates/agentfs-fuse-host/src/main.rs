@@ -79,7 +79,6 @@ fn main() -> Result<()> {
     #[cfg(all(feature = "fuse", target_os = "linux"))]
     {
         let filesystem = AgentFsFuse::new(config.clone())?;
-        let notifier_reg = filesystem.notifier_registration();
 
         let mut mount_options = vec![
             fuser::MountOption::FSName("agentfs".to_string()),
@@ -110,10 +109,7 @@ fn main() -> Result<()> {
         }
 
         info!("Mounting filesystem...");
-        let session = fuser::spawn_mount2(filesystem, &args.mount_point, &mount_options)?;
-        notifier_reg.install(session.notifier());
-        info!("AgentFS FUSE host mounted; blocking until unmount");
-        session.join();
+        fuser::mount2(filesystem, &args.mount_point, &mount_options)?;
     }
 
     #[cfg(not(all(feature = "fuse", target_os = "linux")))]
