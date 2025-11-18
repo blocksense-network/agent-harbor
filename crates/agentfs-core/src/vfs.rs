@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use tracing::debug;
+
 use crate::error::{FsError, FsResult};
 use crate::storage::StorageBackend;
 use crate::{
@@ -448,52 +450,43 @@ impl FsCore {
                 let nodes = self.nodes.lock().unwrap();
                 let backstore_root = backstore.root_path();
 
-                eprintln!(
-                    "DEBUG: Collecting upper files, backstore root: {}",
+                debug!(
+                    "Collecting upper files, backstore root: {}",
                     backstore_root.display()
                 );
-                eprintln!("DEBUG: Branch root id: {}", branch_root_id.0);
+                debug!("Branch root id: {}", branch_root_id.0);
 
                 while let Some((node_id, current_path)) = to_visit.pop() {
-                    eprintln!(
-                        "DEBUG: Visiting node {} at path {}",
+                    debug!(
+                        "Visiting node {} at path {}",
                         node_id.0,
                         current_path.display()
                     );
                     if let Some(node) = nodes.get(&node_id) {
                         match &node.kind {
                             NodeKind::File { streams } => {
-                                eprintln!("DEBUG: Found file with {} streams", streams.len());
+                                debug!("Found file with {} streams", streams.len());
                                 // For each stream, get the content file path from the storage backend
                                 for (content_id, _size) in streams.values() {
                                     // Get the actual file path where this content is stored
                                     if let Some(content_path) =
                                         self.storage.get_content_path(*content_id)
                                     {
-                                        eprintln!(
-                                            "DEBUG: Found content file: {}",
-                                            content_path.display()
-                                        );
+                                        debug!("Found content file: {}", content_path.display());
                                         // Check if the content file actually exists
                                         if content_path.exists() {
-                                            eprintln!("DEBUG: Content file exists!");
+                                            debug!("Content file exists!");
                                             upper_files.push((content_path, current_path.clone()));
                                         } else {
-                                            eprintln!("DEBUG: Content file does not exist");
+                                            debug!("Content file does not exist");
                                         }
                                     } else {
-                                        eprintln!(
-                                            "DEBUG: No content path for content_id {}",
-                                            content_id.0
-                                        );
+                                        debug!("No content path for content_id {}", content_id.0);
                                     }
                                 }
                             }
                             NodeKind::Directory { children } => {
-                                eprintln!(
-                                    "DEBUG: Found directory with {} children",
-                                    children.len()
-                                );
+                                debug!("Found directory with {} children", children.len());
                                 // Recursively visit all children
                                 for (child_name, child_id) in children {
                                     let child_path = current_path.join(child_name);
@@ -506,14 +499,14 @@ impl FsCore {
                             }
                         }
                     } else {
-                        eprintln!("DEBUG: Node {} not found", node_id.0);
+                        debug!("Node {} not found", node_id.0);
                     }
                 }
             } else {
-                eprintln!("DEBUG: Backstore does not support native reflink");
+                debug!("Backstore does not support native reflink");
             }
         } else {
-            eprintln!("DEBUG: No backstore available");
+            debug!("No backstore available");
         }
 
         Ok(upper_files)
@@ -746,6 +739,7 @@ impl FsCore {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn log_sticky_event(
         &self,
         pid: &PID,
@@ -1318,13 +1312,10 @@ impl FsCore {
             } else if backstore.supports_native_reflink() {
                 // Collect all upper layer files that need to be materialized
                 let upper_files = self.collect_upper_layer_files(branch.root_id)?;
-                eprintln!(
-                    "DEBUG: Collected {} upper files for snapshot",
-                    upper_files.len()
-                );
+                debug!("Collected {} upper files for snapshot", upper_files.len());
                 for (upper_path, overlay_path) in &upper_files {
-                    eprintln!(
-                        "DEBUG: Upper file: {} -> {}",
+                    debug!(
+                        "Upper file: {} -> {}",
                         upper_path.display(),
                         overlay_path.display()
                     );
@@ -1466,6 +1457,7 @@ impl FsCore {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn export_lower_entry(
         &self,
         lower_fs: &dyn LowerFs,
@@ -1971,9 +1963,11 @@ impl FsCore {
     }
 
     fn create_regular_via_mknod(&self, pid: &PID, path: &Path, mode: u32) -> FsResult<()> {
-        let mut opts = OpenOptions::default();
-        opts.create = true;
-        opts.write = true;
+        let opts = OpenOptions {
+            create: true,
+            write: true,
+            ..Default::default()
+        };
         let handle = self.create(pid, path, &opts)?;
         self.set_mode(pid, path, mode & 0o7777)?;
         self.close(pid, handle)?;
@@ -3808,9 +3802,8 @@ impl FsCore {
             nodes.get(&node_id).cloned().ok_or(FsError::NotFound)?
         };
 
-        match &node.kind {
-            NodeKind::Directory { .. } => return Err(FsError::IsADirectory),
-            _ => {}
+        if let NodeKind::Directory { .. } = &node.kind {
+            return Err(FsError::IsADirectory);
         }
         self.check_dir_permissions(pid, parent_id, Some(&node))?;
 
@@ -4245,7 +4238,7 @@ impl FsCore {
             return Err(FsError::InvalidArgument);
         }
 
-        let (dest_id, dest_node) = match self.resolve_path(pid, new) {
+        let (_dest_id, dest_node) = match self.resolve_path(pid, new) {
             Ok((id, _)) => {
                 if id == src_id {
                     return Ok(());
