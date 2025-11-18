@@ -42,6 +42,10 @@ mod event_processing_tests {
         let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
             ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
         );
+        let agents_enumerator: Arc<dyn ah_core::AgentsEnumerator> =
+            Arc::new(ah_core::agent_catalog::MockAgentsEnumerator::new(
+                ah_domain_types::AgentCatalog::empty(),
+            ));
         let settings = Settings {
             active_sessions_activity_rows: Some(3),
             ..Default::default()
@@ -56,6 +60,7 @@ mod event_processing_tests {
             task_manager,
             repositories_enumerator,
             branches_enumerator,
+            agents_enumerator,
             settings,
             ui_tx,
         );
@@ -519,6 +524,10 @@ mod event_processing_tests {
         let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
             ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
         );
+        let agents_enumerator: Arc<dyn ah_core::AgentsEnumerator> =
+            Arc::new(ah_core::agent_catalog::MockAgentsEnumerator::new(
+                ah_domain_types::AgentCatalog::empty(),
+            ));
         let settings = Settings::default();
 
         let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
@@ -530,6 +539,7 @@ mod event_processing_tests {
             task_manager,
             repositories_enumerator,
             branches_enumerator,
+            agents_enumerator,
             settings,
             ui_tx,
         );

@@ -1351,6 +1351,8 @@ Accepted event types (minimum set):
   }
   ```
 
+  - **Note on Experimental Features**: The server controls which experimental agents are available based on its own configuration. Client experimental feature flags have no effect on the catalog returned by this endpoint.
+
 - `GET /api/v1/runtimes` → Available runtime kinds and images/templates.
   - Response:
 

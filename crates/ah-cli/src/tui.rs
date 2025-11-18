@@ -8,6 +8,7 @@ use ah_core::{
     RemoteWorkspaceFilesEnumerator, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
     determine_multiplexer_choice,
 };
+use ah_domain_types::ExperimentalFeature;
 use ah_mux::detection;
 use ah_mux_core::{Multiplexer, WindowOptions};
 use ah_repo::VcsRepo;
@@ -171,7 +172,11 @@ pub enum TuiSubcommands {
 
 impl TuiArgs {
     /// Run the TUI command
-    pub async fn run(self, fs_snapshots: FsSnapshotsType) -> Result<()> {
+    pub async fn run(
+        self,
+        fs_snapshots: FsSnapshotsType,
+        experimental_features: Vec<ExperimentalFeature>,
+    ) -> Result<()> {
         match self.subcommand {
             Some(TuiSubcommands::Dashboard {
                 ref remote_server,
@@ -185,18 +190,23 @@ impl TuiArgs {
                     bearer_token.clone(),
                     None,
                     fs_snapshots,
+                    experimental_features,
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
             None => {
                 // Main TUI command - handle multiplexer session management
-                self.run_with_multiplexer(fs_snapshots).await
+                self.run_with_multiplexer(fs_snapshots, experimental_features).await
             }
         }
     }
 
     /// Run the main TUI command with multiplexer session management
-    async fn run_with_multiplexer(&self, fs_snapshots: FsSnapshotsType) -> Result<()> {
+    async fn run_with_multiplexer(
+        &self,
+        fs_snapshots: FsSnapshotsType,
+        experimental_features: Vec<ExperimentalFeature>,
+    ) -> Result<()> {
         // Detect the current terminal environment stack
         let terminal_envs = detection::detect_terminal_environments();
 
@@ -222,6 +232,7 @@ impl TuiArgs {
                     self.bearer_token.clone(),
                     multiplexer_type,
                     fs_snapshots,
+                    experimental_features,
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
@@ -236,6 +247,7 @@ impl TuiArgs {
                     self.bearer_token.clone(),
                     self.multiplexer.as_ref().and_then(|m| m.to_core_type()),
                     fs_snapshots,
+                    experimental_features,
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
@@ -356,6 +368,7 @@ impl TuiArgs {
             self.bearer_token.clone(),
             self.multiplexer.as_ref().and_then(|m| m.to_core_type()),
             fs_snapshots,
+            vec![], // Default to no experimental features for development mode
         )?;
         run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
     }
@@ -408,6 +421,7 @@ impl TuiArgs {
         bearer_token: Option<String>,
         multiplexer: Option<CliMultiplexerType>,
         fs_snapshots: FsSnapshotsType,
+        experimental_features: Vec<ExperimentalFeature>,
     ) -> Result<TuiDependencies> {
         // Validate arguments
         if api_key.is_some() && bearer_token.is_some() {
@@ -438,6 +452,36 @@ impl TuiArgs {
         // Register the detected repository in the database
         // Ignore errors - repository might already be registered
         let _ = db_manager.get_or_create_repo(&vcs_repo);
+
+        // Create agent catalogs
+        let remote_catalog = if let Some(server_url) = remote_server.clone() {
+            let remote_config = ah_core::RemoteAgentCatalogConfig {
+                rest_server_url: server_url,
+                cache_ttl: std::time::Duration::from_secs(300), // 5 minutes
+                max_retries: 3,
+                retry_delay: std::time::Duration::from_millis(500),
+            };
+            Some(Arc::new(ah_core::RemoteAgentCatalog::new(remote_config)))
+        } else {
+            None
+        };
+
+        let local_config = ah_core::LocalAgentCatalogConfig {
+            executable_paths: vec![], // Use PATH
+            health_check_timeout: std::time::Duration::from_secs(5),
+            query_third_party_apis: false,                  // For now
+            cache_ttl: std::time::Duration::from_secs(300), // 5 minutes
+            experimental_features: experimental_features.clone(),
+        };
+        let local_catalog = Arc::new(ah_core::LocalAgentCatalog::new(local_config));
+
+        // Create enumerator - use remote catalog if available, otherwise local
+        let agents_enumerator: Arc<dyn ah_core::AgentsEnumerator> =
+            if let Some(remote) = remote_catalog {
+                remote as Arc<dyn ah_core::AgentsEnumerator>
+            } else {
+                local_catalog as Arc<dyn ah_core::AgentsEnumerator>
+            };
 
         // Create service dependencies based on remote server configuration
         let deps = if let Some(server_url) = remote_server {
@@ -487,8 +531,10 @@ impl TuiArgs {
                 task_manager,
                 repositories_enumerator,
                 branches_enumerator,
+                agents_enumerator: agents_enumerator.clone(),
                 settings: Settings::from_config().unwrap_or_else(|_| Settings::default()),
                 current_repository,
+                experimental_features,
             })
         } else {
             // Local mode
@@ -558,8 +604,10 @@ impl TuiArgs {
                 task_manager,
                 repositories_enumerator,
                 branches_enumerator,
+                agents_enumerator: agents_enumerator.clone(),
                 settings: Settings::from_config().unwrap_or_else(|_| Settings::default()),
                 current_repository,
+                experimental_features,
             })
         };
         deps
@@ -572,6 +620,7 @@ impl TuiArgs {
         bearer_token: Option<String>,
         multiplexer: Option<CliMultiplexerType>,
         fs_snapshots: FsSnapshotsType,
+        experimental_features: Vec<ExperimentalFeature>,
     ) -> Result<TuiDependencies> {
         Self::get_tui_dependencies(
             None,
@@ -580,6 +629,7 @@ impl TuiArgs {
             bearer_token,
             multiplexer,
             fs_snapshots,
+            experimental_features,
         )
     }
 }

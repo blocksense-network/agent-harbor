@@ -66,6 +66,10 @@ fn new_view_model_with_mock_client() -> (ViewModel, MockRestClient) {
     let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client.clone(), "http://test".to_string()),
     );
+    let agents_enumerator: Arc<dyn ah_core::AgentsEnumerator> =
+        Arc::new(ah_core::agent_catalog::MockAgentsEnumerator::new(
+            ah_core::agent_catalog::RemoteAgentCatalog::default_catalog(),
+        ));
     let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
     let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
@@ -76,6 +80,7 @@ fn new_view_model_with_mock_client() -> (ViewModel, MockRestClient) {
         task_manager,
         repositories_enumerator,
         branches_enumerator,
+        agents_enumerator,
         settings,
         ui_tx,
     );
@@ -1658,6 +1663,9 @@ mod mouse {
     fn mouse_scroll_in_modal_changes_selection() {
         let mut vm = new_view_model();
 
+        // Check for loaded agents
+        vm.check_background_loading();
+
         // Open model selection modal
         vm.open_modal(ModalState::ModelSearch);
 
@@ -1680,6 +1688,9 @@ mod mouse {
     #[test]
     fn model_selector_increment_decrements_counts() {
         let mut vm = new_view_model();
+
+        // Check for loaded agents
+        vm.check_background_loading();
 
         // Open model selection modal
         vm.open_modal(ModalState::ModelSearch);
@@ -3515,6 +3526,9 @@ mod mouse {
             draft.selected_agents.clear();
         }
 
+        // Check for loaded agents
+        vm.check_background_loading();
+
         // Open model selection modal
         vm.open_modal(ModalState::ModelSearch);
         assert!(vm.active_modal.is_some());
@@ -3554,8 +3568,7 @@ mod mouse {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    let first_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    let first_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(first_model.count, 1);
                     assert!(first_model.is_selected);
                 }
@@ -3575,8 +3588,7 @@ mod mouse {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    let first_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    let first_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(first_model.count, 2);
                     assert!(first_model.is_selected);
                 }
@@ -3592,8 +3604,7 @@ mod mouse {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    let first_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    let first_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(first_model.count, 1);
                     assert!(first_model.is_selected);
                 }
@@ -3613,8 +3624,7 @@ mod mouse {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    let first_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    let first_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(first_model.count, 0);
                     assert!(!first_model.is_selected);
                 }
@@ -3626,6 +3636,9 @@ mod mouse {
     #[test]
     fn model_selection_left_right_with_search_query() {
         let mut vm = new_view_model();
+
+        // Check for loaded agents
+        vm.check_background_loading();
 
         // Open model selection modal
         vm.open_modal(ModalState::ModelSearch);
@@ -3702,6 +3715,9 @@ mod mouse {
             draft.selected_agents.clear();
         }
 
+        // Check for loaded agents
+        vm.check_background_loading();
+
         // Open model selection modal
         vm.open_modal(ModalState::ModelSearch);
         assert!(vm.active_modal.is_some());
@@ -3719,8 +3735,7 @@ mod mouse {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    let first_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    let first_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(first_model.count, 1);
                     assert!(first_model.is_selected);
                 }
@@ -3736,8 +3751,7 @@ mod mouse {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    let first_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    let first_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(first_model.count, 2);
                     assert!(first_model.is_selected);
                 }
@@ -3753,8 +3767,7 @@ mod mouse {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    let first_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    let first_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(first_model.count, 1);
                     assert!(first_model.is_selected);
                 }
@@ -3774,8 +3787,7 @@ mod mouse {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    let first_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    let first_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(first_model.count, 0);
                     assert!(!first_model.is_selected);
                 }
@@ -3787,6 +3799,9 @@ mod mouse {
     #[test]
     fn model_selection_filtering_with_count_changes() {
         let mut vm = new_view_model();
+
+        // Check for loaded agents
+        vm.check_background_loading();
 
         // Open model selection modal
         vm.open_modal(ModalState::ModelSearch);
@@ -3829,7 +3844,7 @@ mod mouse {
                 .iter()
                 .filter(|opt| matches!(opt, FilteredOption::Option { .. }))
                 .collect();
-            assert!(claude_options.len() >= 2); // Should have at least Claude Sonnet and Claude Opus
+            assert!(claude_options.len() >= 1); // Should have at least Claude Code
 
             // Check that all visible options contain "claude" (case insensitive)
             for option in &claude_options {

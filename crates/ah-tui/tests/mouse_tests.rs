@@ -120,6 +120,11 @@ mod tests {
     fn test_model_selector_actions() {
         let mut vm = new_view_model();
 
+        // Manually populate available models for test (since background loading is async)
+        let catalog = ah_core::agent_catalog::RemoteAgentCatalog::default_catalog();
+        vm.available_models =
+            catalog.agents.into_iter().map(|metadata| metadata.to_agent_choice()).collect();
+
         // Open model selection modal
         vm.open_modal(ah_tui::view_model::ModalState::ModelSearch);
 

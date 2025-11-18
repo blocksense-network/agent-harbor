@@ -126,19 +126,31 @@ pub fn build_view_model() -> ViewModel {
     let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
+    let agents_enumerator: Arc<dyn ah_core::AgentsEnumerator> =
+        Arc::new(ah_core::agent_catalog::MockAgentsEnumerator::new(
+            ah_core::agent_catalog::RemoteAgentCatalog::default_catalog(),
+        ));
     let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
     let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
-    ViewModel::new(
+    let mut vm = ViewModel::new(
         workspace_files,
         workspace_workflows,
         workspace_terms,
         task_manager,
         repositories_enumerator,
         branches_enumerator,
+        agents_enumerator,
         settings,
         ui_tx,
-    )
+    );
+
+    // Manually populate available models for test (since background loading is async)
+    let catalog = ah_core::agent_catalog::RemoteAgentCatalog::default_catalog();
+    vm.available_models =
+        catalog.agents.into_iter().map(|metadata| metadata.to_agent_choice()).collect();
+
+    vm
 }
 
 #[allow(dead_code)] // Alternate builder for future term-focused tests.
@@ -171,18 +183,30 @@ pub fn build_view_model_with_terms_and_settings(
     let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
+    let agents_enumerator: Arc<dyn ah_core::AgentsEnumerator> =
+        Arc::new(ah_core::agent_catalog::MockAgentsEnumerator::new(
+            ah_core::agent_catalog::RemoteAgentCatalog::default_catalog(),
+        ));
     let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
-    ViewModel::new(
+    let mut vm = ViewModel::new(
         workspace_files,
         workspace_workflows,
         workspace_terms,
         task_manager,
         repositories_enumerator,
         branches_enumerator,
+        agents_enumerator,
         settings,
         ui_tx,
-    )
+    );
+
+    // Manually populate available models for test (since background loading is async)
+    let catalog = ah_core::agent_catalog::RemoteAgentCatalog::default_catalog();
+    vm.available_models =
+        catalog.agents.into_iter().map(|metadata| metadata.to_agent_choice()).collect();
+
+    vm
 }
 
 /// Build a ViewModel with additional repository/branch data for modal tests
