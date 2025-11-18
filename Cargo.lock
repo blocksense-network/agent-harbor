@@ -635,6 +635,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
+ "tracing",
  "vt100 0.16.2 (git+https://github.com/blocksense-network/vt100-rust?branch=agent-harbor)",
 ]
 
