@@ -8,20 +8,23 @@
 //! (such as the interpose shim) to establish a handshake and issue requests.
 
 use ah_command_trace_proto::{
-    CommandStart, HandshakeMessage, HandshakeResponse, Request, Response, decode_ssz, encode_ssz,
+    CommandStart, HandshakeMessage, Request, Response, decode_ssz, encode_ssz,
 };
 use anyhow::{Context, Result, anyhow};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 /// Configuration describing how a client should identify itself to the server.
 #[derive(Clone, Debug)]
 pub struct ClientConfig {
     handshake_version: String,
+    #[allow(dead_code)] // Reserved for future handshake extensions
     shim_name: String,
+    #[allow(dead_code)] // Reserved for future handshake extensions
     crate_version: String,
+    #[allow(dead_code)] // Reserved for future handshake extensions
     features: Vec<String>,
     process: ProcessConfig,
     read_timeout: Option<Duration>,
