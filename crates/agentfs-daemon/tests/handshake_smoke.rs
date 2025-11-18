@@ -8,6 +8,7 @@ mod macos {
     use agentfs_client::{AgentFsClient, ClientConfig};
     use agentfs_interpose_e2e_tests::find_daemon_path;
     use std::fs;
+    use std::io::{self, Write};
     use std::path::Path;
     use std::process::{Command, Stdio};
     use std::thread;
@@ -64,7 +65,8 @@ mod macos {
             !ack.is_empty(),
             "daemon handshake acknowledgement payload should not be empty"
         );
-        println!(
+        let _ = writeln!(
+            io::stdout(),
             "handshake_smoke: received handshake ack ({} bytes)",
             ack.len()
         );
@@ -76,24 +78,38 @@ mod macos {
             !snapshot.id.is_empty(),
             "daemon returned empty snapshot identifier"
         );
-        println!("handshake_smoke: snapshot created {}", snapshot.id);
+        let _ = writeln!(
+            io::stdout(),
+            "handshake_smoke: snapshot created {}",
+            snapshot.id
+        );
 
         let branch = client
             .branch_create(&snapshot.id, Some("handshake-branch".to_string()))
             .expect("branch_create failed");
-        println!("handshake_smoke: branch created {}", branch.id);
+        let _ = writeln!(
+            io::stdout(),
+            "handshake_smoke: branch created {}",
+            branch.id
+        );
 
         client
             .branch_bind(&branch.id, Some(std::process::id()))
             .expect("branch_bind failed");
-        println!("handshake_smoke: branch bound to current process");
+        let _ = writeln!(
+            io::stdout(),
+            "handshake_smoke: branch bound to current process"
+        );
 
         let snapshots = client.snapshot_list().expect("snapshot_list failed");
         assert!(
             snapshots.iter().any(|record| record.id == snapshot.id),
             "expected handshake snapshot to appear in snapshot_list"
         );
-        println!("handshake_smoke: snapshot_list contains created snapshot");
+        let _ = writeln!(
+            io::stdout(),
+            "handshake_smoke: snapshot_list contains created snapshot"
+        );
 
         terminate_child(child);
     }
@@ -117,20 +133,25 @@ mod macos {
         match child.wait_with_output() {
             Ok(output) => {
                 if !output.stdout.is_empty() {
-                    println!(
+                    let _ = writeln!(
+                        io::stdout(),
                         "agentfs-daemon stdout:\n{}",
                         String::from_utf8_lossy(&output.stdout)
                     );
                 }
                 if !output.stderr.is_empty() {
-                    eprintln!(
+                    let _ = writeln!(
+                        io::stderr(),
                         "agentfs-daemon stderr:\n{}",
                         String::from_utf8_lossy(&output.stderr)
                     );
                 }
             }
             Err(err) => {
-                eprintln!("failed to gather agentfs-daemon output: {err}");
+                let _ = writeln!(
+                    io::stderr(),
+                    "failed to gather agentfs-daemon output: {err}"
+                );
             }
         }
     }
@@ -139,5 +160,9 @@ mod macos {
 #[cfg(not(target_os = "macos"))]
 #[test]
 fn handshake_smoke() {
-    println!("Skipping AgentFS handshake smoke test: unsupported platform");
+    use std::io::{self, Write};
+    let _ = writeln!(
+        io::stdout(),
+        "Skipping AgentFS handshake smoke test: unsupported platform"
+    );
 }
