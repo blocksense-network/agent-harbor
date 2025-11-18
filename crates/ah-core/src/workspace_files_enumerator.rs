@@ -115,7 +115,6 @@ impl WorkspaceFilesEnumerator for MockWorkspaceFilesEnumerator {
 mod tests {
     use super::*;
     use futures::StreamExt;
-    use std::sync::Arc;
     use tokio::time::{self, Duration};
 
     #[tokio::test]
