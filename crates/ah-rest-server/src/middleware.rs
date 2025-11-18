@@ -8,7 +8,6 @@ use axum::{extract::Request, http::StatusCode, middleware::Next, response::Respo
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tower_governor::GovernorLayer;
 
 /// Rate limiting state
 #[derive(Clone)]

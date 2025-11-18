@@ -149,13 +149,11 @@ impl Server {
             .route("/docs/", get(handlers::openapi::swagger_ui));
 
         // Combine all routes
-        let app = Router::new()
+        Router::new()
             .nest("/api/v1", api_routes)
             .nest("/", openapi_routes)
             .with_state(state)
-            .layer(middleware_stack);
-
-        app
+            .layer(middleware_stack)
     }
 
     /// Run the server

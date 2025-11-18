@@ -7,9 +7,7 @@ use crate::config::ServerConfig;
 use crate::executor::TaskExecutor;
 use crate::models::DatabaseSessionStore;
 use ah_local_db::Database;
-use ah_rest_api_contract::*;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 /// Shared server state
 #[derive(Clone)]

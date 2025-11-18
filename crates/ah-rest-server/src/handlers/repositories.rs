@@ -10,7 +10,6 @@ use ah_rest_api_contract::{
     BranchInfo, RepositoryBranchesResponse, RepositoryFile, RepositoryFilesResponse,
 };
 use axum::{Json, extract::Path, extract::State};
-use std::sync::Arc;
 
 /// Get branches for a repository
 #[utoipa::path(
