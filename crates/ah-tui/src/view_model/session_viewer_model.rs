@@ -3,7 +3,7 @@
 
 //! SessionViewerModel layer for SessionViewer UI presentation logic
 //!
-//! This module follows the same MVVM architecture as dashboard_model.rs,
+//! This module follows the same MVVM architecture as agents_selector_model.rs,
 //! providing UI presentation logic and state management for both live session
 //! tracking mode and post-facto session examination modes.
 

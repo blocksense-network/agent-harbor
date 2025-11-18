@@ -9,7 +9,7 @@ Cursor CLI (binary name: `cursor-agent`) is Cursor's AI-powered command-line int
 - **GitHub**: Not publicly available (proprietary)
 - **nixpkgs**: Available as `cursor-cli` in nixpkgs-unstable
 - **Version tested**: 2025.09.18-39624ef (verified installed version)
-- **Short description**: AI-driven terminal coding agent with multi-model support, MCP integration, and CI/CD capabilities
+- **Short description**: AI-driven terminal coding agent with multi-agent support, MCP integration, and CI/CD capabilities
 
 ### Task start-up commands
 

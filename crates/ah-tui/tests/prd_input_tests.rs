@@ -28,7 +28,8 @@ use ah_tui::view_model::DashboardFocusState;
 use ah_tui::view_model::task_entry::CardFocusElement;
 use ah_tui::view_model::{
     FilterControl, ModalState, ModalType, MouseAction, Msg, TaskCardType, TaskExecutionFocusState,
-    TaskExecutionViewModel, TaskMetadataViewModel, ViewModel, dashboard_model::FilteredOption,
+    TaskExecutionViewModel, TaskMetadataViewModel, ViewModel,
+    agents_selector_model::FilteredOption,
 };
 use ah_workflows::WorkspaceWorkflowsEnumerator;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -1686,18 +1687,18 @@ mod mouse {
         // Check that modal is open and has options
         assert!(vm.active_modal.is_some(), "Modal should be open");
         if let Some(modal) = &vm.active_modal {
-            if let ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ModalType::AgentSelection { options } = &modal.modal_type {
                 assert!(!options.is_empty(), "Options should not be empty");
                 assert_eq!(options[0].count, 1); // Default agent selection
             } else {
-                panic!("Modal type should be ModelSelection");
+                panic!("Modal type should be AgentSelection");
             }
         }
 
         // Increment count
         vm.perform_mouse_action(MouseAction::ModelIncrementCount(0));
         if let Some(modal) = &vm.active_modal {
-            if let ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ModalType::AgentSelection { options } = &modal.modal_type {
                 assert_eq!(options[0].count, 2);
             }
         }
@@ -1705,7 +1706,7 @@ mod mouse {
         // Increment again
         vm.perform_mouse_action(MouseAction::ModelIncrementCount(0));
         if let Some(modal) = &vm.active_modal {
-            if let ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ModalType::AgentSelection { options } = &modal.modal_type {
                 assert_eq!(options[0].count, 3);
             }
         }
@@ -1713,7 +1714,7 @@ mod mouse {
         // Decrement
         vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
         if let Some(modal) = &vm.active_modal {
-            if let ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ModalType::AgentSelection { options } = &modal.modal_type {
                 assert_eq!(options[0].count, 2);
             }
         }
@@ -1722,7 +1723,7 @@ mod mouse {
         vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
         vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
         if let Some(modal) = &vm.active_modal {
-            if let ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ModalType::AgentSelection { options } = &modal.modal_type {
                 assert_eq!(options[0].count, 0);
             }
         }
@@ -3521,7 +3522,7 @@ mod mouse {
         // Verify we have a model selection modal
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     // Should have some options
                     assert!(!options.is_empty());
 
@@ -3531,7 +3532,7 @@ mod mouse {
                         assert!(!opt.is_selected);
                     }
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
 
@@ -3552,13 +3553,13 @@ mod mouse {
         // Verify the count was incremented
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     let first_model =
                         options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
                     assert_eq!(first_model.count, 1);
                     assert!(first_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
 
@@ -3573,13 +3574,13 @@ mod mouse {
         );
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     let first_model =
                         options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
                     assert_eq!(first_model.count, 2);
                     assert!(first_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
 
@@ -3590,13 +3591,13 @@ mod mouse {
         });
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     let first_model =
                         options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
                     assert_eq!(first_model.count, 1);
                     assert!(first_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
 
@@ -3611,13 +3612,13 @@ mod mouse {
         );
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     let first_model =
                         options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
                     assert_eq!(first_model.count, 0);
                     assert!(!first_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
     }
@@ -3717,13 +3718,13 @@ mod mouse {
         // Verify the count was incremented
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     let first_model =
                         options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
                     assert_eq!(first_model.count, 1);
                     assert!(first_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
 
@@ -3734,13 +3735,13 @@ mod mouse {
         });
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     let first_model =
                         options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
                     assert_eq!(first_model.count, 2);
                     assert!(first_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
 
@@ -3751,13 +3752,13 @@ mod mouse {
         });
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     let first_model =
                         options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
                     assert_eq!(first_model.count, 1);
                     assert!(first_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
 
@@ -3772,13 +3773,13 @@ mod mouse {
         );
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     let first_model =
                         options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
                     assert_eq!(first_model.count, 0);
                     assert!(!first_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal"),
+                _ => panic!("Expected AgentSelection modal"),
             }
         }
     }

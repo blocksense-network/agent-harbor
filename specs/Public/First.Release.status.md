@@ -8,7 +8,7 @@
 ### Outstanding Release Tasks
 
 - [ ] R1. Multiplexer enablement and automated regression coverage
-- [ ] R2. Multi-model selectors for draft task cards
+- [ ] R2. Multi-agent selectors for draft task cards
 - [ ] R3. Remaining TUI input handling from the PRD
 - [ ] R4. AgentFS integration in the task execution path
 - [ ] R5. Remote-server manual test mode
@@ -63,47 +63,47 @@
 - [ ] Enable and stabilize the real-multiplexer integration tests in `crates/ah-mux/tests/integration_tests.rs` for tmux, kitty, wezterm, screen, zellij, tilix, windows-terminal, ghostty, vim, neovim, and emacs; gate each by the corresponding feature and add them to a `just test-multiplexers` target wired into CI for Linux/macOS/Windows.
 - [ ] Extend the TUI scenario suite so that the dashboard launches, creates a task layout, and tears down successfully while bound to each multiplexer backend (record golden layouts per backend for the terminal-based multiplexers).
 
-## R2. Multi-model selectors for draft task cards (assignee: Zahary)
+## R2. Multi-agent selectors for draft task cards (assignee: Zahary)
 
-**Status:** Not started — the dashboard ships a placeholder “🤖 Models” button but only the first model is captured and no count editing UI exists.
+**Status:** Not started — the dashboard ships a placeholder "🤖 Models" button but only the first agent is captured and no count editing UI exists.
 
 **Context:**
 
-- `TaskEntryViewModel::models` keeps a `Vec<SelectedModel>` (which already exposes `count`), yet the Model modal (`ModalState::ModelSearch` in `crates/ah-tui/src/view_model/dashboard_model.rs`) only returns a single string and the view never exposes +/- controls mandated by [TUI-PRD.md](TUI-PRD.md#model-multi-selector-modal).
-- Available models are hardcoded in `ViewModel::new_internal()` and never refreshed from configuration or REST (`ah-rest-client` exposes `list_agents`, but the dashboard ignores it; local mode should use the same catalog to stay in sync with the CLI/`AgentExecutor` configuration).
-- The launchers collapse the selection down to a single model: `GenericRestTaskManager::launch_task` picks `params.models().first()` when building `CreateTaskRequest.agent`, and local launch simply iterates `params.models()` without honoring `SelectedModel.count`.
-- TUI tests (e.g. `model_viewmodel_tests.rs`) only assert focus changes; no automated coverage ensures pluralization (“Agent(s)”), “Already Selected” section, or count adjustments described in the PRD.
+- `TaskEntryViewModel::selected_agents` keeps a `Vec<AgentChoice>` (which exposes `count`), yet the Agent modal (`ModalState::ModelSearch` in `crates/ah-tui/src/view_model/agents_selector_model.rs`) only returns a single string and the view never exposes +/- controls mandated by [TUI-PRD.md](TUI-PRD.md#agent-multi-selector-modal).
+- Available agents are hardcoded in `ViewModel::new_internal()` and never refreshed from configuration or REST (`ah-rest-client` exposes `list_agents`, but the dashboard ignores it; local mode should use the same catalog to stay in sync with the CLI/`AgentExecutor` configuration).
+- The modal only supports single selection with count=1; multi-select with +/- controls is not implemented.
+- TUI tests (e.g. `model_viewmodel_tests.rs`) only assert focus changes; no automated coverage ensures pluralization ("Agent(s)") or count adjustments described in the PRD.
 
 **Deliverables:**
 
-- [ ] Introduce a `ModelCatalog` abstraction in `ah-core` that normalizes model metadata for both local and remote modes (sources: local config/`AgentExecutor`, REST `GET /api/v1/agents` + `status=models`). Expose it through a `ModelsEnumerator` trait mirroring the repository/branch enumerators so the dashboard, CLI, and REST layer share consistent logic.
-- [ ] Mark some agent/model pairs as experimental in the model catalog with appropriate UI indicators and feature gating.
+- [ ] Introduce an `AgentCatalog` abstraction in `ah-core` that normalizes agent metadata for both local and remote modes (sources: local config/`AgentExecutor`, REST `GET /api/v1/agents` + `status=agents`). Expose it through an `AgentsEnumerator` trait mirroring the repository/branch enumerators so the dashboard, CLI, and REST layer share consistent logic.
+- [ ] Mark some agent/model pairs as experimental in the agent catalog with appropriate UI indicators and feature gating.
 - [ ] Add a new `--experimental-features <set>` configuration variable controlling which experimental features are enabled, including experimental agent/model pairs in the catalog.
-- [ ] Replace the hardcoded model list in `ViewModel::new_internal` with asynchronous loading via the enumerator; surface loading/error states through `loading_models` (already present but unused) and refresh hooks.
-- [ ] Implement the multi-select modal per PRD:
-  - Counts editable with `+/-` (or Left/Right) keys, `Enter` auto-promotes zero→1, separated "Already Selected" section, fuzzy filtering, and footer hint updates.
+- [ ] Replace the hardcoded agent list in `ViewModel::new_internal` with asynchronous loading via the enumerator; surface loading/error states through `loading_agents` (already present but unused) and refresh hooks.
+- [x] Implement the multi-select modal per PRD:
+  - Counts editable with `+/-` (or Left/Right) keys, `Enter` auto-promotes zero→1, fuzzy filtering, and footer hint updates.
   - Mouse support (wheel scroll, click to toggle) and keyboard navigation parity with other selectors.
-  - Persist selections per draft card and show `"🤖 X model(s)"` with pluralization matching counts.
-- [ ] Update task launch paths to respect multi-model inputs:
-  - Local manager: launch `count` instances per `SelectedModel`, incorporate the model identifier into session IDs (`task-<model>-<ordinal>`), and propagate counts to recorder layout metadata.
-  - REST manager: extend `CreateTaskRequest` in `ah-rest-api-contract` to accept `agents: [{type, version, count}]`, update server/client wiring, and ensure `session_ids` returns one entry per requested instance (maintaining compatibility notes in `REST-Service/API.md`).
-  - Draft persistence: store `Vec<SelectedModel>` with counts in `ah-local-db` (currently JSON already supports it) and restore them into the modal controls.
-- [ ] Surface configuration for default selections (e.g., `.ah/config.toml` or CLI flags) so operators can pre-seed recommended model bundles.
-- [ ] Update end-user documentation: dashboard guide in `specs/Public/TUI-PRD.md` (Implementation Notes) and CLI manual to describe how multi-model launches map to REST/local execution.
+  - Persist selections per draft card (button text pluralization "🤖 X agent(s)" not yet implemented).
+- [x] Update task launch paths to respect multi-agent inputs:
+  - Local manager: launch `count` instances per `AgentChoice`, incorporate the agent identifier into session IDs (`task-<agent>-<ordinal>`), and propagate counts to recorder layout metadata.
+  - REST manager: extend `CreateTaskRequest` in `ah-rest-api-contract` to accept `agents: [{software, version, model, count, settings}]`, update server/client wiring, and ensure `session_ids` returns one entry per requested instance (maintaining compatibility notes in `REST-Service/API.md`).
+  - Draft persistence: store `Vec<AgentChoice>` with counts in `ah-local-db` (currently JSON already supports it) and restore them into the modal controls.
+- [ ] Surface configuration for default selections (e.g., `.ah/config.toml` or CLI flags) so operators can pre-seed recommended agent bundles.
+- [ ] Update end-user documentation: dashboard guide in `specs/Public/TUI-PRD.md` (Implementation Notes) and CLI manual to describe how multi-agent launches map to REST/local execution.
 - [ ] Document the `--experimental-features` configuration variable in `specs/Public/CLI.md`.
-- [ ] Extend `just manual-test-tui` (or a new manual recipe) with scripted prompts that walk through multi-model selection, verifying counts and filters for human reviewers.
+- [ ] Extend `just manual-test-tui` (or a new manual recipe) with scripted prompts that walk through multi-agent selection, verifying counts and filters for human reviewers.
 
 **Verification (automated):**
 
-- [ ] Unit tests for the new `ModelCatalog`/`ModelsEnumerator` implementations (local + REST mock) covering filtering, feature gating (e.g., hidden/unavailable models), and count normalization.
-- [ ] TUI ViewModel tests exercising the modal: selecting multiple models, adjusting counts via +/- and arrow keys, verifying “Already Selected” ordering, and ensuring Esc/Enter behaviors match the PRD.
+- [ ] Unit tests for the new `AgentCatalog`/`AgentsEnumerator` implementations (local + REST mock) covering filtering, feature gating (e.g., hidden/unavailable agents), and count normalization.
+- [x] TUI ViewModel tests exercising the modal: selecting multiple agents, adjusting counts via +/- and arrow keys, and ensuring Esc/Enter behaviors match the PRD.
 - [ ] Scenario-based golden tests (`ah-tui/tests/`) that record the modal UI while:
-  - Adding/removing models,
+  - Adding/removing agents,
   - Editing counts,
-  - Launching a draft and confirming `TaskLaunchParams.models()` contains expected `SelectedModel { name, count }` values.
-- [ ] Integration test in `ah-core` confirming `TaskLaunchParams::build` rejects zero-model selections, allows multiple entries with counts, and that both the local and REST task managers emit the correct number of sessions.
-- [ ] REST contract tests verifying `CreateTaskRequest.agents[]` serialization/deserialization and that the REST mock client returns `session_ids.len() == sum(count)` for multi-model submissions.
-- [ ] Regression test ensuring footer text switches between “Launch Agent” and “Launch Agent(s)” and that the draft card badge shows the correct total count.
+  - Launching a draft and confirming `TaskLaunchParams.agents()` contains expected `AgentChoice { agent, model, count, settings, display_name }` values.
+- [ ] Integration test in `ah-core` confirming `TaskLaunchParams::build` rejects zero-agent selections, allows multiple entries with counts, and that both the local and REST task managers emit the correct number of sessions.
+- [ ] REST contract tests verifying `CreateTaskRequest.agents[]` serialization/deserialization and that the REST mock client returns `session_ids.len() == sum(count)` for multi-agent submissions.
+- [ ] Regression test ensuring footer text switches between "Launch Agent" and "Launch Agent(s)" and that the draft card badge shows the correct total count.
 
 ## R3. Remaining TUI input handling from the PRD
 
@@ -304,7 +304,7 @@
 
 **Verification (automated):**
 
-- [ ] Snapshot tests comparing normalized transcripts across agents using deterministic mock fixtures (including multi-model runs).
+- [ ] Snapshot tests comparing normalized transcripts across agents using deterministic mock fixtures (including multi-agent runs).
 - [ ] Integration test confirming that `.ahr` files captured from third-party agents driven via the LLM API server contain the expected tool execution records and can be replayed into the normalized text output without loss.
 - [ ] Unit tests for each parser ensuring malformed data degrades gracefully.
 - [ ] Integration test verifying `.ahr` replay produces the same normalized transcript as the live run (round-trip).
@@ -656,14 +656,14 @@
 **Context:**
 
 - TUI flows call into `GenericLocalTaskManager`/`TaskLaunchParams`, but the REST API still expects legacy concepts (`runtime.delivery.mode`, `workspace.snapshotPreference`, webhook arrays) that are unused by the dashboard or CLI and complicate contract maintenance.
-- The REST client (`crates/ah-rest-client`) contains multiple TODOs translating between REST types and core domain enums (e.g., agent types, session statuses), leading to subtle mismatches in feature toggles like multiplexer selection, AgentFS flags, or multi-model counts.
+- The REST client (`crates/ah-rest-client`) contains multiple TODOs translating between REST types and core domain enums (e.g., agent types, session statuses), leading to subtle mismatches in feature toggles like multiplexer selection, AgentFS flags, or multi-agent counts.
 - Several endpoints duplicate state that already lives in the SQLite database or the recorder (e.g., `recent_events`, diff APIs) yet lack parity tests ensuring responses match what the local task manager produces.
 - Without strict contract tests, trimming unused fields risks breaking the WebUI/TUI. Conversely, keeping unused fields increases maintenance overhead and diverges from LocalTaskManager behavior.
 
 **Deliverables:**
 
 - [ ] Produce a field-by-field comparison between `TaskLaunchParams`/`AgentExecutionConfig` and the REST `CreateTaskRequest`/`Session` schemas; document the minimal set of fields required by the TUI, CLI, and recorder, and deprecate everything else.
-- [ ] Refactor `ah-rest-api-contract` and `ah-rest-server` so `POST /api/v1/tasks` accepts the same structures that the local path builds (multi-model counts, sandbox config, FS snapshot selection, MCP flags) and reject unsupported combinations early with Problem+JSON errors.
+- [ ] Refactor `ah-rest-api-contract` and `ah-rest-server` so `POST /api/v1/tasks` accepts the same structures that the local path builds (multi-agent counts, sandbox config, FS snapshot selection, MCP flags) and reject unsupported combinations early with Problem+JSON errors.
 - [ ] Remove or consolidate endpoints and response fields that duplicate local behavior (e.g., trim file/diff endpoints if the recorder already serves them) and update the spec + clients accordingly.
 - [ ] Update `ah-rest-client` and TUI data sources to consume the new slim contract, ensuring enums and structs are shared via `ah-domain-types` rather than redefined locally.
 - [ ] Expand the API documentation (`specs/Public/REST-Service/API.md`) with explicit parity tables that map each LocalTaskManager operation to its REST equivalent, highlighting any intentional differences.
@@ -710,7 +710,7 @@
 
 - `ah-core`, `ah-local-db`, `ah-rest-api-contract`, `ah-rest-client`, and the TUI all declare separate enums for session/task statuses, agent types, delivery modes, sandbox policies, and multiplexer identifiers. These are semantically identical but live in different modules with divergent derives.
 - Some enums (e.g., `TaskStatus`) only derive `Serialize/Deserialize` in certain crates, forcing ad-hoc conversions or lossy mappings when sending data over REST vs. local DB vs. UI.
-- The CLI needs Clap parsing for the same values that REST requires Serde support and that the database layer needs SQL mapping. Maintaining separate implementations increases bug surface and slows down feature updates like multi-model counts or new sandbox policies.
+- The CLI needs Clap parsing for the same values that REST requires Serde support and that the database layer needs SQL mapping. Maintaining separate implementations increases bug surface and slows down feature updates like multi-agent counts or new sandbox policies.
 - The `ah-domain-types` crate already exposes foundational structs but does not yet serve as the canonical home for these enums.
 
 **Deliverables:**

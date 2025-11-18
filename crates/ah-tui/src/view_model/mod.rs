@@ -55,20 +55,20 @@
 //! - **Testability**: Fully headless testing with mocked external APIs
 //!   and simulated time
 
+pub mod agents_selector_model;
 pub mod autocomplete;
-pub mod dashboard_model;
 pub mod input;
 pub mod session_viewer_model;
 pub mod task_entry;
 pub mod task_execution;
 
 // Re-export the main types
-pub use autocomplete::{AutocompleteKeyResult, InlineAutocomplete, Item, MenuContext, Trigger};
-pub use dashboard_model::{
-    DashboardFocusState, FooterAction, ModalType, ModalViewModel, ModelOptionViewModel,
+pub use agents_selector_model::{
+    AgentSelectionViewModel, DashboardFocusState, FooterAction, ModalType, ModalViewModel,
     MouseAction, Msg, SettingsFieldType, SettingsFieldViewModel, StatusBarViewModel, TaskCardInfo,
     TaskCardTypeEnum, TaskItem, ViewModel, create_draft_card_from_task,
 };
+pub use autocomplete::{AutocompleteKeyResult, InlineAutocomplete, Item, MenuContext, Trigger};
 pub use session_viewer_model::{
     DisplayItem, GutterConfig, GutterPosition, SessionViewerFocusState as RecorderFocusState,
     SessionViewerMode, SessionViewerMouseAction, SessionViewerMsg as RecorderMsg,

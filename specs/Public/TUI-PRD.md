@@ -190,8 +190,7 @@ The agent selection dialog provides advanced agent configuration:
   - Separator line (as in the other dialogs)
   - The selection menu is enhanced with right-aligned counts (x1, x2, etc)
   - The count editing buttons (described below) are visible in the status bar while the menu is opened
-  - When text is typed into the input box, the models are filtered normally. If there are models that don't match the filder, but have non-zero counts, they are displayed below the models that match the filter after a line separator with a label "Already Selected".
-  - The separator is automatically jumped over when the user navigates with the arrow keys.
+  - When text is typed into the input box, the models are filtered normally. If there are models that don't match the filder, but have non-zero counts, they are displayed below the models that match the filter.
 - **Keyboard Controls**:
   - `↑↓`: Navigate between sections and items
   - `Mouse Wheel`: Scroll through model selection menu

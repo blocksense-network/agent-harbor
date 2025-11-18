@@ -18,7 +18,7 @@ use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::KeyboardOperation;
-use ah_tui::view_model::dashboard_model::FilteredOption;
+use ah_tui::view_model::agents_selector_model::FilteredOption;
 use ah_tui::view_model::task_entry::CardFocusElement;
 use ah_tui::view_model::{
     DashboardFocusState, DraftSaveState, ModalState, ModalType, Msg, ViewModel,
@@ -780,12 +780,12 @@ mod viewmodel_tests {
         assert_eq!(vm.modal_state, ModalState::ModelSearch);
         assert!(vm.active_modal.is_some());
 
-        // Check that the modal is created with ModelSelection type
+        // Check that the modal is created with AgentSelection type
         // This is tested implicitly through the rendering, but we can verify the modal type
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { .. } => {} // Correct type
-                _ => panic!("Expected ModelSelection modal type"),
+                ModalType::AgentSelection { .. } => {} // Correct type
+                _ => panic!("Expected AgentSelection modal type"),
             }
         }
     }
@@ -878,7 +878,7 @@ mod viewmodel_tests {
         assert!(vm.active_modal.is_some());
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
-                ModalType::ModelSelection { options } => {
+                ModalType::AgentSelection { options } => {
                     // Should have all available models (6 default models)
                     assert_eq!(options.len(), 6);
                     // Find the "Claude Sonnet 4.5" that was selected
@@ -887,7 +887,7 @@ mod viewmodel_tests {
                     assert_eq!(test_model.count, 1);
                     assert!(test_model.is_selected);
                 }
-                _ => panic!("Expected ModelSelection modal type"),
+                _ => panic!("Expected AgentSelection modal type"),
             }
         }
     }

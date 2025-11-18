@@ -6,15 +6,15 @@
 import { For, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 import TomSelect from 'tom-select';
 
-export type ModelSelection = {
+export type AgentSelection = {
   model: string;
   instances: number;
 };
 
 type ModelMultiSelectProps = {
   availableModels: string[];
-  selectedModels: ModelSelection[];
-  onSelectionChange: (selections: ModelSelection[]) => void;
+  selectedModels: AgentSelection[];
+  onSelectionChange: (selections: AgentSelection[]) => void;
   placeholder?: string;
   testId?: string;
   class?: string;
@@ -91,7 +91,7 @@ export const ModelMultiSelect = (props: ModelMultiSelectProps) => {
     }
   };
 
-  const buildCountsMap = (selections: ModelSelection[] | undefined): CountsMap => {
+  const buildCountsMap = (selections: AgentSelection[] | undefined): CountsMap => {
     const base: CountsMap = {};
     for (const model of models()) {
       base[model] = 0;
@@ -109,7 +109,7 @@ export const ModelMultiSelect = (props: ModelMultiSelectProps) => {
   };
 
   const notifyParent = (countsMap: CountsMap) => {
-    const selections: ModelSelection[] = [];
+    const selections: AgentSelection[] = [];
     for (const model of models()) {
       const count = countsMap[model] ?? 0;
       if (count > 0) {

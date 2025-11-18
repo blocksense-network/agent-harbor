@@ -314,7 +314,7 @@ impl ViewModel {
         if self.modal_state != ModalState::None {
             // For model selection modals, focus should return to the model picker button
             if let Some(modal) = &self.active_modal {
-                if matches!(modal.modal_type, ModalType::ModelSelection { .. }) {
+                if matches!(modal.modal_type, ModalType::AgentSelection { .. }) {
                     self.change_focus(DashboardFocusState::DraftTask(0));
                     if let Some(card) = self.draft_cards.get_mut(0) {
                         card.focus_element = CardFocusElement::ModelSelector;
@@ -409,7 +409,7 @@ impl ViewModel {
 
     fn handle_increment_decrement_value(&mut self, increment: bool) -> bool {
         if let Some(modal) = self.active_modal.as_mut() {
-            if let ModalType::ModelSelection { options } = &mut modal.modal_type {
+            if let ModalType::AgentSelection { options } = &mut modal.modal_type {
                 // Find the currently selected filtered option
                 let selected_filtered_option = modal.filtered_options.get(modal.selected_index);
 
@@ -490,7 +490,7 @@ impl ViewModel {
 
     /// Update filtered options for model selection, preserving the current filter
     fn update_model_selection_filtered_options(modal: &mut ModalViewModel) {
-        if let ModalType::ModelSelection { options } = &modal.modal_type {
+        if let ModalType::AgentSelection { options } = &modal.modal_type {
             let query = modal.input_value.to_lowercase();
             let mut filtered: Vec<FilteredOption> = Vec::new();
 
@@ -600,7 +600,7 @@ impl ViewModel {
                 self.needs_redraw = true;
                 true
             }
-            ModalType::ModelSelection { options } => {
+            ModalType::AgentSelection { options } => {
                 if options.is_empty() {
                     return false;
                 }
@@ -744,7 +744,7 @@ impl ViewModel {
 
                 modal.filtered_options = filtered;
             }
-            ModalType::ModelSelection { options } => {
+            ModalType::AgentSelection { options } => {
                 // For model selection, filter the available model options
                 let query = modal.input_value.to_lowercase();
                 let mut filtered: Vec<FilteredOption> = options
@@ -898,14 +898,14 @@ impl ViewModel {
                     self.needs_redraw = true;
                     return true;
                 }
-                ModalType::ModelSelection { .. } => {
+                ModalType::AgentSelection { .. } => {
                     // Model selection modals use search input similar to search modals
                     modal.input_value.push(ch);
 
                     // Inline filtering logic to avoid double borrow
                     let query = modal.input_value.to_lowercase();
                     let mut filtered: Vec<FilteredOption> =
-                        if let ModalType::ModelSelection { options } = &modal.modal_type {
+                        if let ModalType::AgentSelection { options } = &modal.modal_type {
                             let mut result = Vec::new();
 
                             // First, add models that match the filter
@@ -1105,7 +1105,7 @@ impl ViewModel {
                         return true;
                     }
                 }
-                ModalType::ModelSelection { .. } => {
+                ModalType::AgentSelection { .. } => {
                     // For model selection modals, remove last character from input value
                     if !modal.input_value.is_empty() {
                         modal.input_value.pop();
@@ -1204,7 +1204,7 @@ impl ViewModel {
                         return true;
                     }
                 }
-                ModalType::ModelSelection { .. } => {
+                ModalType::AgentSelection { .. } => {
                     // Model selection modals use search input similar to search modals
                     modal.input_value.pop();
                     Self::update_model_selection_filtered_options(modal);
@@ -1587,11 +1587,11 @@ impl ViewModel {
                 }
                 _ => {} // Other modal types don't need selection handling
             },
-            ModalType::ModelSelection { options } => {
+            ModalType::AgentSelection { options } => {
                 // Apply all selected models with their counts to the current draft card
                 if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
-                        // Convert ModelOptionViewModel to AgentChoice, filtering out models with count 0
+                        // Convert AgentSelectionViewModel to AgentChoice, filtering out models with count 0
                         card.selected_agents = options
                             .into_iter()
                             .filter(|opt| opt.count > 0)
@@ -1856,14 +1856,22 @@ pub struct ModalViewModel {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModalType {
-    Search { placeholder: String },
-    ModelSelection { options: Vec<ModelOptionViewModel> },
-    Settings { fields: Vec<SettingsFieldViewModel> },
-    LaunchOptions { draft_id: String },
+    Search {
+        placeholder: String,
+    },
+    AgentSelection {
+        options: Vec<AgentSelectionViewModel>,
+    },
+    Settings {
+        fields: Vec<SettingsFieldViewModel>,
+    },
+    LaunchOptions {
+        draft_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ModelOptionViewModel {
+pub struct AgentSelectionViewModel {
     pub name: String,
     pub count: usize,
     pub is_selected: bool,
@@ -2653,7 +2661,7 @@ impl ViewModel {
             KeyboardOperation::ActivateCurrentItem => {
                 if let Some(modal) = self.active_modal.as_mut() {
                     match &mut modal.modal_type {
-                        ModalType::ModelSelection { options } => {
+                        ModalType::AgentSelection { options } => {
                             // Get the currently selected option
                             let selected_filtered_option =
                                 modal.filtered_options.get(modal.selected_index);
@@ -2739,8 +2747,8 @@ impl ViewModel {
             KeyboardOperation::DeleteToEndOfLine => {
                 if let Some(modal) = self.active_modal.as_mut() {
                     modal.input_value.clear();
-                    // Inline update logic for ModelSelection
-                    if let ModalType::ModelSelection { options } = &modal.modal_type {
+                    // Inline update logic for AgentSelection
+                    if let ModalType::AgentSelection { options } = &modal.modal_type {
                         let mut filtered: Vec<FilteredOption> = options
                             .iter()
                             .map(|opt| FilteredOption::Option {
@@ -2857,14 +2865,8 @@ impl ViewModel {
             // Choose the appropriate input mode based on modal type
             let mode = if let Some(modal) = self.active_modal.as_ref() {
                 match modal.modal_type {
-                    ModalType::ModelSelection { .. } => {
-                        trace!("handle_key_event: trying MODEL_SELECTION_MODE");
-                        &MODEL_SELECTION_MODE
-                    }
-                    _ => {
-                        trace!("handle_key_event: trying MODAL_NAVIGATION_MODE");
-                        &MODAL_NAVIGATION_MODE
-                    }
+                    ModalType::AgentSelection { .. } => &MODEL_SELECTION_MODE,
+                    _ => &MODAL_NAVIGATION_MODE,
                 }
             } else {
                 trace!("handle_key_event: trying MODAL_NAVIGATION_MODE (no active modal)");
@@ -2943,7 +2945,7 @@ impl ViewModel {
                             self.needs_redraw = true;
                             return true;
                         }
-                        ModalType::ModelSelection { .. } => {
+                        ModalType::AgentSelection { .. } => {
                             modal.input_value.push(c);
                             Self::update_model_selection_filtered_options(modal);
                             self.needs_redraw = true;
@@ -4527,7 +4529,7 @@ impl ViewModel {
         // Handle modal list scrolling first
         if let Some(modal) = &mut self.active_modal {
             match &modal.modal_type {
-                ModalType::Search { .. } | ModalType::ModelSelection { .. } => {
+                ModalType::Search { .. } | ModalType::AgentSelection { .. } => {
                     // For modal lists, change the selected index
                     let options_count = modal.filtered_options.len();
                     if options_count > 0 {
@@ -5165,7 +5167,7 @@ impl ViewModel {
             }
             MouseAction::ModelIncrementCount(index) => {
                 if let Some(modal) = &mut self.active_modal {
-                    if let crate::view_model::ModalType::ModelSelection { options } =
+                    if let crate::view_model::ModalType::AgentSelection { options } =
                         &mut modal.modal_type
                     {
                         if index < options.len() {
@@ -5177,7 +5179,7 @@ impl ViewModel {
             }
             MouseAction::ModelDecrementCount(index) => {
                 if let Some(modal) = &mut self.active_modal {
-                    if let crate::view_model::ModalType::ModelSelection { options } =
+                    if let crate::view_model::ModalType::AgentSelection { options } =
                         &mut modal.modal_type
                     {
                         if index < options.len() && options[index].count > 0 {
@@ -5190,7 +5192,7 @@ impl ViewModel {
             MouseAction::ModalSelectOption(index) => {
                 if let Some(modal) = &self.active_modal {
                     match &modal.modal_type {
-                        ModalType::ModelSelection { options } => {
+                        ModalType::AgentSelection { options } => {
                             // For ModelSelection modals, get the option name from the options array
                             if let Some(option) = options.get(index) {
                                 self.apply_modal_selection(
@@ -6381,7 +6383,7 @@ fn create_modal_view_model(
         }
         ModalState::ModelSearch => {
             // Create model options from available models, with counts from current draft
-            let model_options: Vec<ModelOptionViewModel> = available_models
+            let mut model_options: Vec<AgentSelectionViewModel> = available_models
                 .iter()
                 .map(|model_info| {
                     let count = current_draft
@@ -6394,7 +6396,7 @@ fn create_modal_view_model(
                         })
                         .map(|m| m.count)
                         .unwrap_or(0);
-                    ModelOptionViewModel {
+                    AgentSelectionViewModel {
                         name: model_info.display_name(),
                         count,
                         is_selected: count > 0,
@@ -6420,7 +6422,7 @@ fn create_modal_view_model(
                 input_value: String::new(),
                 filtered_options,
                 selected_index,
-                modal_type: ModalType::ModelSelection {
+                modal_type: ModalType::AgentSelection {
                     options: model_options,
                 },
             })
