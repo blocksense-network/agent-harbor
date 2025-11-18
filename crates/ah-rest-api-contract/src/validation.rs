@@ -90,7 +90,6 @@ pub fn validate_idempotency_key(key: &IdempotencyKey) -> Result<(), ApiContractE
 mod tests {
     use super::*;
     use crate::ProblemDetails;
-    use crate::types::*;
     use ah_domain_types::{AgentSoftware, AgentSoftwareBuild};
     use serde_json;
 
