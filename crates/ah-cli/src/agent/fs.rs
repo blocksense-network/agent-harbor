@@ -11,7 +11,7 @@ use agentfs_proto::*;
 #[cfg(feature = "agentfs")]
 use ah_fs_snapshots::{AgentFsProvider, FsSnapshotProvider};
 use ah_fs_snapshots::{ProviderCapabilities, provider_for};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -301,12 +301,10 @@ impl AgentFsCommands {
             }
         );
 
-        if verbose || title.contains("AgentFS") {
-            if !provider.detection_notes.is_empty() {
-                println!("Notes:");
-                for note in &provider.detection_notes {
-                    println!("  - {}", note);
-                }
+        if (verbose || title.contains("AgentFS")) && !provider.detection_notes.is_empty() {
+            println!("Notes:");
+            for note in &provider.detection_notes {
+                println!("  - {}", note);
             }
         }
     }
@@ -363,7 +361,7 @@ impl AgentFsCommands {
             match Self::notify_recorder(
                 &recorder_socket,
                 0, // placeholder snapshot ID
-                &snapshot_label.as_str(),
+                snapshot_label.as_str(),
             )
             .await
             {

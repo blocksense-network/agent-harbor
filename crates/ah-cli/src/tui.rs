@@ -3,12 +3,10 @@
 
 //! TUI command handling for the CLI
 
-#[allow(unused_imports)]
 use ah_core::{
-    CliMultiplexerType, DefaultWorkspaceTermsEnumerator, LocalBranchesEnumerator,
-    LocalRepositoriesEnumerator, MultiplexerChoice, RemoteBranchesEnumerator,
-    RemoteRepositoriesEnumerator, RemoteWorkspaceFilesEnumerator, WorkspaceFilesEnumerator,
-    WorkspaceTermsEnumerator, determine_multiplexer_choice,
+    CliMultiplexerType, DefaultWorkspaceTermsEnumerator, MultiplexerChoice,
+    RemoteWorkspaceFilesEnumerator, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
+    determine_multiplexer_choice,
 };
 use ah_mux::detection;
 use ah_mux_core::{Multiplexer, WindowOptions};
@@ -118,6 +116,7 @@ impl CliMultiplexerArg {
 }
 
 /// Helper to get display name for core CliMultiplexerType
+#[allow(dead_code)]
 fn multiplexer_display_name(mux_type: &CliMultiplexerType) -> &'static str {
     mux_type.display_name()
 }
@@ -247,7 +246,7 @@ impl TuiArgs {
                 self.create_and_enter_multiplexer_session(&*multiplexer, fs_snapshots).await
             }
             // Explicit multiplexer type specified - always create/manage session
-            (Some(multiplexer_type), _) => {
+            (Some(_multiplexer_type), _) => {
                 let multiplexer = self.create_multiplexer()?;
                 self.create_and_enter_multiplexer_session(&*multiplexer, fs_snapshots).await
             }

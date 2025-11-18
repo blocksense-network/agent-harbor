@@ -1,10 +1,8 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
+#![allow(clippy::disallowed_methods)] // Health command prints human-readable output by design
 
 //! Health check commands
-
-#![allow(clippy::disallowed_methods)] // CLI output is legitimate use of println!
-
 mod types;
 
 use ah_mux::TmuxMultiplexer;
@@ -12,7 +10,7 @@ use ah_mux::detection::detect_terminal_environments;
 use ah_mux_core::Multiplexer;
 use clap::Args;
 use std::collections::HashMap;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, warn};
 use types::{AgentHealthStatus, HealthFormatter, HumanReadableFormatter, JsonFormatter};
 
 /// Arguments for the health command

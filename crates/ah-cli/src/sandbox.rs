@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::tui::FsSnapshotsType;
-use ah_fs_snapshots::{
-    FsSnapshotProvider, PreparedWorkspace, SnapshotProviderKind, WorkingCopyMode,
-};
+use ah_fs_snapshots::{PreparedWorkspace, SnapshotProviderKind, WorkingCopyMode};
 use anyhow::{Context, Result};
 use clap::Args;
 #[cfg(target_os = "linux")]
@@ -107,6 +105,18 @@ impl SandboxRunArgs {
         let allow_kvm = parse_bool_flag(&allow_kvm)?;
         let seccomp = parse_bool_flag(&seccomp)?;
         let seccomp_debug = parse_bool_flag(&seccomp_debug)?;
+
+        // On non-Linux targets, these variables are unused; mark them as used to silence warnings
+        #[cfg(not(target_os = "linux"))]
+        let _ = (
+            &allow_network,
+            &allow_containers,
+            &allow_kvm,
+            &seccomp,
+            &seccomp_debug,
+            &mount_rw,
+            &overlay,
+        );
 
         if command.is_empty() {
             return Err(anyhow::anyhow!("No command specified to run in sandbox"));
@@ -238,7 +248,7 @@ fn convert_fs_snapshots_type(fs_snapshots: FsSnapshotsType) -> FsProviderArg {
 pub async fn prepare_workspace_with_fallback(
     workspace_path: &std::path::Path,
     fs_snapshots: FsSnapshotsType,
-    agentfs_socket: Option<&std::path::Path>,
+    _agentfs_socket: Option<&std::path::Path>,
 ) -> Result<PreparedWorkspace> {
     let fs_provider = convert_fs_snapshots_type(fs_snapshots);
     // Handle explicit provider selection or auto-detection
@@ -605,7 +615,9 @@ pub async fn prepare_workspace_with_fallback(
         }
     }
 
-    println!("⚠️  No filesystem snapshot providers available; falling back to in-place workspace");
+    tracing::warn!(
+        "No filesystem snapshot providers available; falling back to in-place workspace"
+    );
     Ok(PreparedWorkspace {
         exec_path: workspace_path.to_path_buf(),
         working_copy: WorkingCopyMode::InPlace,
@@ -616,6 +628,7 @@ pub async fn prepare_workspace_with_fallback(
 
 /// Create a sandbox instance configured from CLI parameters
 #[cfg(target_os = "linux")]
+#[allow(clippy::too_many_arguments)]
 pub fn create_sandbox_from_args(
     allow_network: bool,
     allow_containers: bool,
@@ -683,6 +696,7 @@ pub fn create_sandbox_from_args(
 
 /// Create a sandbox instance configured from CLI parameters (non-Linux stub)
 #[cfg(not(target_os = "linux"))]
+#[allow(clippy::too_many_arguments)]
 pub fn create_sandbox_from_args(
     _allow_network: bool,
     _allow_containers: bool,
@@ -741,6 +755,7 @@ pub fn parse_bool_flag(s: &str) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::disallowed_methods)] // tests use println!/eprintln! for diagnostics
     use super::*;
 
     #[test]
