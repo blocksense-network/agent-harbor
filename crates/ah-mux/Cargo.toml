@@ -19,6 +19,7 @@ async-trait = "0.1"
 tempfile = "3.0"
 crossterm = { workspace = true }
 tracing = { workspace = true }
+serial_test = "3"
 
 [features]
 default = [
