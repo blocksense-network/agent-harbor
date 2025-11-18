@@ -300,7 +300,24 @@ diff = {
 
 diff_path.write_text(json.dumps(diff, indent=2))
 
-if diff["result_differs"] or diff["extra_failed_programs"] or diff["missing_failed_programs"] or diff["mismatched_failed_programs"] or diff["extra_skipped_programs"] or diff["missing_skipped_programs"] or diff["mismatched_skipped_programs"]:
+has_unexpected = (
+    diff["result_differs"]
+    or diff["extra_failed_programs"]
+    or diff["mismatched_failed_programs"]
+    or diff["extra_skipped_programs"]
+    or diff["mismatched_skipped_programs"]
+)
+if diff["missing_failed_programs"] or diff["missing_skipped_programs"]:
+    print("Note: some expected pjdfstest failures/skips were not observed in this run.")
+    if diff["missing_failed_programs"]:
+        print("  Missing failed programs:")
+        for entry in diff["missing_failed_programs"]:
+            print(f"    - {entry['program']}")
+    if diff["missing_skipped_programs"]:
+        print("  Missing skipped programs:")
+        for entry in diff["missing_skipped_programs"]:
+            print(f"    - {entry['program']}")
+if has_unexpected:
     sys.exit(1)
 PY
     log "Baseline comparison successful"
