@@ -6,6 +6,8 @@
 //! This crate provides concrete implementations of the Multiplexer trait
 //! for various terminal multiplexers (tmux, kitty, zellij, screen, wezterm, etc.).
 
+use tracing::{debug, error, info, instrument, warn};
+
 pub mod detection;
 
 #[cfg(feature = "emacs")]
@@ -60,117 +62,172 @@ use ah_mux_core::*;
 pub use detection::*;
 
 /// Get the default multiplexer for the current system
+#[instrument(fields(component = "ah_mux", operation = "default_multiplexer"))]
 pub fn default_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, MuxError> {
+    info!("Starting multiplexer detection with priority order");
+
     // Priority order: tmux > wezterm > kitty > zellij > screen > tilix > windows-terminal > ghostty > neovim > vim > emacs
     #[cfg(feature = "tmux")]
     if let Ok(tmux) = tmux::TmuxMultiplexer::new() {
         if tmux.is_available() {
+            info!(multiplexer = "tmux", "Found available multiplexer");
             return Ok(Box::new(tmux));
+        } else {
+            debug!(multiplexer = "tmux", "Multiplexer not available");
         }
     }
 
     #[cfg(target_os = "macos")]
     if let Ok(iterm2) = iterm2::ITerm2Multiplexer::new() {
         if iterm2.is_available() {
+            info!(multiplexer = "iterm2", "Found available multiplexer");
             return Ok(Box::new(iterm2));
+        } else {
+            debug!(multiplexer = "iterm2", "Multiplexer not available");
         }
     }
 
     #[cfg(feature = "wezterm")]
     if let Ok(wezterm) = wezterm::WezTermMultiplexer::new() {
         if wezterm.is_available() {
+            info!(multiplexer = "wezterm", "Found available multiplexer");
             return Ok(Box::new(wezterm));
+        } else {
+            debug!(multiplexer = "wezterm", "Multiplexer not available");
         }
     }
 
     #[cfg(feature = "kitty")]
     if let Ok(kitty) = kitty::KittyMultiplexer::new() {
         if kitty.is_available() {
+            info!(multiplexer = "kitty", "Found available multiplexer");
             return Ok(Box::new(kitty));
+        } else {
+            debug!(multiplexer = "kitty", "Multiplexer not available");
         }
     }
 
     #[cfg(feature = "zellij")]
     if let Ok(zellij) = zellij::ZellijMultiplexer::new() {
         if zellij.is_available() {
+            info!(multiplexer = "zellij", "Found available multiplexer");
             return Ok(Box::new(zellij));
+        } else {
+            debug!(multiplexer = "zellij", "Multiplexer not available");
         }
     }
 
     #[cfg(feature = "screen")]
     if let Ok(screen) = screen::ScreenMultiplexer::new() {
         if screen.is_available() {
+            info!(multiplexer = "screen", "Found available multiplexer");
             return Ok(Box::new(screen));
+        } else {
+            debug!(multiplexer = "screen", "Multiplexer not available");
         }
     }
 
     #[cfg(all(feature = "tilix", target_os = "linux"))]
     if let Ok(tilix) = tilix::TilixMultiplexer::new() {
         if tilix.is_available() {
+            info!(multiplexer = "tilix", "Found available multiplexer");
             return Ok(Box::new(tilix));
+        } else {
+            debug!(multiplexer = "tilix", "Multiplexer not available");
         }
     }
 
     #[cfg(feature = "windows-terminal")]
     if let Ok(wt) = windows_terminal::WindowsTerminalMultiplexer::new() {
         if wt.is_available() {
+            info!(
+                multiplexer = "windows-terminal",
+                "Found available multiplexer"
+            );
             return Ok(Box::new(wt));
+        } else {
+            debug!(
+                multiplexer = "windows-terminal",
+                "Multiplexer not available"
+            );
         }
     }
 
     #[cfg(feature = "ghostty")]
     if let Ok(ghostty) = ghostty::GhosttyMultiplexer::new() {
         if ghostty.is_available() {
+            info!(multiplexer = "ghostty", "Found available multiplexer");
             return Ok(Box::new(ghostty));
+        } else {
+            debug!(multiplexer = "ghostty", "Multiplexer not available");
         }
     }
 
     #[cfg(feature = "neovim")]
     if let Ok(neovim) = neovim::NeovimMultiplexer::new() {
         if neovim.is_available() {
+            info!(multiplexer = "neovim", "Found available multiplexer");
             return Ok(Box::new(neovim));
+        } else {
+            debug!(multiplexer = "neovim", "Multiplexer not available");
         }
     }
 
     #[cfg(feature = "vim")]
     if let Ok(vim) = vim::VimMultiplexer::new() {
         if vim.is_available() {
+            info!(multiplexer = "vim", "Found available multiplexer");
             return Ok(Box::new(vim));
+        } else {
+            debug!(multiplexer = "vim", "Multiplexer not available");
         }
     }
 
     #[cfg(feature = "emacs")]
     if let Ok(emacs) = emacs::EmacsMultiplexer::new() {
         if emacs.is_available() {
+            info!(multiplexer = "emacs", "Found available multiplexer");
             return Ok(Box::new(emacs));
+        } else {
+            debug!(multiplexer = "emacs", "Multiplexer not available");
         }
     }
 
+    warn!("No supported multiplexer found, checked all available options");
     Err(MuxError::NotAvailable("No supported multiplexer found"))
 }
 
 /// Get a multiplexer by name
+#[instrument(fields(component = "ah_mux", operation = "multiplexer_by_name", multiplexer_name = %name))]
 pub fn multiplexer_by_name(name: &str) -> Result<Box<dyn Multiplexer + Send + Sync>, MuxError> {
+    info!("Creating multiplexer by name");
+
     match name {
         #[cfg(feature = "tmux")]
         "tmux" => {
             let tmux = tmux::TmuxMultiplexer::new().map_err(|e| {
+                error!(error = %e, "Failed to create tmux multiplexer");
                 MuxError::Other(format!("Failed to create tmux multiplexer: {}", e))
             })?;
+            debug!("Successfully created tmux multiplexer");
             Ok(Box::new(tmux))
         }
         #[cfg(target_os = "macos")]
         "iterm2" => {
             let iterm2 = iterm2::ITerm2Multiplexer::new().map_err(|e| {
+                error!(error = %e, "Failed to create iTerm2 multiplexer");
                 MuxError::Other(format!("Failed to create iTerm2 multiplexer: {}", e))
             })?;
+            debug!("Successfully created iTerm2 multiplexer");
             Ok(Box::new(iterm2))
         }
         #[cfg(feature = "kitty")]
         "kitty" => {
             let kitty = kitty::KittyMultiplexer::new().map_err(|e| {
+                error!(error = %e, "Failed to create kitty multiplexer");
                 MuxError::Other(format!("Failed to create kitty multiplexer: {}", e))
             })?;
+            debug!("Successfully created kitty multiplexer");
             Ok(Box::new(kitty))
         }
         #[cfg(feature = "wezterm")]
@@ -224,10 +281,13 @@ pub fn multiplexer_by_name(name: &str) -> Result<Box<dyn Multiplexer + Send + Sy
             let emacs = emacs::EmacsMultiplexer::new()?;
             Ok(Box::new(emacs))
         }
-        _ => Err(MuxError::Other(format!(
-            "Unsupported multiplexer: {}",
-            name
-        ))),
+        _ => {
+            error!(multiplexer_name = %name, "Unsupported multiplexer requested");
+            Err(MuxError::Other(format!(
+                "Unsupported multiplexer: {}",
+                name
+            )))
+        }
     }
 }
 
