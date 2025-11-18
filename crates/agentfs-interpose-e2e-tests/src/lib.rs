@@ -43,7 +43,7 @@ use once_cell::sync::OnceCell;
 #[cfg(target_os = "macos")]
 use std::ffi::OsStr;
 #[cfg(target_os = "macos")]
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 #[cfg(target_os = "macos")]
 use std::os::unix::net::UnixStream;
 #[cfg(target_os = "macos")]
@@ -114,7 +114,7 @@ fn execute_test_scenario(
     remove_env_var("AGENTFS_INTERPOSE_LOG");
     remove_env_var("AGENTFS_INTERPOSE_FAIL_FAST");
 
-    println!("Running test scenario: {}", command);
+    let _ = writeln!(io::stdout(), "Running test scenario: {}", command);
 
     let mut cmd = Command::new(&helper);
     cmd.env("DYLD_INSERT_LIBRARIES", find_dylib_path())
@@ -131,8 +131,16 @@ fn execute_test_scenario(
 
     let output = cmd.output().unwrap_or_else(|_| panic!("failed to run {} test", command));
 
-    println!("Test stdout: {}", String::from_utf8_lossy(&output.stdout));
-    println!("Test stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let _ = writeln!(
+        io::stdout(),
+        "Test stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let _ = writeln!(
+        io::stdout(),
+        "Test stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     // Clean up environment variables
     remove_env_var("AGENTFS_INTERPOSE_ALLOWLIST");
@@ -247,7 +255,7 @@ fn query_daemon_state_structured(
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
 fn log_message(msg: &str) {
-    eprintln!("{} {}", LOG_PREFIX, msg);
+    let _ = writeln!(io::stderr(), "{} {}", LOG_PREFIX, msg);
 }
 
 #[cfg(target_os = "macos")]
@@ -593,9 +601,7 @@ mod tests {
                             "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
                             stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
                         );
-                        // Stats should be valid (non-negative values)
-                        assert!(stats.branches >= 0, "Branches should be non-negative");
-                        assert!(stats.snapshots >= 0, "Snapshots should be non-negative");
+                        // Stats values are unsigned; previous non-negativity assertions were tautologies.
                     }
                     _ => panic!("Expected stats response"),
                 }
@@ -643,6 +649,8 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
+        let _ = daemon.wait();
+        let _ = daemon.wait();
     }
 
     #[test]
@@ -715,9 +723,7 @@ mod tests {
                             "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
                             stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
                         );
-                        // Stats should be valid (non-negative values)
-                        assert!(stats.branches >= 0, "Branches should be non-negative");
-                        assert!(stats.snapshots >= 0, "Snapshots should be non-negative");
+                        // Stats values are unsigned; previous non-negativity assertions were tautologies.
                     }
                     _ => panic!("Expected stats response"),
                 }
@@ -766,6 +772,8 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
+        let _ = daemon.wait();
+        let _ = daemon.wait();
     }
 
     #[test]
@@ -794,7 +802,7 @@ mod tests {
         let mut daemon = Command::new(&daemon_path)
             .arg("--backstore-mode")
             .arg("InMemory")
-            .arg(&socket_path)
+            .arg(socket_path)
             .spawn()
             .expect("failed to start mock daemon");
 
@@ -804,7 +812,7 @@ mod tests {
         // Execute the test scenario - the helper binary tests readlink interposition
         // Readlink interposition may have issues, but the test verifies shim loading
         let status =
-            execute_test_scenario(&socket_path, "readlink-test", &["/nonexistent-symlink.txt"]);
+            execute_test_scenario(socket_path, "readlink-test", &["/nonexistent-symlink.txt"]);
 
         // The test should complete - readlink interposition may fail but shim should load
         // We accept both success and failure with exit code 1 (from interposition issues)
@@ -815,7 +823,7 @@ mod tests {
 
         // Verify daemon state - should have registered the test process
         let processes_response =
-            query_daemon_state_structured(&socket_path, Request::daemon_state_processes()).unwrap();
+            query_daemon_state_structured(socket_path, Request::daemon_state_processes()).unwrap();
         match processes_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
                 DaemonStateResponse::Processes(processes) => {
@@ -835,7 +843,7 @@ mod tests {
         // the state capture mechanism works properly
         println!("Starting filesystem state query...");
         let fs_response = query_daemon_state_structured(
-            &socket_path,
+            socket_path,
             Request::daemon_state_filesystem(3, false, 1024), // Slightly deeper scan for faster test
         )
         .unwrap();
@@ -875,10 +883,11 @@ mod tests {
                 println!("Daemon was already stopped or kill failed");
             }
         }
+        let _ = daemon.wait();
 
         // Clean up socket file
         if socket_path.exists() {
-            let _ = std::fs::remove_file(&socket_path);
+            let _ = std::fs::remove_file(socket_path);
         }
     }
 
@@ -947,9 +956,7 @@ mod tests {
                             "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
                             stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
                         );
-                        // Stats should be valid (non-negative values)
-                        assert!(stats.branches >= 0, "Branches should be non-negative");
-                        assert!(stats.snapshots >= 0, "Snapshots should be non-negative");
+                        // Stats values are unsigned; previous non-negativity assertions were tautologies.
                     }
                     _ => panic!("Expected stats response"),
                 }
@@ -968,6 +975,8 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
+        let _ = daemon.wait();
+        let _ = daemon.wait();
     }
 
     #[test]
@@ -1035,9 +1044,7 @@ mod tests {
                             "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
                             stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
                         );
-                        // Stats should be valid (non-negative values)
-                        assert!(stats.branches >= 0, "Branches should be non-negative");
-                        assert!(stats.snapshots >= 0, "Snapshots should be non-negative");
+                        // Stats values are unsigned; previous non-negativity assertions were tautologies.
                     }
                     _ => panic!("Expected stats response"),
                 }
@@ -1056,6 +1063,8 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
+        let _ = daemon.wait();
+        let _ = daemon.wait();
     }
 
     /// Start daemon for testing and return daemon process and socket path
@@ -1170,6 +1179,8 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
+        let _ = daemon.wait();
+        let _ = daemon.wait();
 
         // The test passes if the interposition layer loads and operations complete
         assert!(
@@ -1245,6 +1256,7 @@ mod tests {
                 // Daemon might have already exited, that's fine
             }
         }
+        let _ = daemon.wait();
 
         assert!(
             output.status.success(),
@@ -2540,20 +2552,16 @@ mod tests {
             thread::spawn(move || {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        println!("TEST HELPER STDOUT: {}", line);
-                        if line.contains("FSEvents callback: received") {
-                            let _ = tx_stdout.send(format!("EVENT: {}", line));
-                        } else if line.contains("✅ Started FSEvents stream") {
-                            let _ = tx_stdout.send("STREAM_READY".to_string());
-                        } else if line.contains("✅ Test successful: All operations performed and FSEvents callbacks received!") {
-                            let _ = tx_stdout.send("TEST_COMPLETED".to_string());
-                        } else if line == "SUCCESS_MESSAGE" {
-                            let _ = tx_stdout.send("SUCCESS_MESSAGE".to_string());
-                        } else if line.contains("🎉 FSEvents interposition is working correctly!") {
-                            let _ = tx_stdout.send("SUCCESS_MESSAGE".to_string());
-                        }
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("TEST HELPER STDOUT: {}", line);
+                    if line.contains("FSEvents callback: received") {
+                        let _ = tx_stdout.send(format!("EVENT: {}", line));
+                    } else if line.contains("✅ Started FSEvents stream") {
+                        let _ = tx_stdout.send("STREAM_READY".to_string());
+                    } else if line.contains("✅ Test successful: All operations performed and FSEvents callbacks received!") {
+                        let _ = tx_stdout.send("TEST_COMPLETED".to_string());
+                    } else if line == "SUCCESS_MESSAGE" || line.contains("🎉 FSEvents interposition is working correctly!") {
+                        let _ = tx_stdout.send("SUCCESS_MESSAGE".to_string());
                     }
                 }
             });
@@ -2561,10 +2569,8 @@ mod tests {
             thread::spawn(move || {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        eprintln!("TEST HELPER STDERR: {}", line);
-                    }
+                for line in reader.lines().map_while(Result::ok) {
+                    eprintln!("TEST HELPER STDERR: {}", line);
                 }
             });
 
@@ -2618,6 +2624,7 @@ mod tests {
 
         // Clean up daemon
         let _ = daemon_cmd.kill();
+        let _ = daemon_cmd.wait();
 
         // Clean up daemon test directories
         let _ = fs::remove_dir_all(&temp_dir);
@@ -2657,6 +2664,7 @@ mod tests {
         println!("✅ Verified: Run-loop-based delivery preserved");
     }
 
+    #[allow(dead_code)]
     fn test_milestone_4_kevent_hook_injectable_queue() {
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
@@ -2836,6 +2844,7 @@ mod tests {
 
         // Clean up daemon process
         let _ = daemon_cmd.kill();
+        let _ = daemon_cmd.wait();
 
         println!("Milestone 4 kevent hook test results:");
         println!("- Helper ready: {}", helper_ready);
@@ -2861,6 +2870,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn test_milestone_7_fd_close_lifecycle() {
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
@@ -2949,12 +2959,10 @@ mod tests {
             thread::spawn(move || {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        println!("TEST HELPER STDOUT: {}", line);
-                        if line.contains("FD close lifecycle test completed successfully") {
-                            let _ = tx_stdout.send("TEST_PASSED".to_string());
-                        }
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("TEST HELPER STDOUT: {}", line);
+                    if line.contains("FD close lifecycle test completed successfully") {
+                        let _ = tx_stdout.send("TEST_PASSED".to_string());
                     }
                 }
             });
@@ -2963,13 +2971,11 @@ mod tests {
             thread::spawn(move || {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        println!("TEST HELPER STDERR: {}", line);
-                        // Check for any error messages that indicate test failure
-                        if line.contains("Failed") || line.contains("ERROR") {
-                            let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
-                        }
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("TEST HELPER STDERR: {}", line);
+                    // Check for any error messages that indicate test failure
+                    if line.contains("Failed") || line.contains("ERROR") {
+                        let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
                     }
                 }
             });
@@ -3017,6 +3023,7 @@ mod tests {
 
         // Clean up daemon
         let _ = daemon_cmd.kill();
+        let _ = daemon_cmd.wait();
 
         // Clean up temp directory
         let _ = fs::remove_dir_all(&temp_dir);
@@ -3041,6 +3048,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn test_milestone_7_process_exit_lifecycle() {
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
@@ -3129,12 +3137,10 @@ mod tests {
             thread::spawn(move || {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        println!("TEST HELPER STDOUT: {}", line);
-                        if line.contains("Process exit lifecycle test completed") {
-                            let _ = tx_stdout.send("TEST_SETUP_COMPLETE".to_string());
-                        }
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("TEST HELPER STDOUT: {}", line);
+                    if line.contains("Process exit lifecycle test completed") {
+                        let _ = tx_stdout.send("TEST_SETUP_COMPLETE".to_string());
                     }
                 }
             });
@@ -3143,12 +3149,10 @@ mod tests {
             thread::spawn(move || {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        println!("TEST HELPER STDERR: {}", line);
-                        if line.contains("Failed") || line.contains("ERROR") {
-                            let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
-                        }
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("TEST HELPER STDERR: {}", line);
+                    if line.contains("Failed") || line.contains("ERROR") {
+                        let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
                     }
                 }
             });
@@ -3198,6 +3202,7 @@ mod tests {
 
         // Clean up daemon
         let _ = daemon_cmd.kill();
+        let _ = daemon_cmd.wait();
 
         // Clean up temp directory
         let _ = fs::remove_dir_all(&temp_dir);
@@ -3222,6 +3227,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn test_milestone_7_daemon_restart_recovery() {
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
@@ -3311,12 +3317,10 @@ mod tests {
             thread::spawn(move || {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        println!("TEST HELPER STDOUT: {}", line);
-                        if line.contains("Daemon restart recovery test completed") {
-                            let _ = tx_stdout.send("TEST_SETUP_COMPLETE".to_string());
-                        }
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("TEST HELPER STDOUT: {}", line);
+                    if line.contains("Daemon restart recovery test completed") {
+                        let _ = tx_stdout.send("TEST_SETUP_COMPLETE".to_string());
                     }
                 }
             });
@@ -3325,12 +3329,10 @@ mod tests {
             thread::spawn(move || {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stderr);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        println!("TEST HELPER STDERR: {}", line);
-                        if line.contains("Failed") || line.contains("ERROR") {
-                            let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
-                        }
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("TEST HELPER STDERR: {}", line);
+                    if line.contains("Failed") || line.contains("ERROR") {
+                        let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
                     }
                 }
             });
@@ -3409,6 +3411,7 @@ mod tests {
 
         // Clean up daemon
         let _ = daemon_cmd.kill();
+        let _ = daemon_cmd.wait();
 
         // Clean up temp directory
         let _ = fs::remove_dir_all(&temp_dir);

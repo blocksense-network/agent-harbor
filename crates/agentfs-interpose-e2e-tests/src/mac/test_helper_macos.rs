@@ -1,5 +1,6 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
+#![allow(clippy::disallowed_methods)]
 
 #[cfg(target_os = "macos")]
 use agentfs_interpose_e2e_tests::macos;

@@ -1,5 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
+#![allow(clippy::disallowed_methods)]
+#![allow(deprecated)]
 
 use std::ffi::{CStr, CString};
 use std::fs;

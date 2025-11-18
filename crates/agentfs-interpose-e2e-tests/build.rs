@@ -6,6 +6,10 @@ fn main() {
     // The test_helper binary directly calls CoreFoundation functions
     #[cfg(target_os = "macos")]
     {
-        println!("cargo:rustc-link-lib=framework=CoreFoundation");
+        use std::io::{self, Write};
+        let _ = writeln!(
+            io::stdout(),
+            "cargo:rustc-link-lib=framework=CoreFoundation"
+        );
     }
 }
