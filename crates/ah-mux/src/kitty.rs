@@ -34,6 +34,7 @@
 //! See: <https://sw.kovidgoyal.net/kitty/remote-control/>
 
 use ah_mux_core::*;
+use serde::de;
 use std::process::{Command, Stdio};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -68,48 +69,6 @@ impl KittyMultiplexer {
     pub fn with_socket_path(socket_path: String) -> Self {
         Self {
             socket_path: Some(socket_path),
-        }
-    }
-
-    /// Check if kitty remote control is properly configured
-    ///
-    /// This provides detailed feedback about configuration issues.
-    /// Use this to diagnose why kitty multiplexer functionality isn't working.
-    pub fn check_configuration() -> Result<(), String> {
-        // Check if kitty is installed
-        let kitty_exists = std::process::Command::new("kitty")
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-
-        if !kitty_exists {
-            return Err(
-                "Kitty is not installed or not in PATH. Install it from https://sw.kovidgoyal.net/kitty/"
-                    .to_string(),
-            );
-        }
-
-        // Try to check if remote control is enabled by attempting a simple command
-        let mux = Self::default();
-        match mux.run_kitty_command(&["ls"]) {
-            Ok(_) => Ok(()),
-            Err(MuxError::CommandFailed(msg)) if msg.contains("Remote control is disabled") => {
-                Err(format!(
-                    "Kitty remote control is disabled. Run 'bin/setup-kitty' or manually add to ~/.config/kitty/kitty.conf:\n\
-                     allow_remote_control yes\n\
-                     listen_on unix:/tmp/kitty-ah.sock\n\n\
-                     Then restart kitty or reload config (Cmd/Ctrl+Shift+F5)"
-                ))
-            }
-            Err(MuxError::CommandFailed(msg)) if msg.contains("Could not connect") => Err(format!(
-                "Could not connect to kitty socket. Ensure kitty is running and configured with:\n\
-                     listen_on unix:/tmp/kitty-ah.sock\n\n\
-                     Run 'bin/setup-kitty' to configure automatically."
-            )),
-            Err(e) => Err(format!("Failed to verify kitty configuration: {}", e)),
         }
     }
 
@@ -281,6 +240,162 @@ impl KittyMultiplexer {
         let windows = self.list_windows_detailed()?;
         Ok(windows.iter().any(|(id, _)| id == window_id))
     }
+
+    /// Check if kitty remote control and layout splitting are properly configured
+    ///
+    /// This provides detailed feedback about configuration issues.
+    /// Use this to diagnose why kitty multiplexer functionality isn't working.
+    pub fn check_configuration() -> Result<(), MuxError> {
+        // Check if kitty is installed
+        let mux = Self::default();
+
+        let kitty_exists = mux.check_kitty_installed()?;
+
+        if !kitty_exists {
+            warn!("Kitty is not installed or not in PATH");
+            return Err(MuxError::ConfigurationError(
+                "Kitty is not installed or not in PATH.".to_string(),
+            ));
+        }
+        debug!("Kitty is installed and in PATH");
+
+        debug!("Checking kitty default configuration for remote control");
+        let check_remote_control_from_config = mux.check_remote_control_from_config()?;
+        if !check_remote_control_from_config {
+            debug!("Fallback to remote control dynamic check");
+            let check_remote_control_dynamic = mux.check_remote_control_dynamic()?;
+
+            if !check_remote_control_dynamic {
+                warn!("Kitty remote control is not enabled.");
+
+                return Err(MuxError::ConfigurationError(
+                    "Kitty remote control is disabled. Manually add to ~/.config/kitty/kitty.conf:\n\
+                     allow_remote_control yes\n\
+                     listen_on unix:/tmp/kitty-ah.sock\n\
+                     Then restart kitty".into(),
+                ));
+            }
+        }
+
+        let check_enabled_layouts_from_config = mux.check_enable_layout_split_from_config()?;
+        if !check_enabled_layouts_from_config {
+            warn!("Kitty layout splitting is not enabled.");
+            return Err(MuxError::ConfigurationError(
+                "Kitty layout splitting is disabled. Manually add to ~/.config/kitty/kitty.conf:\n\
+                 enabled_layouts splits\n\
+                 Then restart kitty"
+                    .into(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn check_kitty_installed(&self) -> Result<bool, MuxError> {
+        let status = Command::new("kitty")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        Ok(status)
+    }
+
+    /// Read the default kitty configuration file
+    ///
+    /// Reads the kitty configuration from `~/.config/kitty/kitty.conf`.
+    /// This is useful for checking if remote control is properly configured.
+    ///
+    /// Returns the configuration file contents as a string.
+    pub fn read_default_config(&self) -> Result<String, MuxError> {
+        // Get the home directory
+        let home_dir = std::env::var("HOME").map_err(|_| {
+            MuxError::CommandFailed("HOME environment variable not set".to_string())
+        })?;
+
+        // Construct the path to kitty.conf
+        let config_path =
+            std::path::Path::new(&home_dir).join(".config").join("kitty").join("kitty.conf");
+
+        debug!("Reading kitty config from {}", config_path.display());
+        // Read the configuration file
+        std::fs::read_to_string(&config_path).map_err(|e| {
+            MuxError::CommandFailed(format!(
+                "Failed to read kitty config at {}: {}",
+                config_path.display(),
+                e
+            ))
+        })
+    }
+
+    /// Check if remote control is enabled in the kitty config
+    ///
+    /// Parses the config file and checks for an active (non-commented) line
+    /// containing "allow_remote_control yes".
+    pub fn check_remote_control_from_config(&self) -> Result<bool, MuxError> {
+        let config = self.read_default_config()?;
+
+        // Check each line for the setting, ignoring comments
+        for line in config.lines() {
+            let trimmed = line.trim();
+            // Skip empty lines and comments
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            // Check if this line contains the setting we're looking for
+            if trimmed.contains("allow_remote_control") && trimmed.contains("yes") {
+                debug!("allow_remote_control is enabled in default config");
+                return Ok(true);
+            }
+        }
+
+        warn!("allow_remote_control is not enabled in default config");
+        Ok(false)
+    }
+
+    /// Check if layout split is enabled in the kitty config
+    ///
+    /// Parses the config file and checks for an active (non-commented) line
+    /// containing "enabled_layouts splits".
+    pub fn check_enable_layout_split_from_config(&self) -> Result<bool, MuxError> {
+        let config = self.read_default_config()?;
+
+        // Check each line for the setting, ignoring comments
+        for line in config.lines() {
+            let trimmed = line.trim();
+            // Skip empty lines and comments
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            // Check if this line contains the setting we're looking for
+            if trimmed.contains("enabled_layouts") && trimmed.contains("splits") {
+                debug!("enabled_layouts is enabled in default config");
+                return Ok(true);
+            }
+        }
+        warn!("enabled_layouts is not enabled in default config");
+        Ok(false)
+    }
+
+    pub fn check_remote_control_dynamic(&self) -> Result<bool, MuxError> {
+        // Try to check if remote control is enabled by attempting a simple command
+        match self.run_kitty_command(&["ls"]) {
+            Ok(_) => Ok(true),
+            Err(MuxError::CommandFailed(msg)) if msg.contains("Remote control is disabled") => {
+                warn!("Kitty remote control is disabled");
+                Ok(false)
+            }
+            Err(MuxError::CommandFailed(msg)) if msg.contains("Could not connect") => {
+                warn!("Could not connect to kitty socket");
+                Ok(false)
+            }
+            Err(e) => {
+                warn!("Failed to determine kitty remote control status dynamically");
+                Err(MuxError::Other(format!("Unexpected error occurred: {}", e)))
+            }
+        }
+    }
 }
 
 impl Multiplexer for KittyMultiplexer {
@@ -293,17 +408,19 @@ impl Multiplexer for KittyMultiplexer {
         debug!("Checking kitty availability");
 
         // Check if kitty command exists
-        let kitty_exists = std::process::Command::new("kitty")
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-
-        if !kitty_exists {
-            debug!("kitty command not found");
-            return false;
+        let kitty_exists = self.check_kitty_installed();
+        match kitty_exists {
+            Ok(true) => {
+                debug!("kitty command found");
+            }
+            Ok(false) => {
+                debug!("kitty command not found");
+                return false;
+            }
+            Err(e) => {
+                warn!("Failed to check kitty installation: {}", e);
+                return false;
+            }
         }
 
         // Check if remote control is available
@@ -637,6 +754,79 @@ mod tests {
 
     // Global test Kitty instance
     static TEST_KITTY: Mutex<Option<std::process::Child>> = Mutex::new(None);
+
+    /// Helper struct to manage test HOME directory and automatic cleanup
+    struct TestHomeGuard {
+        _temp_dir: tempfile::TempDir,
+        original_home: Option<String>,
+    }
+
+    impl Drop for TestHomeGuard {
+        fn drop(&mut self) {
+            // Restore original HOME when the guard is dropped
+            if let Some(home) = &self.original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+        }
+    }
+
+    /// Create a temporary HOME directory with a kitty config file
+    ///
+    /// # Arguments
+    /// * `config_content` - The content to write to kitty.conf
+    ///
+    /// # Returns
+    /// A guard that will restore the original HOME when dropped
+    fn setup_test_home_with_config(config_content: &str) -> TestHomeGuard {
+        use std::env;
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create a temporary directory to act as HOME
+        let temp_dir = TempDir::new().unwrap();
+        let temp_home = temp_dir.path();
+
+        // Create the .config/kitty directory structure
+        let config_dir = temp_home.join(".config").join("kitty");
+        fs::create_dir_all(&config_dir).unwrap();
+
+        // Write the config file
+        let config_path = config_dir.join("kitty.conf");
+        fs::write(&config_path, config_content).unwrap();
+
+        // Set the HOME environment variable to our temp directory
+        let original_home = env::var("HOME").ok();
+        env::set_var("HOME", temp_home);
+
+        TestHomeGuard {
+            _temp_dir: temp_dir,
+            original_home,
+        }
+    }
+
+    /// Create a temporary HOME directory without a config file
+    ///
+    /// # Returns
+    /// A guard that will restore the original HOME when dropped
+    fn setup_test_home_without_config() -> TestHomeGuard {
+        use std::env;
+        use tempfile::TempDir;
+
+        // Create a temporary directory to act as HOME (without creating config file)
+        let temp_dir = TempDir::new().unwrap();
+        let temp_home = temp_dir.path();
+
+        // Set the HOME environment variable to our temp directory
+        let original_home = env::var("HOME").ok();
+        env::set_var("HOME", temp_home);
+
+        TestHomeGuard {
+            _temp_dir: temp_dir,
+            original_home,
+        }
+    }
 
     /// Start a test Kitty instance with remote control enabled
     fn start_test_kitty() -> Result<(), Box<dyn std::error::Error>> {
@@ -1577,5 +1767,240 @@ mod tests {
             result.is_err(),
             "Opening window with invalid socket should fail"
         );
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_read_default_config() {
+        let test_config = "# Test kitty configuration\nallow_remote_control yes\nlisten_on unix:/tmp/kitty-ah.sock\n";
+        let _guard = setup_test_home_with_config(test_config);
+
+        let kitty = KittyMultiplexer::new().unwrap();
+        let result = kitty.read_default_config();
+
+        // Verify the config was read correctly
+        match result {
+            Ok(config) => {
+                assert!(!config.is_empty(), "Config file should not be empty");
+                assert_eq!(
+                    config, test_config,
+                    "Config content should match what was written"
+                );
+                eprintln!(
+                    "DEBUG: Successfully read kitty config ({} bytes)",
+                    config.len()
+                );
+            }
+            Err(e) => {
+                panic!("Failed to read config file: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_read_default_config_missing_file() {
+        let _guard = setup_test_home_without_config();
+
+        let kitty = KittyMultiplexer::new().unwrap();
+        let result = kitty.read_default_config();
+
+        // Verify we get an appropriate error
+        match result {
+            Ok(_) => {
+                panic!("Should have failed when config file doesn't exist");
+            }
+            Err(MuxError::CommandFailed(msg)) => {
+                assert!(
+                    msg.contains("kitty.conf"),
+                    "Error message should mention kitty.conf: {}",
+                    msg
+                );
+                eprintln!("DEBUG: Got expected error for missing config: {}", msg);
+            }
+            Err(e) => {
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_check_remote_control_from_config() {
+        // Test case 1: Config with remote control enabled
+        {
+            let test_config = "# Kitty configuration\nallow_remote_control yes\nlisten_on unix:/tmp/kitty-ah.sock\n";
+            let _guard = setup_test_home_with_config(test_config);
+
+            let kitty = KittyMultiplexer::new().unwrap();
+            let result = kitty.check_remote_control_from_config();
+
+            assert!(result.is_ok(), "Should successfully read config");
+            assert!(
+                result.unwrap(),
+                "Should detect 'allow_remote_control yes' in config"
+            );
+            eprintln!("DEBUG: Test case 1 passed - remote control enabled detected");
+        }
+
+        // Test case 2: Config without remote control enabled (commented out)
+        {
+            let test_config = "# Kitty configuration\n# allow_remote_control yes\nlisten_on unix:/tmp/kitty-ah.sock\n";
+            let _guard = setup_test_home_with_config(test_config);
+
+            let kitty = KittyMultiplexer::new().unwrap();
+            let result = kitty.check_remote_control_from_config();
+
+            assert!(result.is_ok(), "Should successfully read config");
+            assert!(
+                !result.unwrap(),
+                "Should not detect remote control when commented out"
+            );
+            eprintln!("DEBUG: Test case 2 passed - remote control disabled detected");
+        }
+
+        // Test case 3: Config with 'allow_remote_control no'
+        {
+            let test_config = "# Kitty configuration\nallow_remote_control no\n";
+            let _guard = setup_test_home_with_config(test_config);
+
+            let kitty = KittyMultiplexer::new().unwrap();
+            let result = kitty.check_remote_control_from_config();
+
+            assert!(result.is_ok(), "Should successfully read config");
+            assert!(
+                !result.unwrap(),
+                "Should not detect remote control when set to 'no'"
+            );
+            eprintln!("DEBUG: Test case 3 passed - 'allow_remote_control no' handled correctly");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_check_enable_layout_split_from_config() {
+        // Test case 1: Config with layout split enabled
+        {
+            let test_config =
+                "# Kitty configuration\nenabled_layouts splits\nallow_remote_control yes\n";
+            let _guard = setup_test_home_with_config(test_config);
+
+            let kitty = KittyMultiplexer::new().unwrap();
+            let result = kitty.check_enable_layout_split_from_config();
+
+            assert!(result.is_ok(), "Should successfully read config");
+            assert!(
+                result.unwrap(),
+                "Should detect 'enabled_layouts splits' in config"
+            );
+            eprintln!("DEBUG: Test case 1 passed - layout split enabled detected");
+        }
+
+        // Test case 2: Config without layout split setting
+        {
+            let test_config = "# Kitty configuration\nallow_remote_control yes\n";
+            let _guard = setup_test_home_with_config(test_config);
+
+            let kitty = KittyMultiplexer::new().unwrap();
+            let result = kitty.check_enable_layout_split_from_config();
+
+            assert!(result.is_ok(), "Should successfully read config");
+            assert!(
+                !result.unwrap(),
+                "Should not detect layout split when not present"
+            );
+            eprintln!("DEBUG: Test case 2 passed - missing layout split setting handled");
+        }
+
+        // Test case 3: Config with layout split commented out
+        {
+            let test_config =
+                "# Kitty configuration\n# enabled_layouts splits\nallow_remote_control yes\n";
+            let _guard = setup_test_home_with_config(test_config);
+
+            let kitty = KittyMultiplexer::new().unwrap();
+            let result = kitty.check_enable_layout_split_from_config();
+
+            assert!(result.is_ok(), "Should successfully read config");
+            assert!(
+                !result.unwrap(),
+                "Should not detect layout split when commented out"
+            );
+            eprintln!("DEBUG: Test case 3 passed - commented layout split handled");
+        }
+
+        // Test case 4: Both settings enabled
+        {
+            let test_config = "# Kitty configuration\nallow_remote_control yes\nenabled_layouts splits\nlisten_on unix:/tmp/kitty-ah.sock\n";
+            let _guard = setup_test_home_with_config(test_config);
+
+            let kitty = KittyMultiplexer::new().unwrap();
+
+            let remote_result = kitty.check_remote_control_from_config();
+            let layout_result = kitty.check_enable_layout_split_from_config();
+
+            assert!(
+                remote_result.is_ok() && layout_result.is_ok(),
+                "Should successfully read config"
+            );
+            assert!(
+                remote_result.unwrap() && layout_result.unwrap(),
+                "Should detect both settings when enabled"
+            );
+            eprintln!("DEBUG: Test case 4 passed - both settings detected correctly");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(env)]
+    fn test_config_methods_with_missing_file() {
+        let _guard = setup_test_home_without_config();
+
+        let kitty = KittyMultiplexer::new().unwrap();
+
+        // Both methods should return an error when config file doesn't exist
+        let remote_result = kitty.check_remote_control_from_config();
+        let layout_result = kitty.check_enable_layout_split_from_config();
+
+        // Verify both methods return errors
+        assert!(
+            remote_result.is_err(),
+            "check_remote_control_from_config should fail when config file doesn't exist"
+        );
+        assert!(
+            layout_result.is_err(),
+            "check_enable_layout_split_from_config should fail when config file doesn't exist"
+        );
+
+        // Verify error messages are helpful
+        match remote_result {
+            Err(MuxError::CommandFailed(msg)) => {
+                assert!(
+                    msg.contains("kitty.conf"),
+                    "Error should mention config file: {}",
+                    msg
+                );
+                eprintln!(
+                    "DEBUG: Got expected error for missing config (remote_control): {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected MuxError::CommandFailed"),
+        }
+
+        match layout_result {
+            Err(MuxError::CommandFailed(msg)) => {
+                assert!(
+                    msg.contains("kitty.conf"),
+                    "Error should mention config file: {}",
+                    msg
+                );
+                eprintln!(
+                    "DEBUG: Got expected error for missing config (layout_split): {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected MuxError::CommandFailed"),
+        }
     }
 }
