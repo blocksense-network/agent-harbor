@@ -14,7 +14,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use core_foundation::{base::TCFType, declare_TCFType, impl_TCFType};
 use scopeguard::guard;
@@ -22,7 +22,6 @@ use scopeguard::guard;
 // SSZ imports
 use agentfs_client::{AgentFsClient, AllowlistConfig, ClientConfig, ProcessConfig};
 use ssz::{Decode, Encode};
-use ssz_derive::{Decode, Encode};
 
 // AgentFS proto imports
 use agentfs_proto::messages::{
