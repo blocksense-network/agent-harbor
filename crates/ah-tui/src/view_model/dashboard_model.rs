@@ -55,22 +55,24 @@
 //! ```
 
 use crate::Settings;
-use crate::settings::{KeyboardOperation, KeyboardShortcut};
+use crate::settings::{KeyMatcher, KeyboardOperation, KeyboardShortcut};
 use crate::view_model::autocomplete::{AutocompleteAcceptance, InlineAutocomplete};
-use crate::view_model::input::{InputMinorMode, minor_modes};
+use crate::view_model::input::{InputMinorMode, InputResult, minor_modes};
 use crate::view_model::task_entry::{
     CardFocusElement, DRAFT_TEXT_EDITING_MODE, KeyboardOperationResult,
 };
 use crate::view_model::{
-    AgentActivityRow, ButtonStyle, ButtonViewModel, DraftSaveState, FilterControl, ModalState,
-    SearchMode, TaskCardType, TaskEntryControlsViewModel, TaskEntryViewModel,
-    TaskExecutionFocusState, TaskExecutionViewModel, TaskMetadataViewModel,
+    AgentActivityRow, AutoSaveState, ButtonStyle, ButtonViewModel, DeliveryIndicator,
+    DraftSaveState, FilterControl, FilterOptions, ModalState, SearchMode, TaskCardType,
+    TaskEntryControlsViewModel, TaskEntryViewModel, TaskExecutionFocusState,
+    TaskExecutionViewModel, TaskMetadataViewModel,
 };
 use ah_core::branches_enumerator::BranchesEnumerator;
 use ah_core::repositories_enumerator::RepositoriesEnumerator;
 use ah_core::task_manager::SaveDraftResult;
-use ah_core::task_manager::{TaskEvent, TaskManager};
+use ah_core::task_manager::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager};
 use ah_core::{WorkspaceFilesEnumerator, WorkspaceTermsEnumerator};
+use ah_domain_types::task::ToolStatus;
 use ah_domain_types::{
     AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, DraftTask, TaskExecution,
     TaskInfo, TaskState,
@@ -84,7 +86,7 @@ use ratatui::style::{Modifier, Style};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
-use tracing::{debug, error, trace};
+use tracing::{debug, error};
 use uuid;
 
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
@@ -148,7 +150,6 @@ static MODEL_SELECTION_MODE: InputMinorMode = InputMinorMode::new(&[
 static DRAFT_TEXTAREA_TO_BUTTONS_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextField,
     KeyboardOperation::MoveToPreviousField,
-    KeyboardOperation::ShowLaunchOptions,
     KeyboardOperation::DeleteCurrentTask,
 ]);
 
@@ -162,7 +163,6 @@ static DRAFT_BUTTON_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
 ]);
 
 // Minor mode for navigating matched items in selection dialogs
-#[allow(dead_code)] // Reserved for selection dialog navigation refactor (not active yet).
 static SELECTION_DIALOG_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextLine,
     KeyboardOperation::MoveToPreviousLine,
@@ -173,7 +173,6 @@ static SELECTION_DIALOG_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
 ]);
 
 // Minor mode for active task cards
-#[allow(dead_code)] // Will be used when activating task card navigation minor mode.
 static ACTIVE_TASK_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextLine,
     KeyboardOperation::MoveToPreviousLine,
@@ -185,7 +184,6 @@ static ACTIVE_TASK_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
 ]);
 
 // Minor mode for settings dialog navigation
-#[allow(dead_code)] // Placeholder for settings dialog feature expansion.
 static SETTINGS_DIALOG_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextLine,
     KeyboardOperation::MoveToPreviousLine,
@@ -194,7 +192,6 @@ static SETTINGS_DIALOG_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
 ]);
 
 // Minor mode for settings field editing
-#[allow(dead_code)] // Placeholder for granular settings field editing navigation.
 static SETTINGS_FIELD_EDITING_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToBeginningOfLine,
     KeyboardOperation::MoveToEndOfLine,
@@ -221,7 +218,6 @@ static DASHBOARD_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
 ]);
 
 // Minor mode for task card selection and navigation (when cards are focused)
-#[allow(dead_code)] // Will enable specific task card navigation flows when multiple cards active.
 static TASK_CARD_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextLine,
     KeyboardOperation::MoveToPreviousLine,
@@ -298,7 +294,6 @@ impl ViewModel {
     }
 
     /// Map a model name to its corresponding agent type
-    #[allow(dead_code)] // Mapping retained for future multi-agent model classification UI.
     fn get_agent_type_for_model(model_name: &str) -> ah_core::agent_types::AgentType {
         if model_name.starts_with("Claude") {
             ah_core::agent_types::AgentType::Claude
@@ -364,9 +359,6 @@ impl ViewModel {
                 if let Some(card) = self.draft_cards.get_mut(idx) {
                     match card.focus_element {
                         CardFocusElement::TaskDescription => {
-                            card.focus_element = CardFocusElement::AdvancedOptionsButton;
-                        }
-                        CardFocusElement::AdvancedOptionsButton => {
                             card.focus_element = CardFocusElement::GoButton;
                         }
                         CardFocusElement::GoButton => {
@@ -441,7 +433,6 @@ impl ViewModel {
     }
 
     /// Update filtered options for search modals (repository/branch search)
-    #[allow(dead_code)] // Unified search modal filtering retained; may replace duplicated logic below.
     fn update_search_modal_filtered_options(&mut self, modal: &mut ModalViewModel) {
         let all_options: &[String] = match self.modal_state {
             ModalState::RepositorySearch => &self.available_repositories,
@@ -494,19 +485,8 @@ impl ViewModel {
             let query = modal.input_value.to_lowercase();
             let mut filtered: Vec<FilteredOption> = Vec::new();
 
-            // First, add models that match the filter
-            let matching_count = options
-                .iter()
-                .filter(|option| {
-                    if query.is_empty() {
-                        true // Show all options when no query
-                    } else {
-                        option.name.to_lowercase().contains(&query)
-                    }
-                })
-                .count();
-
-            let matching_options: Vec<FilteredOption> = options
+            // Show models that match the filter (or all models if no query)
+            let filtered_options: Vec<FilteredOption> = options
                 .iter()
                 .filter(|option| {
                     if query.is_empty() {
@@ -521,32 +501,7 @@ impl ViewModel {
                 })
                 .collect();
 
-            filtered.extend(matching_options);
-
-            // Then, add models that don't match but have non-zero counts
-            if !query.is_empty() {
-                let already_selected: Vec<FilteredOption> = options
-                    .iter()
-                    .filter(|option| {
-                        !option.name.to_lowercase().contains(&query) && option.count > 0
-                    })
-                    .map(|opt| FilteredOption::Option {
-                        text: format!("{} (x{})", opt.name, opt.count),
-                        selected: false,
-                    })
-                    .collect();
-
-                if !already_selected.is_empty() && matching_count > 0 {
-                    // Add separator only if there are matching options above
-                    filtered.push(FilteredOption::Separator {
-                        label: Some("Already Selected".to_string()),
-                    });
-                    filtered.extend(already_selected);
-                } else if !already_selected.is_empty() {
-                    // If no matching options, just add the already selected ones without separator
-                    filtered.extend(already_selected);
-                }
-            }
+            filtered.extend(filtered_options);
 
             // Reset selected index if it's out of bounds
             if modal.selected_index >= filtered.len() && !filtered.is_empty() {
@@ -644,20 +599,6 @@ impl ViewModel {
                 self.needs_redraw = true;
                 true
             }
-            ModalType::LaunchOptions { .. } => {
-                // Launch options modal - allow navigation through options
-                let old_index = modal.selected_index;
-                match direction {
-                    NavigationDirection::Next => {
-                        modal.selected_index = (modal.selected_index + 1)
-                            .min(modal.filtered_options.len().saturating_sub(1));
-                    }
-                    NavigationDirection::Previous => {
-                        modal.selected_index = modal.selected_index.saturating_sub(1);
-                    }
-                }
-                old_index != modal.selected_index
-            }
         }
     }
 
@@ -691,7 +632,6 @@ impl ViewModel {
         handled
     }
 
-    #[allow(dead_code)] // Superseded by specialized filtering; kept for consolidation later.
     fn update_modal_filtered_options(&mut self, modal: &mut ModalViewModel) {
         match &modal.modal_type {
             ModalType::Search { .. } => {
@@ -782,10 +722,6 @@ impl ViewModel {
                 // Settings don't have filtered options based on input
                 modal.filtered_options = Vec::new();
             }
-            ModalType::LaunchOptions { .. } => {
-                // Launch options don't have filtered options based on input
-                // The options are static
-            }
         }
     }
     /// Navigate to the next focusable control
@@ -809,9 +745,6 @@ impl ViewModel {
                             card.focus_element = CardFocusElement::GoButton;
                         }
                         CardFocusElement::GoButton => {
-                            card.focus_element = CardFocusElement::AdvancedOptionsButton;
-                        }
-                        CardFocusElement::AdvancedOptionsButton => {
                             card.focus_element = CardFocusElement::TaskDescription;
                         }
                     }
@@ -974,73 +907,41 @@ impl ViewModel {
                     // as settings are handled via navigation and selection
                     return false;
                 }
-                ModalType::LaunchOptions { draft_id } => {
-                    // Handle shortcut keys for launch options
-                    let option = match ch.to_ascii_lowercase() {
-                        'b' => Some(if ch.is_uppercase() {
-                            "Launch in background and focus (B)".to_string()
-                        } else {
-                            "Launch in background (b)".to_string()
-                        }),
-                        's' => Some(if ch.is_uppercase() {
-                            "Launch in split view and focus (S)".to_string()
-                        } else {
-                            "Launch in split view (s)".to_string()
-                        }),
-                        'h' => Some(if ch.is_uppercase() {
-                            "Launch in horizontal split and focus (H)".to_string()
-                        } else {
-                            "Launch in horizontal split (h)".to_string()
-                        }),
-                        'v' => Some(if ch.is_uppercase() {
-                            "Launch in vertical split and focus (V)".to_string()
-                        } else {
-                            "Launch in vertical split (v)".to_string()
-                        }),
-                        _ => None, // Ignore other characters
-                    };
-
-                    if let Some(option_text) = option {
-                        // Extract values before dropping the borrow
-                        let draft_id = draft_id.clone();
-                        // Close modal first to avoid borrowing issues
-                        drop(modal);
-                        self.launch_task_with_option(draft_id, option_text);
-                        self.close_modal();
-                        return true;
-                    }
-                    return false;
-                }
             }
         }
 
         // Allow text input when focused on draft-related elements
-        if let DashboardFocusState::DraftTask(_) = self.focus_element {
-            if let DashboardFocusState::DraftTask(0) = self.focus_element {
-                if let Some(card) = self.draft_cards.get_mut(0) {
-                    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-                    let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
-                    self.autocomplete.notify_text_input();
-                    card.description.input(key_event);
-                    self.autocomplete
-                        .after_textarea_change(&card.description, &mut self.needs_redraw);
-                }
-                self.mark_draft_dirty(0);
-                return true;
-            } else if let DashboardFocusState::DraftTask(idx) = self.focus_element {
-                if let Some(card) = self.draft_cards.get_mut(idx) {
-                    if card.focus_element == CardFocusElement::TaskDescription {
+        match self.focus_element {
+            DashboardFocusState::DraftTask(_) => {
+                // Support editing the description when focused on any DraftTask
+                if let DashboardFocusState::DraftTask(0) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(0) {
                         use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
                         let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
                         self.autocomplete.notify_text_input();
                         card.description.input(key_event);
                         self.autocomplete
                             .after_textarea_change(&card.description, &mut self.needs_redraw);
-                        self.mark_draft_dirty(idx);
-                        return true;
+                    }
+                    self.mark_draft_dirty(0);
+                    return true;
+                } else if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        if card.focus_element == CardFocusElement::TaskDescription {
+                            use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+                            let key_event = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty());
+                            self.autocomplete.notify_text_input();
+                            card.description.input(key_event);
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
+                            let _ = card;
+                            self.mark_draft_dirty(idx);
+                            return true;
+                        }
                     }
                 }
             }
+            _ => {}
         }
         false
     }
@@ -1113,10 +1014,6 @@ impl ViewModel {
                         self.needs_redraw = true;
                         return true;
                     }
-                }
-                ModalType::LaunchOptions { .. } => {
-                    // Launch options modal doesn't handle backspace
-                    return false;
                 }
                 ModalType::Settings { .. } => {
                     // Settings modals don't handle backspace
@@ -1211,10 +1108,6 @@ impl ViewModel {
                     self.needs_redraw = true;
                     return true;
                 }
-                ModalType::LaunchOptions { .. } => {
-                    // Launch options modal doesn't handle delete
-                    return false;
-                }
                 ModalType::Settings { .. } => {
                     // Settings modals don't handle delete
                     return false;
@@ -1271,12 +1164,6 @@ impl ViewModel {
                     CardFocusElement::GoButton => {
                         return self.launch_task(idx, ah_core::SplitMode::None, false, None, None);
                     }
-                    CardFocusElement::AdvancedOptionsButton => {
-                        // Open advanced launch options modal
-                        let draft_id = card.id.clone();
-                        self.open_launch_options_modal(draft_id);
-                        return true;
-                    }
                 }
             }
         }
@@ -1284,9 +1171,9 @@ impl ViewModel {
         match self.focus_element {
             DashboardFocusState::SettingsButton => {
                 self.open_modal(ModalState::Settings);
-                true
+                return true;
             }
-            _ => false,
+            _ => return false,
         }
     }
 
@@ -1325,7 +1212,7 @@ impl ViewModel {
                 AgentSoftware::CursorCli => ah_core::agent_types::AgentType::CursorCli,
                 AgentSoftware::Goose => ah_core::agent_types::AgentType::Goose,
             };
-            let _model_name = selected_agent.model.clone(); // retained for future telemetry; currently unused
+            let model_name = selected_agent.model.clone();
 
             // Extract card data before removing it
             let card_repository = card.repository.clone();
@@ -1333,7 +1220,7 @@ impl ViewModel {
             let card_agents = card.selected_agents.clone();
 
             // Launch the task via task_manager
-            let _task_manager = self.task_manager.clone(); // unused: launch uses builder directly
+            let task_manager = self.task_manager.clone();
             let starting_point = starting_point.unwrap_or_else(|| {
                 ah_core::task_manager::StartingPoint::RepositoryBranch {
                     repository: card_repository.clone(),
@@ -1439,7 +1326,14 @@ impl ViewModel {
                                                     session_id
                                                 );
                                                 continue;
-                                            } // Removed unreachable catch-all Err(e) arm; specific variants handled above.
+                                            }
+                                            Err(e) => {
+                                                error!(
+                                                    "Error receiving event for session {}: {:?}",
+                                                    session_id, e
+                                                );
+                                                break;
+                                            }
                                         }
                                     }
                                 });
@@ -1515,32 +1409,8 @@ impl ViewModel {
         false
     }
 
-    /// Launch a task with the selected launch option
-    fn launch_task_with_option(&mut self, draft_id: String, selected_option: String) {
-        // Find the draft card by ID
-        if let Some(draft_index) = self.draft_cards.iter().position(|card| card.id == draft_id) {
-            // Parse the selected option to determine split mode and focus
-            let (split_mode, focus) = match selected_option.as_str() {
-                "Launch in background (b)" => (ah_core::SplitMode::None, false),
-                "Launch in split view (s)" => (ah_core::SplitMode::Auto, false),
-                "Launch in horizontal split (h)" => (ah_core::SplitMode::Horizontal, false),
-                "Launch in vertical split (v)" => (ah_core::SplitMode::Vertical, false),
-                "Launch in background and focus (B)" => (ah_core::SplitMode::None, true),
-                "Launch in split view and focus (S)" => (ah_core::SplitMode::Auto, true),
-                "Launch in horizontal split and focus (H)" => {
-                    (ah_core::SplitMode::Horizontal, true)
-                }
-                "Launch in vertical split and focus (V)" => (ah_core::SplitMode::Vertical, true),
-                _ => (ah_core::SplitMode::Auto, false), // Default fallback
-            };
-
-            // Launch the task with the determined parameters
-            self.launch_task(draft_index, split_mode, focus, None, None);
-        }
-    }
-
     /// Apply the selected option from a modal and close it
-    pub fn apply_modal_selection(&mut self, modal_type: ModalType, selected_option: String) {
+    fn apply_modal_selection(&mut self, modal_type: ModalType, selected_option: String) {
         match modal_type {
             ModalType::Search { .. } => match self.modal_state {
                 ModalState::RepositorySearch => {
@@ -1612,10 +1482,6 @@ impl ViewModel {
                     }
                 }
             }
-            ModalType::LaunchOptions { draft_id } => {
-                // Launch the task with the selected options
-                self.launch_task_with_option(draft_id, selected_option);
-            }
             _ => {} // Other modal types don't need selection handling
         }
 
@@ -1636,7 +1502,7 @@ impl ViewModel {
     pub fn handle_ctrl_n(&mut self) -> bool {
         if !self.draft_cards.is_empty() {
             // Create a new draft task based on the first (current) draft
-            if let Some(current_card) = self.draft_cards.first() {
+            if let Some(current_card) = self.draft_cards.get(0) {
                 let new_card = self.create_draft_task(
                     String::new(), // empty description
                     current_card.repository.clone(),
@@ -1678,7 +1544,6 @@ impl ViewModel {
     }
 
     /// Internal helper to create a draft task
-    #[allow(clippy::too_many_arguments)] // Constructor aggregation: keeping explicit dependencies for clarity; consider Builder for future ergonomic refactor.
     fn create_draft_task_internal(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
@@ -1730,7 +1595,6 @@ pub enum MouseAction {
     SelectCard(usize),
     SelectFilterBarLine,
     ActivateGoButton,
-    ActivateAdvancedOptionsModal,
     ActivateRepositoryModal,
     ActivateBranchModal,
     ActivateModelModal,
@@ -1742,7 +1606,6 @@ pub enum MouseAction {
     AutocompleteSelect(usize),
     ModelIncrementCount(usize),
     ModelDecrementCount(usize),
-    ModalSelectOption(usize),
 }
 
 /// Footer action types for keyboard shortcuts
@@ -1865,9 +1728,6 @@ pub enum ModalType {
     Settings {
         fields: Vec<SettingsFieldViewModel>,
     },
-    LaunchOptions {
-        draft_id: String,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1971,7 +1831,6 @@ pub struct ViewModel {
     pub task_manager: Arc<dyn TaskManager>, // Task launching abstraction
     pub repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
     pub branches_enumerator: Arc<dyn BranchesEnumerator>,
-    pub agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
 
     // Autocomplete system
     pub autocomplete: InlineAutocomplete,
@@ -1999,12 +1858,10 @@ pub struct ViewModel {
     pub workflows_sender: Option<oneshot::Sender<Vec<String>>>,
     pub repositories_sender: Option<oneshot::Sender<Vec<String>>>,
     pub branches_sender: Option<oneshot::Sender<Vec<String>>>,
-    pub agents_sender: Option<oneshot::Sender<Vec<AgentChoice>>>,
     pub files_receiver: Option<oneshot::Receiver<Vec<String>>>,
     pub workflows_receiver: Option<oneshot::Receiver<Vec<String>>>,
     pub repositories_receiver: Option<oneshot::Receiver<Vec<String>>>,
     pub branches_receiver: Option<oneshot::Receiver<Vec<String>>>,
-    pub agents_receiver: Option<oneshot::Receiver<Vec<AgentChoice>>>,
     save_request_counter: u64,
     ui_tx: UiSender<Msg>,
 
@@ -2018,14 +1875,13 @@ pub struct ViewModel {
 
     pub needs_redraw: bool, // Flag to indicate when UI needs to be redrawn
 
-    _pending_bubbled_operation: Option<KeyboardOperation>, // underscore: reserved for future bubbling chain handling
-    _bubbled_operation_consumed: bool, // underscore: reserved for future bubbling chain handling
+    pending_bubbled_operation: Option<KeyboardOperation>,
+    bubbled_operation_consumed: bool,
 }
 
 impl ViewModel {
     /// Create a new ViewModel with service dependencies and start background loading
     /// Create a new ViewModel without background loading (for tests)
-    #[allow(clippy::too_many_arguments)] // Public constructor: high fan-in of core enumerators; grouping would obscure dependency semantics.
     pub fn new(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
@@ -2033,7 +1889,6 @@ impl ViewModel {
         task_manager: Arc<dyn TaskManager>,
         repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
         branches_enumerator: Arc<dyn BranchesEnumerator>,
-        agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
         settings: Settings,
         ui_tx: UiSender<Msg>,
     ) -> Self {
@@ -2044,7 +1899,6 @@ impl ViewModel {
             task_manager,
             repositories_enumerator,
             branches_enumerator,
-            agents_enumerator,
             settings,
             false,
             None,
@@ -2053,7 +1907,6 @@ impl ViewModel {
     }
 
     /// Create a new ViewModel with background loading enabled
-    #[allow(clippy::too_many_arguments)] // Variant constructor adds repo context; accepted for now; candidate for Builder pattern.
     pub fn new_with_background_loading_and_current_repo(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
@@ -2061,7 +1914,6 @@ impl ViewModel {
         task_manager: Arc<dyn TaskManager>,
         repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
         branches_enumerator: Arc<dyn BranchesEnumerator>,
-        agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
         settings: Settings,
         current_repository: Option<String>,
         ui_tx: UiSender<Msg>,
@@ -2073,7 +1925,6 @@ impl ViewModel {
             task_manager,
             repositories_enumerator,
             branches_enumerator,
-            agents_enumerator,
             settings,
             true,
             current_repository,
@@ -2081,7 +1932,6 @@ impl ViewModel {
         )
     }
 
-    #[allow(clippy::too_many_arguments)] // Internal shared initializer; parameter list mirrors public constructors for consistency.
     fn new_internal(
         workspace_files: Arc<dyn WorkspaceFilesEnumerator>,
         workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator>,
@@ -2089,7 +1939,6 @@ impl ViewModel {
         task_manager: Arc<dyn TaskManager>,
         repositories_enumerator: Arc<dyn RepositoriesEnumerator>,
         branches_enumerator: Arc<dyn BranchesEnumerator>,
-        agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
         settings: Settings,
         with_background_loading: bool,
         current_repository: Option<String>,
@@ -2098,7 +1947,68 @@ impl ViewModel {
         // Initialize available options (will be populated asynchronously)
         let available_repositories = vec![];
         let available_branches = vec![];
-        let available_models = vec![]; // Start empty, will be populated from enumerator
+        let available_models = vec![
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "sonnet".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("Claude Sonnet 4.5".to_string()),
+            },
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".to_string(),
+                },
+                model: "opus".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("Claude Opus 4.1".to_string()),
+            },
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Codex,
+                    version: "latest".to_string(),
+                },
+                model: "gpt-5-codex".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("GPT-5-Codex".to_string()),
+            },
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Codex,
+                    version: "latest".to_string(),
+                },
+                model: "gpt-5-pro".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("GPT-5 pro".to_string()),
+            },
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Codex,
+                    version: "latest".to_string(),
+                },
+                model: "gpt-5".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("GPT-5".to_string()),
+            },
+            AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Codex,
+                    version: "latest".to_string(),
+                },
+                model: "gpt-5-mini".to_string(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("GPT-5 mini".to_string()),
+            },
+        ];
 
         // Initialize preloaded data and loading state
         let preloaded_files = vec![];
@@ -2118,14 +2028,11 @@ impl ViewModel {
             repositories_receiver,
             branches_sender,
             branches_receiver,
-            agents_sender,
-            agents_receiver,
         ) = if with_background_loading {
             let (files_sender, files_receiver) = oneshot::channel();
             let (workflows_sender, workflows_receiver) = oneshot::channel();
             let (repositories_sender, repositories_receiver) = oneshot::channel();
             let (branches_sender, branches_receiver) = oneshot::channel();
-            let (agents_sender, agents_receiver) = oneshot::channel();
             (
                 Some(files_sender),
                 Some(files_receiver),
@@ -2135,11 +2042,9 @@ impl ViewModel {
                 Some(repositories_receiver),
                 Some(branches_sender),
                 Some(branches_receiver),
-                Some(agents_sender),
-                Some(agents_receiver),
             )
         } else {
-            (None, None, None, None, None, None, None, None, None, None)
+            (None, None, None, None, None, None, None, None)
         };
 
         // Determine initial focus element per PRD: "The initially focused element is the top draft task card."
@@ -2234,12 +2139,10 @@ impl ViewModel {
             workflows_sender,
             repositories_sender,
             branches_sender,
-            agents_sender,
             files_receiver,
             workflows_receiver,
             repositories_receiver,
             branches_receiver,
-            agents_receiver,
             save_request_counter: 0,
             ui_tx: ui_tx.clone(),
 
@@ -2292,7 +2195,6 @@ impl ViewModel {
             task_manager: task_manager.clone(),
             repositories_enumerator: repositories_enumerator.clone(),
             branches_enumerator: branches_enumerator.clone(),
-            agents_enumerator: agents_enumerator.clone(),
 
             // Autocomplete system
             autocomplete: {
@@ -2306,8 +2208,8 @@ impl ViewModel {
             },
 
             needs_redraw: true,
-            _pending_bubbled_operation: None,
-            _bubbled_operation_consumed: false,
+            pending_bubbled_operation: None,
+            bubbled_operation_consumed: false,
         };
 
         // Sync cursor style for initial focus on textarea
@@ -2328,10 +2230,10 @@ impl ViewModel {
                 // Ignore key up events - we only want to process key down events
                 // to avoid double processing (key down and key up)
                 use ratatui::crossterm::event::KeyEventKind;
-                if matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
-                    && self.handle_key_event(key_event)
-                {
-                    self.needs_redraw = true;
+                if matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                    if self.handle_key_event(key_event) {
+                        self.needs_redraw = true;
+                    }
                 }
             }
             Msg::MouseClick {
@@ -2466,15 +2368,6 @@ impl ViewModel {
                                     KeyboardOperationResult::NotHandled
                                 }
                             }
-                            CardFocusElement::AdvancedOptionsButton => {
-                                // Open advanced launch options modal
-                                trace!(
-                                    "handle_task_entry_operation: ActivateCurrentItem on AdvancedOptionsButton"
-                                );
-                                let draft_id = card.id.clone();
-                                self.open_launch_options_modal(draft_id);
-                                KeyboardOperationResult::Handled
-                            }
                             CardFocusElement::TaskDescription => {
                                 // This should have been handled by the card
                                 KeyboardOperationResult::NotHandled
@@ -2532,7 +2425,7 @@ impl ViewModel {
                 } => {
                     match bubbled_operation {
                         KeyboardOperation::ActivateCurrentItem => {
-                            // Handle bubbled activation from textarea, Go button, or Advanced Options button
+                            // Handle bubbled activation from textarea or Go button
                             if card.focus_element == CardFocusElement::TaskDescription
                                 || card.focus_element == CardFocusElement::GoButton
                             {
@@ -2547,15 +2440,6 @@ impl ViewModel {
                                 } else {
                                     KeyboardOperationResult::NotHandled
                                 }
-                            } else if card.focus_element == CardFocusElement::AdvancedOptionsButton
-                            {
-                                // Open advanced launch options modal
-                                trace!(
-                                    "handle_task_entry_operation: bubbled ActivateCurrentItem on AdvancedOptionsButton"
-                                );
-                                let draft_id = card.id.clone();
-                                self.open_launch_options_modal(draft_id);
-                                KeyboardOperationResult::Handled
                             } else {
                                 KeyboardOperationResult::NotHandled
                             }
@@ -2600,7 +2484,7 @@ impl ViewModel {
     fn handle_modal_operation(
         &mut self,
         operation: KeyboardOperation,
-        _key_event: &KeyEvent,
+        key_event: &KeyEvent,
     ) -> bool {
         if self.modal_state == ModalState::None {
             return false;
@@ -2608,10 +2492,18 @@ impl ViewModel {
 
         match operation {
             KeyboardOperation::MoveToNextLine | KeyboardOperation::MoveToNextField => {
-                self.handle_modal_navigation(NavigationDirection::Next)
+                if self.handle_modal_navigation(NavigationDirection::Next) {
+                    true
+                } else {
+                    false
+                }
             }
             KeyboardOperation::MoveToPreviousLine | KeyboardOperation::MoveToPreviousField => {
-                self.handle_modal_navigation(NavigationDirection::Previous)
+                if self.handle_modal_navigation(NavigationDirection::Previous) {
+                    true
+                } else {
+                    false
+                }
             }
             KeyboardOperation::ActivateCurrentItem => {
                 if let Some(modal) = self.active_modal.as_mut() {
@@ -2694,11 +2586,35 @@ impl ViewModel {
                     false
                 }
             }
-            KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
-            KeyboardOperation::IncrementValue => self.handle_increment_decrement_value(true),
-            KeyboardOperation::DecrementValue => self.handle_increment_decrement_value(false),
+            KeyboardOperation::DismissOverlay => {
+                if self.handle_dismiss_overlay() {
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyboardOperation::IncrementValue => {
+                if self.handle_increment_decrement_value(true) {
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyboardOperation::DecrementValue => {
+                if self.handle_increment_decrement_value(false) {
+                    true
+                } else {
+                    false
+                }
+            }
             // Text editing operations for modal input
-            KeyboardOperation::DeleteCharacterBackward => self.handle_delete(),
+            KeyboardOperation::DeleteCharacterBackward => {
+                if self.handle_delete() {
+                    true
+                } else {
+                    false
+                }
+            }
             KeyboardOperation::DeleteToEndOfLine => {
                 if let Some(modal) = self.active_modal.as_mut() {
                     modal.input_value.clear();
@@ -2749,7 +2665,11 @@ impl ViewModel {
         operation: KeyboardOperation,
         key_event: &KeyEvent,
     ) -> bool {
-        self.process_dashboard_operation(operation, key_event)
+        if self.process_dashboard_operation(operation, key_event) {
+            true
+        } else {
+            false
+        }
     }
 
     fn handle_autocomplete_accept(
@@ -2781,17 +2701,11 @@ impl ViewModel {
     pub fn handle_key_event(&mut self, key: KeyEvent) -> bool {
         use ratatui::crossterm::event::KeyCode;
 
-        trace!("handle_key_event: received key event: {:?}", key);
-
         if self.autocomplete.has_actionable_suggestion() {
             if let Some(idx) = self.focused_textarea_index() {
                 if let Some(operation) = minor_modes::AUTOCOMPLETE_ACTIVE_MODE
                     .resolve_key_to_operation(&key, &self.settings)
                 {
-                    trace!(
-                        "handle_key_event: AUTOCOMPLETE_ACTIVE_MODE resolved operation: {:?}",
-                        operation
-                    );
                     if operation == KeyboardOperation::IndentOrComplete
                         && self.handle_autocomplete_accept(
                             idx,
@@ -2824,18 +2738,15 @@ impl ViewModel {
                     _ => &MODAL_NAVIGATION_MODE,
                 }
             } else {
-                trace!("handle_key_event: trying MODAL_NAVIGATION_MODE (no active modal)");
                 &MODAL_NAVIGATION_MODE
             };
 
             if let Some(operation) = mode.resolve_key_to_operation(&key, &self.settings) {
-                trace!(
-                    "handle_key_event: modal mode resolved operation: {:?}",
-                    operation
-                );
                 let handled = self.handle_modal_operation(operation, &key);
-                if handled && operation != KeyboardOperation::DismissOverlay {
-                    self.clear_exit_confirmation();
+                if handled {
+                    if operation != KeyboardOperation::DismissOverlay {
+                        self.clear_exit_confirmation();
+                    }
                 }
                 return handled;
             }
@@ -2921,8 +2832,10 @@ impl ViewModel {
                     self.handle_task_entry_operation(idx, operation, &key),
                     KeyboardOperationResult::Handled
                 );
-                if handled && operation != KeyboardOperation::DismissOverlay {
-                    self.clear_exit_confirmation();
+                if handled {
+                    if operation != KeyboardOperation::DismissOverlay {
+                        self.clear_exit_confirmation();
+                    }
                 }
                 return handled;
             }
@@ -2940,23 +2853,13 @@ impl ViewModel {
                         }
                         return true;
                     }
-                    KeyboardOperationResult::NotHandled => {
-                        // Try dashboard operations for operations not handled by the card
-                        if matches!(operation, KeyboardOperation::ShowLaunchOptions) {
-                            let handled = self.handle_dashboard_operation(operation, &key);
-                            if handled {
-                                if operation != KeyboardOperation::DismissOverlay {
-                                    self.clear_exit_confirmation();
-                                }
-                            }
-                            return handled;
-                        }
-                        return false;
-                    }
+                    KeyboardOperationResult::NotHandled => return false,
                     KeyboardOperationResult::Bubble { operation: bubbled } => {
                         let bubbled_handled = self.handle_bubbled_operation(bubbled, &key);
-                        if bubbled_handled && bubbled != KeyboardOperation::DismissOverlay {
-                            self.clear_exit_confirmation();
+                        if bubbled_handled {
+                            if bubbled != KeyboardOperation::DismissOverlay {
+                                self.clear_exit_confirmation();
+                            }
                         }
                         return bubbled_handled;
                     }
@@ -2974,37 +2877,32 @@ impl ViewModel {
         if let DashboardFocusState::DraftTask(idx) = self.focus_element {
             if let Some(card) = self.draft_cards.get(idx) {
                 let mode = if card.focus_element == CardFocusElement::TaskDescription {
-                    trace!("handle_key_event: trying DRAFT_TEXTAREA_TO_BUTTONS_MODE");
                     &DRAFT_TEXTAREA_TO_BUTTONS_MODE
                 } else {
-                    trace!("handle_key_event: trying DRAFT_BUTTON_NAVIGATION_MODE");
                     &DRAFT_BUTTON_NAVIGATION_MODE
                 };
 
                 if let Some(operation) = mode.resolve_key_to_operation(&key, &self.settings) {
                     let handled = self.handle_dashboard_operation(operation, &key);
-                    if handled && operation != KeyboardOperation::DismissOverlay {
-                        self.clear_exit_confirmation();
+                    if handled {
+                        if operation != KeyboardOperation::DismissOverlay {
+                            self.clear_exit_confirmation();
+                        }
                     }
                     return handled;
-                } else {
-                    trace!("handle_key_event: draft mode did not resolve key to any operation");
                 }
             }
         }
 
         // Try dashboard operations (lowest priority)
-        trace!("handle_key_event: trying DASHBOARD_NAVIGATION_MODE");
         if let Some(operation) =
             DASHBOARD_NAVIGATION_MODE.resolve_key_to_operation(&key, &self.settings)
         {
-            trace!(
-                "handle_key_event: DASHBOARD_NAVIGATION_MODE resolved operation: {:?}",
-                operation
-            );
             let handled = self.handle_dashboard_operation(operation, &key);
-            if handled && operation != KeyboardOperation::DismissOverlay {
-                self.clear_exit_confirmation();
+            if handled {
+                if operation != KeyboardOperation::DismissOverlay {
+                    self.clear_exit_confirmation();
+                }
             }
             return handled;
         }
@@ -3019,7 +2917,6 @@ impl ViewModel {
         }
 
         // If no operation matched and it's not character input, the key is not handled
-        trace!("handle_key_event: no mode handled key event: {:?}", key);
         false
     }
 
@@ -3151,43 +3048,6 @@ impl ViewModel {
                 // Shift+Tab key: move backward between controls within current focus element
                 self.focus_previous_control()
             }
-            KeyboardOperation::ActivateCurrentItem => {
-                // Enter key: activate the current item
-                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get(idx) {
-                        match card.focus_element {
-                            CardFocusElement::RepositorySelector => {
-                                self.open_modal(ModalState::RepositorySearch);
-                                return true;
-                            }
-                            CardFocusElement::BranchSelector => {
-                                self.open_modal(ModalState::BranchSearch);
-                                return true;
-                            }
-                            CardFocusElement::ModelSelector => {
-                                self.open_modal(ModalState::ModelSearch);
-                                return true;
-                            }
-                            CardFocusElement::GoButton => {
-                                // Launch the task
-                                self.launch_task(idx, ah_core::SplitMode::None, false, None, None);
-                                return true;
-                            }
-                            CardFocusElement::AdvancedOptionsButton => {
-                                // Open advanced launch options
-                                let draft_id = card.id.clone();
-                                self.open_launch_options_modal(draft_id);
-                                return true;
-                            }
-                            CardFocusElement::TaskDescription => {
-                                // This should be handled by the textarea operations
-                                return false;
-                            }
-                        }
-                    }
-                }
-                false
-            }
             KeyboardOperation::MoveForwardOneCharacter => {
                 // Right arrow: handle filter navigation or draft card navigation
 
@@ -3315,69 +3175,91 @@ impl ViewModel {
             KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
             KeyboardOperation::DraftNewTask => self.handle_ctrl_n(),
             KeyboardOperation::DeleteToEndOfLine => {
-                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == CardFocusElement::TaskDescription {
-                            let before_text = card.description.lines().join("\n");
-                            card.description.delete_line_by_end();
-                            let after_text = card.description.lines().join("\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
+                // Delete from cursor to end of line
+                match self.focus_element {
+                    DashboardFocusState::DraftTask(idx) => {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            if card.focus_element == CardFocusElement::TaskDescription {
+                                let before_text = card.description.lines().join("\\n");
+                                card.description.delete_line_by_end();
+                                let after_text = card.description.lines().join("\\n");
+                                if before_text != after_text {
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
+                                }
+                                return true;
                             }
-                            return true;
                         }
                     }
+                    _ => {}
                 }
                 false
             }
             KeyboardOperation::DeleteToBeginningOfLine => {
-                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == CardFocusElement::TaskDescription {
-                            let before_text = card.description.lines().join("\n");
-                            card.description.delete_line_by_head();
-                            let after_text = card.description.lines().join("\n");
-                            if before_text != after_text {
-                                self.autocomplete.after_textarea_change(
-                                    &card.description,
-                                    &mut self.needs_redraw,
-                                );
+                // Delete from cursor to beginning of line
+                match self.focus_element {
+                    DashboardFocusState::DraftTask(idx) => {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            if card.focus_element == CardFocusElement::TaskDescription {
+                                let before_text = card.description.lines().join("\\n");
+                                card.description.delete_line_by_head();
+                                let after_text = card.description.lines().join("\\n");
+                                if before_text != after_text {
+                                    self.autocomplete.after_textarea_change(
+                                        &card.description,
+                                        &mut self.needs_redraw,
+                                    );
+                                }
+                                return true;
                             }
-                            return true;
                         }
                     }
+                    _ => {}
                 }
                 false
             }
             KeyboardOperation::SelectAll => {
-                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == CardFocusElement::TaskDescription {
-                            card.description.select_all();
-                            self.autocomplete
-                                .after_textarea_change(&card.description, &mut self.needs_redraw);
-                            return true;
+                // Select all text
+                match self.focus_element {
+                    DashboardFocusState::DraftTask(idx) => {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            if card.focus_element == CardFocusElement::TaskDescription {
+                                card.description.select_all();
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
+                                return true;
+                            }
                         }
                     }
+                    _ => {}
                 }
                 false
             }
             KeyboardOperation::Bold => {
-                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
-                    if let Some(card) = self.draft_cards.get_mut(idx) {
-                        if card.focus_element == CardFocusElement::TaskDescription {
-                            card.description.insert_str("****");
-                            use tui_textarea::CursorMove;
-                            card.description.move_cursor(CursorMove::Back);
-                            card.description.move_cursor(CursorMove::Back);
-                            self.autocomplete
-                                .after_textarea_change(&card.description, &mut self.needs_redraw);
-                            return true;
+                // Insert bold markdown markers
+                match self.focus_element {
+                    DashboardFocusState::DraftTask(idx) => {
+                        if let Some(card) = self.draft_cards.get_mut(idx) {
+                            if card.focus_element == CardFocusElement::TaskDescription {
+                                // Insert **** at cursor for bold markdown
+                                card.description.insert_str("****");
+                                // Move cursor back 2 positions to be between the markers
+                                use tui_textarea::CursorMove;
+                                card.description.move_cursor(CursorMove::Back);
+                                card.description.move_cursor(CursorMove::Back);
+                                self.autocomplete.after_textarea_change(
+                                    &card.description,
+                                    &mut self.needs_redraw,
+                                );
+                                return true;
+                            }
                         }
                     }
+                    _ => {}
                 }
                 false
             }
@@ -3687,7 +3569,7 @@ impl ViewModel {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Get current cursor line and viewport height
                             let cursor = card.description.cursor();
-                            let _lines = card.description.lines(); // unused; centered scroll logic only needs cursor & viewport
+                            let lines = card.description.lines();
                             let viewport_height = card.description.viewport_origin().1 as usize; // Approximation
 
                             // Calculate target top line to center cursor
@@ -3706,9 +3588,9 @@ impl ViewModel {
                 if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
-                            let lines = card.description.lines(); // lines used below for comment application
-                            let cursor_row = card.description.cursor().0;
-                            let _cursor_col = card.description.cursor().1; // unused; selection range logic only uses row
+                            let lines = card.description.lines();
+                            let cursor_row = card.description.cursor().0 as usize;
+                            let cursor_col = card.description.cursor().1 as usize;
 
                             // Determine lines to comment/uncomment
                             let (_start_line, _end_line) =
@@ -3761,7 +3643,7 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             let (cursor_row, _) = card.description.cursor();
-                            let lines = card.description.lines(); // lines used for duplication logic
+                            let lines = card.description.lines();
 
                             if cursor_row < lines.len() {
                                 let current_line = lines[cursor_row].clone();
@@ -3785,8 +3667,8 @@ impl ViewModel {
                 if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
-                            let cursor_row = card.description.cursor().0;
-                            let _lines = card.description.lines(); // underscore: reserved for future line-based operations
+                            let cursor_row = card.description.cursor().0 as usize;
+                            let lines = card.description.lines();
 
                             // Can't move first line up
                             if cursor_row == 0 {
@@ -3822,7 +3704,7 @@ impl ViewModel {
                 if let DashboardFocusState::DraftTask(idx) = self.focus_element {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
-                            let cursor_row = card.description.cursor().0;
+                            let cursor_row = card.description.cursor().0 as usize;
                             let lines = card.description.lines();
 
                             // Can't move last line down
@@ -3864,7 +3746,7 @@ impl ViewModel {
                                 if let Some(range) = card.description.selection_range() {
                                     (range.0.0, range.1.0)
                                 } else {
-                                    let cursor_row = card.description.cursor().0;
+                                    let cursor_row = card.description.cursor().0 as usize;
                                     (cursor_row, cursor_row)
                                 };
 
@@ -3886,7 +3768,7 @@ impl ViewModel {
                                 if let Some(range) = card.description.selection_range() {
                                     (range.0.0, range.1.0)
                                 } else {
-                                    let cursor_row = card.description.cursor().0;
+                                    let cursor_row = card.description.cursor().0 as usize;
                                     (cursor_row, cursor_row)
                                 };
 
@@ -3942,7 +3824,8 @@ impl ViewModel {
                                         new_line.extend(&chars[word_end..]);
 
                                         // Replace the entire line
-                                        let mut all_lines: Vec<String> = lines.to_vec();
+                                        let mut all_lines: Vec<String> =
+                                            lines.into_iter().map(|s| s.clone()).collect();
                                         all_lines[cursor_row] = new_line;
                                         card.description = tui_textarea::TextArea::new(all_lines);
 
@@ -4011,7 +3894,8 @@ impl ViewModel {
                                         new_line.extend(&chars[word_end..]);
 
                                         // Replace the entire line
-                                        let mut all_lines: Vec<String> = lines.to_vec();
+                                        let mut all_lines: Vec<String> =
+                                            lines.into_iter().map(|s| s.clone()).collect();
                                         all_lines[cursor_row] = new_line;
                                         card.description = tui_textarea::TextArea::new(all_lines);
 
@@ -4093,7 +3977,37 @@ impl ViewModel {
                 }
                 false
             }
-            // (Second Bold arm removed as duplicate; first Bold arm earlier handles this operation)
+            KeyboardOperation::Bold => {
+                // Bold (Ctrl+B) - wrap selection or next word with **
+                if let DashboardFocusState::DraftTask(idx) = self.focus_element {
+                    if let Some(card) = self.draft_cards.get_mut(idx) {
+                        if card.focus_element == CardFocusElement::TaskDescription {
+                            if card.description.selection_range().is_some() {
+                                // Copy selection to yank buffer
+                                card.description.copy();
+                                let selected_text = card.description.yank_text();
+                                if !selected_text.is_empty() {
+                                    // Replace selection with wrapped text
+                                    card.description.insert_str(&format!("**{}**", selected_text));
+                                }
+                            } else {
+                                // Insert ** and position cursor between them
+                                card.description.insert_char('*');
+                                card.description.insert_char('*');
+                                card.description.insert_char('*');
+                                card.description.insert_char('*');
+                                card.description.move_cursor(tui_textarea::CursorMove::Back);
+                                card.description.move_cursor(tui_textarea::CursorMove::Back);
+                            }
+
+                            self.autocomplete
+                                .after_textarea_change(&card.description, &mut self.needs_redraw);
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
             KeyboardOperation::Italic => {
                 // Italic (Ctrl+I) - wrap selection or next word with *
                 if let DashboardFocusState::DraftTask(idx) = self.focus_element {
@@ -4105,7 +4019,7 @@ impl ViewModel {
                                 let selected_text = card.description.yank_text();
                                 if !selected_text.is_empty() {
                                     // Replace selection with wrapped text
-                                    card.description.insert_str(format!("*{}*", selected_text));
+                                    card.description.insert_str(&format!("*{}*", selected_text));
                                 }
                             } else {
                                 // Insert ** and position cursor between them
@@ -4133,7 +4047,7 @@ impl ViewModel {
                                 if !selected_text.is_empty() {
                                     // Replace selection with wrapped text
                                     card.description
-                                        .insert_str(format!("<u>{}</u>", selected_text));
+                                        .insert_str(&format!("<u>{}</u>", selected_text));
                                 }
                             } else {
                                 // Insert tags and position cursor
@@ -4199,7 +4113,7 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Set search pattern (would need search dialog/input in real implementation)
-                            let _ = card.description.set_search_pattern("search_term");
+                            card.description.set_search_pattern("search_term".to_string());
                             card.description.search_forward(false);
                             return true;
                         }
@@ -4213,7 +4127,7 @@ impl ViewModel {
                     if let Some(card) = self.draft_cards.get_mut(idx) {
                         if card.focus_element == CardFocusElement::TaskDescription {
                             // Set search pattern and search backward
-                            let _ = card.description.set_search_pattern("search_term");
+                            card.description.set_search_pattern("search_term".to_string());
                             card.description.search_back(false);
                             return true;
                         }
@@ -4311,45 +4225,6 @@ impl ViewModel {
                         }
                     }
                     _ => {} // Other focus states don't support deletion
-                }
-                false
-            }
-            KeyboardOperation::ShowLaunchOptions => {
-                // Show advanced launch options menu (Ctrl+Enter in draft textarea)
-                trace!("handle_dashboard_operation: ShowLaunchOptions triggered");
-                trace!(
-                    "handle_dashboard_operation: current focus_element: {:?}",
-                    self.focus_element
-                );
-                match self.focus_element {
-                    DashboardFocusState::DraftTask(idx) => {
-                        trace!("handle_dashboard_operation: focused on draft task {}", idx);
-                        if let Some(card) = self.draft_cards.get(idx) {
-                            trace!(
-                                "handle_dashboard_operation: card focus_element: {:?}",
-                                card.focus_element
-                            );
-                            if card.focus_element == CardFocusElement::TaskDescription {
-                                // Create launch options modal
-                                let draft_id = card.id.clone();
-                                trace!(
-                                    "handle_dashboard_operation: opening modal for draft_id: {}",
-                                    draft_id
-                                );
-                                self.open_launch_options_modal(draft_id);
-                                return true;
-                            } else {
-                                trace!(
-                                    "handle_dashboard_operation: card focus is not on TaskDescription"
-                                );
-                            }
-                        } else {
-                            trace!("handle_dashboard_operation: no card found at index {}", idx);
-                        }
-                    }
-                    _ => {
-                        trace!("handle_dashboard_operation: not focused on a draft task");
-                    }
                 }
                 false
             }
@@ -4632,33 +4507,6 @@ impl ViewModel {
                 });
             }
         }
-
-        // Start loading agents if not already loaded
-        if !self.loading_models {
-            self.loading_models = true;
-            let agents_enumerator = Arc::clone(&self.agents_enumerator);
-
-            // Take the sender to move into the async task
-            if let Some(sender) = self.agents_sender.take() {
-                tokio::spawn(async move {
-                    match agents_enumerator.enumerate_agents().await {
-                        Ok(catalog) => {
-                            let agents: Vec<AgentChoice> = catalog
-                                .agents
-                                .into_iter()
-                                .map(|metadata| metadata.to_agent_choice())
-                                .collect();
-                            // Send the loaded agents back via the channel
-                            let _ = sender.send(agents);
-                        }
-                        Err(_) => {
-                            // Send empty vec on error
-                            let _ = sender.send(Vec::new());
-                        }
-                    }
-                });
-            }
-        }
     }
 
     /// Check for completed background loading tasks and update state
@@ -4701,16 +4549,6 @@ impl ViewModel {
                 self.available_branches = branches;
                 self.loading_branches = false;
                 self.branches_receiver = None;
-                self.needs_redraw = true; // Trigger redraw to update UI
-            }
-        }
-
-        // Check if agents have been loaded
-        if let Some(receiver) = self.agents_receiver.as_mut() {
-            if let Ok(agents) = receiver.try_recv() {
-                self.available_models = agents;
-                self.loading_models = false;
-                self.agents_receiver = None;
                 self.needs_redraw = true; // Trigger redraw to update UI
             }
         }
@@ -4844,10 +4682,10 @@ impl ViewModel {
     /// Close autocomplete if focus is moving away from textarea elements
     pub fn close_autocomplete_if_leaving_textarea(&mut self, new_focus: DashboardFocusState) {
         let was_on_textarea = matches!(self.focus_element, DashboardFocusState::DraftTask(0))
-            || matches!(self.focus_element, DashboardFocusState::DraftTask(idx) if self.draft_cards.get(idx).is_some_and(|card| card.focus_element == CardFocusElement::TaskDescription));
+            || matches!(self.focus_element, DashboardFocusState::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == CardFocusElement::TaskDescription));
 
         let moving_to_textarea = matches!(new_focus, DashboardFocusState::DraftTask(0))
-            || matches!(new_focus, DashboardFocusState::DraftTask(idx) if self.draft_cards.get(idx).is_some_and(|card| card.focus_element == CardFocusElement::TaskDescription));
+            || matches!(new_focus, DashboardFocusState::DraftTask(idx) if self.draft_cards.get(idx).map_or(false, |card| card.focus_element == CardFocusElement::TaskDescription));
 
         if was_on_textarea && !moving_to_textarea {
             self.autocomplete.close(&mut self.needs_redraw);
@@ -5108,16 +4946,6 @@ impl ViewModel {
                 self.change_focus(DashboardFocusState::DraftTask(0));
                 self.launch_task(0, ah_core::SplitMode::None, false, None, None);
             }
-            MouseAction::ActivateAdvancedOptionsModal => {
-                self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
-                self.change_focus(DashboardFocusState::DraftTask(0));
-                if let Some(card) = self.draft_cards.get(0) {
-                    let draft_id = card.id.clone();
-                    self.open_launch_options_modal(draft_id);
-                } else {
-                    trace!("perform_mouse_action: no draft card found at index 0");
-                }
-            }
             MouseAction::FocusDraftTextarea(_idx) => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
                 self.change_focus(DashboardFocusState::DraftTask(0));
@@ -5130,16 +4958,19 @@ impl ViewModel {
                                 self.needs_redraw = true;
                             }
 
-                            // Combine commit vs ghost accept logic: both paths set `changed = true`.
-                            // We attempt commit first (higher-confidence), otherwise attempt ghost acceptance.
-                            let changed = self.autocomplete.commit_current_selection(
+                            let mut changed = false;
+                            if self.autocomplete.commit_current_selection(
                                 &mut card.description,
                                 &mut self.needs_redraw,
-                            ) || self.autocomplete.accept_ghost(
+                            ) {
+                                changed = true;
+                            } else if self.autocomplete.accept_ghost(
                                 &mut card.description,
                                 &mut self.needs_redraw,
                                 true,
-                            );
+                            ) {
+                                changed = true;
+                            }
 
                             if changed {
                                 card.on_content_changed();
@@ -5181,32 +5012,6 @@ impl ViewModel {
                     }
                 }
             }
-            MouseAction::ModalSelectOption(index) => {
-                if let Some(modal) = &self.active_modal {
-                    match &modal.modal_type {
-                        ModalType::AgentSelection { options } => {
-                            // For ModelSelection modals, get the option name from the options array
-                            if let Some(option) = options.get(index) {
-                                self.apply_modal_selection(
-                                    modal.modal_type.clone(),
-                                    option.name.clone(),
-                                );
-                            }
-                        }
-                        _ => {
-                            // For other modal types, use filtered_options
-                            if let Some(option) = modal.filtered_options.get(index) {
-                                if let FilteredOption::Option { text, .. } = option {
-                                    self.apply_modal_selection(
-                                        modal.modal_type.clone(),
-                                        text.clone(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             _ => {
                 // TODO: Handle other mouse actions like ActivateGoButton, StopTask, EditFilter, Footer
             }
@@ -5214,9 +5019,9 @@ impl ViewModel {
         self.needs_redraw = true;
     }
 
-    // Process any pending task events from the event receiver
+    /// Process any pending task events from the event receiver
 
-    // Update the selection state in task cards based on current focus_element
+    /// Update the selection state in task cards based on current focus_element
 
     /// Get the active minor modes for the current focus state and modal state
     fn get_active_minor_modes(&self) -> Vec<&'static crate::view_model::input::InputMinorMode> {
@@ -5304,63 +5109,6 @@ impl ViewModel {
             self.word_wrap_enabled,
             self.show_autocomplete_border,
         );
-        self.exit_confirmation_armed = false;
-    }
-
-    /// Open the advanced launch options modal for a draft task
-    pub fn open_launch_options_modal(&mut self, draft_id: String) {
-        trace!(
-            "open_launch_options_modal called with draft_id: {}",
-            draft_id
-        );
-        trace!("current modal_state: {:?}", self.modal_state);
-        trace!("active_modal is_some: {}", self.active_modal.is_some());
-        let modal = ModalViewModel {
-            title: "Advanced Launch Options".to_string(),
-            input_value: String::new(),
-            filtered_options: vec![
-                FilteredOption::Option {
-                    text: "Launch in background (b)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in split view (s)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in horizontal split (h)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in vertical split (v)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Separator {
-                    label: Some("Focus variants".to_string()),
-                },
-                FilteredOption::Option {
-                    text: "Launch in background and focus (B)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in split view and focus (S)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in horizontal split and focus (H)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in vertical split and focus (V)".to_string(),
-                    selected: false,
-                },
-            ],
-            selected_index: 0,
-            modal_type: ModalType::LaunchOptions { draft_id },
-        };
-
-        self.active_modal = Some(modal);
-        self.modal_state = ModalState::LaunchOptions;
         self.exit_confirmation_armed = false;
     }
 
@@ -5490,7 +5238,7 @@ impl ViewModel {
         None
     }
 
-    // Handle launch task operation and return domain messages
+    /// Handle launch task operation and return domain messages
 
     /// Process a TaskEvent and update the corresponding task card's activity entries
     pub fn process_task_event(&mut self, task_id: &str, event: TaskEvent) {
@@ -5820,7 +5568,8 @@ impl ViewModel {
                     };
                     (AgentSoftware::Claude, model_name)
                 } else if display_name.starts_with("GPT-5") {
-                    let model_name = display_name.to_lowercase().replace(" ", "");
+                    let model_name =
+                        display_name.to_lowercase().replace(" ", "").replace("gpt-5", "gpt-5");
                     (AgentSoftware::Codex, model_name)
                 } else {
                     (AgentSoftware::Claude, display_name.to_string())
@@ -6162,11 +5911,10 @@ fn create_task_card_from_execution(
 }
 
 /// Create ViewModel representations for draft tasks
-#[allow(dead_code)] // Future: used by multi-draft rendering pipeline; kept for planned dashboard expansion.
 fn create_draft_card_view_models(
     draft_tasks: &[DraftTask],
     _task_executions: &[TaskExecution],
-    _focus_element: DashboardFocusState,
+    focus_element: DashboardFocusState,
 ) -> Vec<TaskEntryViewModel> {
     draft_tasks
         .iter()
@@ -6205,7 +5953,6 @@ fn create_draft_card_view_models(
             let inner_height = visible_lines + 1 + 1 + 1 + 1; // TEXTAREA_TOP_PADDING + TEXTAREA_BOTTOM_PADDING + separator + button_row
             let height = inner_height as u16 + 2; // account for rounded border
 
-            #[allow(unreachable_code)]
             TaskEntryViewModel {
                 id: draft.id.clone(),
                 repository: draft.repository.clone(),
@@ -6231,7 +5978,6 @@ fn create_draft_card_view_models(
 }
 
 /// Create ViewModel representations for regular tasks (active/completed/merged)
-#[allow(dead_code)] // Legacy task card VM builder retained for reference; draft+execution unified path forthcoming.
 fn create_task_card_view_models(
     draft_tasks: &[DraftTask],
     task_executions: &[TaskExecution],
@@ -6241,7 +5987,8 @@ fn create_task_card_view_models(
 
     visible_tasks
         .into_iter()
-        .map(|task_item| {
+        .enumerate()
+        .map(|(_idx, task_item)| {
             match task_item {
                 TaskItem::Task(task_execution, _) => {
                     let title = format_title_from_execution(&task_execution);
@@ -6325,14 +6072,12 @@ fn format_title_from_execution(task: &TaskExecution) -> String {
     format!("Task {}", task.id)
 }
 
-#[allow(dead_code)] // Height calculation will be replaced by dynamic layout metrics; kept for transition.
 fn calculate_card_height(task: &TaskExecution, settings: &Settings) -> u16 {
     // Calculate height based on activity lines + fixed overhead
     let activity_lines = settings.activity_rows().min(task.activity.len()) as u16;
     3 + activity_lines // Header + metadata + activity
 }
 
-#[allow(clippy::too_many_arguments)] // Modal factory needs separate slices & flags; wrapping would add unnecessary indirection currently.
 fn create_modal_view_model(
     modal_state: ModalState,
     available_repositories: &[String],
@@ -6405,7 +6150,7 @@ fn create_modal_view_model(
                 .enumerate()
                 .map(|(i, opt)| FilteredOption::Option {
                     text: format!("{} (x{})", opt.name, opt.count),
-                    selected: i == selected_index,
+                    selected: i == selected_index as usize,
                 })
                 .collect();
 
@@ -6418,10 +6163,6 @@ fn create_modal_view_model(
                     options: model_options,
                 },
             })
-        }
-        ModalState::LaunchOptions => {
-            // Launch options modal is created directly by open_launch_options_modal
-            None
         }
         ModalState::Settings => {
             let mut fields = vec![
@@ -6527,8 +6268,7 @@ fn create_footer_view_model(
     match (focus_element, modal_state) {
         (_, ModalState::RepositorySearch)
         | (_, ModalState::BranchSearch)
-        | (_, ModalState::ModelSearch)
-        | (_, ModalState::LaunchOptions) => {
+        | (_, ModalState::ModelSearch) => {
             // Modal active: "↑↓ Navigate • Enter Select • Esc Back"
             shortcuts.push(KeyboardShortcut::new(
                 KeyboardOperation::MoveToNextLine,
@@ -6588,47 +6328,8 @@ fn create_footer_view_model(
                 )],
             ));
         }
-        (_, ModalState::LaunchOptions) => {
-            // Launch options modal: "↑↓ Navigate • Enter Select • Esc Back • b/s/h/v Shortcuts"
-            shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::MoveToNextLine,
-                vec![KeyMatcher::new(
-                    KeyCode::Down,
-                    KeyModifiers::empty(),
-                    KeyModifiers::empty(),
-                    None,
-                )],
-            ));
-            shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::ActivateCurrentItem,
-                vec![KeyMatcher::new(
-                    KeyCode::Enter,
-                    KeyModifiers::empty(),
-                    KeyModifiers::empty(),
-                    None,
-                )],
-            ));
-            shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::DismissOverlay,
-                vec![KeyMatcher::new(
-                    KeyCode::Esc,
-                    KeyModifiers::empty(),
-                    KeyModifiers::empty(),
-                    None,
-                )],
-            ));
-        }
         (DashboardFocusState::DraftTask(_), ModalState::None) if focused_draft.is_some() => {
-            // Draft textarea focused: "Ctrl+Enter Advanced Options • Enter Launch Agent(s) • Shift+Enter New Line • Tab Complete/Next Field"
-            shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::ShowLaunchOptions,
-                vec![KeyMatcher::new(
-                    KeyCode::Enter,
-                    KeyModifiers::CONTROL,
-                    KeyModifiers::empty(),
-                    None,
-                )],
-            ));
+            // Draft textarea focused: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Next Field"
             shortcuts.push(KeyboardShortcut::new(
                 KeyboardOperation::IndentOrComplete,
                 vec![KeyMatcher::new(
@@ -6648,7 +6349,7 @@ fn create_footer_view_model(
                 )],
             ));
             shortcuts.push(KeyboardShortcut::new(
-                KeyboardOperation::IndentOrComplete,
+                KeyboardOperation::MoveToNextField,
                 vec![KeyMatcher::new(
                     KeyCode::Tab,
                     KeyModifiers::empty(),

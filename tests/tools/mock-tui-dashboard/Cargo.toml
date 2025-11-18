@@ -48,6 +48,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 fluent = "0.17.0"
 unic-langid = "0.9.6"
+strum = { version = "0.26", features = ["derive"] }
 
 [dependencies.ratatui-image]
 version = "8"

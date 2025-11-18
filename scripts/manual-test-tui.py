@@ -99,6 +99,12 @@ Examples:
   # Use temporary directory instead of test filesystem
   %(prog)s --fs tmp
 
+  # Enable experimental features (multiple flags)
+  %(prog)s --experimental-features copilot --experimental-features gemini
+
+  # Enable experimental features (comma-separated)
+  %(prog)s --experimental-features copilot,gemini
+
   # Dry run to see what would be executed
   %(prog)s --dry-run
         """
@@ -129,6 +135,13 @@ Examples:
         "--dry-run",
         action="store_true",
         help="Print what would be executed without running anything"
+    )
+
+    # Experimental features options
+    parser.add_argument(
+        "--experimental-features",
+        action="append",
+        help="Enable experimental features (can be specified multiple times or as comma-separated values)"
     )
 
     args = parser.parse_args()
@@ -190,6 +203,14 @@ Examples:
     project_root = find_project_root()
     ah_binary = ensure_ah_binary(project_root, release=False)
     ah_cmd = [str(ah_binary), "tui"]
+
+    # Add experimental features if specified
+    if args.experimental_features:
+        for feature_arg in args.experimental_features:
+            # Split comma-separated values
+            features = [f.strip() for f in feature_arg.split(',') if f.strip()]
+            for feature in features:
+                ah_cmd.extend(["--experimental-features", feature])
 
     # Build command as string
     ah_command = " ".join(f"'{arg}'" if "'" not in arg and " " in arg else f'"{arg}"' if " " in arg else arg for arg in ah_cmd)

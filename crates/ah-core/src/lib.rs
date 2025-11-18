@@ -8,6 +8,7 @@
 //! transitions, and coordination with other AH components.
 
 pub mod agent_binary;
+pub mod agent_catalog;
 pub mod agent_executor;
 pub mod agent_tasks;
 pub mod agent_types;
@@ -84,6 +85,13 @@ pub use ah_domain_types::{LogLevel, TaskState, ToolStatus};
 
 /// Agent execution engine for spawning and managing agent processes.
 pub use agent_executor::{AgentExecutionConfig, AgentExecutor, WorkingCopyMode};
+
+/// Agent catalog and enumeration functionality.
+pub use agent_catalog::{
+    AgentCatalogError, AgentCatalogProvider, AgentCatalogResult, AgentsEnumerator,
+    LocalAgentCatalog, LocalAgentCatalogConfig, MockAgentsEnumerator, RemoteAgentCatalog,
+    RemoteAgentCatalogConfig,
+};
 
 /// REST API-based task manager implementation.
 pub use rest_task_manager::{GenericRestTaskManager, RestApiClient, RestTaskManager};

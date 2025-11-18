@@ -76,6 +76,7 @@ Shell completions are provided via the `ah shell-completion` command group. They
   - `--no-color`: Automatically enabled when not running inside a TTY. Otherwise, enabled by default.
   - `--fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>`: Select snapshot strategy (default: `auto`).
   - `--working-copy <auto|cow-overlay|worktree|in-place>`: Select how the agent's workspace is presented (default: `auto`).
+  - `--experimental-features <gemini|copilot|cursor-cli|goose>`: Enable experimental features (can be specified multiple times). Currently supported: `gemini` (Google Gemini agent), `copilot` (GitHub Copilot CLI agent), `cursor-cli` (Cursor CLI agent), `goose` (Block's Goose agent).
 
 ### Subcommands
 

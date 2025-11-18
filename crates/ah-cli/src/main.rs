@@ -33,6 +33,7 @@ async fn main() -> Result<()> {
             None,
             None,
             cli.fs_snapshots.clone(),
+            cli.experimental_features.clone(),
         )
     }
 
@@ -54,7 +55,7 @@ async fn main() -> Result<()> {
                 ah_tui::record::execute_branch_points(args.clone()).await
             }
         },
-        Commands::Tui(args) => args.run(cli.fs_snapshots).await,
+        Commands::Tui(args) => args.run(cli.fs_snapshots, cli.experimental_features.clone()).await,
         Commands::Health(args) => args.run().await,
     }
 }

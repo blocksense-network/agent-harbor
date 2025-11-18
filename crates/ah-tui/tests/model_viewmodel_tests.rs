@@ -48,6 +48,10 @@ fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Recei
     let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
+    let agents_enumerator: Arc<dyn ah_core::AgentsEnumerator> =
+        Arc::new(ah_core::agent_catalog::MockAgentsEnumerator::new(
+            ah_core::agent_catalog::RemoteAgentCatalog::default_catalog(),
+        ));
     let settings = ah_tui::settings::Settings::from_config()
         .unwrap_or_else(|_| ah_tui::settings::Settings::default());
     let (ui_tx, ui_rx) = crossbeam_channel::unbounded();
@@ -60,6 +64,7 @@ fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Recei
             task_manager,
             repositories_enumerator,
             branches_enumerator,
+            agents_enumerator,
             settings,
             ui_tx,
         ),
@@ -715,6 +720,11 @@ mod viewmodel_tests {
         vm.focus_element = DashboardFocusState::DraftTask(0);
         vm.draft_cards[0].focus_element = CardFocusElement::ModelSelector;
 
+        // Manually populate available models for test (since background loading is async)
+        let catalog = ah_core::agent_catalog::RemoteAgentCatalog::default_catalog();
+        vm.available_models =
+            catalog.agents.into_iter().map(|metadata| metadata.to_agent_choice()).collect();
+
         // Open model selection modal
         assert!(vm.handle_enter(false));
         assert_eq!(vm.modal_state, ModalState::ModelSearch);
@@ -871,6 +881,11 @@ mod viewmodel_tests {
             CardFocusElement::TaskDescription,
         );
 
+        // Manually populate available models for test (since background loading is async)
+        let catalog = ah_core::agent_catalog::RemoteAgentCatalog::default_catalog();
+        vm.available_models =
+            catalog.agents.into_iter().map(|metadata| metadata.to_agent_choice()).collect();
+
         // Open model selection modal
         vm.open_modal(ModalState::ModelSearch);
 
@@ -881,9 +896,8 @@ mod viewmodel_tests {
                 ModalType::AgentSelection { options } => {
                     // Should have all available models (6 default models)
                     assert_eq!(options.len(), 6);
-                    // Find the "Claude Sonnet 4.5" that was selected
-                    let test_model =
-                        options.iter().find(|opt| opt.name == "Claude Sonnet 4.5").unwrap();
+                    // Find the "Claude Code" that was selected
+                    let test_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(test_model.count, 1);
                     assert!(test_model.is_selected);
                 }

@@ -59,9 +59,12 @@ pub struct TuiDependencies {
     pub task_manager: Arc<dyn TaskManager>,
     pub repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator>,
     pub branches_enumerator: Arc<dyn ah_core::BranchesEnumerator>,
+    pub agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
     pub settings: Settings,
     /// Currently detected repository (if any) to be selected by default
     pub current_repository: Option<String>,
+    /// Whether experimental features are enabled
+    pub experimental_features: Vec<ah_domain_types::ExperimentalFeature>,
 }
 pub mod autocomplete; // Autocomplete rendering components
 pub mod dashboard_view; // Dashboard rendering components

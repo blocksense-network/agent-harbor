@@ -16,7 +16,7 @@ pub mod tui;
 pub use clap::{Parser, Subcommand, ValueEnum};
 
 // Re-export domain types
-pub use ah_domain_types::CliLogLevel;
+pub use ah_domain_types::{CliLogLevel, ExperimentalFeature};
 
 // Re-export agent types for backward compatibility
 pub use agent::start::CliAgentType as AgentType;
@@ -53,6 +53,16 @@ pub struct Cli {
         global = true
     )]
     pub fs_snapshots: FsSnapshotsType,
+
+    /// Enable experimental features (agents, modes, etc.)
+    #[arg(
+        long,
+        help = "Enable experimental features like new agents or modes. Can be specified multiple times or as comma-separated values.",
+        global = true,
+        value_enum,
+        value_delimiter = ','
+    )]
+    pub experimental_features: Vec<ExperimentalFeature>,
 
     #[command(subcommand)]
     pub command: Commands,

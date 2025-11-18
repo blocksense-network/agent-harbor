@@ -12,12 +12,17 @@
 
 pub mod agent;
 pub mod cli;
+pub mod experimental_features;
 pub mod repository;
 pub mod task;
 
 // Re-export commonly used types
-pub use agent::*;
+pub use agent::{
+    AgentCapabilities, AgentCapability, AgentCatalog, AgentChoice, AgentMetadata, AgentSoftware,
+    AgentSoftwareBuild,
+};
 pub use cli::*;
+pub use experimental_features::ExperimentalFeature;
 pub use repository::*;
 pub use task::*;
 

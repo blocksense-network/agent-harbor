@@ -71,3 +71,6 @@ vim = ["ah-mux/vim"]
 neovim = ["ah-mux/neovim"]
 emacs = ["ah-mux/emacs"]
 iterm2 = ["ah-mux/iterm2"]
+
+[dev-dependencies]
+mockall = "0.12"

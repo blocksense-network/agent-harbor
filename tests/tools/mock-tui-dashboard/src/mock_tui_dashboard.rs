@@ -11,11 +11,13 @@ use ah_core::{
     DefaultWorkspaceTermsEnumerator, RemoteBranchesEnumerator, RemoteRepositoriesEnumerator,
     TaskManager, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
 };
+use ah_domain_types::ExperimentalFeature;
 use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::{dashboard_loop::run_dashboard, settings::Settings, view::TuiDependencies};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use std::{fs::OpenOptions, sync::Arc};
+use strum::IntoEnumIterator;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,13 +38,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create mock service dependencies
     let workspace_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-        Arc::new(VcsRepo::new(&workspace_dir).unwrap());
     let config = WorkflowConfig::default();
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> = Arc::new(
         WorkflowProcessor::for_repo(config, &workspace_dir)
             .unwrap_or_else(|_| WorkflowProcessor::new(WorkflowConfig::default())),
     );
+
+    // Use real VCS repo for workspace files enumeration (fast enough for local testing)
+    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
+        Arc::new(VcsRepo::new(&workspace_dir).unwrap_or_else(|_| {
+            // If not in a git repo, create a minimal mock for testing
+            panic!("Mock dashboard requires running from a git repository");
+        }));
     let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
         DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
     );
@@ -51,6 +58,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create dashboard dependencies
     let mock_client = MockRestClient::with_mock_data();
+    let experimental_features: Vec<ExperimentalFeature> = ExperimentalFeature::iter().collect();
+
+    // Create local agent catalog for discovering available agents
+    let local_config = ah_core::LocalAgentCatalogConfig {
+        executable_paths: vec![], // Use PATH
+        health_check_timeout: std::time::Duration::from_secs(1),
+        query_third_party_apis: false,
+        cache_ttl: std::time::Duration::from_secs(300),
+        experimental_features: experimental_features.clone(),
+    };
+    let local_catalog = Arc::new(ah_core::LocalAgentCatalog::new(local_config));
+
+    // Use local catalog directly for agent enumeration
+    let agents_enumerator = local_catalog as Arc<dyn ah_core::AgentsEnumerator>;
+
     let deps = TuiDependencies {
         workspace_files,
         workspace_workflows,
@@ -64,8 +86,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             mock_client,
             "mock-server".to_string(),
         )),
+        agents_enumerator,
         settings,
         current_repository: None,
+        experimental_features,
     };
 
     // Run the dashboard (handles its own signal/panic handling)
