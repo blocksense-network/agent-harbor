@@ -3,10 +3,8 @@
 
 use futures::StreamExt;
 use std::fs;
-use std::path::Path;
 use std::process::Stdio;
 use tempfile::TempDir;
-use tokio::time::{self, Duration};
 
 use ah_repo::{VcsError, VcsRepo, VcsType};
 
