@@ -1409,7 +1409,18 @@ impl FsCore {
     pub fn getattr(&self, pid: &PID, path: &Path) -> FsResult<Attributes> {
         // First try to resolve in upper layer
         if let Ok((node_id, _)) = self.resolve_path(pid, path) {
-            return self.get_node_attributes(node_id);
+            let attrs = self.get_node_attributes(node_id)?;
+            if let Some(kind) = &attrs.special_kind {
+                debug!(
+                    target: "agentfs::core.attr",
+                    event = "getattr_path",
+                    path = %path.display(),
+                    node_id = node_id.0,
+                    special = ?kind,
+                    mode = format_args!("{:#o}", attrs.mode_bits)
+                );
+            }
+            return Ok(attrs);
         }
 
         // If overlay is enabled and no upper entry, check lower filesystem
@@ -1440,6 +1451,15 @@ impl FsCore {
 
         // Extract permission bits from mode (ignore file type bits in high bits)
         let perm_bits = node.mode & 0o777;
+
+        if let Some(kind) = &node.special_kind {
+            debug!(
+                target: "agentfs::core.attr",
+                node_id = node_id.0,
+                special = ?kind,
+                mode = format_args!("{:#o}", node.mode)
+            );
+        }
 
         Ok(Attributes {
             len,
@@ -2356,6 +2376,34 @@ impl FsCore {
         }
 
         Err(FsError::NotFound)
+    }
+
+    /// Check whether the current process is allowed to access a path with the requested intent.
+    pub fn check_path_access(
+        &self,
+        pid: &PID,
+        path: &Path,
+        want_read: bool,
+        want_write: bool,
+        want_exec: bool,
+    ) -> FsResult<()> {
+        if !self.config.security.enforce_posix_permissions {
+            return Ok(());
+        }
+
+        let Some(user) = self.user_for_process(pid) else {
+            return Err(FsError::AccessDenied);
+        };
+
+        let (node_id, _) = self.resolve_path(pid, path)?;
+        let nodes = self.nodes.lock().unwrap();
+        let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+
+        if self.allowed_for_user(node, &user, want_read, want_write, want_exec) {
+            Ok(())
+        } else {
+            Err(FsError::AccessDenied)
+        }
     }
 
     /// Open file for interpose mode with eager upperization
