@@ -351,15 +351,16 @@ pub fn render_model_selection_modal_with_hit_regions(
             format!("{:.width$}", option.name, width = model_name_width as usize),
             style,
         );
-        frame.render_widget(
-            Paragraph::new(Line::from(name_span)),
-            Rect {
-                x: options_area.x,
-                y,
-                width: model_name_width,
-                height: 1,
-            },
-        );
+        let model_name_rect = Rect {
+            x: options_area.x,
+            y,
+            width: model_name_width,
+            height: 1,
+        };
+        frame.render_widget(Paragraph::new(Line::from(name_span)), model_name_rect);
+
+        // Register hit region for model name selection
+        hit_registry.register(model_name_rect, MouseAction::ModalSelectOption(global_idx));
 
         // Count display (right-aligned)
         let count_style = if option.count > 0 {

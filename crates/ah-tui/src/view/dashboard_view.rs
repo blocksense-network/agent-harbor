@@ -52,7 +52,7 @@ use ah_domain_types::TaskState;
 use ah_domain_types::task::ToolStatus;
 use ratatui::{prelude::*, widgets::*};
 use ratatui_image::StatefulImage;
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// Display item types (exact same as main.rs)
 #[derive(Debug, Clone)]
@@ -372,16 +372,6 @@ pub fn render(
                                 cache.update_focused_textarea_rect(layout.textarea);
                             }
 
-                            // Register button hit regions first
-                            hit_registry.register(
-                                layout.repository_button,
-                                MouseAction::ActivateRepositoryModal,
-                            );
-                            hit_registry
-                                .register(layout.branch_button, MouseAction::ActivateBranchModal);
-                            hit_registry
-                                .register(layout.model_button, MouseAction::ActivateModelModal);
-                            hit_registry.register(layout.go_button, MouseAction::LaunchTask);
                             // Store textarea area for autocomplete positioning
                             view_model.last_textarea_area = Some(layout.textarea);
                             (0, Some(layout)) // Draft card is always at index 0
@@ -406,6 +396,27 @@ pub fn render(
                             layout.textarea,
                             MouseAction::FocusDraftTextarea(card_info.index),
                         );
+
+                        // Register button hit regions after card and textarea so they take precedence
+                        hit_registry.register(
+                            layout.repository_button,
+                            MouseAction::ActivateRepositoryModal,
+                        );
+                        hit_registry
+                            .register(layout.branch_button, MouseAction::ActivateBranchModal);
+                        hit_registry.register(layout.model_button, MouseAction::ActivateModelModal);
+                        hit_registry.register(layout.go_button, MouseAction::LaunchTask);
+                        hit_registry.register(
+                            layout.advanced_options_button,
+                            MouseAction::ActivateAdvancedOptionsModal,
+                        );
+                        // Debug: log registered hit regions
+                        debug!("Registered button hit regions:");
+                        debug!("  Repository: {:?}", layout.repository_button);
+                        debug!("  Branch: {:?}", layout.branch_button);
+                        debug!("  Model: {:?}", layout.model_button);
+                        debug!("  Go: {:?}", layout.go_button);
+                        debug!("  Advanced Options: {:?}", layout.advanced_options_button);
                     }
                 }
             }

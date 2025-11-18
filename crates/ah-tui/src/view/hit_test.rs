@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ratatui::layout::Rect;
+use tracing::debug;
 
 /// Represents an interactive zone on screen associated with a semantic action.
 #[derive(Debug, Clone)]
@@ -52,6 +53,21 @@ impl<A: Clone> HitTestRegistry<A> {
                 None
             }
         })
+    }
+
+    /// Get the number of registered zones.
+    pub fn len(&self) -> usize {
+        self.zones.len()
+    }
+
+    /// Debug dump all registered zones.
+    pub fn debug_dump(&self)
+    where
+        A: std::fmt::Debug,
+    {
+        for (i, zone) in self.zones.iter().enumerate() {
+            debug!("  Zone {}: {:?} at {:?}", i, zone.action, zone.rect);
+        }
     }
 }
 

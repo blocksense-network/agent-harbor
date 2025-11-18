@@ -15,9 +15,14 @@ active input modes, and other contextual factors. This ensures that tests verify
 end-to-end behavior as users would experience it.
 */
 
+use ah_core::{
+    BranchesEnumerator, RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator,
+    WorkspaceTermsEnumerator,
+};
 use ah_domain_types::{
     AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, TaskExecution, TaskState,
 };
+use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::{KeyboardOperation, Settings};
 use ah_tui::view_model::DashboardFocusState;
 use ah_tui::view_model::task_entry::CardFocusElement;
@@ -25,13 +30,56 @@ use ah_tui::view_model::{
     FilterControl, ModalState, ModalType, MouseAction, Msg, TaskCardType, TaskExecutionFocusState,
     TaskExecutionViewModel, TaskMetadataViewModel, ViewModel, dashboard_model::FilteredOption,
 };
+use ah_workflows::WorkspaceWorkflowsEnumerator;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
+use std::sync::Arc;
 
 mod common;
 
 fn new_view_model() -> ViewModel {
     common::build_view_model()
+}
+
+fn new_view_model_with_mock_client() -> (ViewModel, MockRestClient) {
+    let mock_client = MockRestClient::new();
+    let task_manager: Arc<dyn TaskManager> = Arc::new(mock_client.clone());
+
+    let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
+        Arc::new(common::TestWorkspaceFilesEnumerator::new(vec![
+            "src/main.rs".to_string(),
+            "Cargo.toml".to_string(),
+        ]));
+    let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
+        Arc::new(common::TestWorkspaceWorkflowsEnumerator::new(vec![
+            "test-workflow".to_string(),
+            "another-workflow".to_string(),
+        ]));
+    let workspace_terms: Arc<dyn WorkspaceTermsEnumerator> = Arc::new(
+        ah_core::DefaultWorkspaceTermsEnumerator::new(Arc::clone(&workspace_files)),
+    );
+
+    let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
+        ah_core::RemoteRepositoriesEnumerator::new(mock_client.clone(), "http://test".to_string()),
+    );
+    let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
+        ah_core::RemoteBranchesEnumerator::new(mock_client.clone(), "http://test".to_string()),
+    );
+    let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
+    let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
+
+    let vm = ViewModel::new(
+        workspace_files,
+        workspace_workflows,
+        workspace_terms,
+        task_manager,
+        repositories_enumerator,
+        branches_enumerator,
+        settings,
+        ui_tx,
+    );
+
+    (vm, mock_client)
 }
 
 fn send_key(vm: &mut ViewModel, code: KeyCode, modifiers: KeyModifiers) {
@@ -290,7 +338,20 @@ mod keyboard {
         });
         assert_eq!(vm.draft_cards[0].focus_element, CardFocusElement::GoButton);
 
-        // Tab 5: Wrap around to TaskDescription
+        // Tab 5: AdvancedOptionsButton
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Tab to focus AdvancedOptionsButton",
+            |vm| {
+                assert!(vm.handle_key_event(tab.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::AdvancedOptionsButton
+        );
+
+        // Tab 6: Wrap around to TaskDescription
         expect_screen_redraw(
             &mut vm,
             "pressing Tab to wrap around to TaskDescription",
@@ -306,7 +367,20 @@ mod keyboard {
         // Test Shift+TAB navigation (backwards)
         let shift_tab = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
 
-        // Currently at TaskDescription, Shift+Tab should go to GoButton
+        // Currently at TaskDescription, Shift+Tab should go to AdvancedOptionsButton
+        expect_screen_redraw(
+            &mut vm,
+            "pressing Shift+Tab to focus AdvancedOptionsButton",
+            |vm| {
+                assert!(vm.handle_key_event(shift_tab.clone()));
+            },
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::AdvancedOptionsButton
+        );
+
+        // Shift+Tab: GoButton
         expect_screen_redraw(&mut vm, "pressing Shift+Tab to focus GoButton", |vm| {
             assert!(vm.handle_key_event(shift_tab));
         });
@@ -1000,6 +1074,293 @@ mod mouse {
             vm.status_bar.status_message.as_deref(),
             Some("Task launched successfully")
         );
+    }
+
+    #[tokio::test]
+    async fn ctrl_enter_opens_advanced_launch_options_menu() {
+        let (mut vm, _mock_client) = new_view_model_with_mock_client();
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
+            card.description.insert_str("Test task");
+        }
+
+        // Focus on the draft task first
+        vm.change_focus(DashboardFocusState::DraftTask(0));
+
+        // Send Ctrl+Enter to open advanced launch options
+        send_key(&mut vm, KeyCode::Enter, KeyModifiers::CONTROL);
+
+        // Verify the modal is open
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+        assert!(vm.active_modal.is_some());
+
+        // Verify modal content
+        if let Some(modal) = &vm.active_modal {
+            assert_eq!(modal.title, "Advanced Launch Options");
+            assert!(modal.filtered_options.len() > 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn tab_navigation_to_advanced_options_button_then_enter() {
+        let (mut vm, _mock_client) = new_view_model_with_mock_client();
+
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
+            card.description.insert_str("Test task");
+        }
+
+        // Focus on the draft task first
+        vm.change_focus(DashboardFocusState::DraftTask(0));
+
+        // Initial state: focused on TaskDescription
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
+        }
+
+        // TAB to RepositorySelector
+        send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, CardFocusElement::RepositorySelector);
+        }
+
+        // TAB to BranchSelector
+        send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, CardFocusElement::BranchSelector);
+        }
+
+        // TAB to ModelSelector
+        send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
+        }
+
+        // TAB to GoButton
+        send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, CardFocusElement::GoButton);
+        }
+
+        // TAB to AdvancedOptionsButton
+        send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
+        if let Some(card) = vm.draft_cards.get(0) {
+            assert_eq!(card.focus_element, CardFocusElement::AdvancedOptionsButton);
+        }
+
+        // Press ENTER to activate the Advanced Options button
+        send_key(&mut vm, KeyCode::Enter, KeyModifiers::empty());
+
+        // Verify the modal is open
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+        assert!(vm.active_modal.is_some());
+
+        // Verify modal content
+        if let Some(modal) = &vm.active_modal {
+            assert_eq!(modal.title, "Advanced Launch Options");
+            assert!(modal.filtered_options.len() > 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn launch_in_background_shortcut_launches_task() {
+        let (mut vm, mock_client) = new_view_model_with_mock_client();
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
+            card.description.insert_str("Background task");
+            // Ensure the card has selected agents
+            if card.selected_agents.is_empty() {
+                card.selected_agents.push(AgentChoice {
+                    agent: AgentSoftwareBuild {
+                        software: AgentSoftware::Claude,
+                        version: "latest".to_string(),
+                    },
+                    model: "sonnet".to_string(),
+                    count: 1,
+                    settings: std::collections::HashMap::new(),
+                    display_name: Some("Claude Sonnet".to_string()),
+                });
+            }
+        }
+
+        // Focus on the draft task first
+        vm.change_focus(DashboardFocusState::DraftTask(0));
+
+        // Open advanced launch options menu
+        let draft_id = vm.draft_cards[0].id.clone();
+        vm.open_launch_options_modal(draft_id.clone());
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+
+        // Select "Launch in background" option
+        vm.apply_modal_selection(
+            ModalType::LaunchOptions { draft_id },
+            "Launch in background (b)".to_string(),
+        );
+
+        // Verify modal is closed
+        assert_eq!(vm.modal_state, ModalState::None);
+        assert!(vm.active_modal.is_none());
+
+        // Status should indicate success
+        assert_eq!(
+            vm.status_bar.status_message.as_deref(),
+            Some("Task launched successfully")
+        );
+    }
+
+    #[tokio::test]
+    async fn launch_in_split_view_shortcut_launches_task() {
+        let (mut vm, mock_client) = new_view_model_with_mock_client();
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
+            card.description.insert_str("Split view task");
+            // Ensure the card has selected agents
+            if card.selected_agents.is_empty() {
+                card.selected_agents.push(AgentChoice {
+                    agent: AgentSoftwareBuild {
+                        software: AgentSoftware::Claude,
+                        version: "latest".to_string(),
+                    },
+                    model: "sonnet".to_string(),
+                    count: 1,
+                    settings: std::collections::HashMap::new(),
+                    display_name: Some("Claude Sonnet".to_string()),
+                });
+            }
+        }
+
+        // Focus on the draft task first
+        vm.change_focus(DashboardFocusState::DraftTask(0));
+
+        // Open advanced launch options menu
+        let draft_id = vm.draft_cards[0].id.clone();
+        vm.open_launch_options_modal(draft_id.clone());
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+
+        // Select "Launch in split view" option
+        vm.apply_modal_selection(
+            ModalType::LaunchOptions { draft_id },
+            "Launch in split view (s)".to_string(),
+        );
+
+        // Verify modal is closed and task was launched
+        assert_eq!(vm.modal_state, ModalState::None);
+        assert_eq!(
+            vm.status_bar.status_message.as_deref(),
+            Some("Task launched in split view successfully")
+        );
+    }
+
+    #[tokio::test]
+    async fn launch_in_horizontal_split_with_focus_shortcut_launches_task() {
+        let (mut vm, mock_client) = new_view_model_with_mock_client();
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
+            card.description.insert_str("Horizontal split focus task");
+            // Ensure the card has selected agents
+            if card.selected_agents.is_empty() {
+                card.selected_agents.push(AgentChoice {
+                    agent: AgentSoftwareBuild {
+                        software: AgentSoftware::Claude,
+                        version: "latest".to_string(),
+                    },
+                    model: "sonnet".to_string(),
+                    count: 1,
+                    settings: std::collections::HashMap::new(),
+                    display_name: Some("Claude Sonnet".to_string()),
+                });
+            }
+        }
+
+        // Focus on the draft task first
+        vm.change_focus(DashboardFocusState::DraftTask(0));
+
+        // Open advanced launch options menu
+        let draft_id = vm.draft_cards[0].id.clone();
+        vm.open_launch_options_modal(draft_id.clone());
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+
+        // Select "Launch in horizontal split" option
+        vm.apply_modal_selection(
+            ModalType::LaunchOptions { draft_id },
+            "Launch in horizontal split (h)".to_string(),
+        );
+
+        // Verify modal is closed and task was launched
+        assert_eq!(vm.modal_state, ModalState::None);
+        assert_eq!(
+            vm.status_bar.status_message.as_deref(),
+            Some("Task launched in split view successfully")
+        );
+    }
+
+    #[tokio::test]
+    async fn launch_in_vertical_split_shortcut_launches_task() {
+        let (mut vm, mock_client) = new_view_model_with_mock_client();
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
+            card.description.insert_str("Vertical split task");
+            // Ensure the card has selected agents
+            if card.selected_agents.is_empty() {
+                card.selected_agents.push(AgentChoice {
+                    agent: AgentSoftwareBuild {
+                        software: AgentSoftware::Claude,
+                        version: "latest".to_string(),
+                    },
+                    model: "sonnet".to_string(),
+                    count: 1,
+                    settings: std::collections::HashMap::new(),
+                    display_name: Some("Claude Sonnet".to_string()),
+                });
+            }
+        }
+
+        // Focus on the draft task first
+        vm.change_focus(DashboardFocusState::DraftTask(0));
+
+        // Open advanced launch options menu
+        let draft_id = vm.draft_cards[0].id.clone();
+        vm.open_launch_options_modal(draft_id.clone());
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+
+        // Select "Launch in vertical split" option
+        vm.apply_modal_selection(
+            ModalType::LaunchOptions { draft_id },
+            "Launch in vertical split (v)".to_string(),
+        );
+
+        // Verify modal is closed and task was launched
+        assert_eq!(vm.modal_state, ModalState::None);
+        assert_eq!(
+            vm.status_bar.status_message.as_deref(),
+            Some("Task launched in split view successfully")
+        );
+    }
+
+    #[tokio::test]
+    async fn advanced_options_button_click_opens_menu() {
+        let (mut vm, _mock_client) = new_view_model_with_mock_client();
+        if let Some(card) = vm.draft_cards.first_mut() {
+            card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
+            card.description.insert_str("Test task");
+        }
+
+        // Focus on the draft task first
+        vm.change_focus(DashboardFocusState::DraftTask(0));
+
+        // Click the advanced options button (simulate clicking on the button)
+        // The advanced options button should be registered in the hit registry
+        click(
+            &mut vm,
+            MouseAction::ActivateAdvancedOptionsModal,
+            sample_bounds(),
+            2,
+            1,
+        );
+
+        // Verify the modal is open
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+        assert!(vm.active_modal.is_some());
     }
 
     #[test]

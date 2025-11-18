@@ -92,6 +92,7 @@ pub static DRAFT_TEXT_EDITING_MODE: crate::view_model::input::InputMinorMode =
         KeyboardOperation::FindNext,
         KeyboardOperation::FindPrevious,
         KeyboardOperation::IndentOrComplete,
+        KeyboardOperation::ShowLaunchOptions,
         KeyboardOperation::LaunchAndFocus,
         KeyboardOperation::LaunchInSplitView,
         KeyboardOperation::LaunchInSplitViewAndFocus,
@@ -107,6 +108,7 @@ pub enum CardFocusElement {
     BranchSelector,
     ModelSelector,
     GoButton,
+    AdvancedOptionsButton,
 }
 
 /// Trait for managing autocomplete functionality and card interactions in the task entry.
@@ -217,6 +219,12 @@ impl TaskEntryViewModel {
                 }
                 CardFocusElement::GoButton => {
                     // Launch the task - this should bubble up to dashboard level
+                    return KeyboardOperationResult::Bubble {
+                        operation: KeyboardOperation::ActivateCurrentItem,
+                    };
+                }
+                CardFocusElement::AdvancedOptionsButton => {
+                    // Open advanced launch options - this should bubble up to dashboard level
                     return KeyboardOperationResult::Bubble {
                         operation: KeyboardOperation::ActivateCurrentItem,
                     };

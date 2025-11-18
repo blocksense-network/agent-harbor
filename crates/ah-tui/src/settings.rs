@@ -134,6 +134,7 @@ pub enum KeyboardOperation {
 
     // Application Actions
     DraftNewTask,
+    ShowLaunchOptions,
     LaunchAndFocus,
     LaunchInSplitView,
     LaunchInSplitViewAndFocus,
@@ -220,6 +221,7 @@ impl KeyboardOperation {
             KeyboardOperation::SelectAll => "shortcut-select-all",
             KeyboardOperation::SelectWordUnderCursor => "shortcut-select-word-under-cursor",
             KeyboardOperation::DraftNewTask => "shortcut-draft-new-task",
+            KeyboardOperation::ShowLaunchOptions => "shortcut-show-launch-options",
             KeyboardOperation::LaunchAndFocus => "shortcut-launch-and-focus",
             KeyboardOperation::LaunchInSplitView => "shortcut-launch-in-split-view",
             KeyboardOperation::LaunchInSplitViewAndFocus => {
@@ -304,6 +306,7 @@ impl KeyboardOperation {
             KeyboardOperation::SelectAll => "Select all text",
             KeyboardOperation::SelectWordUnderCursor => "Select word under cursor",
             KeyboardOperation::DraftNewTask => "Create new draft task",
+            KeyboardOperation::ShowLaunchOptions => "Show advanced launch options",
             KeyboardOperation::LaunchAndFocus => "Launch task and focus",
             KeyboardOperation::LaunchInSplitView => "Launch task in split view",
             KeyboardOperation::LaunchInSplitViewAndFocus => "Launch task in split view and focus",
@@ -975,24 +978,28 @@ impl KeymapConfig {
                 vec!["Ctrl+N".to_string(), "Cmd+N".to_string()],
             ),
             KeyboardOperationDefinition::new(
-                KeyboardOperation::LaunchAndFocus,
-                vec!["Alt+Enter".to_string()],
-            ),
-            KeyboardOperationDefinition::new(
-                KeyboardOperation::LaunchInSplitView,
+                KeyboardOperation::ShowLaunchOptions,
                 vec!["Ctrl+Enter".to_string()],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::LaunchAndFocus,
+                vec![], // No default shortcut
+            ),
+            KeyboardOperationDefinition::new(
+                KeyboardOperation::LaunchInSplitView,
+                vec![], // No default shortcut
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::LaunchInSplitViewAndFocus,
-                vec!["Ctrl+Alt+Enter".to_string()],
+                vec![], // No default shortcut
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::LaunchInHorizontalSplit,
-                vec!["Ctrl+Shift+Enter".to_string()],
+                vec![], // No default shortcut
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::LaunchInVerticalSplit,
-                vec!["Ctrl+Shift+Alt+Enter".to_string()],
+                vec![], // No default shortcut
             ),
             KeyboardOperationDefinition::new(
                 KeyboardOperation::ActivateCurrentItem,
@@ -1035,6 +1042,7 @@ impl KeymapConfig {
             KeyboardOperation::DismissOverlay => &self.dismiss_overlay,
             KeyboardOperation::SelectWordUnderCursor => &self.select_word_under_cursor,
             KeyboardOperation::DraftNewTask => &self.draft_new_task,
+            KeyboardOperation::ShowLaunchOptions => &self.show_launch_options,
             KeyboardOperation::LaunchAndFocus => &self.launch_and_focus,
             KeyboardOperation::LaunchInSplitView => &self.launch_in_split_view,
             KeyboardOperation::LaunchInSplitViewAndFocus => &self.launch_in_split_view_and_focus,
@@ -1141,6 +1149,9 @@ impl KeymapConfig {
                 self.select_word_under_cursor.clone().unwrap_or_default()
             }
             KeyboardOperation::DraftNewTask => self.draft_new_task.clone().unwrap_or_default(),
+            KeyboardOperation::ShowLaunchOptions => {
+                self.show_launch_options.clone().unwrap_or_default()
+            }
             KeyboardOperation::LaunchAndFocus => self.launch_and_focus.clone().unwrap_or_default(),
             KeyboardOperation::LaunchInSplitView => {
                 self.launch_in_split_view.clone().unwrap_or_default()
@@ -1370,6 +1381,7 @@ impl Default for KeymapConfig {
             increment_value: None,
             decrement_value: None,
             draft_new_task: None,
+            show_launch_options: None,
             launch_and_focus: None,
             launch_in_split_view: None,
             launch_in_split_view_and_focus: None,
@@ -1418,6 +1430,9 @@ impl Default for KeymapConfig {
                         config.select_word_under_cursor = Some(matchers)
                     }
                     KeyboardOperation::DraftNewTask => config.draft_new_task = Some(matchers),
+                    KeyboardOperation::ShowLaunchOptions => {
+                        config.show_launch_options = Some(matchers)
+                    }
                     KeyboardOperation::LaunchAndFocus => config.launch_and_focus = Some(matchers),
                     KeyboardOperation::LaunchInSplitView => {
                         config.launch_in_split_view = Some(matchers)
@@ -1477,7 +1492,6 @@ impl Default for KeymapConfig {
                     KeyboardOperation::MoveToMatchingParenthesis => {
                         config.move_to_matching_parenthesis = Some(matchers)
                     }
-                    // Duplicate unreachable patterns removed
                     KeyboardOperation::DeleteCharacterForward => {
                         config.delete_character_forward = Some(matchers)
                     }
@@ -1652,6 +1666,7 @@ pub struct KeymapConfig {
 
     // Application Actions
     pub draft_new_task: Option<Vec<KeyMatcher>>,
+    pub show_launch_options: Option<Vec<KeyMatcher>>,
     pub launch_and_focus: Option<Vec<KeyMatcher>>,
     pub launch_in_split_view: Option<Vec<KeyMatcher>>,
     pub launch_in_split_view_and_focus: Option<Vec<KeyMatcher>>,

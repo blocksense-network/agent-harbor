@@ -150,6 +150,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                         match mouse_event.kind {
                             MouseEventKind::Down(MouseButton::Left) => {
                                 debug!("Mouse click at ({}, {})", mouse_event.column, mouse_event.row);
+                                debug!("Hit registry has {} zones", hit_registry.len());
                                 if let Some(hit) = hit_registry.hit_test(mouse_event.column, mouse_event.row) {
                                     debug!("Hit test found action: {:?} in bounds {:?}", hit.action, hit.rect);
                                     if let Err(error) = view_model.update(ViewModelMsg::MouseClick {
@@ -163,6 +164,8 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
                                     handled = true;
                                 } else {
                                     debug!("No hit found at ({}, {})", mouse_event.column, mouse_event.row);
+                                    // Log all registered zones for debugging
+                                    hit_registry.debug_dump();
                                 }
                             }
                             MouseEventKind::Drag(MouseButton::Left) => {

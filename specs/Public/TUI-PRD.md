@@ -138,7 +138,7 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
 - Always-visible text area for task description with expandable height
 - Single line of compact controls below the text area:
   - Left side: Repository Selector, Branch Selector, Model Selector (horizontally laid out)
-  - Right side: "⏎ Go" button (right-aligned)
+  - Right side: "⏎ Go" button and "⚙️" advanced options button (right-aligned, horizontally adjacent)
 - **Model Selector Button Display**: Shows selected models as comma-separated list with instance counts
   - Format: "🤖 model1, model2 x2, model3 x3" (shows "xN" only when count > 1)
   - Falls back to "🤖 Models" when no models are selected
@@ -147,7 +147,8 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
   - Branch Selector: Fuzzy search through repository branches
   - Agent Multi-Selector: Multi-select interface with instance counts and +/- controls
   - **Characteristics**: Full-screen overlay, dedicated input box, ESC to cancel, Enter to confirm
-- TAB navigation between controls
+- **Advanced Options Menu**: Gear button (⚙️) opens a menu displaying launch options with visible keyboard shortcuts:
+- TAB navigation between controls (Repository → Branch → Model → Go → Advanced Options → wrap around)
 - Multiple draft tasks supported - users can create several draft tasks in progress
 - Auto-save drafts to local storage and restore across sessions (debounced, 500ms delay)
 - Default values from last used selections
@@ -310,7 +311,7 @@ Single-line footer without borders showing context-sensitive shortcuts that chan
 
 - **Task feed focused**: "↑↓ Navigate • Enter Select Task • Ctrl+C x2 Quit"
 - **Draft card selected**: "↑↓ Navigate • Enter Edit Draft • Ctrl+C x2 Quit"
-- **Draft textarea focused**: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Complete/Next Field"
+- **Draft textarea focused**: "Ctrl+Enter Advanced Options • Enter Launch Agent(s) • Shift+Enter New Line • Tab Complete/Next Field"
 - **Active task focused**: "↑↓ Navigate • Enter Show Task Progress • Ctrl+C x2 Quit"
 - **Completed/merged task focused**: "↑↓ Navigate • Enter Show Task Details • Ctrl+C x2 Quit"
 - **Modal active**: "↑↓ Navigate • Enter Select • Esc Back"
@@ -414,8 +415,8 @@ Right click is left for the native terminal UI to handle in order to preserve it
 
 **Button Navigation in Draft Cards:**
 
-- `Tab` or `Right`: Repository → Branch → Model → Go → (wrap to Repository)
-- `Shift+Tab` or `Left`: Go → Model → Branch → Repository → (wrap to Go)
+- `Tab` or `Right`: Repository → Branch → Model → Go → Advanced Options → (wrap to Repository)
+- `Shift+Tab` or `Left`: Advanced Options → Go → Model → Branch → Repository → (wrap to Go)
 - `Esc` on buttons: Return focus to text area (don't exit application)
 
 **Text Area Focus:**
@@ -433,13 +434,29 @@ Right click is left for the native terminal UI to handle in order to preserve it
 
 #### Draft Task Editing
 
-- **Tab/Shift+Tab**: Cycle between buttons (Repository, Branch, Models, Go) when not in textarea
+- **Tab/Shift+Tab**: Cycle between buttons (Repository, Branch, Models, Advanced Options, Go) when not in textarea
 - **Enter**: Activate focused button or select item in modal (when in textarea: launch task)
 - **Esc**: Close modal or go back to navigation mode
 - **Shift+Enter**: Create new line in textarea (when focused)
+- **Ctrl+Enter**: Show advanced launch options menu (when in textarea)
 - **Any key**: Type in description area when focused
 - **Backspace**: Delete characters
 - **Auto-complete menu**: When certain characters like / or @ are entered in the text area, show auto-completion menu with dynamically populated choices (@ for citing files, / for selecting workflows, etc)
+
+#### Advanced Launch Options Menu
+
+The advanced launch options menu provides alternative ways to launch tasks beyond the standard "Go" button.
+
+- **Menu Activation**: Click gear button (⚙️) or press Ctrl+Enter when in draft textarea
+- **Menu Options**:
+  - **Launch in background** - Type `b` when menu is visible (launches task without creating multiplexer window)
+  - **Launch in split view** - Type `s` when menu is visible (auto-detects vertical/horizontal split based on longer edge)
+  - **Launch in horizontal split** - Type `h` when menu is visible (creates horizontal split pane)
+  - **Launch in vertical split** - Type `v` when menu is visible (creates vertical split pane)
+  - **Focus variants**: Capital letters `B`, `S`, `H`, `V` launch and automatically focus the new task window/pane
+- **Navigation**: Arrow keys to navigate menu items, Enter to select, or type the displayed shortcut letter, or mouse click to choose
+- **Menu shortcuts**: Single letters (b/s/h/v) or capitals (B/S/H/V) can be typed directly to select when menu is visible (these are not configurable keyboard operations)
+- **Menu dismissal**: ESC to close without launching, or selecting an option to launch and close
 
 #### Modal Navigation (Telescope-style)
 
@@ -645,11 +662,12 @@ All such variables are in under the "[tui.keymap]" section.
 |                                 | Select word under cursor                      | `select-word-under-cursor`       | Alt+@                                                                           |
 |                                 | Extend selection                              | no config variable               | Shift+movement key (CUA/PC and macOS)                                           |
 | **Application Actions**         | Draft new task                                | `draft-new-task`                 | Ctrl+N                                                                          |
-|                                 | Launch and focus                              | `launch-and-focus`               | Alt+Enter                                                                       |
-|                                 | Launch in split view                          | `launch-in-split-view`           | Ctrl+Enter                                                                      |
-|                                 | Launch in split view and focus                | `launch-in-split-view-and-focus` | Ctrl+Alt+Enter                                                                  |
-|                                 | Launch in horizontal split                    | `launch-in-horizontal-split`     | Ctrl+Shift+Enter                                                                |
-|                                 | Launch in vertical split                      | `launch-in-vertical-split`       | Ctrl+Shift+Alt+Enter                                                            |
+|                                 | Show Advanced Launch Options                  | `show-launch-options`            | Ctrl+Enter                                                                      |
+|                                 | Launch and focus                              | `launch-and-focus`               | No Default Shortcut                                                             |
+|                                 | Launch in split view                          | `launch-in-split-view`           | No Default Shortcut                                                             |
+|                                 | Launch in split view and focus                | `launch-in-split-view-and-focus` | No Default Shortcut                                                             |
+|                                 | Launch in horizontal split                    | `launch-in-horizontal-split`     | No Default Shortcut                                                             |
+|                                 | Launch in vertical split                      | `launch-in-vertical-split`       | No Default Shortcut                                                             |
 |                                 | Activate current item                         | `activate-current-item`          | Enter                                                                           |
 |                                 | Delete current task                           | `delete-current-task`            | Ctrl+W (CUA/PC), Cmd+W (macOS), C-x k (Emacs)                                   |
 | **Session Viewer Task Entry**   | Move to next snapshot                         | `move-to-next-snapshot`          | Ctrl+Shift+Down                                                                 |
