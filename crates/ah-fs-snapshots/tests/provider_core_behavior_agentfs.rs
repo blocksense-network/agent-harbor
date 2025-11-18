@@ -7,6 +7,7 @@
 //! process.
 
 use fs_snapshots_test_harness::assert_driver_exists;
+use std::io::{self, Write};
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 use {
@@ -59,7 +60,7 @@ fn provider_core_behavior_agentfs() {
 
     let stdout = String::from_utf8(output.stdout).expect("stdout not valid utf-8");
     if env::var_os("FS_SNAPSHOTS_HARNESS_DEBUG").is_some() {
-        println!("AgentFS provider matrix stdout:\n{}", stdout);
+        let _ = writeln!(io::stdout(), "AgentFS provider matrix stdout:\n{}", stdout);
     }
     assert!(
         stdout.contains("AgentFS provider matrix completed successfully"),
@@ -86,7 +87,8 @@ fn provider_core_behavior_agentfs() {
         })
         .expect("cleanup confirmation for readonly export missing from AgentFS matrix run");
 
-    println!(
+    let _ = writeln!(
+        io::stdout(),
         "AgentFS readonly export cleanup confirmation: {}",
         cleanup_line
     );
@@ -103,7 +105,8 @@ fn provider_core_behavior_agentfs() {
 #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
 #[test]
 fn provider_core_behavior_agentfs() {
-    println!(
+    let _ = writeln!(
+        io::stdout(),
         "Skipping AgentFS provider core behaviour test: agentfs feature disabled or unsupported platform"
     );
 }
@@ -111,8 +114,8 @@ fn provider_core_behavior_agentfs() {
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 fn extract_path_from_line(line: &str) -> PathBuf {
     let path_str = line
-        .splitn(2, ':')
-        .nth(1)
+        .split_once(':')
+        .map(|x| x.1)
         .expect("expected path after colon in output line")
         .trim();
     PathBuf::from(path_str)

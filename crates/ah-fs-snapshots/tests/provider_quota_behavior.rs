@@ -36,10 +36,14 @@ pub trait ProviderQuotaTestBehavior {
         quota_exceeded: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Override in subclasses for provider-specific quota verification
+        use std::io::{self, Write};
         if quota_exceeded {
-            println!("Quota was properly enforced");
+            let _ = writeln!(io::stdout(), "Quota was properly enforced");
         } else {
-            println!("Quota was not enforced or test conditions not met");
+            let _ = writeln!(
+                io::stdout(),
+                "Quota was not enforced or test conditions not met"
+            );
         }
         Ok(())
     }

@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
+use tracing::debug;
 
 /// Git-based snapshot provider implementation.
 pub struct GitProvider {
@@ -370,7 +371,7 @@ impl GitProvider {
         for mount in mounts.drain(..) {
             let debug = std::env::var("FS_SNAPSHOTS_HARNESS_DEBUG").is_ok();
             if debug {
-                println!(
+                debug!(
                     "GitProvider: cleaning readonly worktree {} (shadow repo {})",
                     mount.path.display(),
                     mount.shadow_repo.display()
@@ -387,12 +388,12 @@ impl GitProvider {
 
             if debug {
                 match &removal_status {
-                    Ok(status) => println!(
+                    Ok(status) => debug!(
                         "GitProvider: git worktree remove status for {}: {}",
                         mount.path.display(),
                         status
                     ),
-                    Err(err) => println!(
+                    Err(err) => debug!(
                         "GitProvider: git worktree remove spawn failed for {}: {}",
                         mount.path.display(),
                         err
@@ -402,7 +403,7 @@ impl GitProvider {
 
             if mount.path.exists() {
                 if debug {
-                    println!(
+                    debug!(
                         "GitProvider: readonly worktree still exists after git remove: {}",
                         mount.path.display()
                     );
@@ -414,7 +415,7 @@ impl GitProvider {
                         err
                     ));
                 } else if debug {
-                    println!(
+                    debug!(
                         "GitProvider: fs::remove_dir_all succeeded for {}",
                         mount.path.display()
                     );
@@ -433,7 +434,7 @@ impl GitProvider {
                 ));
                 retained.push(mount);
             } else if debug {
-                println!(
+                debug!(
                     "GitProvider: readonly worktree removed successfully: {}",
                     mount.path.display()
                 );

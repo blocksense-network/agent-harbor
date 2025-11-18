@@ -68,6 +68,12 @@ impl AgentFsProvider {
     }
 }
 
+impl Default for AgentFsProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FsSnapshotProvider for AgentFsProvider {
     fn kind(&self) -> SnapshotProviderKind {
         SnapshotProviderKind::AgentFs
@@ -221,7 +227,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             let snapshot_id =
                 snap.meta.get(META_SNAPSHOT_ID).cloned().unwrap_or_else(|| snap.id.clone());
 
-            let (harness, workspace_path) = {
+            let (harness, _workspace_path) = {
                 let state_guard = self.state.lock().expect("AgentFS provider state poisoned");
                 let session = state_guard.sessions.get(&session_token).ok_or_else(|| {
                     Error::provider(format!(
@@ -817,12 +823,12 @@ mod runtime {
 
     fn trigger_interpose_reconnect() {
         unsafe {
-            eprintln!("AgentFsHarness: attempting to trigger interpose reconnect");
+            tracing::debug!("AgentFsHarness: attempting to trigger interpose reconnect");
             let symbol = CString::new("agentfs_interpose_force_reconnect")
                 .expect("CString conversion for reconnect symbol");
             let func_ptr = libc::dlsym(libc::RTLD_DEFAULT, symbol.as_ptr());
             if func_ptr.is_null() {
-                eprintln!("AgentFsHarness: reconnect symbol not found in interpose shim");
+                tracing::warn!("AgentFsHarness: reconnect symbol not found in interpose shim");
                 return;
             }
             let func: unsafe extern "C" fn() = std::mem::transmute(func_ptr);
