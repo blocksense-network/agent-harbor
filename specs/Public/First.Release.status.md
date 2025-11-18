@@ -7,33 +7,33 @@
 
 ### Outstanding Release Tasks
 
-- [ ] R1. Multiplexer enablement and automated regression coverage
-- [ ] R2. Multi-agent selectors for draft task cards
-- [ ] R3. Remaining TUI input handling from the PRD
-- [ ] R4. AgentFS integration in the task execution path
-- [ ] R5. Remote-server manual test mode
-- [ ] R6. Linux FUSE build validation for AgentFS
+- [ ] R1. Multiplexer enablement and automated regression coverage (Mila, Emil, Danny)
+- [ ] R2. Multi-model selectors for draft task cards (Zahary)
+- [ ] R3. Remaining TUI input handling from the PRD (Zahary)
+- [ ] R4. AgentFS integration in the task execution path (Zahary)
+- [x] R5. Remote-server manual test mode (Zahary)
+- [ ] R6. Linux FUSE build validation for AgentFS (Georgi)
 - [ ] R7. Documentation README completion
-- [ ] R8. Text-normalized output mode
-- [ ] R9. Agent command output capture for debugging
-- [ ] R10. Claude credentials regression investigation
+- [ ] R8. Text-normalized output mode (Zahary)
+- [ ] R9. Agent command output capture for debugging (Zahary)
+- [x] R10. Claude credentials regression investigation (Danny)
 - [ ] R11. Recorder UI stability and test hardening
 - [ ] R12. Recorder pass-through performance improvements
-- [ ] R13. Git worktree snapshot support validation
-- [ ] R14. Public documentation site
+- [ ] R13. Git worktree snapshot support validation (Zahary)
+- [ ] R14. Public documentation site (Radi)
 - [ ] R15. Implement `ah task` command to spec (minus browser automation)
-- [ ] R16. Production package validation and FS snapshots daemon install checks
-- [ ] R17. Release packaging and publishing workflow
-- [ ] R18. Dynamic sandbox approvals in recorder UI
-- [ ] R19. Skipped test investigation and remediation (`just test-rust`)
-- [ ] R20. Slow test investigation and optimization (`just test-rust`)
-- [ ] R21. Restore real-agent scenario integration tests via LLM API proxy
-- [ ] R22. Restore hosted setup scripts and workspaces for hosted agent platforms
-- [ ] R23. REST API alignment with `LocalTaskManager`
-- [ ] R24. SQLite schema alignment and migration reset
-- [ ] R25. Consolidate shared enums into `ah-domain-types`
-- [ ] R26. MCP tool enablement for `ah agent start`
-- [ ] R27. Logging guidelines specification and standardization
+- [ ] R16. Production package validation and FS snapshots daemon install checks (Pavel, Petar)
+- [ ] R17. Release packaging and publishing workflow (Pavel, Petar)
+- [ ] R18. Dynamic sandbox approvals in recorder UI (Zahary)
+- [ ] R19. Skipped test investigation and remediation (`just test-rust`) (Petar)
+- [ ] R20. Slow test investigation and optimization (`just test-rust`) (Petar)
+- [ ] R21. Restore real-agent scenario integration tests via LLM API proxy (Petar)
+- [ ] R22. Restore hosted setup scripts and workspaces for hosted agent platforms (Petar)
+- [ ] R23. REST API alignment with `LocalTaskManager` (Zahary)
+- [ ] R24. SQLite schema alignment and migration reset (Zahary)
+- [ ] R25. Consolidate shared enums into `ah-domain-types` (Zahary)
+- [ ] R26. MCP tool enablement for `ah agent start` (Danny)
+- [x] R27. Logging guidelines specification and standardization (Zahary)
 
 ## R1. Multiplexer enablement and automated regression coverage (assignee: Emil, Mila, Danny)
 
