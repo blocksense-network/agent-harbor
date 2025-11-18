@@ -3,10 +3,8 @@
 
 //! Integration tests for the TUI testing framework
 
-use crate::{TestedTerminalProgram, TuiTestRunner};
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use crate::TestedTerminalProgram;
+use std::io::{self, Write};
 
 #[tokio::test]
 async fn test_integration_basic_functionality() -> anyhow::Result<()> {
@@ -91,17 +89,6 @@ fn test_cli_client_help() {
 
 #[tokio::test]
 async fn test_test_guest_integration() -> anyhow::Result<()> {
-    // Build the path to the test-guest binary
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let test_guest_path = std::path::Path::new(manifest_dir)
-        .parent()
-        .unwrap() // crates
-        .parent()
-        .unwrap() // workspace root
-        .join("target/debug/test-guest")
-        .to_string_lossy()
-        .to_string();
-
     // Find the test-guest binary at runtime
     // Use CARGO_TARGET_DIR if set, otherwise assume standard location
     let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string());
@@ -109,14 +96,14 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
 
     // Check if the binary exists
     if !std::path::Path::new(&test_guest_path).exists() {
-        println!(
+        writeln!(
+            io::stdout(),
             "test-guest binary not found at {}, skipping test",
             test_guest_path
-        );
+        )?;
         return Ok(());
     }
-
-    println!("Using test_guest binary: {}", test_guest_path);
+    writeln!(io::stdout(), "Using test_guest binary: {}", test_guest_path)?;
 
     // Use a dynamic port to avoid conflicts with background processes
     use std::net::TcpListener;
@@ -125,10 +112,10 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
     let uri = format!("tcp://127.0.0.1:{}", port);
     drop(listener); // Free the port so the test can use it
 
-    println!("Using dynamic port: {}", port);
+    writeln!(io::stdout(), "Using dynamic port: {}", port)?;
 
     // Spawn the test_guest program with the URI passed as argument
-    let mut runner = TestedTerminalProgram::new(&test_guest_path)
+    let runner = TestedTerminalProgram::new(&test_guest_path)
         .arg("--uri")
         .arg(&uri)
         .arg("--labels")
@@ -137,13 +124,16 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
         .await?;
 
     // Wait for the test_guest process to complete (it should exit after processing both screenshots)
-    println!("Waiting for test_guest process to complete...");
+    writeln!(
+        io::stdout(),
+        "Waiting for test_guest process to complete..."
+    )?;
     // The process should complete within a reasonable time
     // For now, just wait a bit and check
 
     // Check what was printed to the screen
     let screen_contents = runner.screen_contents();
-    println!("Screen contents: {:?}", screen_contents);
+    writeln!(io::stdout(), "Screen contents: {:?}", screen_contents)?;
 
     // Verify that the test_guest program ran and produced output
     let screen_contents = runner.screen_contents();
@@ -151,15 +141,17 @@ async fn test_test_guest_integration() -> anyhow::Result<()> {
 
     // Check if screenshots were captured (IPC may not work reliably due to tmq timeout issues)
     let screenshots = runner.get_screenshots().await;
-    println!("Captured screenshots: {:?}", screenshots);
+    writeln!(io::stdout(), "Captured screenshots: {:?}", screenshots)?;
     if !screenshots.is_empty() {
-        println!(
+        writeln!(
+            io::stdout(),
             "Test completed successfully - test_guest program ran, produced output, and captured screenshots"
-        );
+        )?;
     } else {
-        println!(
+        writeln!(
+            io::stdout(),
             "Test completed successfully - test_guest program ran and produced output (IPC communication had issues)"
-        );
+        )?;
     }
 
     Ok(())
@@ -173,7 +165,10 @@ async fn test_basic_echo() -> anyhow::Result<()> {
     // Just verify the runner was created successfully
     assert!(runner.endpoint_uri().starts_with("tcp://127.0.0.1:"));
 
-    println!("Basic echo test passed - runner created successfully");
+    writeln!(
+        io::stdout(),
+        "Basic echo test passed - runner created successfully"
+    )?;
     Ok(())
 }
 

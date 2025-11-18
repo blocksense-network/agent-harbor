@@ -10,6 +10,7 @@
 extern crate tui_testing;
 
 use clap::Parser;
+use std::io::{self, Write};
 use std::time::Duration;
 
 #[derive(Parser)]
@@ -57,16 +58,17 @@ async fn async_main() -> anyhow::Result<()> {
         )
     })?;
 
-    println!(
+    writeln!(
+        io::stdout(),
         "Test guest started with URI: {} (from env: {})",
         uri,
         std::env::var("TUI_TESTING_URI").unwrap_or("not set".to_string())
-    );
+    )?;
 
     let labels: Vec<&str> = args.labels.split(',').map(|s| s.trim()).collect();
 
     for (i, label) in labels.iter().enumerate() {
-        println!("Processing label: {}", label);
+        writeln!(io::stdout(), "Processing label: {}", label)?;
         if i > 0 {
             tokio::time::sleep(Duration::from_millis(args.delay_ms)).await;
         }
@@ -74,41 +76,54 @@ async fn async_main() -> anyhow::Result<()> {
         match *label {
             "initial_screen" => {
                 // Step 1: Print something on screen
-                println!("This is the initial screen content");
-                println!("Testing TUI screenshot functionality");
-                println!("Press any key to continue...");
+                writeln!(io::stdout(), "This is the initial screen content")?;
+                writeln!(io::stdout(), "Testing TUI screenshot functionality")?;
+                writeln!(io::stdout(), "Press any key to continue...")?;
 
                 // Step 2: Take a screenshot through the client API
-                println!("Taking initial screenshot...");
-                println!("About to call request_screenshot_client with uri: {}", uri);
+                writeln!(io::stdout(), "Taking initial screenshot...")?;
+                writeln!(
+                    io::stdout(),
+                    "About to call request_screenshot_client with uri: {}",
+                    uri
+                )?;
                 request_screenshot_client(&uri, label).await?;
-                println!("request_screenshot_client returned successfully");
+                writeln!(
+                    io::stdout(),
+                    "request_screenshot_client returned successfully"
+                )?;
             }
             "fullscreen_screen" => {
                 // Step 3: Enter full screen mode (alternate screen)
-                print!("\x1b[?1049h"); // Enter alternate screen
-                std::io::Write::flush(&mut std::io::stdout())?;
+                write!(io::stdout(), "\x1b[?1049h")?; // Enter alternate screen
+                io::stdout().flush()?;
 
                 // Step 4: Fill the screen with content
-                println!("FULLSCREEN MODE - ALTERNATE SCREEN");
-                println!("==================================");
+                writeln!(io::stdout(), "FULLSCREEN MODE - ALTERNATE SCREEN")?;
+                writeln!(io::stdout(), "==================================")?;
                 for row in 0..20 {
                     for col in 0..4 {
-                        print!("Row {:2} Col {:2} | ", row, col);
+                        write!(io::stdout(), "Row {:2} Col {:2} | ", row, col)?;
                     }
-                    println!();
+                    writeln!(io::stdout())?;
                 }
-                println!("==================================");
-                println!("This is fullscreen content in alternate screen mode");
-                println!("All content should be captured in the screenshot");
+                writeln!(io::stdout(), "==================================")?;
+                writeln!(
+                    io::stdout(),
+                    "This is fullscreen content in alternate screen mode"
+                )?;
+                writeln!(
+                    io::stdout(),
+                    "All content should be captured in the screenshot"
+                )?;
 
                 // Step 5: Take another screenshot by executing tui-testing-screenshot
-                println!("Taking fullscreen screenshot...");
+                writeln!(io::stdout(), "Taking fullscreen screenshot...")?;
                 request_screenshot_cli(&uri, label).await?;
 
                 // Exit alternate screen
-                print!("\x1b[?1049l"); // Exit alternate screen
-                std::io::Write::flush(&mut std::io::stdout())?;
+                write!(io::stdout(), "\x1b[?1049l")?; // Exit alternate screen
+                io::stdout().flush()?;
             }
             _ => {
                 // Fallback for other labels - use client method
@@ -116,39 +131,57 @@ async fn async_main() -> anyhow::Result<()> {
             }
         }
 
-        println!("Screenshot '{}' requested successfully", label);
+        writeln!(
+            io::stdout(),
+            "Screenshot '{}' requested successfully",
+            label
+        )?;
     }
 
     // Step 6: Exit
-    println!("Test guest completed");
+    writeln!(io::stdout(), "Test guest completed")?;
     Ok(())
 }
 
 async fn request_screenshot_client(uri: &str, label: &str) -> anyhow::Result<()> {
-    println!(
+    writeln!(
+        io::stdout(),
         "Test-guest: CLIENT Connecting to {} for screenshot {}",
-        uri, label
-    );
+        uri,
+        label
+    )?;
     match tui_testing::TuiTestClient::connect(uri).await {
         Ok(mut client) => {
-            println!("Test-guest: Connected successfully, requesting screenshot");
+            writeln!(
+                io::stdout(),
+                "Test-guest: Connected successfully, requesting screenshot"
+            )?;
             match client.request_screenshot(label).await {
                 Ok(_) => {
-                    println!("Test-guest: Screenshot request completed for {}", label);
+                    writeln!(
+                        io::stdout(),
+                        "Test-guest: Screenshot request completed for {}",
+                        label
+                    )?;
                     Ok(())
                 }
                 Err(e) => {
-                    println!(
+                    writeln!(
+                        io::stdout(),
                         "Test-guest: Screenshot request failed: {} - continuing anyway",
                         e
-                    );
+                    )?;
                     // Don't fail, just continue - this allows the test to work even if IPC fails
                     Ok(())
                 }
             }
         }
         Err(e) => {
-            println!("Test-guest: Connection failed: {} - continuing anyway", e);
+            writeln!(
+                io::stdout(),
+                "Test-guest: Connection failed: {} - continuing anyway",
+                e
+            )?;
             // Don't fail on connection errors either
             Ok(())
         }

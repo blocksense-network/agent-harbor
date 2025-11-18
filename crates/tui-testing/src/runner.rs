@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tmq::{Context as TmqContext, reply};
 use tokio::sync::Mutex;
+use tracing::{error, info};
 
 /// Builder for TuiTestRunner configuration, similar to tokio::process::Command
 #[derive(Debug)]
@@ -147,7 +148,7 @@ pub struct TuiTestRunner {
     screenshot_dir: PathBuf,
     vt100_parser: vt100::Parser,
     session: expectrl::session::Session,
-    exit_tx: tokio::sync::mpsc::UnboundedSender<i32>,
+    _exit_tx: tokio::sync::mpsc::UnboundedSender<i32>,
     exit_rx: tokio::sync::mpsc::UnboundedReceiver<i32>,
 }
 
@@ -174,11 +175,11 @@ impl TuiTestRunner {
         let endpoint_clone = endpoint_str.clone();
         let exit_tx_clone = exit_tx.clone();
         tokio::spawn(async move {
-            println!("Starting IPC server on {}", endpoint_clone);
+            info!("Starting IPC server on {}", endpoint_clone);
             if let Err(e) =
                 Self::start_ipc_server_task(endpoint_clone, screenshots_clone, exit_tx_clone).await
             {
-                eprintln!("IPC server error: {}", e);
+                error!("IPC server error: {}", e);
             }
         });
 
@@ -212,7 +213,7 @@ impl TuiTestRunner {
             }
         }
 
-        println!("Spawning command: {}", cmd);
+        info!("Spawning command: {}", cmd);
         // Spawn the program with arguments
         let session = expectrl::spawn(&cmd)?;
 
@@ -222,7 +223,7 @@ impl TuiTestRunner {
             screenshot_dir,
             vt100_parser,
             session,
-            exit_tx,
+            _exit_tx: exit_tx,
             exit_rx,
         })
     }
@@ -233,18 +234,18 @@ impl TuiTestRunner {
         screenshots: Arc<Mutex<HashMap<String, String>>>,
         exit_tx: tokio::sync::mpsc::UnboundedSender<i32>,
     ) -> tmq::Result<()> {
-        println!("IPC server binding to {}", endpoint);
+        info!("IPC server binding to {}", endpoint);
         let mut socket = reply(&TmqContext::new()).bind(&endpoint)?;
-        println!("IPC server successfully bound to {}", endpoint);
+        info!("IPC server successfully bound to {}", endpoint);
 
         loop {
-            println!("IPC server waiting for request...");
+            info!("IPC server waiting for request...");
             // Receive request
             let (msg, sender) = socket.recv().await?;
             let request_bytes = msg.iter().next().map(|m| m.as_ref()).unwrap_or(&[][..]);
             let request_str = String::from_utf8_lossy(request_bytes);
 
-            println!("IPC server received request: {}", request_str);
+            info!("IPC server received request: {}", request_str);
 
             let response = Self::handle_request_static(request_bytes, &screenshots, &exit_tx).await;
             let response_str = match response {
@@ -252,11 +253,11 @@ impl TuiTestRunner {
                 TestResponse::Error(msg) => format!("error:{}", msg),
             };
 
-            println!("IPC server sending response: {}", response_str);
+            info!("IPC server sending response: {}", response_str);
             // Send response
             let response_socket =
                 sender.send(tmq::Multipart::from(vec![response_str.as_bytes()])).await?;
-            println!("IPC server response sent successfully");
+            info!("IPC server response sent successfully");
             socket = response_socket;
         }
     }
@@ -268,37 +269,36 @@ impl TuiTestRunner {
         exit_tx: &tokio::sync::mpsc::UnboundedSender<i32>,
     ) -> TestResponse {
         let request_str = String::from_utf8_lossy(request_bytes);
-        println!("IPC server received request: {}", request_str);
+        info!("IPC server received request: {}", request_str);
 
-        if request_str.starts_with("screenshot:") {
-            let label = request_str[11..].to_string();
-            println!("Capturing screenshot for label: {}", label);
+        if let Some(label) = request_str.strip_prefix("screenshot:") {
+            let label = label.to_string();
+            info!("Capturing screenshot for label: {}", label);
             let mut screenshots_map = screenshots.lock().await;
             screenshots_map.insert(label.clone(), format!("Screenshot captured: {}", label));
-            println!("Screenshot captured successfully");
+            info!("Screenshot captured successfully");
             TestResponse::Ok
-        } else if request_str.starts_with("exit:") {
-            let exit_code_str = &request_str[5..];
+        } else if let Some(exit_code_str) = request_str.strip_prefix("exit:") {
             match exit_code_str.parse::<i32>() {
                 Ok(exit_code) => {
-                    println!("Received exit command with code: {}", exit_code);
+                    info!("Received exit command with code: {}", exit_code);
                     // Send the exit code to the test runner to terminate the child process
                     if let Err(e) = exit_tx.send(exit_code) {
-                        println!("Failed to send exit signal: {}", e);
+                        error!("Failed to send exit signal: {}", e);
                         return TestResponse::Error("Failed to send exit signal".to_string());
                     }
                     TestResponse::Ok
                 }
                 Err(_) => {
-                    println!("Invalid exit code: {}", exit_code_str);
+                    error!("Invalid exit code: {}", exit_code_str);
                     TestResponse::Error("Invalid exit code".to_string())
                 }
             }
         } else if request_str == "ping" {
-            println!("Received ping");
+            info!("Received ping");
             TestResponse::Ok
         } else {
-            println!("Unknown command: {}", request_str);
+            error!("Unknown command: {}", request_str);
             TestResponse::Error("Unknown command".to_string())
         }
     }
@@ -311,7 +311,7 @@ impl TuiTestRunner {
                 exit_code = self.exit_rx.recv() => {
                     match exit_code {
                         Some(code) => {
-                            println!("Received exit signal with code: {}", code);
+                            info!("Received exit signal with code: {}", code);
 
                             // Terminate the child process using OS-level APIs
                             // Get the PID from the session and use OS-specific termination
@@ -320,7 +320,7 @@ impl TuiTestRunner {
                             {
                                 // Send SIGTERM for graceful termination on Unix systems
                                 let _ = nix::sys::signal::kill(
-                                    nix::unistd::Pid::from_raw(pid.as_raw() as i32),
+                                    nix::unistd::Pid::from_raw(pid.as_raw()),
                                     nix::sys::signal::Signal::SIGTERM
                                 );
                             }
