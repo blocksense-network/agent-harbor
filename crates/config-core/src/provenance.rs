@@ -33,7 +33,7 @@ pub struct Provenance {
 pub fn record_diff(before: &J, after: &J, scope: Scope, out: &mut Provenance, prefix: &str) {
     use serde_json::Value::*;
     match (before, after) {
-        (a, b) if a == b => return,
+        (a, b) if a == b => (),
         (Object(ao), Object(bo)) => {
             let mut keys: Vec<&str> = ao.keys().chain(bo.keys()).map(|s| s.as_str()).collect();
             keys.sort();
