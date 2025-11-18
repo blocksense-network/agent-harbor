@@ -177,7 +177,7 @@ pub fn convert_response(
     let (message, tool_calls, mut content_warnings) = convert_anthropic_content(&response.content);
     warnings.append(&mut content_warnings);
 
-    let finish_reason = response.stop_reason.and_then(|reason| map_stop_reason(reason));
+    let finish_reason = response.stop_reason.and_then(map_stop_reason);
 
     let usage = Some(openai::CompletionUsage {
         prompt_tokens: response.usage.input_tokens,
@@ -227,7 +227,7 @@ pub fn convert_stream_chunk(
     }
 
     let choice = &chunk.choices[0];
-    let mut warnings = Vec::new();
+    let warnings = Vec::new();
 
     if let Some(text) = &choice.delta.content {
         if !text.is_empty() {
@@ -245,7 +245,7 @@ pub fn convert_stream_chunk(
     if let Some(finish) = choice.finish_reason {
         let event = anthropic::StreamEvent::MessageDelta {
             delta: anthropic::MessageDeltaContent {
-                stop_reason: map_finish_reason(finish.clone()),
+                stop_reason: map_finish_reason(finish),
                 stop_sequence: None,
             },
             usage: chunk.usage.as_ref().map(|usage| anthropic::StreamUsage {
@@ -566,7 +566,7 @@ fn convert_assistant_message(
     #[allow(deprecated)]
     if let Some(function_call) = message.function_call {
         let arguments = serde_json::from_str::<Value>(&function_call.arguments)
-            .unwrap_or_else(|_| Value::String(function_call.arguments));
+            .unwrap_or(Value::String(function_call.arguments));
         blocks.push(anthropic::ContentBlock::ToolUse {
             id: format!("call_{}", Uuid::new_v4()),
             name: function_call.name,

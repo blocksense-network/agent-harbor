@@ -169,6 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Run as a proxy server for forwarding to real LLM APIs
+#[allow(clippy::too_many_arguments)] // Function mirrors CLI shape for clarity
 async fn run_proxy_server(
     port: u16,
     provider: Option<String>,
@@ -179,9 +180,9 @@ async fn run_proxy_server(
     log_responses: bool,
     minimize_logs: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting LLM API Proxy server on port {}", port);
-    println!("Mode: Live proxy to real LLM APIs");
-    println!("Target provider: {:?}", provider);
+    tracing::info!("Starting LLM API Proxy server on port {}", port);
+    tracing::info!("Mode: Live proxy to real LLM APIs");
+    tracing::info!("Target provider: {:?}", provider);
 
     // Check if API key is configured (either from command line or environment)
     let provider_name = provider.as_deref().unwrap_or("openai");
@@ -192,17 +193,17 @@ async fn run_proxy_server(
             "openrouter" => std::env::var("OPENROUTER_API_KEY").is_ok(),
             _ => false,
         };
-    println!("API key configured: {}", api_key_configured);
+    tracing::info!("API key configured: {}", api_key_configured);
 
-    println!("Request log path: {:?}", request_log_path);
-    println!("Log headers: {}", log_headers);
-    println!("Log body: {}", log_body);
-    println!("Log responses: {}", log_responses);
+    tracing::info!("Request log path: {:?}", request_log_path);
+    tracing::info!("Log headers: {}", log_headers);
+    tracing::info!("Log body: {}", log_body);
+    tracing::info!("Log responses: {}", log_responses);
 
     // Set logging environment variables
     if let Some(log_path) = &request_log_path {
         std::env::set_var("REQUEST_LOG_TEMPLATE", log_path);
-        println!("Set REQUEST_LOG_TEMPLATE={}", log_path.display());
+        tracing::info!("Set REQUEST_LOG_TEMPLATE={}", log_path.display());
     }
 
     // Set logging policy flags
@@ -234,14 +235,14 @@ async fn run_proxy_server(
     }
 
     // Create the proxy
-    println!("Creating proxy in live mode");
+    tracing::info!("Creating proxy in live mode");
     let proxy = match LlmApiProxy::new(config).await {
         Ok(p) => {
-            println!("Proxy created successfully");
+            tracing::info!("Proxy created successfully");
             p
         }
         Err(e) => {
-            eprintln!("Failed to create proxy: {}", e);
+            tracing::error!("Failed to create proxy: {}", e);
             return Err(e.into());
         }
     };
@@ -283,14 +284,14 @@ async fn run_proxy_server(
         )
         .route("/health", axum::routing::get(|| async { "OK" }))
         .fallback(|req: axum::http::Request<axum::body::Body>| async move {
-            eprintln!("Unhandled request path: {}", req.uri());
+            tracing::warn!("Unhandled request path: {}", req.uri());
             (axum::http::StatusCode::NOT_FOUND, "Not Found")
         })
         .layer(CorsLayer::permissive());
 
     // Bind to address
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    println!("Server listening on {}", addr);
+    tracing::info!("Server listening on {}", addr);
 
     // Run the server
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -300,6 +301,7 @@ async fn run_proxy_server(
 }
 
 /// Run as a test server for integration testing
+#[allow(clippy::too_many_arguments)] // Function mirrors CLI shape for clarity
 async fn run_test_server(
     port: u16,
     scenario_file: PathBuf,
@@ -312,21 +314,21 @@ async fn run_test_server(
     log_responses: bool,
     minimize_logs: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting LLM API Proxy test server on port {}", port);
-    println!("Scenario file: {}", scenario_file.display());
-    println!("Scenario file exists: {}", scenario_file.exists());
-    println!("Agent type: {}", agent_type);
-    println!("Agent version: {}", agent_version);
-    println!("Strict tools validation: {}", strict_tools_validation);
-    println!("Request log path: {:?}", request_log_path);
-    println!("Log headers: {}", log_headers);
-    println!("Log body: {}", log_body);
-    println!("Log responses: {}", log_responses);
+    tracing::info!("Starting LLM API Proxy test server on port {}", port);
+    tracing::info!("Scenario file: {}", scenario_file.display());
+    tracing::info!("Scenario file exists: {}", scenario_file.exists());
+    tracing::info!("Agent type: {}", agent_type);
+    tracing::info!("Agent version: {}", agent_version);
+    tracing::info!("Strict tools validation: {}", strict_tools_validation);
+    tracing::info!("Request log path: {:?}", request_log_path);
+    tracing::info!("Log headers: {}", log_headers);
+    tracing::info!("Log body: {}", log_body);
+    tracing::info!("Log responses: {}", log_responses);
 
     // Set logging environment variables
     if let Some(log_path) = &request_log_path {
         std::env::set_var("REQUEST_LOG_TEMPLATE", log_path);
-        println!("Set REQUEST_LOG_TEMPLATE={}", log_path.display());
+        tracing::info!("Set REQUEST_LOG_TEMPLATE={}", log_path.display());
     }
 
     // Set logging policy flags
@@ -354,17 +356,19 @@ async fn run_test_server(
     config.scenario.minimize_logs = minimize_logs;
 
     // Create the proxy
-    println!(
+    tracing::info!(
         "Creating proxy with config: agent_type={:?}, agent_version={:?}, scenario_file={:?}",
-        config.scenario.agent_type, config.scenario.agent_version, config.scenario.scenario_file
+        config.scenario.agent_type,
+        config.scenario.agent_version,
+        config.scenario.scenario_file
     );
     let proxy = match LlmApiProxy::new(config).await {
         Ok(p) => {
-            println!("Proxy created successfully");
+            tracing::info!("Proxy created successfully");
             p
         }
         Err(e) => {
-            eprintln!("Failed to create proxy: {}", e);
+            tracing::error!("Failed to create proxy: {}", e);
             return Err(e.into());
         }
     };
@@ -396,14 +400,14 @@ async fn run_test_server(
         )
         .route("/health", axum::routing::get(|| async { "OK" }))
         .fallback(|req: axum::http::Request<axum::body::Body>| async move {
-            eprintln!("Unhandled request path: {}", req.uri());
+            tracing::warn!("Unhandled request path: {}", req.uri());
             (axum::http::StatusCode::NOT_FOUND, "Not Found")
         })
         .layer(CorsLayer::permissive());
 
     // Bind to address
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    println!("Server listening on {}", addr);
+    tracing::info!("Server listening on {}", addr);
 
     // Run the server
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -448,7 +452,7 @@ async fn handle_chat_completion(
     proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
     axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
 ) -> Response {
-    println!("Received OpenAI chat completion request");
+    tracing::info!("Received OpenAI chat completion request");
     let proxy_guard = proxy.read().await;
 
     // Determine mode based on proxy configuration
@@ -473,7 +477,7 @@ async fn handle_chat_completion(
     match proxy_guard.proxy_request(proxy_request).await {
         Ok(response) => proxy_response_to_axum_response(response),
         Err(e) => {
-            eprintln!("Proxy error: {}", e);
+            tracing::error!("Proxy error: {}", e);
             axum::response::Json(serde_json::json!({
                 "error": {
                     "message": format!("Proxy error: {}", e),
@@ -490,7 +494,7 @@ async fn handle_prepare_session(
     proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
     axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
 ) -> axum::response::Json<serde_json::Value> {
-    println!("Received prepare-session request");
+    tracing::info!("Received prepare-session request");
 
     // Extract required fields
     let api_key = match body.get("api_key").and_then(|v| v.as_str()) {
@@ -597,7 +601,7 @@ async fn handle_prepare_session(
             }))
         }
         Err(e) => {
-            eprintln!("Session preparation error: {}", e);
+            tracing::error!("Session preparation error: {}", e);
             axum::response::Json(serde_json::json!({
                 "error": {
                     "message": format!("Session preparation failed: {}", e),
@@ -613,7 +617,7 @@ async fn handle_end_session(
     proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
     axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
 ) -> axum::response::Json<serde_json::Value> {
-    println!("Received end-session request");
+    tracing::info!("Received end-session request");
 
     // Extract required fields
     let api_key = match body.get("api_key").and_then(|v| v.as_str()) {
@@ -637,7 +641,7 @@ async fn handle_end_session(
             "message": "Session ended"
         })),
         Err(e) => {
-            eprintln!("Session end error: {}", e);
+            tracing::error!("Session end error: {}", e);
             axum::response::Json(serde_json::json!({
                 "error": {
                     "message": format!("Session end failed: {}", e),
@@ -653,7 +657,7 @@ async fn handle_openai_responses(
     proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
     axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
 ) -> Sse<impl futures::Stream<Item = Result<Event, Infallible>>> {
-    println!("Received OpenAI responses request");
+    tracing::info!("Received OpenAI responses request");
     let proxy_guard = proxy.read().await;
 
     // Determine mode based on proxy configuration
@@ -704,7 +708,7 @@ async fn handle_openai_responses(
             )
         }
         Err(e) => {
-            eprintln!("Proxy error: {}", e);
+            tracing::error!("Proxy error: {}", e);
             let error_event = serde_json::json!({
                 "error": {
                     "message": format!("Proxy error: {}", e),
@@ -728,7 +732,7 @@ async fn handle_openai_responses_stream(
     _proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
     Path(response_id): Path<String>,
 ) -> Sse<impl futures::Stream<Item = Result<Event, Infallible>>> {
-    eprintln!("Streaming responses requested for id={}", response_id);
+    tracing::info!("Streaming responses requested for id={}", response_id);
     let created_event = serde_json::json!({
         "response": {
             "id": response_id,
@@ -756,7 +760,7 @@ async fn handle_anthropic_messages(
     proxy: std::sync::Arc<tokio::sync::RwLock<LlmApiProxy>>,
     axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
 ) -> Response {
-    println!("Received Anthropic messages request");
+    tracing::info!("Received Anthropic messages request");
     let proxy_guard = proxy.read().await;
 
     // Determine mode based on proxy configuration
@@ -781,7 +785,7 @@ async fn handle_anthropic_messages(
     match proxy_guard.proxy_request(proxy_request).await {
         Ok(response) => proxy_response_to_axum_response(response),
         Err(e) => {
-            eprintln!("Proxy error: {}", e);
+            tracing::error!("Proxy error: {}", e);
             axum::response::Json(serde_json::json!({
                 "error": {
                     "message": format!("Proxy error: {}", e),

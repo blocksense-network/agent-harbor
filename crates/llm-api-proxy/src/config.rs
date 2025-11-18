@@ -272,7 +272,7 @@ impl Default for MetricsConfig {
 }
 
 /// Security configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct SecurityConfig {
     /// API keys for client authentication
@@ -283,16 +283,6 @@ pub struct SecurityConfig {
 
     /// Request validation settings
     pub validation: ValidationConfig,
-}
-
-impl Default for SecurityConfig {
-    fn default() -> Self {
-        Self {
-            api_keys: Vec::new(),
-            rate_limiting: RateLimitConfig::default(),
-            validation: ValidationConfig::default(),
-        }
-    }
 }
 
 /// Rate limiting configuration
@@ -348,7 +338,7 @@ impl Default for ValidationConfig {
 }
 
 /// Scenario playback configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ScenarioConfig {
     /// Enable scenario playback mode
@@ -374,21 +364,6 @@ pub struct ScenarioConfig {
 
     /// Minimize JSON logs (default: false, pretty-print by default)
     pub minimize_logs: bool,
-}
-
-impl Default for ScenarioConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            scenario_dir: None,
-            scenario_file: None,
-            agent_type: None,
-            agent_version: None,
-            workspace_dir: None,
-            strict_tools_validation: false,
-            minimize_logs: false,
-        }
-    }
 }
 
 impl ProxyConfig {
