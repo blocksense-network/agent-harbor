@@ -12,23 +12,36 @@ use std::process::Command;
 use ah_mux_core::{
     CommandOptions, Multiplexer, MuxError, PaneId, SplitDirection, WindowId, WindowOptions,
 };
+use tracing::{debug, info, instrument, warn};
 
 /// Ghostty multiplexer implementation
+#[derive(Debug)]
 pub struct GhosttyMultiplexer;
 
 impl GhosttyMultiplexer {
     /// Create a new Ghostty multiplexer instance
+    #[instrument]
     pub fn new() -> Result<Self, MuxError> {
+        info!("Initializing Ghostty multiplexer");
         Ok(Self)
     }
 
     /// Check if ghostty is available
+    #[instrument]
     pub fn is_available() -> bool {
-        Command::new("ghostty")
+        debug!("Checking if Ghostty is available");
+        let available = Command::new("ghostty")
             .arg("--version")
             .output()
             .map(|output| output.status.success())
-            .unwrap_or(false)
+            .unwrap_or(false);
+
+        if available {
+            debug!("Ghostty is available");
+        } else {
+            debug!("Ghostty is not available");
+        }
+        available
     }
 
     /// Get multiplexer identifier

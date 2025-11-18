@@ -9,25 +9,32 @@
 use std::process::Command;
 
 use ah_mux_core::*;
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::MuxError;
 
 /// Zellij multiplexer implementation
+#[derive(Debug)]
 pub struct ZellijMultiplexer;
 
 impl ZellijMultiplexer {
     /// Create a new Zellij multiplexer instance
+    #[instrument]
     pub fn new() -> Result<Self, MuxError> {
+        debug!("Initializing Zellij multiplexer");
+
         // Check if zellij is available
-        let output = Command::new("zellij")
-            .arg("--version")
-            .output()
-            .map_err(|e| MuxError::Other(format!("Failed to run zellij --version: {}", e)))?;
+        let output = Command::new("zellij").arg("--version").output().map_err(|e| {
+            error!("Failed to run zellij --version: {}", e);
+            MuxError::Other(format!("Failed to run zellij --version: {}", e))
+        })?;
 
         if !output.status.success() {
+            warn!("Zellij is not available");
             return Err(MuxError::NotAvailable("zellij"));
         }
 
+        info!("Zellij multiplexer initialized successfully");
         Ok(Self)
     }
 }
