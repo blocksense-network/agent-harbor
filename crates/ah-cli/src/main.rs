@@ -49,7 +49,10 @@ async fn main() -> Result<()> {
                 let deps = get_record_tui_dependencies(&cli)?;
                 ah_tui::record::execute(deps, args.clone()).await
             }
-            AgentCommands::Replay(args) => ah_tui::replay::execute(args.clone()).await,
+            AgentCommands::Replay(args) => {
+                let deps = get_record_tui_dependencies(&cli)?;
+                ah_tui::replay::execute(deps, args.clone()).await
+            }
             AgentCommands::BranchPoints(args) => {
                 ah_tui::record::execute_branch_points(args.clone()).await
             }

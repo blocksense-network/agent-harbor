@@ -15,10 +15,10 @@ use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::{dashboard_loop::run_dashboard, settings::Settings, view::TuiDependencies};
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
+use anyhow::Result;
 use std::{fs::OpenOptions, sync::Arc};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     println!("Starting MVVM TUI application...");
 
     // Initialize tracing for key logging (disabled by default, enable with RUST_LOG=trace)
@@ -69,5 +69,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Run the dashboard (handles its own signal/panic handling)
-    run_dashboard(deps).await
+    run_dashboard(deps)
 }

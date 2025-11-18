@@ -21,8 +21,10 @@ use ah_rest_api_contract::*;
 use async_trait::async_trait;
 use futures::stream;
 use futures::{Stream, StreamExt};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::sync::broadcast;
@@ -64,6 +66,118 @@ pub struct MockRestClient {
     return_mock_data: bool,
     /// Next task ID counter
     next_task_id: Arc<RwLock<u64>>,
+}
+
+/// Single-threaded variant of MockRestClient for TUI testing
+/// Uses Rc<RefCell<>> instead of Arc<RwLock<>> to avoid async locking in single-threaded contexts
+pub struct SingleThreadedMockRestClient {
+    /// In-memory storage for tasks
+    tasks: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, TaskInfo>>>,
+    /// In-memory storage for drafts
+    drafts: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, TaskInfo>>>,
+    /// Configurable delay for operations (in milliseconds)
+    delay_ms: u64,
+    /// Whether to simulate failures
+    simulate_failures: bool,
+    /// Whether to return mock data when no tasks are stored
+    return_mock_data: bool,
+    /// Next task ID counter
+    next_task_id: std::rc::Rc<std::cell::RefCell<u64>>,
+}
+
+impl SingleThreadedMockRestClient {
+    /// Create a new single-threaded mock client with default settings
+    pub fn new() -> Self {
+        Self {
+            tasks: Rc::new(RefCell::new(HashMap::new())),
+            drafts: Rc::new(RefCell::new(HashMap::new())),
+            delay_ms: 0, // No delay for single-threaded use
+            simulate_failures: false,
+            return_mock_data: false,
+            next_task_id: Rc::new(RefCell::new(1)),
+        }
+    }
+
+    /// Create a new single-threaded mock client with mock data
+    pub fn with_mock_data() -> Self {
+        Self {
+            return_mock_data: true,
+            ..Self::new()
+        }
+    }
+
+    /// Get initial tasks synchronously (no async locking needed)
+    pub fn get_initial_tasks(&self) -> (Vec<TaskInfo>, Vec<TaskExecution>) {
+        // Get any stored tasks/drafts
+        let mut drafts: Vec<TaskInfo> = self.drafts.borrow().values().cloned().collect();
+        let mut tasks: Vec<TaskExecution> = Vec::new();
+
+        // Convert stored TaskInfo to TaskExecution and add any mock data
+        for task_info in self.tasks.borrow().values() {
+            tasks.push(self.task_info_to_execution(task_info.clone()));
+        }
+
+        // Add mock data if requested and no tasks exist
+        if self.return_mock_data && tasks.is_empty() {
+            tasks.extend(self.generate_mock_tasks());
+            drafts.extend(self.generate_mock_drafts());
+        }
+
+        (drafts, tasks)
+    }
+
+    // Helper method to convert TaskInfo to TaskExecution
+    fn task_info_to_execution(&self, task_info: TaskInfo) -> TaskExecution {
+        TaskExecution {
+            id: task_info.id.clone(),
+            repository: task_info.repository.clone(),
+            branch: task_info.branch.clone(),
+            agents: task_info.models.clone(),
+            state: TaskState::Completed,
+            timestamp: task_info.created_at.clone(),
+            activity: vec![],
+            delivery_status: vec![DeliveryStatus::BranchCreated], // Default for completed tasks
+        }
+    }
+
+    // Generate mock tasks for testing
+    fn generate_mock_tasks(&self) -> Vec<TaskExecution> {
+        vec![
+            TaskExecution {
+                id: "task-1".to_string(),
+                repository: "my-app".to_string(),
+                branch: "main".to_string(),
+                agents: vec![create_agent_choice("Claude 3.5 Sonnet", 1)],
+                state: TaskState::Running,
+                timestamp: "2022-01-01T00:00:00Z".to_string(),
+                activity: vec!["Implementing user authentication".to_string()],
+                delivery_status: vec![],
+            },
+            TaskExecution {
+                id: "task-2".to_string(),
+                repository: "my-app".to_string(),
+                branch: "feature/error-handling".to_string(),
+                agents: vec![create_agent_choice("GPT-4", 1)],
+                state: TaskState::Completed,
+                timestamp: "2022-01-02T00:00:00Z".to_string(),
+                activity: vec![],
+                delivery_status: vec![DeliveryStatus::BranchCreated],
+            },
+        ]
+    }
+
+    // Generate mock drafts for testing
+    fn generate_mock_drafts(&self) -> Vec<TaskInfo> {
+        vec![TaskInfo {
+            id: "draft-1".to_string(),
+            title: "Refactor database schema".to_string(),
+            status: "draft".to_string(),
+            repository: "my-app".to_string(),
+            branch: "main".to_string(),
+            models: vec![create_agent_choice("Claude 3.5 Sonnet", 1)],
+            created_at: "2022-01-03T00:00:00Z".to_string(),
+        }]
+    }
 }
 
 impl MockRestClient {

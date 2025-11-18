@@ -16,6 +16,7 @@ pub mod replay;
 pub mod settings;
 pub mod task;
 pub mod terminal;
+pub mod tui_runtime;
 pub mod view;
 pub mod view_model;
 pub mod viewer;

@@ -187,7 +187,7 @@ impl TuiArgs {
                     None,
                     fs_snapshots,
                 )?;
-                run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
+                run_dashboard(deps).map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
             None => {
                 // Main TUI command - handle multiplexer session management
@@ -224,7 +224,7 @@ impl TuiArgs {
                     multiplexer_type,
                     fs_snapshots,
                 )?;
-                run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
+                run_dashboard(deps).map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
             (Some(CliMultiplexerArg::Auto), MultiplexerChoice::InSupportedTerminal)
             | (None, MultiplexerChoice::InSupportedTerminal) => {
@@ -238,7 +238,7 @@ impl TuiArgs {
                     self.multiplexer.as_ref().and_then(|m| m.to_core_type()),
                     fs_snapshots,
                 )?;
-                run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
+                run_dashboard(deps).map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
             (Some(CliMultiplexerArg::Auto), MultiplexerChoice::UnsupportedEnvironment)
             | (None, MultiplexerChoice::UnsupportedEnvironment) => {
@@ -358,7 +358,7 @@ impl TuiArgs {
             self.multiplexer.as_ref().and_then(|m| m.to_core_type()),
             fs_snapshots,
         )?;
-        run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
+        run_dashboard(deps).map_err(|e| anyhow::anyhow!("TUI error: {}", e))
     }
 
     /// Build the command to run the dashboard

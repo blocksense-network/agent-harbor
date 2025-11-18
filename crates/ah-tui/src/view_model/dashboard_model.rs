@@ -5278,7 +5278,7 @@ impl ViewModel {
         }
     }
 
-    /// Load initial tasks from the TaskManager
+    /// Load initial tasks from the TaskManager (async version)
     pub async fn load_initial_tasks(&mut self) -> Result<(), String> {
         let (draft_infos, task_executions) = self.task_manager.get_initial_tasks().await;
 

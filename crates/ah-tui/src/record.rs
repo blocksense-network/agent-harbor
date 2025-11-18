@@ -7,8 +7,10 @@
 // and provides a basic viewer for monitoring the session.
 
 use crate::terminal::{self, TerminalConfig};
+use crate::tui_runtime::{self, UiMsg};
 use crate::view::TuiDependencies;
 use crate::view_model::autocomplete::AutocompleteDependencies;
+use crate::view_model::input::InputState;
 use crate::view_model::session_viewer_model::{GutterConfig, GutterPosition, SessionViewerMsg};
 use crate::viewer::{
     ViewerConfig, build_session_viewer_view_model, handle_mouse_click_for_view,
@@ -18,13 +20,14 @@ use ah_core::{AgentExecutionConfig, local_task_manager::GenericLocalTaskManager}
 use ah_mux::TmuxMultiplexer;
 use ah_recorder::{
     AhrWriter, PtyEvent, PtyRecorder, PtyRecorderConfig, RecordingSession, TerminalState,
-    WriterConfig,
+    WriterConfig, ipc,
 };
 use ah_rest_api_contract::types::SessionEvent;
 use anyhow::{Context, Result};
 use clap::Parser;
+use crossbeam_channel as chan;
 use crossterm::event::{Event, MouseButton, MouseEventKind};
-use ratatui;
+use ratatui::{Terminal, backend::CrosstermBackend};
 use ssz::Encode;
 use std::env;
 use std::os::fd::{FromRawFd, IntoRawFd};
@@ -39,6 +42,33 @@ use tokio::net::UnixStream;
 use tokio::{signal, sync::mpsc};
 use tracing::error;
 use tracing::{debug, info, trace, warn};
+
+/// UI message type for record functionality
+pub type RecordUiMsg = UiMsg<SessionViewerMsg>;
+
+/// Data needed to construct RecordState on UI thread (separated to avoid Send issues)
+struct RecordInitData {
+    recording_terminal_state: std::rc::Rc<std::cell::RefCell<ah_recorder::TerminalState>>,
+    viewer_config: ViewerConfig,
+    recording_session: RecordingSession,
+    task_manager: Arc<dyn ah_core::TaskManager>,
+    ipc_rx: mpsc::UnboundedReceiver<ipc::IpcCommand>,
+    ipc_server: ipc::IpcServer,
+    autocomplete_dependencies: Option<crate::view_model::autocomplete::AutocompleteDependencies>,
+}
+
+/// State for the recording session that needs to persist across event loop iterations
+struct RecordState {
+    view_model: crate::view_model::session_viewer_model::SessionViewerViewModel,
+    viewer_config: ViewerConfig,
+    recording_session: RecordingSession,
+    task_manager: Arc<dyn ah_core::TaskManager>,
+    ipc_rx: mpsc::UnboundedReceiver<ipc::IpcCommand>,
+    ipc_server: ipc::IpcServer,
+    events_sender: Option<UnixStream>,
+    exit_confirmation_armed: bool,
+    pty_data_buffer: String,
+}
 
 /// Position of the snapshot indicator gutter
 #[derive(clap::ValueEnum, Clone, Debug, Default)]
@@ -143,124 +173,114 @@ pub struct BranchPointsArgs {
 }
 
 /// Send an SSE event through the unnamed pipe
-async fn send_sse_event(sender: &mut Option<UnixStream>, event: SessionEvent) -> Result<()> {
-    if let Some(sender) = sender {
-        // Create a readable version of the event for logging
-        let event_description = match &event {
-            SessionEvent::Error(e) => {
-                format!("Error({})", String::from_utf8_lossy(&e.message))
-            }
-            SessionEvent::Status(s) => {
-                format!("Status({:?})", s.status)
-            }
-            SessionEvent::FileEdit(_) => "FileEdit".to_string(),
-            SessionEvent::ToolUse(_) => "ToolUse".to_string(),
-            SessionEvent::ToolResult(_) => "ToolResult".to_string(),
-            SessionEvent::Log(_) => "Log".to_string(),
-            SessionEvent::Thought(_) => "Thought".to_string(),
-        };
-        debug!(
-            "send_sse_event: sending event via task manager socket: {}",
-            event_description
-        );
-        // Serialize event to SSZ (using JSON encoding for compatibility)
-        let ssz_bytes = event.as_ssz_bytes();
-        // Length-prefix the SSZ data
-        let len_bytes = (ssz_bytes.len() as u32).to_le_bytes();
-        let mut data = len_bytes.to_vec();
-        data.extend_from_slice(&ssz_bytes);
+async fn send_sse_event(sender: &mut UnixStream, event: SessionEvent) -> Result<()> {
+    // Create a readable version of the event for logging
+    let event_description = match &event {
+        SessionEvent::Error(e) => {
+            format!("Error({})", String::from_utf8_lossy(&e.message))
+        }
+        SessionEvent::Status(s) => {
+            format!("Status({:?})", s.status)
+        }
+        SessionEvent::FileEdit(_) => "FileEdit".to_string(),
+        SessionEvent::ToolUse(_) => "ToolUse".to_string(),
+        SessionEvent::ToolResult(_) => "ToolResult".to_string(),
+        SessionEvent::Log(_) => "Log".to_string(),
+        SessionEvent::Thought(_) => "Thought".to_string(),
+    };
+    debug!(
+        "send_sse_event: sending event via task manager socket: {}",
+        event_description
+    );
+    // Serialize event to SSZ (using JSON encoding for compatibility)
+    let ssz_bytes = event.as_ssz_bytes();
+    // Length-prefix the SSZ data
+    let len_bytes = (ssz_bytes.len() as u32).to_le_bytes();
+    let mut data = len_bytes.to_vec();
+    data.extend_from_slice(&ssz_bytes);
 
-        // Send through socket
-        sender.write_all(&data).await?;
-        debug!("send_sse_event: sent SSZ-encoded SSE event successfully");
-    } else {
-        debug!("send_sse_event: no sender available, event not sent");
-    }
+    // Send through socket
+    sender.write_all(&data).await?;
+    debug!("send_sse_event: sent SSZ-encoded SSE event successfully");
     Ok(())
 }
 
 /// Detect agent activity patterns in PTY output and send corresponding events
 /// This is a basic heuristic implementation that can be enhanced with more sophisticated detection
-async fn detect_and_send_agent_events(events_sender: &mut Option<UnixStream>, buffer: &str) {
-    use ah_rest_api_contract::types::SessionEvent;
+async fn detect_and_send_agent_events(events_sender: Option<&mut UnixStream>, buffer: &str) {
+    if let Some(sender) = events_sender {
+        use ah_rest_api_contract::types::SessionEvent;
 
-    // Look for tool usage patterns (very basic heuristics)
-    // This would be enhanced with actual agent protocol integration
+        // Look for tool usage patterns (very basic heuristics)
+        // This would be enhanced with actual agent protocol integration
 
-    // Check for error patterns
-    if buffer.contains("error") || buffer.contains("Error") || buffer.contains("ERROR") {
-        // Extract error message (basic heuristic)
-        let error_message = buffer.trim().to_string();
-        let event = SessionEvent::error(error_message, chrono::Utc::now().timestamp() as u64);
-        debug!("Sending error event via task manager socket: {:?}", event);
-        if let Err(e) = send_sse_event(events_sender, event).await {
-            warn!("Failed to send error event: {}", e);
+        // Check for error patterns
+        if buffer.contains("error") || buffer.contains("Error") || buffer.contains("ERROR") {
+            // Extract error message (basic heuristic)
+            let error_message = buffer.trim().to_string();
+            let event = SessionEvent::error(error_message, chrono::Utc::now().timestamp() as u64);
+            debug!("Sending error event via task manager socket: {:?}", event);
+            if let Err(e) = send_sse_event(sender, event).await {
+                warn!("Failed to send error event: {}", e);
+            }
         }
-    }
 
-    // Check for file operation patterns
-    if buffer.contains("writing to")
-        || buffer.contains("created file")
-        || buffer.contains("modified")
-    {
-        // Extract file path if possible (basic regex)
-        if let Some(file_match) = buffer.rfind('/') {
-            let start = &buffer[file_match..];
-            if let Some(end) = start.find('\n').or_else(|| start.find(' ')) {
-                let file_path = &start[..end];
-                let event = SessionEvent::file_edit(
-                    file_path.trim().to_string(),
-                    0, // Would need more sophisticated parsing
-                    0,
-                    None,
-                    chrono::Utc::now().timestamp() as u64,
-                );
-                debug!(
-                    "Sending file edit event via task manager socket: {:?}",
-                    event
-                );
-                if let Err(e) = send_sse_event(events_sender, event).await {
-                    warn!("Failed to send file edit event: {}", e);
+        // Check for file operation patterns
+        if buffer.contains("writing to")
+            || buffer.contains("created file")
+            || buffer.contains("modified")
+        {
+            // Extract file path if possible (basic regex)
+            if let Some(file_match) = buffer.rfind('/') {
+                let start = &buffer[file_match..];
+                if let Some(end) = start.find('\n').or_else(|| start.find(' ')) {
+                    let file_path = &start[..end];
+                    let event = SessionEvent::file_edit(
+                        file_path.trim().to_string(),
+                        0, // Would need more sophisticated parsing
+                        0,
+                        None,
+                        chrono::Utc::now().timestamp() as u64,
+                    );
+                    debug!(
+                        "Sending file edit event via task manager socket: {:?}",
+                        event
+                    );
+                    if let Err(e) = send_sse_event(sender, event).await {
+                        warn!("Failed to send file edit event: {}", e);
+                    }
                 }
             }
         }
-    }
 
-    // Check for tool execution patterns
-    if buffer.contains("running") || buffer.contains("executing") || buffer.contains("tool:") {
-        // Extract tool name (basic heuristic)
-        let tool_name = if buffer.contains("grep") {
-            "grep"
-        } else if buffer.contains("sed") {
-            "sed"
-        } else if buffer.contains("find") {
-            "find"
-        } else {
-            "unknown_tool"
-        };
+        // Check for tool execution patterns
+        if buffer.contains("running") || buffer.contains("executing") || buffer.contains("tool:") {
+            // Extract tool name (basic heuristic)
+            let tool_name = if buffer.contains("grep") {
+                "grep"
+            } else if buffer.contains("sed") {
+                "sed"
+            } else if buffer.contains("find") {
+                "find"
+            } else {
+                "unknown_tool"
+            };
 
-        let session_status = match ah_domain_types::ToolStatus::Started {
-            ah_domain_types::ToolStatus::Started => {
-                ah_rest_api_contract::SessionToolStatus::Started
+            let session_status = ah_rest_api_contract::SessionToolStatus::Started;
+            let event = SessionEvent::tool_use(
+                tool_name.to_string(),
+                "[]".to_string(), // Would need more sophisticated parsing - store as JSON string
+                format!("tool_{}", chrono::Utc::now().timestamp()),
+                session_status,
+                chrono::Utc::now().timestamp() as u64,
+            );
+            debug!(
+                "Sending tool use event via task manager socket: {:?}",
+                event
+            );
+            if let Err(e) = send_sse_event(sender, event).await {
+                warn!("Failed to send tool use event: {}", e);
             }
-            ah_domain_types::ToolStatus::Completed => {
-                ah_rest_api_contract::SessionToolStatus::Completed
-            }
-            ah_domain_types::ToolStatus::Failed => ah_rest_api_contract::SessionToolStatus::Failed,
-        };
-        let event = SessionEvent::tool_use(
-            tool_name.to_string(),
-            "[]".to_string(), // Would need more sophisticated parsing - store as JSON string
-            format!("tool_{}", chrono::Utc::now().timestamp()),
-            session_status,
-            chrono::Utc::now().timestamp() as u64,
-        );
-        debug!(
-            "Sending tool use event via task manager socket: {:?}",
-            event
-        );
-        if let Err(e) = send_sse_event(events_sender, event).await {
-            warn!("Failed to send tool use event: {}", e);
         }
     }
 }
@@ -338,35 +358,57 @@ async fn setup_recorder_ipc_socket(
 
 /// Execute the record command
 pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
-    debug!("Starting agent record command, headless={}", args.headless);
+    if args.headless {
+        return execute_headless(deps, args).await;
+    }
+
+    // For viewer mode, use the shared TUI runtime
+    execute_with_viewer(deps, args)
+}
+
+/// Execute recording in headless mode (no TUI)
+async fn execute_headless(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
+    debug!("Starting agent record command in headless mode");
     debug!("Command: {}, args: {:?}", args.command, args.args);
     info!(
         command = %args.command,
         args = ?args.args,
-        "Starting recording session"
+        "Starting headless recording session"
     );
 
     if let Some(ref session_id) = args.session_id {
         info!("Session ID: {}", session_id);
     }
 
-    // Create autocomplete dependencies from TuiDependencies
-    let autocomplete_dependencies = Arc::new(AutocompleteDependencies {
-        workspace_files: deps.workspace_files.clone(),
-        workspace_workflows: deps.workspace_workflows.clone(),
-        workspace_terms: deps.workspace_terms.clone(),
-        settings: deps.settings.clone(),
-    });
-
-    // Set up terminal for TUI mode (if not headless)
+    // Set up signal handling for graceful shutdown
     let running = Arc::new(AtomicBool::new(true));
-    if !args.headless {
-        let mut config = TerminalConfig::minimal();
-        config.install_signal_handlers = true;
-        config.running_flag = Some(running.clone());
-        terminal::setup_terminal(config)
-            .map_err(|e| anyhow::anyhow!("Failed to setup terminal: {}", e))?;
-    }
+    let _sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
+        .context("Failed to set up signal handler")?;
+    let _sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+        .context("Failed to set up signal handler")?;
+
+    // Run headless recording without TUI
+    run_headless_recording(deps, args, running).await
+}
+
+/// Run the actual headless recording logic
+async fn run_headless_recording(
+    deps: TuiDependencies,
+    args: RecordArgs,
+    running: Arc<AtomicBool>,
+) -> Result<()> {
+    // Set up basic terminal configuration for headless mode
+    // We still need some terminal setup for PTY creation
+    let terminal_config = TerminalConfig {
+        install_signal_handlers: false, // We handle signals manually
+        mouse_capture: false,
+        raw_mode: false, // Don't need raw mode in headless
+        running_flag: Some(running.clone()),
+        alternate_screen: false,
+        keyboard_enhancement: false,
+    };
+    terminal::setup_terminal(terminal_config)
+        .map_err(|e| anyhow::anyhow!("Failed to setup terminal for headless mode: {}", e))?;
 
     // Determine terminal size (use current terminal or defaults)
     let (outer_cols, outer_rows) = if let (Some(c), Some(r)) = (args.cols, args.rows) {
@@ -394,9 +436,13 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         outer_cols, outer_rows
     );
 
+    // For headless mode, we don't need display area calculations since there's no viewer
+    let display_cols = outer_cols;
+    let display_rows = outer_rows;
+
     // Determine output file path
-    let out_file = if let Some(path) = args.out_file {
-        Some(path)
+    let out_file = if let Some(ref path) = args.out_file {
+        Some(path.clone())
     } else {
         None
     };
@@ -417,17 +463,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         })
         .collect::<Result<Vec<(String, String)>>>()?;
 
-    // Calculate display area for PTY (the PTY should match what will be displayed)
-    let gutter_config = cli_gutter_to_viewer_gutter(&args.gutter, args.line_numbers);
-    let display_cols = outer_cols.saturating_sub(4).saturating_sub(gutter_config.width() as u16); // horizontal padding + gutter
-    let display_rows = outer_rows.saturating_sub(1); // status bar
-
-    info!(
-        "Display area for PTY: {}x{} (from terminal {}x{})",
-        display_cols, display_rows, outer_cols, outer_rows
-    );
-
-    // Create PTY recorder configuration (PTY uses display area dimensions)
+    // Create PTY recorder configuration (PTY uses full terminal dimensions in headless mode)
     let pty_config = PtyRecorderConfig {
         cols: display_cols,
         rows: display_rows,
@@ -439,9 +475,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         path = ?out_file,
         pty_cols = display_cols,
         pty_rows = display_rows,
-        terminal_cols = outer_cols,
-        terminal_rows = outer_rows,
-        "Output configuration"
+        "Headless recording configuration"
     );
 
     // Create AHR writer (only if output file is specified)
@@ -455,42 +489,33 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
     // Create shared byte offset counter for IPC
     let current_byte_offset = Arc::new(std::sync::atomic::AtomicU64::new(0));
 
-    // Set up IPC server for snapshot notifications (always needed for UI interaction)
+    // Set up IPC server for snapshot notifications
     let (ipc_temp_dir, socket_path, ipc_server, mut ipc_rx) =
         setup_recorder_ipc_socket(current_byte_offset.clone()).await?;
 
     info!("IPC server started, socket: {:?}", socket_path);
-    debug!(
-        "AH_RECORDER_IPC_SOCKET set to: {:?}",
-        env::var("AH_RECORDER_IPC_SOCKET")
-    );
 
-    // Set up task manager socket for event streaming and coordination
+    // Set up task manager socket for event streaming (if requested)
     let mut events_sender = if let Some(task_manager_socket) = args.task_manager_socket.as_ref() {
         debug!(
             "Setting up task manager socket for event streaming, path: {}",
             task_manager_socket
         );
-        // Connect to the task manager socket
         match UnixStream::connect(task_manager_socket).await {
             Ok(mut stream) => {
-                // First, send the session ID (length-prefixed)
                 let session_id = args.session_id.as_ref().unwrap_or(&"unknown".to_string()).clone();
                 let session_id_bytes = session_id.as_bytes();
                 let session_id_len = session_id_bytes.len() as u32;
                 let len_bytes = session_id_len.to_le_bytes();
 
                 if let Err(e) = stream.write_all(&len_bytes).await {
-                    warn!(
-                        "Failed to send session ID length to task manager socket: {}",
-                        e
-                    );
+                    warn!("Failed to send session ID length: {}", e);
                     None
                 } else if let Err(e) = stream.write_all(session_id_bytes).await {
-                    warn!("Failed to send session ID to task manager socket: {}", e);
+                    warn!("Failed to send session ID: {}", e);
                     None
                 } else {
-                    info!("Task manager event streaming socket established");
+                    info!("Task manager socket established");
                     Some(stream)
                 }
             }
@@ -507,49 +532,25 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         None
     };
 
-    // Give IPC server time to start accepting connections
+    // Give IPC server time to start
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Spawn command in PTY
     let (mut recorder, rx) = PtyRecorder::spawn(&args.command, &args.args, pty_config.clone())
         .context("Failed to spawn command in PTY")?;
 
-    info!("Command spawned, starting capture");
+    info!("Command spawned, starting headless capture");
 
-    // Send initial status event if SSE streaming is enabled
-    if events_sender.is_some() {
-        use ah_domain_types::TaskState;
-        use ah_rest_api_contract::types::SessionEvent;
-        let status_event = SessionEvent::status(
-            TaskState::Running.into(),
-            chrono::Utc::now().timestamp() as u64,
-        );
-        debug!(
-            "Sending initial status event via task manager socket: {:?}",
-            status_event
-        );
-        if let Err(e) = send_sse_event(&mut events_sender, status_event).await {
-            warn!("Failed to send initial status event: {}", e);
-        }
-    }
+    // SSE events are sent from the interactive TUI event loop, not headless mode
 
-    // Create recording terminal state for accurate snapshot positioning (if not headless)
-    // Use the display area dimensions (display_cols/display_rows account for gutter and UI elements)
-    let recording_terminal_state = if !args.headless {
-        Some(std::rc::Rc::new(std::cell::RefCell::new(
-            TerminalState::new_with_scrollback(display_rows, display_cols, 1_000_000),
-        )))
-    } else {
-        None
-    };
+    // For headless mode, we don't need TerminalState for rendering
+    let recording_terminal_state = None;
 
-    // Extract the PTY writer for direct use
+    // Extract PTY writer
     let pty_writer = recorder.take_writer();
-    debug!("Extracted PTY writer: {}", pty_writer.is_some());
 
     // Create recording session
     let (recorder_handle, child_killer) = recorder.start_capture_and_get_killer();
-    debug!("About to create RecordingSession");
     let mut session = RecordingSession::new(
         pty_writer,
         recorder_handle,
@@ -558,97 +559,35 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         writer,
         recording_terminal_state.clone(),
     );
-    debug!("RecordingSession created");
 
-    // Set up write_reply callback on TerminalState for DSR responses
-    if let Some(ref rts) = recording_terminal_state {
-        let pty_writer_clone = session.pty_writer.clone();
-        rts.borrow_mut().set_write_reply(std::sync::Arc::new(move |bytes: &[u8]| {
-            if let Ok(mut writer_opt) = pty_writer_clone.lock() {
-                if let Some(ref mut writer) = *writer_opt {
-                    let _ = writer.write_all(bytes);
-                    let _ = writer.flush();
-                }
-            }
-        }));
-    }
+    // Set up write_reply callback if we have terminal state (we don't in headless)
+    // This is only needed for interactive DSR responses
 
-    // Create local task manager for instruction-based task creation
-    let task_manager =
-        ah_core::create_session_viewer_task_manager().expect("Failed to create local task manager");
+    // Run headless event loop
+    run_headless_event_loop(session, ipc_server, ipc_rx, events_sender, running, args).await?;
 
-    // Set up viewer if not in headless mode
-    let mut viewer_setup = if !args.headless {
-        info!("Setting up live viewer");
+    // Clean up IPC
+    drop(ipc_temp_dir);
 
-        // Create viewer configuration (viewer gets full terminal size)
-        let viewer_config = ViewerConfig {
-            terminal_cols: outer_cols,
-            terminal_rows: outer_rows,
-            scrollback: 1_000_000, // Match the terminal state scrollback
-            gutter: gutter_config,
-            is_replay_mode: false,
-        };
+    // Clean up terminal
+    terminal::cleanup_terminal();
 
-        let view_model = build_session_viewer_view_model(
-            recording_terminal_state.clone().unwrap(),
-            &viewer_config,
-            Some(autocomplete_dependencies.clone()),
-        );
+    Ok(())
+}
 
-        // Set up terminal for rendering
-        let mut config = TerminalConfig::minimal();
-        debug!("Setting up terminal");
-        config.install_signal_handlers = false; // We already set up signal handlers above
-        config.mouse_capture = true; // Enable mouse capture for scrolling
-        terminal::setup_terminal(config)
-            .map_err(|e| anyhow::anyhow!("Failed to setup terminal: {}", e))?;
-        let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
-        debug!("Creating terminal");
-        let terminal = ratatui::Terminal::new(backend)?;
-
-        Some((view_model, viewer_config, terminal))
-    } else {
-        // Drop the receiver since we won't use it in headless mode
-        None
-    };
-
-    // Set up input event handling (always available for responsiveness)
-    let mut input_rx = {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
-        // Event reader thread
-        debug!("Setting up input event handling");
-        thread::spawn(move || {
-            while let Ok(ev) = crossterm::event::read() {
-                // Send event to main thread (async)
-                let _ = tx.send(ev);
-            }
-        });
-        rx
-    };
-
-    debug!("Input event handling set up");
-
-    // Set up signal handling for graceful shutdown
-    let _sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
-        .context("Failed to set up signal handler")?;
-    let _sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
-        .context("Failed to set up signal handler")?;
-
-    debug!("Signal handling set up");
-
-    // Main event loop - process events sequentially through unified pipeline
-    let mut exited = false;
-    let mut exit_confirmation_armed = false;
-
-    // Buffer for accumulating PTY data to detect agent activity patterns
+/// Run the headless event loop for recording
+async fn run_headless_event_loop(
+    mut session: RecordingSession,
+    ipc_server: ipc::IpcServer,
+    mut ipc_rx: mpsc::UnboundedReceiver<ipc::IpcCommand>,
+    mut events_sender: Option<UnixStream>,
+    running: Arc<AtomicBool>,
+    args: RecordArgs,
+) -> Result<()> {
     let mut pty_data_buffer = String::new();
 
-    // Main event loop - handle PTY events, IPC events, user input, and always re-render
     loop {
-        trace!("Main loop tick start");
-
-        // Check for shutdown signal first
+        // Check for shutdown signal
         if !running.load(Ordering::SeqCst) {
             info!("Received shutdown signal, terminating session");
             if let Err(e) = session.kill_child() {
@@ -657,141 +596,14 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
             break;
         }
 
-        // Handle all events in unified tokio select (truly event-driven)
-        // Includes periodic tick for potential UI animations (similar to dashboard_loop.rs)
         tokio::select! {
-            // Handle user input events (always available for responsiveness)
-            input_event = input_rx.recv() => {
-                let event = match input_event {
-                    Some(e) => e,
-                    None => {
-                        debug!("Input event channel closed");
-                        break;
-                    }
-                };
-
-
-                // Only process input events if we have a viewer
-                if let Some((view_model, viewer_config, terminal)) = &mut viewer_setup {
-                    match event {
-                        Event::Key(key) => {
-                            // Debug logging for key events
-                            debug!(
-                                key_code = ?key.code,
-                                modifiers = ?key.modifiers,
-                                key_kind = ?key.kind,
-                                focus_element = ?view_model.focus_element,
-                                "Key event received in recorder"
-                            );
-
-                            // Clear exit confirmation on any non-ESC key
-                            if !matches!(key.code, crossterm::event::KeyCode::Esc) {
-                                exit_confirmation_armed = false;
-                            }
-
-                            if key.code == crossterm::event::KeyCode::Esc {
-                                if view_model.task_entry_visible {
-                                    view_model.cancel_instruction_overlay();
-                                    continue;
-                                }
-
-                                if view_model.search_state.is_some() {
-                                    view_model.exit_search();
-                                    exit_confirmation_armed = false;
-                                    continue;
-                                }
-
-                                if exit_confirmation_armed {
-                                    // Second ESC - exit
-                                    info!("ESC pressed again, exiting");
-                                    if let Err(e) = session.kill_child() {
-                                        error!("Failed to kill child process: {}", e);
-                                    }
-                                    exited = true;
-                                    break;
-                                } else {
-                                    // First ESC - arm confirmation
-                                    info!("ESC pressed, arming exit confirmation");
-                                    exit_confirmation_armed = true;
-                                    continue;
-                                }
-                            }
-
-                            if view_model.task_entry_visible {
-                                if view_model.handle_instruction_key(&key) {
-                                    continue;
-                                }
-
-                                if key.code == crossterm::event::KeyCode::Enter {
-                                    if let Some(instruction) = view_model.instruction_text() {
-                                        let recording_state = view_model.recording_terminal_state.clone();
-                                        view_model.cancel_instruction_overlay();
-                                        launch_task_from_instruction(
-                                            recording_state,
-                                            Arc::clone(&task_manager),
-                                            instruction,
-                                            &view_model.task_entry.selected_agents,
-                                        )
-                                        .await;
-                                    }
-                                }
-
-                                continue;
-                            }
-
-                            // First try view model's keyboard operation handling
-                            let msgs = view_model.update(SessionViewerMsg::Key(key.clone()));
-                            if !msgs.is_empty() {
-                                // View model handled the key
-                                continue;
-                            }
-
-                            // Forward unhandled key events to the PTY for interactive input
-                            let app_cursor_mode = session.term_features().app_cursor_1;
-                            if let Some(key_bytes) = terminal::key_event_to_bytes_with_features(&key, app_cursor_mode) {
-                                debug!(?key_bytes, app_cursor_mode, "Writing key input to PTY");
-                                // write_input writes directly to PTY
-                                let _ = session.write_input(&key_bytes);
-                            }
-                        }
-                        Event::Mouse(mouse_event) => {
-                            // Handle mouse events if needed
-                            match mouse_event.kind {
-                                MouseEventKind::Down(MouseButton::Left) => {
-                                    // Handle mouse clicks in viewer
-                                    handle_mouse_click_for_view(
-                                        view_model,
-                                        viewer_config,
-                                        mouse_event.column,
-                                        mouse_event.row,
-                                    );
-                                }
-                                MouseEventKind::ScrollUp => {
-                                    // Handle mouse scroll up
-                                    let _ = view_model.update(crate::view_model::session_viewer_model::SessionViewerMsg::MouseScrollUp);
-                                }
-                                MouseEventKind::ScrollDown => {
-                                    // Handle mouse scroll down
-                                    let _ = view_model.update(crate::view_model::session_viewer_model::SessionViewerMsg::MouseScrollDown);
-                                }
-                                _ => {}
-                            }
-                        }
-                        Event::Resize(_width, _height) => {
-                            // Handle resize events
-                            let _ = terminal.autoresize();
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            // Process PTY events directly from the session
+            // Handle PTY events
             pty_event = session.next_event() => {
                 match pty_event {
                     Some(PtyEvent::Exit { code }) => {
                         info!(?code, "Process exited");
 
-                        // Send exit status event if SSE streaming is enabled
+                        // Send exit status event if streaming enabled
                         if events_sender.is_some() {
                             use ah_rest_api_contract::types::SessionEvent;
                             use ah_domain_types::TaskState;
@@ -800,40 +612,29 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                             } else {
                                 TaskState::Failed
                             };
-                            let status_event = SessionEvent::status(
-                                status.into(),
-                                chrono::Utc::now().timestamp() as u64,
-                            );
-                            if let Err(e) = send_sse_event(&mut events_sender, status_event).await {
-                                warn!("Failed to send exit status event: {}", e);
-                            }
+                            // SSE events are only sent in interactive TUI mode
                         }
 
-                        exited = true;
                         break;
                     }
                     Some(PtyEvent::Error(err)) => {
-                        tracing::error!(error = %err, "PTY error");
+                        error!(error = %err, "PTY error");
                     }
                     Some(pty_event) => {
-                        // Process PTY event through the pipeline: AHR writer -> TerminalState
+                        // Process PTY event
                         if let Err(e) = session.process_pty_event(pty_event.clone()) {
                             error!(error = %e, "Failed to process PTY event");
                         }
 
-                        // Extract data for activity detection if SSE streaming is enabled
+                        // Extract data for activity detection if streaming enabled
                         if events_sender.is_some() {
                             if let PtyEvent::Data(data) = &pty_event {
-                                // Try to decode as UTF-8 and accumulate
                                 if let Ok(text) = std::str::from_utf8(data) {
                                     pty_data_buffer.push_str(text);
+                                    detect_and_send_agent_events(events_sender.as_mut(), &pty_data_buffer).await;
 
-                                    // Look for agent activity patterns (basic heuristics)
-                                    detect_and_send_agent_events(&mut events_sender, &pty_data_buffer).await;
-
-                                    // Limit buffer size to prevent unbounded growth
+                                    // Limit buffer size
                                     if pty_data_buffer.len() > 10000 {
-                                        // Keep only the last 5000 characters
                                         let keep_len = 5000;
                                         if pty_data_buffer.len() > keep_len {
                                             pty_data_buffer = pty_data_buffer.chars().rev().take(keep_len).collect::<String>().chars().rev().collect();
@@ -849,31 +650,26 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                     }
                 }
             }
-            // Process IPC snapshot commands
+
+            // Handle IPC snapshot commands
             ipc_cmd = ipc_rx.recv() => {
                 match ipc_cmd {
-                    Some(ah_recorder::ipc::IpcCommand::Snapshot { snapshot_id, label, response_tx }) => {
+                    Some(ipc::IpcCommand::Snapshot { snapshot_id, label, response_tx }) => {
                         let ts_ns = ah_recorder::now_ns();
-                        debug!("Processing snapshot notification: id={}, label={}", snapshot_id, label);
-                        info!(snapshot_id, label = %label, "Processing snapshot notification");
+                        debug!("Processing snapshot: id={}, label={}", snapshot_id, label);
 
-                        // Process snapshot through the pipeline: AHR writer -> TerminalState -> viewer
                         if let Err(e) = session.process_snapshot_event(snapshot_id, Some(&label), ts_ns) {
                             error!(error = %e, "Failed to process snapshot event");
                         }
 
-                        // Get current byte offset for IPC response
                         let current_offset = session.current_byte_offset();
-
-                        // Send response with anchor byte
-                        debug!("Sending IPC response: snapshot_id={}, anchor_byte={}", snapshot_id, current_offset);
-                        let _ = response_tx.send(ah_recorder::ipc::Response::Success((
+                        let _ = response_tx.send(ipc::Response::Success((
                             snapshot_id,
                             current_offset,
                             ts_ns,
                         )));
                     }
-                    Some(ah_recorder::ipc::IpcCommand::Shutdown) => {
+                    Some(ipc::IpcCommand::Shutdown) => {
                         info!("Received IPC shutdown command");
                         break;
                     }
@@ -883,56 +679,574 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                     }
                 }
             }
-            // Periodic tick for UI animations (similar to dashboard_loop.rs ~60 FPS)
-            // This enables smooth animations, blinking cursors, etc.
-            _ = tokio::time::sleep(tokio::time::Duration::from_millis(16)) => {
-                // Tick occurred - could be used for animations if needed
-                // For now, we just ensure the UI stays responsive
+
+            // Periodic tick (not strictly needed in headless mode, but keeps the loop responsive)
+            _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
+                // Just keep the loop running
             }
         }
+    }
 
-        // Always re-render viewer after handling any event
-        if let Some((view_model, viewer_config, terminal)) = &mut viewer_setup {
-            update_row_metadata_with_autofollow(view_model, viewer_config);
-            let recorded_dims = view_model.recording_dims();
-            if let Err(e) = terminal.draw(|f| {
-                render_view_frame(
-                    f,
-                    view_model,
-                    viewer_config,
-                    exit_confirmation_armed,
-                    recorded_dims,
+    // Shutdown IPC server
+    ipc_server.shutdown().await;
+
+    // Finalize recording
+    session.finalize().await.context("Failed to finalize recording")?;
+
+    info!(ahr_file = ?args.out_file, "Headless recording complete");
+
+    Ok(())
+}
+
+/// Execute recording with live viewer using shared TUI runtime
+fn execute_with_viewer(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
+    // Run using shared TUI runtime - all async initialization happens inside the closure
+    tui_runtime::run_tui_with_single_tokio_thread::<SessionViewerMsg, _, _>(
+        deps,
+        move |deps, rx_ui, tx_ui, rx_tick, terminal, input_state| async move {
+            debug!("Starting agent record command with viewer");
+            debug!("Command: {}, args: {:?}", args.command, args.args);
+            info!(
+                command = %args.command,
+                args = ?args.args,
+                "Starting recording session with viewer"
+            );
+
+            if let Some(ref session_id) = args.session_id {
+                info!("Session ID: {}", session_id);
+            }
+
+            // Create autocomplete dependencies from TuiDependencies
+            let autocomplete_dependencies = Arc::new(AutocompleteDependencies {
+                workspace_files: deps.workspace_files.clone(),
+                workspace_workflows: deps.workspace_workflows.clone(),
+                workspace_terms: deps.workspace_terms.clone(),
+                settings: deps.settings.clone(),
+            });
+
+            // Determine terminal size
+            let (outer_cols, outer_rows) = if let (Some(c), Some(r)) = (args.cols, args.rows) {
+                try_resize_terminal(r, c)?;
+                info!("Requested terminal size: {}x{}", c, r);
+                (c, r)
+            } else {
+                match crossterm::terminal::size() {
+                    Ok((c, r)) => {
+                        debug!("Detected terminal size: {}x{}", c, r);
+                        (c, r)
+                    }
+                    Err(_) => {
+                        debug!("Could not determine terminal size, using defaults");
+                        (120, 40)
+                    }
+                }
+            };
+
+            info!(
+                "Terminal size: {}x{} (full size passed to session viewer)",
+                outer_cols, outer_rows
+            );
+
+            // Calculate display area for PTY
+            let gutter_config = cli_gutter_to_viewer_gutter(&args.gutter, args.line_numbers);
+            let display_cols =
+                outer_cols.saturating_sub(4).saturating_sub(gutter_config.width() as u16);
+            let display_rows = outer_rows.saturating_sub(1);
+
+            info!(
+                "Display area for PTY: {}x{} (from terminal {}x{})",
+                display_cols, display_rows, outer_cols, outer_rows
+            );
+
+            // Parse environment variables
+            let env_vars = args
+                .env_vars
+                .iter()
+                .map(|env_var| {
+                    let parts: Vec<&str> = env_var.splitn(2, '=').collect();
+                    if parts.len() != 2 {
+                        anyhow::bail!(
+                            "Invalid environment variable format: {}. Expected KEY=VALUE",
+                            env_var
+                        );
+                    }
+                    Ok((parts[0].to_string(), parts[1].to_string()))
+                })
+                .collect::<Result<Vec<(String, String)>>>()?;
+
+            // Create PTY recorder configuration
+            let pty_config = PtyRecorderConfig {
+                cols: display_cols,
+                rows: display_rows,
+                env_vars,
+                ..Default::default()
+            };
+
+            info!(
+                pty_cols = display_cols,
+                pty_rows = display_rows,
+                terminal_cols = outer_cols,
+                terminal_rows = outer_rows,
+                "Output configuration"
+            );
+
+            // Create AHR writer
+            let writer = if let Some(ref path) = args.out_file {
+                let writer_config = WriterConfig::default().with_brotli_quality(args.brotli_q);
+                Some(
+                    AhrWriter::create(path, writer_config)
+                        .context("Failed to create AHR writer")?,
+                )
+            } else {
+                None
+            };
+
+            // Create shared byte offset counter for IPC
+            let current_byte_offset = Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+            // Set up IPC server for snapshot notifications
+            let (ipc_temp_dir, socket_path, ipc_server, ipc_rx) =
+                setup_recorder_ipc_socket(current_byte_offset.clone()).await?;
+
+            info!("IPC server started, socket: {:?}", socket_path);
+
+            // Set up task manager socket for event streaming
+            let events_sender = if let Some(task_manager_socket) = args.task_manager_socket.as_ref()
+            {
+                debug!(
+                    "Setting up task manager socket for event streaming, path: {}",
+                    task_manager_socket
                 );
-            }) {
-                error!("Failed to render viewer: {}", e);
+                match UnixStream::connect(task_manager_socket).await {
+                    Ok(mut stream) => {
+                        let session_id =
+                            args.session_id.as_ref().unwrap_or(&"unknown".to_string()).clone();
+                        let session_id_bytes = session_id.as_bytes();
+                        let session_id_len = session_id_bytes.len() as u32;
+                        let len_bytes = session_id_len.to_le_bytes();
+
+                        if let Err(e) = stream.write_all(&len_bytes).await {
+                            warn!("Failed to send session ID length: {}", e);
+                            None
+                        } else if let Err(e) = stream.write_all(session_id_bytes).await {
+                            warn!("Failed to send session ID: {}", e);
+                            None
+                        } else {
+                            info!("Task manager socket established");
+                            Some(stream)
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to connect to task manager socket {}: {}",
+                            task_manager_socket, e
+                        );
+                        None
+                    }
+                }
+            } else {
+                debug!("No task manager socket requested");
+                None
+            };
+
+            // Give IPC server time to start
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+            // Spawn command in PTY
+            let (mut recorder, rx) =
+                PtyRecorder::spawn(&args.command, &args.args, pty_config.clone())
+                    .context("Failed to spawn command in PTY")?;
+
+            info!("Command spawned, starting capture");
+
+            // Create recording terminal state for accurate snapshot positioning
+            let recording_terminal_state = std::rc::Rc::new(std::cell::RefCell::new(
+                TerminalState::new_with_scrollback(display_rows, display_cols, 1_000_000),
+            ));
+
+            // Extract PTY writer
+            let pty_writer = recorder.take_writer();
+
+            // Create recording session
+            let (recorder_handle, child_killer) = recorder.start_capture_and_get_killer();
+            let recording_session = RecordingSession::new(
+                pty_writer,
+                recorder_handle,
+                child_killer,
+                rx,
+                writer,
+                Some(recording_terminal_state.clone()),
+            );
+
+            // Set up write_reply callback on TerminalState for DSR responses
+            {
+                let pty_writer_clone = recording_session.pty_writer.clone();
+                recording_terminal_state.borrow_mut().set_write_reply(std::sync::Arc::new(
+                    move |bytes: &[u8]| {
+                        if let Ok(mut writer_opt) = pty_writer_clone.lock() {
+                            if let Some(ref mut writer) = *writer_opt {
+                                let _ = writer.write_all(bytes);
+                                let _ = writer.flush();
+                            }
+                        }
+                    },
+                ));
+            }
+
+            // Create task manager
+            let task_manager: Arc<dyn ah_core::TaskManager> =
+                ah_core::create_session_viewer_task_manager()
+                    .expect("Failed to create local task manager");
+
+            // Create viewer configuration
+            let viewer_config = ViewerConfig {
+                terminal_cols: outer_cols,
+                terminal_rows: outer_rows,
+                scrollback: 1_000_000,
+                gutter: gutter_config,
+                is_replay_mode: false,
+            };
+
+            let view_model = build_session_viewer_view_model(
+                recording_terminal_state,
+                &viewer_config,
+                Some(autocomplete_dependencies),
+            );
+
+            // Construct the record state with captured components
+            let record_state = RecordState {
+                view_model,
+                viewer_config,
+                recording_session,
+                task_manager,
+                ipc_rx,
+                ipc_server,
+                events_sender,
+                exit_confirmation_armed: false,
+                pty_data_buffer: String::new(),
+            };
+            run_record_event_loop(
+                record_state,
+                rx_ui,
+                tx_ui,
+                rx_tick,
+                terminal,
+                input_state,
+                args,
+            )
+            .await
+        },
+    )
+    .map_err(|e| anyhow::anyhow!("{}", e))
+}
+
+/// Run the recording event loop using the shared TUI runtime
+async fn run_record_event_loop(
+    mut record_state: RecordState,
+    mut rx_ui: chan::Receiver<RecordUiMsg>,
+    _tx_ui: chan::Sender<RecordUiMsg>,
+    mut rx_tick: chan::Receiver<std::time::Instant>,
+    mut terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
+    mut input_state: InputState,
+    args: RecordArgs,
+) -> Result<(), anyhow::Error> {
+    loop {
+        // Use biased select to prefer UI messages over ticks
+        chan::select_biased! {
+            recv(rx_ui) -> ui_msg => {
+                let ui_msg = match ui_msg {
+                    Ok(msg) => msg,
+                    Err(_) => break,
+                };
+
+                match ui_msg {
+                    RecordUiMsg::UserInput(event) => {
+                        handle_record_user_input_event(
+                            &mut record_state,
+                            &mut input_state,
+                            &mut terminal,
+                            event,
+                        ).await?;
+                    }
+                    RecordUiMsg::Tick => {
+                        handle_record_tick_event(&mut record_state, &mut terminal).await?;
+                    }
+                    RecordUiMsg::AppMsg(session_viewer_msg) => {
+                        handle_record_session_viewer_message(
+                            &mut record_state,
+                            &mut terminal,
+                            session_viewer_msg,
+                        ).await?;
+                    }
+                }
+
+                // Check for exit
+                if record_state.view_model.exit_requested {
+                    break;
+                }
+            }
+            recv(rx_tick) -> _ => {
+                handle_record_tick_event(&mut record_state, &mut terminal).await?;
+
+                if record_state.view_model.exit_requested {
+                    break;
+                }
             }
         }
     }
 
     // Shutdown IPC server
     info!("Shutting down IPC server");
-    ipc_server.shutdown().await;
+    record_state.ipc_server.shutdown().await;
 
     // Finalize recording
     info!("Finalizing recording");
-    session.finalize().await.context("Failed to finalize recording")?;
+    record_state
+        .recording_session
+        .finalize()
+        .await
+        .context("Failed to finalize recording")?;
 
-    // Viewer cleanup is handled automatically when it goes out of scope
+    info!(ahr_file = ?args.out_file, "Recording complete");
+    Ok(())
+}
 
-    // Clean up IPC temp directory (only if it was created)
-    drop(ipc_temp_dir);
+/// Handle user input events for recording
+async fn handle_record_user_input_event(
+    record_state: &mut RecordState,
+    input_state: &mut InputState,
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    event: Event,
+) -> Result<(), anyhow::Error> {
+    match event {
+        Event::Key(key) => {
+            debug!(
+                key_code = ?key.code,
+                modifiers = ?key.modifiers,
+                key_kind = ?key.kind,
+                focus_element = ?record_state.view_model.focus_element,
+                "Key event received in recorder"
+            );
 
-    // Clean up terminal state
-    if !args.headless {
-        terminal::cleanup_terminal();
+            // Clear exit confirmation on any non-ESC key
+            if !matches!(key.code, crossterm::event::KeyCode::Esc) {
+                record_state.exit_confirmation_armed = false;
+            }
+
+            if key.code == crossterm::event::KeyCode::Esc {
+                if record_state.view_model.task_entry_visible {
+                    record_state.view_model.cancel_instruction_overlay();
+                    return Ok(());
+                }
+
+                if record_state.view_model.search_state.is_some() {
+                    record_state.view_model.exit_search();
+                    record_state.exit_confirmation_armed = false;
+                    return Ok(());
+                }
+
+                if record_state.exit_confirmation_armed {
+                    info!("ESC pressed again, exiting");
+                    if let Err(e) = record_state.recording_session.kill_child() {
+                        error!("Failed to kill child process: {}", e);
+                    }
+                    record_state.view_model.exit_requested = true;
+                    return Ok(());
+                } else {
+                    info!("ESC pressed, arming exit confirmation");
+                    record_state.exit_confirmation_armed = true;
+                    return Ok(());
+                }
+            }
+
+            if record_state.view_model.task_entry_visible {
+                if record_state.view_model.handle_instruction_key(&key) {
+                    return Ok(());
+                }
+
+                if key.code == crossterm::event::KeyCode::Enter {
+                    if let Some(instruction) = record_state.view_model.instruction_text() {
+                        let recording_state =
+                            record_state.view_model.recording_terminal_state.clone();
+                        record_state.view_model.cancel_instruction_overlay();
+                        launch_task_from_instruction(
+                            recording_state,
+                            Arc::clone(&record_state.task_manager),
+                            instruction,
+                            &record_state.view_model.task_entry.selected_agents,
+                        )
+                        .await;
+                    }
+                }
+                return Ok(());
+            }
+
+            // Try view model's keyboard operation handling
+            let msgs = record_state.view_model.update(SessionViewerMsg::Key(key.clone()));
+            if !msgs.is_empty() {
+                return Ok(());
+            }
+
+            // Forward unhandled key events to the PTY for interactive input
+            let app_cursor_mode = record_state.recording_session.term_features().app_cursor_1;
+            if let Some(key_bytes) =
+                crate::terminal::key_event_to_bytes_with_features(&key, app_cursor_mode)
+            {
+                debug!(?key_bytes, app_cursor_mode, "Writing key input to PTY");
+                let _ = record_state.recording_session.write_input(&key_bytes);
+            }
+        }
+        Event::Mouse(mouse_event) => match mouse_event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                handle_mouse_click_for_view(
+                    &mut record_state.view_model,
+                    &record_state.viewer_config,
+                    mouse_event.column,
+                    mouse_event.row,
+                );
+            }
+            MouseEventKind::ScrollUp => {
+                let _ = record_state.view_model.update(SessionViewerMsg::MouseScrollUp);
+            }
+            MouseEventKind::ScrollDown => {
+                let _ = record_state.view_model.update(SessionViewerMsg::MouseScrollDown);
+            }
+            _ => {}
+        },
+        Event::Resize(_width, _height) => {
+            let _ = terminal.autoresize();
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Handle tick events for recording
+async fn handle_record_tick_event(
+    record_state: &mut RecordState,
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+) -> Result<(), anyhow::Error> {
+    // Handle PTY events
+    while let Some(pty_event) = record_state.recording_session.next_event().await {
+        match pty_event {
+            PtyEvent::Exit { code } => {
+                info!(?code, "Process exited");
+
+                if let Some(ref mut sender) = record_state.events_sender {
+                    use ah_domain_types::TaskState;
+                    use ah_rest_api_contract::types::SessionEvent;
+                    let status = if code == Some(0) {
+                        TaskState::Completed
+                    } else {
+                        TaskState::Failed
+                    };
+                    let status_event =
+                        SessionEvent::status(status.into(), chrono::Utc::now().timestamp() as u64);
+                    if let Err(e) = send_sse_event(sender, status_event).await {
+                        warn!("Failed to send exit status event: {}", e);
+                    }
+                }
+
+                record_state.view_model.exit_requested = true;
+                return Ok(());
+            }
+            PtyEvent::Error(err) => {
+                error!(error = %err, "PTY error");
+            }
+            PtyEvent::Data(ref data) => {
+                if let Err(e) = record_state.recording_session.process_pty_event(pty_event.clone())
+                {
+                    error!(error = %e, "Failed to process PTY event");
+                }
+
+                // Extract data for activity detection if streaming enabled
+                if let Some(ref mut sender) = record_state.events_sender {
+                    if let Ok(text) = std::str::from_utf8(&data) {
+                        record_state.pty_data_buffer.push_str(text);
+                        detect_and_send_agent_events(Some(sender), &record_state.pty_data_buffer)
+                            .await;
+
+                        // Limit buffer size
+                        if record_state.pty_data_buffer.len() > 10000 {
+                            let keep_len = 5000;
+                            if record_state.pty_data_buffer.len() > keep_len {
+                                record_state.pty_data_buffer = record_state
+                                    .pty_data_buffer
+                                    .chars()
+                                    .rev()
+                                    .take(keep_len)
+                                    .collect::<String>()
+                                    .chars()
+                                    .rev()
+                                    .collect();
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                if let Err(e) = record_state.recording_session.process_pty_event(pty_event) {
+                    error!(error = %e, "Failed to process PTY event");
+                }
+            }
+        }
     }
 
-    info!(ahr_file = ?out_file, "Recording complete");
+    // Handle IPC commands
+    while let Ok(ipc_cmd) = record_state.ipc_rx.try_recv() {
+        match ipc_cmd {
+            ipc::IpcCommand::Snapshot {
+                snapshot_id,
+                label,
+                response_tx,
+            } => {
+                let ts_ns = ah_recorder::now_ns();
+                debug!("Processing snapshot: id={}, label={}", snapshot_id, label);
 
-    if !exited {
-        anyhow::bail!("Process did not exit cleanly");
+                if let Err(e) = record_state.recording_session.process_snapshot_event(
+                    snapshot_id,
+                    Some(&label),
+                    ts_ns,
+                ) {
+                    error!(error = %e, "Failed to process snapshot event");
+                }
+
+                let current_offset = record_state.recording_session.current_byte_offset();
+                let _ =
+                    response_tx.send(ipc::Response::Success((snapshot_id, current_offset, ts_ns)));
+            }
+            ipc::IpcCommand::Shutdown => {
+                info!("Received IPC shutdown command");
+                record_state.view_model.exit_requested = true;
+                return Ok(());
+            }
+        }
     }
 
+    // Always re-render viewer
+    update_row_metadata_with_autofollow(&mut record_state.view_model, &record_state.viewer_config);
+    let recorded_dims = record_state.view_model.recording_dims();
+    terminal.draw(|f| {
+        render_view_frame(
+            f,
+            &mut record_state.view_model,
+            &record_state.viewer_config,
+            record_state.exit_confirmation_armed,
+            recorded_dims,
+        );
+    })?;
+
+    Ok(())
+}
+
+/// Handle session viewer messages for recording
+async fn handle_record_session_viewer_message(
+    record_state: &mut RecordState,
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    msg: SessionViewerMsg,
+) -> Result<(), anyhow::Error> {
+    // Handle session viewer messages if needed
+    let _msgs = record_state.view_model.update(msg);
     Ok(())
 }
 
