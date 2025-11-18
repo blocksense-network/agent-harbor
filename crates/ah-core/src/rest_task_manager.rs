@@ -609,8 +609,8 @@ mod tests {
         // Test that the trait compiles correctly
         // Since we can't instantiate clients in this crate, we just verify compilation
         fn _test_trait_compilation() {
-            // This ensures the RestApiClient trait compiles
-            use super::RestApiClient;
+            // Touch the trait type to ensure it exists and compiles
+            let _ = std::mem::size_of::<Option<&'static dyn super::RestApiClient>>();
         }
         _test_trait_compilation();
     }

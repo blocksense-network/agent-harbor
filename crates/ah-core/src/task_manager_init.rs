@@ -627,7 +627,6 @@ mod tests {
         match result {
             Ok(_) => {
                 // Success - tmux is available
-                println!("Tmux multiplexer successfully created");
             }
             Err(e) => {
                 // Should fail with a descriptive error if tmux is not available
@@ -721,15 +720,9 @@ mod tests {
         // This should succeed if any supported multiplexer is available
         // (which should at least be tmux in most environments)
         match result {
-            Ok(_) => {
-                println!("Auto-detection successfully created a task manager");
-            }
-            Err(e) => {
+            Ok(_) => {}
+            Err(_e) => {
                 // If it fails, it should be due to no multiplexer being available
-                println!(
-                    "Auto-detection failed (expected in minimal environments): {}",
-                    e
-                );
             }
         }
     }
@@ -767,12 +760,12 @@ mod tests {
 
             match result {
                 Ok(_) => {
-                    println!("Variant {:?} succeeded", variant);
+                    // Variant succeeded
                 }
                 Err(e) => {
                     // Verify the error message is meaningful
                     assert!(!e.is_empty(), "Variant {:?} returned empty error", variant);
-                    println!("Variant {:?} failed with: {}", variant, e);
+                    // Variant failed with an error; ensure it is informative
                 }
             }
         }
@@ -796,14 +789,11 @@ mod tests {
             (vec![TerminalEnvironment::Screen], "Screen"),
         ];
 
-        for (envs, expected_name) in test_cases {
+        for (envs, _expected_name) in test_cases {
             let choice = determine_multiplexer_choice(&envs);
             match choice {
                 MultiplexerChoice::InSupportedMultiplexer(_) => {
-                    println!(
-                        "Environment {:?} correctly mapped to {}",
-                        envs, expected_name
-                    );
+                    // Mapping succeeded for expected environment
                 }
                 MultiplexerChoice::InSupportedTerminal => {
                     panic!(
@@ -837,7 +827,7 @@ mod tests {
             let choice = determine_multiplexer_choice(&envs);
             match choice {
                 MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Tmux) => {
-                    println!("Correctly selected innermost Tmux from nested environment");
+                    // Selected innermost Tmux from nested environment
                 }
                 _ => {
                     panic!("Failed to select innermost Tmux from {:?}", envs);
@@ -852,7 +842,7 @@ mod tests {
         let choice = determine_multiplexer_choice(&envs);
         match choice {
             MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Tmux) => {
-                println!("Correctly selected Tmux");
+                // Correctly selected Tmux
             }
             _ => {
                 panic!("Failed to select Tmux from {:?}", envs);

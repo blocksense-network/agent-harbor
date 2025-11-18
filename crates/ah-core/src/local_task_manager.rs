@@ -596,30 +596,26 @@ where
         // Get draft tasks from the database
         match self.db_manager.list_drafts() {
             Ok(draft_records) => {
-                let draft_tasks: Vec<TaskInfo> =
-                    draft_records
-                        .into_iter()
-                        .map(|draft| {
-                            // Parse models JSON
-                            let models = match serde_json::from_str::<
-                                Vec<ah_domain_types::AgentChoice>,
-                            >(&draft.models)
-                            {
-                                Ok(models) => models,
-                                Err(_) => Vec::new(),
-                            };
+                let draft_tasks: Vec<TaskInfo> = draft_records
+                    .into_iter()
+                    .map(|draft| {
+                        // Parse models JSON
+                        let models = serde_json::from_str::<Vec<ah_domain_types::AgentChoice>>(
+                            &draft.models,
+                        )
+                        .unwrap_or_default();
 
-                            TaskInfo {
-                                id: draft.id,
-                                title: draft.description,
-                                status: "draft".to_string(),
-                                repository: draft.repository,
-                                branch: draft.branch.unwrap_or_default(),
-                                created_at: draft.created_at,
-                                models,
-                            }
-                        })
-                        .collect();
+                        TaskInfo {
+                            id: draft.id,
+                            title: draft.description,
+                            status: "draft".to_string(),
+                            repository: draft.repository,
+                            branch: draft.branch.unwrap_or_default(),
+                            created_at: draft.created_at,
+                            models,
+                        }
+                    })
+                    .collect();
 
                 // For completed tasks, return empty for now (could be extended to get from database)
                 (draft_tasks, Vec::<TaskExecution>::new())

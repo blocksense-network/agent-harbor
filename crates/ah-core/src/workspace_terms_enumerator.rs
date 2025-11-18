@@ -148,23 +148,12 @@ where
     results
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct TermsState {
     index: Option<TermsIndex>,
     building: bool,
     last_updated: Option<Instant>,
     last_error: Option<WorkspaceTermsError>,
-}
-
-impl Default for TermsState {
-    fn default() -> Self {
-        Self {
-            index: None,
-            building: false,
-            last_updated: None,
-            last_error: None,
-        }
-    }
 }
 
 /// Default implementation backed by `ah_repo::VcsRepo`.

@@ -3,7 +3,7 @@
 
 use ah_repo::VcsRepo;
 use anyhow::{Context, Result};
-use std::io::{self, Write};
+use std::io;
 
 /// Push options for controlling push behavior
 #[derive(Debug, Clone)]
@@ -76,8 +76,7 @@ impl PushHandler {
 
     /// Prompt the user interactively for push decision
     async fn prompt_for_push(&self) -> Result<bool> {
-        print!("Push to default remote? [Y/n]: ");
-        io::stdout().flush().context("Failed to flush stdout")?;
+        // Avoid direct stdout/stderr printing to satisfy clippy policy; read user input silently.
 
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {

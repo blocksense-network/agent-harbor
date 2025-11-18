@@ -35,7 +35,7 @@ fn setup_test_repo() -> (TempDir, VcsRepo) {
 
     // Initialize git repository
     let output = std::process::Command::new("git")
-        .args(&["init"])
+        .args(["init"])
         .current_dir(repo_path)
         .output()
         .expect("Failed to initialize git repo");
@@ -44,13 +44,13 @@ fn setup_test_repo() -> (TempDir, VcsRepo) {
 
     // Configure git user
     std::process::Command::new("git")
-        .args(&["config", "user.name", "Test User"])
+        .args(["config", "user.name", "Test User"])
         .current_dir(repo_path)
         .output()
         .expect("Failed to set git user.name");
 
     std::process::Command::new("git")
-        .args(&["config", "user.email", "test@example.com"])
+        .args(["config", "user.email", "test@example.com"])
         .current_dir(repo_path)
         .output()
         .expect("Failed to set git user.email");
@@ -58,13 +58,13 @@ fn setup_test_repo() -> (TempDir, VcsRepo) {
     // Create initial commit
     fs::write(repo_path.join("README.md"), "# Test Repository").expect("Failed to create README");
     std::process::Command::new("git")
-        .args(&["add", "README.md"])
+        .args(["add", "README.md"])
         .current_dir(repo_path)
         .output()
         .expect("Failed to add README");
 
     std::process::Command::new("git")
-        .args(&["commit", "-m", "Initial commit"])
+        .args(["commit", "-m", "Initial commit"])
         .current_dir(repo_path)
         .output()
         .expect("Failed to create initial commit");
@@ -139,7 +139,7 @@ async fn test_record_initial_task_commit_message() {
 
     // Add a remote for testing
     std::process::Command::new("git")
-        .args(&[
+        .args([
             "remote",
             "add",
             "origin",
@@ -198,7 +198,7 @@ async fn test_on_task_branch_true_after_recording_initial_task() {
 
     // Create and checkout a new branch for the task
     std::process::Command::new("git")
-        .args(&["checkout", "-b", "agent-test-branch"])
+        .args(["checkout", "-b", "agent-test-branch"])
         .current_dir(repo.root())
         .output()
         .expect("Failed to create branch");
@@ -224,7 +224,7 @@ async fn test_agent_task_file_in_current_branch() {
 
     // Create and checkout a new branch for the task
     std::process::Command::new("git")
-        .args(&["checkout", "-b", "agent-test-branch"])
+        .args(["checkout", "-b", "agent-test-branch"])
         .current_dir(repo.root())
         .output()
         .expect("Failed to create branch");
@@ -276,7 +276,7 @@ async fn test_append_task() {
 
     // Create and checkout a new branch for the task
     std::process::Command::new("git")
-        .args(&["checkout", "-b", "agent-test-branch"])
+        .args(["checkout", "-b", "agent-test-branch"])
         .current_dir(repo.root())
         .output()
         .expect("Failed to create branch");
@@ -310,7 +310,7 @@ async fn test_append_task_commit_message() {
 
     // Create and checkout a new branch for the task
     std::process::Command::new("git")
-        .args(&["checkout", "-b", "agent-test-branch"])
+        .args(["checkout", "-b", "agent-test-branch"])
         .current_dir(repo.root())
         .output()
         .expect("Failed to create branch");
@@ -364,7 +364,7 @@ async fn test_setup_autopush() {
 
     // Add a remote for testing
     std::process::Command::new("git")
-        .args(&[
+        .args([
             "remote",
             "add",
             "origin",
@@ -376,7 +376,7 @@ async fn test_setup_autopush() {
 
     // Create and checkout a new branch for the task
     std::process::Command::new("git")
-        .args(&["checkout", "-b", "agent-test-branch"])
+        .args(["checkout", "-b", "agent-test-branch"])
         .current_dir(repo.root())
         .output()
         .expect("Failed to create branch");
