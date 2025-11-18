@@ -64,8 +64,22 @@ fn test_shell_and_interpreter(_args: &[String]) {
     println!("Testing shell and interpreter subprocess execution");
 
     // Test 1: Execute a shell script that launches subprocesses
-    // This tests that the shim can capture processes launched by bash
-    match Command::new("/bin/sh")
+    // This tests that the shim can capture processes launched by bash/sh
+    //
+    // IMPORTANT: Use PATH lookup instead of hardcoded nix store paths!
+    // On macOS with Apple Silicon (M-series chips), system binaries in /bin and /usr/bin
+    // are compiled as arm64e binaries (Apple's "pointer authentication" variant).
+    // However, our Rust shim library is compiled as arm64, not arm64e.
+    // When DYLD_INSERT_LIBRARIES tries to inject an arm64 dylib into an arm64e process,
+    // macOS's dynamic linker (dyld) rejects it with "incompatible architecture" error.
+    //
+    // The nix dev shell provides arm64-compatible versions of these utilities
+    // (sh, bash, python3, etc.) in the PATH. By using PATH lookup instead of
+    // hardcoded /bin/sh or /usr/bin/python3, we ensure we get the nix-provided
+    // arm64 binaries that are compatible with our shim.
+    //
+    // DO NOT change this back to hardcoded system paths - it will break on macOS!
+    match Command::new("sh")
         .args([
             "-c",
             "
@@ -91,9 +105,13 @@ fn test_shell_and_interpreter(_args: &[String]) {
     // This tests that the shim can capture processes launched by python
     // NOTE: At M1, we may not yet capture subprocess.run() calls from python,
     // but this test establishes the requirement for future milestones
-    match Command::new("/usr/bin/env")
+    //
+    // IMPORTANT: Use PATH lookup for the same arm64e compatibility reasons
+    // as explained in Test 1 above. The nix dev shell provides an arm64
+    // python3 binary that works with our arm64 shim library.
+    // DO NOT change this back to hardcoded /usr/bin/python3!
+    match Command::new("python3")
         .args([
-            "python3",
             "-c",
             "
 import subprocess
@@ -105,7 +123,7 @@ subprocess.run(['echo', 'subprocess launched by python'])
 subprocess.run(['true'])
 # Also try os.system for comparison
 os.system('echo subprocess launched by python os.system > /dev/null 2>&1')
-        ",
+    ",
         ])
         .status()
     {
@@ -122,7 +140,11 @@ os.system('echo subprocess launched by python os.system > /dev/null 2>&1')
 
     // Test 3: Execute a shell script that launches another direct subprocess
     // Note: Pipeline commands may not be captured at M1 as shells optimize them
-    match Command::new("/bin/sh")
+    //
+    // IMPORTANT: Same arm64e compatibility reasoning as above.
+    // Use PATH lookup to get nix-provided arm64 binaries instead of /bin/sh.
+    // DO NOT change this back to hardcoded system paths!
+    match Command::new("sh")
         .args([
             "-c",
             "

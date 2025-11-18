@@ -48,6 +48,9 @@ fn spawn_tree(_args: &[String]) {
         std::process::id()
     );
 
+    // IMPORTANT: Use PATH lookup for arm64e compatibility (see test_helper.rs for details).
+    // The nix dev shell provides arm64-compatible binaries that work with our arm64 shim.
+    // DO NOT use hardcoded system paths like /bin/true or /usr/bin/sleep!
     // Child 1: Short-lived process using Command::spawn
     match Command::new("true").spawn() {
         Ok(mut child) => {
@@ -98,6 +101,9 @@ fn spawn_tree(_args: &[String]) {
 fn test_direct_libc_calls() {
     let _ = writeln!(io::stderr(), "[spawn_tree] Testing direct libc calls");
 
+    // IMPORTANT: Use PATH lookup for arm64e compatibility (see test_helper.rs).
+    // The nix dev shell provides arm64-compatible "echo" binary for libc execvp().
+    // DO NOT use hardcoded /bin/echo!
     // Test fork
     match unsafe { libc::fork() } {
         -1 => {
@@ -110,18 +116,22 @@ fn test_direct_libc_calls() {
                 "[spawn_tree] In child process, testing execve"
             );
 
-            let path = std::ffi::CString::new("/bin/echo").unwrap();
+            let path = std::ffi::CString::new("echo").unwrap();
             let arg1 = std::ffi::CString::new("echo").unwrap();
             let arg2 = std::ffi::CString::new("test").unwrap();
 
-            let args = [arg1.as_ptr(), arg2.as_ptr(), std::ptr::null()];
-            let env = [std::ptr::null()];
+            let args = [
+                arg1.as_ptr(),
+                arg2.as_ptr(),
+                std::ptr::null::<libc::c_char>(),
+            ];
+            let env = [std::ptr::null::<libc::c_char>()];
 
             unsafe {
-                libc::execve(path.as_ptr(), args.as_ptr(), env.as_ptr());
+                libc::execvp(path.as_ptr(), args.as_ptr());
             }
 
-            let _ = writeln!(io::stderr(), "[spawn_tree] execve failed");
+            eprintln!("[spawn_tree] execvp failed");
             unsafe {
                 libc::_exit(1);
             }
