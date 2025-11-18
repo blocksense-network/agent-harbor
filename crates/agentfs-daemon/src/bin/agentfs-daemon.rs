@@ -42,10 +42,6 @@ fn decode_string(bytes: &[u8]) -> Result<String, String> {
         .map_err(|err| format!("invalid UTF-8 sequence: {}", err))
 }
 
-fn snapshot_id_to_vec(id: SnapshotId) -> Vec<u8> {
-    id.to_string().into_bytes()
-}
-
 fn branch_id_to_vec(id: BranchId) -> Vec<u8> {
     id.to_string().into_bytes()
 }
@@ -504,7 +500,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::FdOpen((version, fd_open_req)) => {
+                    Request::FdOpen((_version, fd_open_req)) => {
                         let path = String::from_utf8_lossy(&fd_open_req.path).to_string();
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_fd_open(
@@ -530,7 +526,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirOpen((version, dir_open_req)) => {
+                    Request::DirOpen((_version, dir_open_req)) => {
                         let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_dir_open(path, client_pid) {
@@ -546,7 +542,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                     Request::DaemonStateProcesses(DaemonStateProcessesRequest {
-                        data: version,
+                        data: _version,
                     }) => {
                         let daemon = daemon.lock().unwrap();
                         match daemon.get_daemon_state_processes() {
@@ -563,7 +559,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DaemonStateStats(DaemonStateStatsRequest { data: version }) => {
+                    Request::DaemonStateStats(DaemonStateStatsRequest { data: _version }) => {
                         let daemon = daemon.lock().unwrap();
                         match daemon.get_daemon_state_stats() {
                             Ok(response) => {
@@ -579,7 +575,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Readlink((version, readlink_req)) => {
+                    Request::Readlink((_version, readlink_req)) => {
                         let path = String::from_utf8_lossy(&readlink_req.path).to_string();
                         debug!(
                             component = COMPONENT,
@@ -606,7 +602,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirRead((version, dir_read_req)) => {
+                    Request::DirRead((_version, dir_read_req)) => {
                         let handle = dir_read_req.handle;
                         debug!(
                             component = COMPONENT,
@@ -634,7 +630,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirClose((version, dir_close_req)) => {
+                    Request::DirClose((_version, dir_close_req)) => {
                         let handle = dir_close_req.handle;
                         debug!(
                             component = COMPONENT,
@@ -661,7 +657,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::FdDup((version, fd_dup_req)) => {
+                    Request::FdDup((_version, fd_dup_req)) => {
                         let fd = fd_dup_req.fd;
                         debug!(component = COMPONENT, "AgentFS Daemon: fd_dup(fd={})", fd);
                         let mut daemon = daemon.lock().unwrap();
@@ -685,7 +681,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::PathOp((version, path_op_req)) => {
+                    Request::PathOp((_version, path_op_req)) => {
                         let path = String::from_utf8_lossy(&path_op_req.path).to_string();
                         let operation = String::from_utf8_lossy(&path_op_req.operation).to_string();
                         debug!(
@@ -748,8 +744,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::WatchRegisterKqueue((version, watch_reg_req)) => {
-                        let mut daemon = daemon.lock().unwrap();
+                    Request::WatchRegisterKqueue((_version, watch_reg_req)) => {
+                        let daemon = daemon.lock().unwrap();
                         // TODO: Get path from FD mapping - for now use placeholder
                         let path = format!("/fd/{}", watch_reg_req.fd);
                         let registration_id = daemon.register_kqueue_watch(
@@ -763,13 +759,13 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let response = Response::watch_register_kqueue(registration_id);
                         send_response(&mut stream, &response);
                     }
-                    Request::WatchRegisterFSEvents((version, watch_reg_req)) => {
+                    Request::WatchRegisterFSEvents((_version, watch_reg_req)) => {
                         let root_paths: Vec<String> = watch_reg_req
                             .root_paths
                             .iter()
                             .map(|p| String::from_utf8_lossy(p).to_string())
                             .collect();
-                        let mut daemon = daemon.lock().unwrap();
+                        let daemon = daemon.lock().unwrap();
                         let registration_id = daemon.register_fsevents_watch(
                             watch_reg_req.pid,
                             watch_reg_req.stream_id,
@@ -780,7 +776,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let response = Response::watch_register_fsevents(registration_id);
                         send_response(&mut stream, &response);
                     }
-                    Request::WatchRegisterFSEventsPort((version, port_reg_req)) => {
+                    Request::WatchRegisterFSEventsPort((_version, port_reg_req)) => {
                         let port_name =
                             String::from_utf8_lossy(&port_reg_req.port_name).to_string();
                         let mut daemon = daemon.lock().unwrap();
@@ -814,18 +810,18 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let response = Response::watch_register_fsevents_port();
                         send_response(&mut stream, &response);
                     }
-                    Request::WatchUnregister((version, watch_unreg_req)) => {
-                        let mut daemon = daemon.lock().unwrap();
+                    Request::WatchUnregister((_version, watch_unreg_req)) => {
+                        let daemon = daemon.lock().unwrap();
                         daemon
                             .unregister_watch(watch_unreg_req.pid, watch_unreg_req.registration_id);
                         let response = Response::watch_unregister();
                         send_response(&mut stream, &response);
                     }
-                    Request::WatchDoorbell((version, doorbell_req)) => {
+                    Request::WatchDoorbell((_version, doorbell_req)) => {
                         // Handle WatchDoorbell - the kqueue FD should be received via SCM_RIGHTS
                         // TODO: Implement proper SCM_RIGHTS reception to get the actual kqueue FD
                         // For now, just acknowledge and set the doorbell ident in watch service
-                        let mut daemon = daemon.lock().unwrap();
+                        let daemon = daemon.lock().unwrap();
                         daemon.watch_service().set_doorbell(
                             doorbell_req.pid,
                             doorbell_req.kq_fd,
@@ -845,8 +841,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let response = Response::watch_doorbell();
                         send_response(&mut stream, &response);
                     }
-                    Request::UpdateDoorbellIdent((version, update_req)) => {
-                        let mut daemon = daemon.lock().unwrap();
+                    Request::UpdateDoorbellIdent((_version, update_req)) => {
+                        let daemon = daemon.lock().unwrap();
                         // Find the kqueue fd for this pid
                         if let Some(kq_fd) =
                             daemon.watch_service().find_kqueue_fd_for_pid(update_req.pid)
@@ -874,7 +870,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let response = Response::update_doorbell_ident();
                         send_response(&mut stream, &response);
                     }
-                    Request::QueryDoorbellIdent((version, query_req)) => {
+                    Request::QueryDoorbellIdent((_version, query_req)) => {
                         let daemon = daemon.lock().unwrap();
                         // Look up the current doorbell ident for this pid (legacy method for compatibility)
                         let current_ident =
@@ -888,14 +884,14 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let response = Response::query_doorbell_ident(current_ident);
                         send_response(&mut stream, &response);
                     }
-                    Request::FsEventBroadcast((version, event_broadcast_req)) => {
+                    Request::FsEventBroadcast((_version, _event_broadcast_req)) => {
                         // Handle FsCore event broadcast to shim
                         // This would trigger the watch service to route events
                         // For now, just acknowledge
                         let response = Response::fs_event_broadcast();
                         send_response(&mut stream, &response);
                     }
-                    Request::WatchDrainEvents((version, drain_req)) => {
+                    Request::WatchDrainEvents((_version, drain_req)) => {
                         let daemon = daemon.lock().unwrap();
                         debug!(
                             component = COMPONENT,
@@ -923,8 +919,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let response = Response::watch_drain_events_response(events);
                         send_response(&mut stream, &response);
                     }
-                    Request::WatchUnregisterFd((version, unregister_fd_req)) => {
-                        let mut daemon = daemon.lock().unwrap();
+                    Request::WatchUnregisterFd((_version, unregister_fd_req)) => {
+                        let daemon = daemon.lock().unwrap();
                         debug!(
                             component = COMPONENT,
                             "AgentFS Daemon: watch_unregister_fd(pid={}, fd={})",
@@ -940,8 +936,8 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let response = Response::watch_unregister_fd();
                         send_response(&mut stream, &response);
                     }
-                    Request::WatchUnregisterKqueue((version, unregister_kq_req)) => {
-                        let mut daemon = daemon.lock().unwrap();
+                    Request::WatchUnregisterKqueue((_version, unregister_kq_req)) => {
+                        let daemon = daemon.lock().unwrap();
                         debug!(
                             component = COMPONENT,
                             "AgentFS Daemon: watch_unregister_kqueue(pid={}, kq_fd={})",

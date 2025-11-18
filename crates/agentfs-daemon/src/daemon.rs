@@ -117,10 +117,8 @@ use agentfs_proto::*;
 // Import specific types that need explicit qualification
 use agentfs_proto::messages::{
     BranchInfo as ProtoBranchInfo, DaemonStateFilesystemRequest, DaemonStateProcessesRequest,
-    DaemonStateResponse, DaemonStateResponseWrapper, DaemonStateStatsRequest, DirCloseRequest,
-    DirEntry, DirReadRequest, FdDupRequest, FilesystemQuery, FilesystemState, FsStats,
-    PathOpRequest, ProcessInfo, SnapshotInfo as ProtoSnapshotInfo, StatData, StatfsData,
-    TimespecData,
+    DaemonStateResponse, DaemonStateResponseWrapper, DaemonStateStatsRequest, DirEntry,
+    FilesystemQuery, FilesystemState, FsStats, SnapshotInfo as ProtoSnapshotInfo,
 };
 
 // Use handshake types and functions from this crate
@@ -169,8 +167,11 @@ fn parse_branch_id_bytes(bytes: &[u8]) -> Result<BranchId, String> {
 }
 
 struct ReadonlyExport {
+    #[allow(dead_code)]
     temp_dir: TempDir,
+    #[allow(dead_code)]
     path: PathBuf,
+    #[allow(dead_code)]
     snapshot_id: SnapshotId,
 }
 
@@ -1581,7 +1582,7 @@ impl AgentFsDaemon {
         let export_path = temp_dir.path().to_path_buf();
 
         {
-            let mut core = self.core.lock().unwrap();
+            let core = self.core.lock().unwrap();
             core.export_snapshot(snapshot_id, &export_path)
                 .map_err(|e| format!("snapshot_export failed: {:?}", e))?;
         }
@@ -1790,7 +1791,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::FdOpen((version, fd_open_req)) => {
+                    Request::FdOpen((_version, fd_open_req)) => {
                         let path = String::from_utf8_lossy(&fd_open_req.path).to_string();
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_fd_open(
@@ -1816,7 +1817,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirOpen((version, dir_open_req)) => {
+                    Request::DirOpen((_version, dir_open_req)) => {
                         let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_dir_open(path, client_pid) {
@@ -1832,25 +1833,21 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                     Request::DaemonStateProcesses(DaemonStateProcessesRequest {
-                        data: version,
-                    }) => {
-                        let pid = get_client_pid_helper(&daemon, client_pid);
-                        match daemon.lock().unwrap().get_daemon_state_processes() {
-                            Ok(response) => {
-                                let response = Response::DaemonState(response);
-                                send_response(&mut stream, &response);
-                            }
-                            Err(e) => {
-                                let response = Response::error(
-                                    format!("daemon_state_processes failed: {}", e),
-                                    Some(4),
-                                );
-                                send_response(&mut stream, &response);
-                            }
+                        data: _version,
+                    }) => match daemon.lock().unwrap().get_daemon_state_processes() {
+                        Ok(response) => {
+                            let response = Response::DaemonState(response);
+                            send_response(&mut stream, &response);
                         }
-                    }
-                    Request::DaemonStateStats(DaemonStateStatsRequest { data: version }) => {
-                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        Err(e) => {
+                            let response = Response::error(
+                                format!("daemon_state_processes failed: {}", e),
+                                Some(4),
+                            );
+                            send_response(&mut stream, &response);
+                        }
+                    },
+                    Request::DaemonStateStats(DaemonStateStatsRequest { data: _version }) => {
                         match daemon.lock().unwrap().get_daemon_state_stats() {
                             Ok(response) => {
                                 let response = Response::DaemonState(response);
@@ -1865,7 +1862,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Readlink((version, readlink_req)) => {
+                    Request::Readlink((_version, readlink_req)) => {
                         let path = String::from_utf8_lossy(&readlink_req.path).to_string();
                         debug!(
                             component = COMPONENT,
@@ -1894,7 +1891,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirRead((version, dir_read_req)) => {
+                    Request::DirRead((_version, dir_read_req)) => {
                         let handle = dir_read_req.handle;
                         debug!(
                             component = COMPONENT,
@@ -1924,7 +1921,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirClose((version, dir_close_req)) => {
+                    Request::DirClose((_version, dir_close_req)) => {
                         let handle = dir_close_req.handle;
                         debug!(
                             component = COMPONENT,
@@ -1950,7 +1947,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::FdDup((version, fd_dup_req)) => {
+                    Request::FdDup((_version, fd_dup_req)) => {
                         let fd = fd_dup_req.fd;
                         debug!(component = COMPONENT, "AgentFsDaemon: fd_dup(fd={})", fd);
                         let mut daemon = daemon.lock().unwrap();
@@ -1976,7 +1973,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::PathOp((version, path_op_req)) => {
+                    Request::PathOp((_version, path_op_req)) => {
                         let path = String::from_utf8_lossy(&path_op_req.path).to_string();
                         let operation = String::from_utf8_lossy(&path_op_req.operation).to_string();
                         debug!(
@@ -2011,7 +2008,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             query.include_overlay,
                             query.max_file_size
                         );
-                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        // No PID needed for filesystem state query
                         match daemon.lock().unwrap().get_daemon_state_filesystem(&query) {
                             Ok(response) => {
                                 let entry_count = match &response.response {
@@ -2044,7 +2041,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         }
                     }
                     // Metadata operations
-                    Request::Stat((version, stat_req)) => {
+                    Request::Stat((_version, stat_req)) => {
                         let path = String::from_utf8_lossy(&stat_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         match daemon.lock().unwrap().core.lock().unwrap().stat(&pid, path.as_ref())
@@ -2060,7 +2057,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Lstat((version, lstat_req)) => {
+                    Request::Lstat((_version, lstat_req)) => {
                         let path = String::from_utf8_lossy(&lstat_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         match daemon.lock().unwrap().core.lock().unwrap().lstat(&pid, path.as_ref())
@@ -2076,7 +2073,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Fstat((version, fstat_req)) => {
+                    Request::Fstat((_version, fstat_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let handle_id = HandleId(fstat_req.fd as u64);
                         match daemon.lock().unwrap().core.lock().unwrap().fstat(&pid, handle_id) {
@@ -2091,7 +2088,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Fstatat((version, fstatat_req)) => {
+                    Request::Fstatat((_version, fstatat_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let path = String::from_utf8_lossy(&fstatat_req.path).to_string();
                         match daemon.lock().unwrap().core.lock().unwrap().fstatat(
@@ -2110,7 +2107,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Chmod((version, chmod_req)) => {
+                    Request::Chmod((_version, chmod_req)) => {
                         let path = String::from_utf8_lossy(&chmod_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         match daemon.lock().unwrap().core.lock().unwrap().set_mode(
@@ -2129,7 +2126,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Fchmod((version, fchmod_req)) => {
+                    Request::Fchmod((_version, fchmod_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let handle_id = HandleId(fchmod_req.fd as u64);
                         match daemon.lock().unwrap().core.lock().unwrap().fchmod(
@@ -2148,7 +2145,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Fchmodat((version, fchmodat_req)) => {
+                    Request::Fchmodat((_version, fchmodat_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let path = String::from_utf8_lossy(&fchmodat_req.path).to_string();
                         match daemon.lock().unwrap().core.lock().unwrap().fchmodat(
@@ -2168,7 +2165,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Chown((version, chown_req)) => {
+                    Request::Chown((_version, chown_req)) => {
                         let path = String::from_utf8_lossy(&chown_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         match daemon.lock().unwrap().core.lock().unwrap().set_owner(
@@ -2188,7 +2185,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Lchown((version, lchown_req)) => {
+                    Request::Lchown((_version, lchown_req)) => {
                         let path = String::from_utf8_lossy(&lchown_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         // For now, use regular chown (lchown would be different for symlinks)
@@ -2209,7 +2206,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Fchown((version, fchown_req)) => {
+                    Request::Fchown((_version, fchown_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let handle_id = HandleId(fchown_req.fd as u64);
                         match daemon.lock().unwrap().core.lock().unwrap().fchown(
@@ -2229,7 +2226,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Fchownat((version, fchownat_req)) => {
+                    Request::Fchownat((_version, fchownat_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let path = String::from_utf8_lossy(&fchownat_req.path).to_string();
                         match daemon.lock().unwrap().core.lock().unwrap().fchownat(
@@ -2250,7 +2247,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Utimes((version, utimes_req)) => {
+                    Request::Utimes((_version, utimes_req)) => {
                         let path = String::from_utf8_lossy(&utimes_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         // For path-based utimes, we need to open the file first
@@ -2315,7 +2312,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Futimes((version, futimes_req)) => {
+                    Request::Futimes((_version, futimes_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let handle_id = HandleId(futimes_req.fd as u64);
                         let times = futimes_req.times.map(|t| (t.0, t.1));
@@ -2338,7 +2335,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Utimensat((version, utimensat_req)) => {
+                    Request::Utimensat((_version, utimensat_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let path = String::from_utf8_lossy(&utimensat_req.path).to_string();
                         match daemon.lock().unwrap().core.lock().unwrap().utimensat(
@@ -2358,7 +2355,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Linkat((version, linkat_req)) => {
+                    Request::Linkat((_version, linkat_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let old_path = String::from_utf8_lossy(&linkat_req.old_path).to_string();
                         let new_path = String::from_utf8_lossy(&linkat_req.new_path).to_string();
@@ -2379,7 +2376,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Symlinkat((version, symlinkat_req)) => {
+                    Request::Symlinkat((_version, symlinkat_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let target = String::from_utf8_lossy(&symlinkat_req.target).to_string();
                         let linkpath = String::from_utf8_lossy(&symlinkat_req.linkpath).to_string();
@@ -2399,7 +2396,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Futimens((version, futimens_req)) => {
+                    Request::Futimens((_version, futimens_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let handle_id = HandleId(futimens_req.fd as u64);
                         let times = futimens_req.times.map(|t| (t.0, t.1));
@@ -2422,7 +2419,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Truncate((version, truncate_req)) => {
+                    Request::Truncate((_version, truncate_req)) => {
                         let path = String::from_utf8_lossy(&truncate_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         // For path-based truncate, we need to open the file first
@@ -2483,7 +2480,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Ftruncate((version, ftruncate_req)) => {
+                    Request::Ftruncate((_version, ftruncate_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let handle_id = HandleId(ftruncate_req.fd as u64);
                         match daemon.lock().unwrap().core.lock().unwrap().ftruncate(
@@ -2502,7 +2499,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Statfs((version, statfs_req)) => {
+                    Request::Statfs((_version, statfs_req)) => {
                         let path = String::from_utf8_lossy(&statfs_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         match daemon
@@ -2524,7 +2521,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::Fstatfs((version, fstatfs_req)) => {
+                    Request::Fstatfs((_version, fstatfs_req)) => {
                         let pid = get_client_pid_helper(&daemon, client_pid);
                         let handle_id = HandleId(fstatfs_req.fd as u64);
                         match daemon.lock().unwrap().core.lock().unwrap().fstatfs(&pid, handle_id) {
@@ -2539,7 +2536,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirfdOpenDir((version, dirfd_open_dir_req)) => {
+                    Request::DirfdOpenDir((_version, dirfd_open_dir_req)) => {
                         let path = String::from_utf8_lossy(&dirfd_open_dir_req.path).to_string();
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_dirfd_open_dir(
@@ -2560,7 +2557,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirfdCloseFd((version, dirfd_close_fd_req)) => {
+                    Request::DirfdCloseFd((_version, dirfd_close_fd_req)) => {
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_dirfd_close_fd(
                             dirfd_close_fd_req.pid,
@@ -2579,7 +2576,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirfdDupFd((version, dirfd_dup_fd_req)) => {
+                    Request::DirfdDupFd((_version, dirfd_dup_fd_req)) => {
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_dirfd_dup_fd(
                             dirfd_dup_fd_req.pid,
@@ -2597,7 +2594,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirfdSetCwd((version, dirfd_set_cwd_req)) => {
+                    Request::DirfdSetCwd((_version, dirfd_set_cwd_req)) => {
                         let cwd = String::from_utf8_lossy(&dirfd_set_cwd_req.cwd).to_string();
                         let mut daemon = daemon.lock().unwrap();
                         match daemon.handle_dirfd_set_cwd(dirfd_set_cwd_req.pid, cwd) {
@@ -2614,7 +2611,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::DirfdResolvePath((version, dirfd_resolve_path_req)) => {
+                    Request::DirfdResolvePath((_version, dirfd_resolve_path_req)) => {
                         let relative_path =
                             String::from_utf8_lossy(&dirfd_resolve_path_req.relative_path)
                                 .to_string();
@@ -2637,7 +2634,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::WatchRegisterFSEventsPort((version, port_req)) => {
+                    Request::WatchRegisterFSEventsPort((_version, port_req)) => {
                         #[cfg(target_os = "macos")]
                         {
                             let port_name_str =
