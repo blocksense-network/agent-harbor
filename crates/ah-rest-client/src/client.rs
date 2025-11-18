@@ -407,7 +407,6 @@ impl RestClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ah_rest_api_contract::*;
 
     #[tokio::test]
     async fn test_client_creation() {

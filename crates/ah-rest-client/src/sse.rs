@@ -51,8 +51,6 @@ impl Stream for SessionEventStream {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ah_rest_api_contract::SessionStatus;
 
     #[test]
     fn test_session_event_parsing() {
