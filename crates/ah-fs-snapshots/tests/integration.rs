@@ -8,6 +8,7 @@
 use fs_snapshots_test_harness::assert_driver_exists;
 #[cfg(feature = "agentfs")]
 use fs_snapshots_test_harness::assert_interpose_shim_exists;
+use std::io::{self, Write};
 use std::process::Command as StdCommand;
 
 #[cfg(feature = "btrfs")]
@@ -37,12 +38,18 @@ fn configure_agentfs_env(
 #[test]
 fn test_zfs_snapshot_integration() {
     if !zfs_is_root() {
-        println!("Skipping ZFS integration test: requires root privileges");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping ZFS integration test: requires root privileges"
+        );
         return;
     }
 
     if !zfs_available() {
-        println!("Skipping ZFS integration test: ZFS tooling not available");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping ZFS integration test: ZFS tooling not available"
+        );
         return;
     }
 
@@ -70,7 +77,10 @@ fn test_zfs_snapshot_integration() {
 #[cfg(not(feature = "zfs"))]
 #[test]
 fn test_zfs_snapshot_integration() {
-    println!("Skipping ZFS integration test: zfs feature disabled");
+    let _ = writeln!(
+        io::stdout(),
+        "Skipping ZFS integration test: zfs feature disabled"
+    );
 }
 
 /// Integration test for Git snapshot providers via the harness driver.
@@ -78,7 +88,10 @@ fn test_zfs_snapshot_integration() {
 #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
 fn test_git_snapshot_integration() {
     if !git_available() {
-        println!("Skipping Git integration test: git command not available");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping Git integration test: git command not available"
+        );
         return;
     }
 
@@ -116,12 +129,18 @@ fn test_git_snapshot_integration() {
 #[test]
 fn test_btrfs_snapshot_integration() {
     if !btrfs_is_root() {
-        println!("Skipping Btrfs integration test: requires root privileges");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping Btrfs integration test: requires root privileges"
+        );
         return;
     }
 
     if !btrfs_available() {
-        println!("Skipping Btrfs integration test: Btrfs tooling not available");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping Btrfs integration test: Btrfs tooling not available"
+        );
         return;
     }
 
@@ -148,14 +167,20 @@ fn test_btrfs_snapshot_integration() {
 #[cfg(not(feature = "btrfs"))]
 #[test]
 fn test_btrfs_snapshot_integration() {
-    println!("Skipping Btrfs integration test: btrfs feature disabled");
+    let _ = writeln!(
+        io::stdout(),
+        "Skipping Btrfs integration test: btrfs feature disabled"
+    );
 }
 
 #[test]
 #[ignore = "TODO: Add support for running this in GitHub Actions CI"]
 fn test_git_provider_matrix() {
     if !git_available() {
-        println!("Skipping Git provider matrix: git command not available");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping Git provider matrix: git command not available"
+        );
         return;
     }
 
@@ -185,12 +210,18 @@ fn test_git_provider_matrix() {
 #[test]
 fn test_zfs_provider_matrix() {
     if !zfs_is_root() {
-        println!("Skipping ZFS provider matrix: requires root privileges");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping ZFS provider matrix: requires root privileges"
+        );
         return;
     }
 
     if !zfs_available() {
-        println!("Skipping ZFS provider matrix: ZFS tooling not available");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping ZFS provider matrix: ZFS tooling not available"
+        );
         return;
     }
 
@@ -220,12 +251,18 @@ fn test_zfs_provider_matrix() {
 #[test]
 fn test_btrfs_provider_matrix() {
     if !btrfs_is_root() {
-        println!("Skipping Btrfs provider matrix: requires root privileges");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping Btrfs provider matrix: requires root privileges"
+        );
         return;
     }
 
     if !btrfs_available() {
-        println!("Skipping Btrfs provider matrix: Btrfs tooling not available");
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping Btrfs provider matrix: Btrfs tooling not available"
+        );
         return;
     }
 
