@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! Integration tests for AgentFS sandbox workspace preparation
+#![allow(clippy::disallowed_methods)] // test diagnostics intentionally print for debugging
 
 #[test]
 fn test_sandbox_workspace_agentfs() {
@@ -106,6 +107,7 @@ fn test_sandbox_agentfs_daemon_reuse() {
     }
 
     // Helper function to capture directory contents recursively
+    #[allow(dead_code)]
     fn capture_directory_contents(
         dir: &std::path::Path,
     ) -> Result<

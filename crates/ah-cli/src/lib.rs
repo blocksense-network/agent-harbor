@@ -59,6 +59,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)] // Boxing subcommands would complicate downstream matches; acceptable for CLI
 pub enum Commands {
     /// Configuration management commands
     Config {

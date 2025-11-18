@@ -1,5 +1,6 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
+#![allow(clippy::disallowed_methods)] // CLI commands intentionally print to stdout/stderr
 
 //! Configuration management commands
 use anyhow::Result;
@@ -39,7 +40,6 @@ pub enum ConfigCommands {
 }
 
 impl ConfigCommands {
-    #[allow(clippy::disallowed_methods)]
     pub async fn run(self, global_config: Option<&str>) -> Result<()> {
         match self {
             ConfigCommands::Show { key, show_origin } => {

@@ -7,8 +7,6 @@ use ah_core::{
     edit_content_interactive, parse_push_to_remote_flag,
 };
 use ah_fs_snapshots::PreparedWorkspace;
-#[allow(unused_imports)]
-use ah_fs_snapshots::WorkingCopyMode;
 use ah_local_db::{SessionRecord, TaskRecord};
 use ah_repo::VcsRepo;
 use anyhow::{Context, Result};
@@ -18,12 +16,11 @@ use std::path::PathBuf;
 use tui_testing::TestedTerminalProgram;
 
 // Re-export tui-testing types for convenience in tests
-#[cfg(test)]
-use tui_testing::TuiTestRunner;
+// Removed unused re-export of TuiTestRunner
 
 /// Test execution context for managing shared dependencies between tests
 #[cfg(test)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TestExecutionContext {
     /// Map of scenario names to their cached data
     pub scenarios: std::collections::HashMap<String, ScenarioData>,
@@ -164,10 +161,12 @@ impl TestExecutionContext {
         }
 
         // Store the scenario data
+        #[allow(deprecated)]
+        let ah_home_dir_path = ah_home_dir.into_path();
         let scenario_data = ScenarioData {
             ahr_file_path: recording_path,
             repo_dir,
-            ah_home_dir: ah_home_dir.into_path(),
+            ah_home_dir: ah_home_dir_path,
         };
 
         self.scenarios.insert(scenario_name.to_string(), scenario_data);
@@ -205,10 +204,12 @@ impl TestExecutionContext {
 
 #[cfg(test)]
 /// Global test context for sharing dependencies between tests
+#[allow(static_mut_refs)]
 static mut TEST_CONTEXT: Option<TestExecutionContext> = None;
 
 #[cfg(test)]
 /// Get the global test context, creating it if needed
+#[allow(static_mut_refs)]
 fn get_test_context() -> &'static mut TestExecutionContext {
     unsafe {
         if TEST_CONTEXT.is_none() {
@@ -222,7 +223,7 @@ fn get_test_context() -> &'static mut TestExecutionContext {
 #[derive(Subcommand)]
 pub enum TaskCommands {
     /// Create a new task or add to an existing task branch
-    Create(TaskCreateArgs),
+    Create(Box<TaskCreateArgs>),
     /// Get and display the current task with workflow processing
     Get(TaskGetArgs),
 }
@@ -299,7 +300,7 @@ impl TaskCommands {
     /// Execute the task command
     pub async fn run(self) -> Result<()> {
         match self {
-            TaskCommands::Create(args) => args.run().await,
+            TaskCommands::Create(args) => (*args).run().await,
             TaskCommands::Get(args) => args.run().await,
         }
     }
@@ -336,7 +337,7 @@ impl TaskCreateArgs {
             orig_branch.clone()
         };
 
-        let mut cleanup_branch = start_new_branch;
+        let cleanup_branch = start_new_branch;
         let mut _task_committed = false;
 
         // Get task content (editor or provided)
@@ -408,7 +409,6 @@ impl TaskCreateArgs {
 
         // Success - mark as committed and don't cleanup branch
         _task_committed = true;
-        cleanup_branch = false;
 
         // Create session record
         let session_record = SessionRecord {
@@ -495,7 +495,6 @@ impl TaskCreateArgs {
         }
 
         // Success - don't cleanup branch
-        cleanup_branch = false;
 
         // Switch back to original branch if we created a new one
         if start_new_branch {
@@ -544,7 +543,7 @@ impl TaskCreateArgs {
 
     /// Validate existing branch (not main branch, etc.)
     async fn validate_existing_branch(&self, repo: &VcsRepo, branch_name: &str) -> Result<()> {
-        let main_names = vec![repo.default_branch(), "main", "master", "trunk", "default"];
+        let main_names = [repo.default_branch(), "main", "master", "trunk", "default"];
 
         if main_names.contains(&branch_name) {
             anyhow::bail!("Error: Refusing to run on the main branch");
@@ -584,7 +583,7 @@ impl TaskCreateArgs {
     /// Cleanup a branch that was created but task recording failed
     fn cleanup_branch(&self, repo: &VcsRepo, branch_name: &str) {
         // Try to switch back to original branch first
-        let _ = repo.checkout_branch(&repo.default_branch());
+        let _ = repo.checkout_branch(repo.default_branch());
 
         // Try to delete the branch (ignore errors)
         let _ = std::process::Command::new("git")
@@ -595,6 +594,7 @@ impl TaskCreateArgs {
 }
 
 /// Helper function to get the workspace root path
+#[cfg(test)]
 fn get_workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent() // crates/
@@ -605,6 +605,7 @@ fn get_workspace_root() -> std::path::PathBuf {
 }
 
 /// Helper function to get the AH binary path for tests
+#[cfg(test)]
 fn get_ah_binary_path() -> std::path::PathBuf {
     get_workspace_root().join("target/debug/ah")
 }
@@ -645,6 +646,7 @@ impl TaskGetArgs {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods, clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use std::fs;
@@ -836,7 +838,7 @@ mod tests {
 
     #[test]
     fn test_task_validation_empty_content() {
-        let args = TaskCreateArgs {
+        let _args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
             prompt: None,
             prompt_file: None,
@@ -860,7 +862,7 @@ mod tests {
 
     #[test]
     fn test_task_validation_whitespace_only() {
-        let args = TaskCreateArgs {
+        let _args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
             prompt: None,
             prompt_file: None,
@@ -928,7 +930,7 @@ mod tests {
         // Since we can't easily mock the full VcsRepo, we'll test the logic indirectly
         // by checking that devshell validation requires flake.nix
 
-        let args = TaskCreateArgs {
+        let _args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
             prompt: Some("test".to_string()),
             prompt_file: None,
@@ -1133,6 +1135,8 @@ mod tests {
         Ok((temp_home, repo_dir, remote_dir))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::type_complexity)]
     fn run_ah_task_create_integration(
         repo_path: &std::path::Path,
         branch: &str,
@@ -1148,14 +1152,14 @@ mod tests {
         use std::process::Command;
 
         // Set up fake editor if needed
-        let mut editor_dir = None;
+        let mut _editor_dir = None;
         let mut editor_script = None;
         let mut marker_file = None;
 
         if prompt.is_none() && prompt_file.is_none() {
-            editor_dir = Some(tempfile::TempDir::new()?);
-            let script_path = editor_dir.as_ref().unwrap().path().join("fake_editor.sh");
-            let marker_path = editor_dir.as_ref().unwrap().path().join("called");
+            _editor_dir = Some(tempfile::TempDir::new()?);
+            let script_path = _editor_dir.as_ref().unwrap().path().join("fake_editor.sh");
+            let marker_path = _editor_dir.as_ref().unwrap().path().join("called");
 
             let script_content = format!(
                 r#"#!/bin/bash
@@ -1318,8 +1322,14 @@ exit {}
 
     #[test]
     fn integration_test_clean_repo() -> Result<()> {
+        use std::process::Command;
+
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
+
+        // Create staged changes in a clean repo to verify staging is preserved
+        fs::write(repo_dir.path().join("foo.txt"), "foo")?;
+        Command::new("git").args(["add", "foo.txt"]).current_dir(&repo_dir).output()?;
 
         let (status, _output, _editor_called) = run_ah_task_create_integration(
             repo_dir.path(),
@@ -1410,8 +1420,6 @@ exit {}
 
     #[test]
     fn integration_test_editor_failure() -> Result<()> {
-        use std::process::Command;
-
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         let (status, _output, _editor_called) = run_ah_task_create_integration(
@@ -1435,8 +1443,6 @@ exit {}
 
     #[test]
     fn integration_test_empty_file() -> Result<()> {
-        use std::process::Command;
-
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         // Create an empty prompt file
@@ -1599,8 +1605,6 @@ exit {}
 
     #[test]
     fn integration_test_devshell_option_invalid() -> Result<()> {
-        use std::process::Command;
-
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         // Create a flake.nix file without the requested devshell
@@ -1634,8 +1638,6 @@ exit {}
 
     #[test]
     fn integration_test_devshell_without_flake() -> Result<()> {
-        use std::process::Command;
-
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         let (status, _output, _editor_called) = run_ah_task_create_integration(
@@ -1659,8 +1661,6 @@ exit {}
 
     #[test]
     fn integration_test_prompt_option_empty() -> Result<()> {
-        use std::process::Command;
-
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         let (status, _output, _editor_called) = run_ah_task_create_integration(
@@ -1684,8 +1684,6 @@ exit {}
 
     #[test]
     fn integration_test_prompt_file_empty() -> Result<()> {
-        use std::process::Command;
-
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         // Create a prompt file with only whitespace
@@ -1713,8 +1711,6 @@ exit {}
 
     #[test]
     fn integration_test_invalid_branch() -> Result<()> {
-        use std::process::Command;
-
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         let (status, _output, editor_called) = run_ah_task_create_integration(
@@ -1862,7 +1858,7 @@ exit {}
         );
 
         // For TUI testing, use the demo scenario which doesn't require YAML parsing
-        let agent_flags = vec![
+        let agent_flags = [
             "--workspace".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
             "--tui-testing-uri".to_string(),
@@ -1961,7 +1957,7 @@ exit {}
         let ah_binary_path = get_ah_binary_path().to_string_lossy().to_string();
         let checkpoint_cmd = format!("{} agent fs snapshot", ah_binary_path);
         // Also create a simple test file to verify checkpoint is called
-        let checkpoint_cmd = format!("{}", checkpoint_cmd);
+        let checkpoint_cmd = checkpoint_cmd.to_string();
 
         // Run the mock agent directly with checkpoint command
         let mut cmd = std::process::Command::new("python");
@@ -1996,7 +1992,7 @@ exit {}
 
         let output = cmd.output()?;
         let status = output.status;
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let _stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         // The command should succeed
@@ -2158,7 +2154,7 @@ exit {}
 
         // Set up the replay command with the viewer
         let ah_binary_path = get_ah_binary_path();
-        let mut program = TestedTerminalProgram::new(ah_binary_path.to_str().unwrap())
+        let program = TestedTerminalProgram::new(ah_binary_path.to_str().unwrap())
             .arg("agent")
             .arg("replay")
             .arg(recording_path.to_str().unwrap())
@@ -2302,7 +2298,7 @@ exit {}
 
     /// Helper function to start mock LLM API server for Codex integration tests
     fn start_mock_llm_server(
-        repo_dir: &std::path::Path,
+        _repo_dir: &std::path::Path,
         server_port: u16,
     ) -> Result<std::process::Child> {
         use ah_agents::test_utils::start_mock_llm_api_server;
@@ -2317,7 +2313,7 @@ exit {}
             env!("CARGO_MANIFEST_DIR"),
             "/../../tests/tools/mock-agent/scenarios/basic_timeline_scenario.yaml"
         );
-        let mut child = start_mock_llm_api_server(server_port, &agent_binary, scenario_path)?;
+        let child = start_mock_llm_api_server(server_port, &agent_binary, scenario_path)?;
         std::thread::sleep(std::time::Duration::from_secs(3)); // Wait for server to start
         Ok(child)
     }
@@ -2329,14 +2325,14 @@ exit {}
             let content = std::fs::read_to_string(&hello_py)?;
             if content.contains("Hello, World!") {
                 eprintln!("✓ Codex created hello.py with expected content");
-                return Ok(true);
+                Ok(true)
             } else {
                 eprintln!("✗ hello.py exists but content doesn't match expected output");
-                return Ok(false);
+                Ok(false)
             }
         } else {
             eprintln!("✗ Codex did not create hello.py");
-            return Ok(false);
+            Ok(false)
         }
     }
 
@@ -2842,6 +2838,7 @@ exit {}
     }
 }
 
+#[cfg(test)]
 fn run_ah_agent_record_integration(
     repo_path: &std::path::Path,
     output_file: &str,
@@ -2907,6 +2904,7 @@ fn run_ah_agent_record_integration(
     Ok((output.status, stdout, stderr))
 }
 
+#[cfg(test)]
 fn run_ah_agent_branch_points_integration(
     session_file: &str,
     format: &str,
@@ -2970,6 +2968,7 @@ async fn validate_and_prepare_sandbox(args: &TaskCreateArgs) -> Result<PreparedW
 }
 
 /// Load golden snapshot for comparison
+#[cfg(test)]
 fn load_golden_snapshot(scenario_name: &str) -> Result<serde_json::Value> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string());
@@ -2992,7 +2991,9 @@ fn load_golden_snapshot(scenario_name: &str) -> Result<serde_json::Value> {
 }
 
 /// Save golden snapshot for future comparison
+#[cfg(test)]
 #[allow(dead_code)]
+#[allow(clippy::disallowed_methods)]
 fn save_golden_snapshot(scenario_name: &str, data: &serde_json::Value) -> Result<()> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string());
@@ -3009,7 +3010,7 @@ fn save_golden_snapshot(scenario_name: &str, data: &serde_json::Value) -> Result
     }
 
     let content = serde_json::to_string_pretty(data)
-        .with_context(|| format!("Failed to serialize golden snapshot"))?;
+        .with_context(|| "Failed to serialize golden snapshot".to_string())?;
 
     std::fs::write(&golden_path, content)
         .with_context(|| format!("Failed to write golden snapshot: {}", golden_path.display()))?;
@@ -3019,6 +3020,7 @@ fn save_golden_snapshot(scenario_name: &str, data: &serde_json::Value) -> Result
 }
 
 /// Load viewer golden snapshot (text-based screen content) for comparison
+#[cfg(test)]
 fn load_viewer_golden_snapshot(scenario_name: &str, step_name: &str) -> Result<String> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string());
@@ -3037,6 +3039,8 @@ fn load_viewer_golden_snapshot(scenario_name: &str, step_name: &str) -> Result<S
 }
 
 /// Compare actual screen content with golden snapshot, allowing for some flexibility
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 fn compare_with_viewer_golden_snapshot(actual: &str, golden: &str, step_name: &str) -> Result<()> {
     // For viewer snapshots, we do a line-by-line comparison but allow for some dynamic content
     let actual_lines: Vec<&str> = actual.lines().collect();
@@ -3097,7 +3101,9 @@ fn compare_with_viewer_golden_snapshot(actual: &str, golden: &str, step_name: &s
 }
 
 /// Save viewer screen content as a new golden snapshot (for updating expected results)
+#[cfg(test)]
 #[allow(dead_code)]
+#[allow(clippy::disallowed_methods)]
 fn save_viewer_golden_snapshot(scenario_name: &str, step_name: &str, content: &str) -> Result<()> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string());
@@ -3134,6 +3140,7 @@ fn reset_ah_home() -> Result<tempfile::TempDir> {
 }
 
 /// Compare actual output with golden snapshot, allowing for some flexibility
+#[cfg(test)]
 fn compare_with_golden_snapshot(
     actual: &serde_json::Value,
     golden: &serde_json::Value,
@@ -3200,11 +3207,7 @@ fn compare_with_golden_snapshot(
                 // Allow small tolerance for anchor_byte due to timing variations
                 let actual_anchor = actual_item["anchor_byte"].as_u64().unwrap();
                 let golden_anchor = golden_item["anchor_byte"].as_u64().unwrap();
-                let diff = if actual_anchor > golden_anchor {
-                    actual_anchor - golden_anchor
-                } else {
-                    golden_anchor - actual_anchor
-                };
+                let diff = actual_anchor.abs_diff(golden_anchor);
                 assert!(
                     diff <= 10,
                     "Snapshot {} anchor_byte difference too large: actual={}, golden={}, diff={}",

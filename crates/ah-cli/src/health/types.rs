@@ -75,6 +75,7 @@ impl AgentHealthStatus {
     }
 
     /// Mark as timed out
+    #[allow(dead_code)]
     pub fn with_timeout(mut self) -> Self {
         self.timed_out = true;
         self.error = Some("Status check timed out".to_string());
@@ -88,12 +89,14 @@ impl AgentHealthStatus {
     }
 
     /// Add metadata
+    #[allow(dead_code)]
     pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.metadata.insert(key.into(), value.into());
         self
     }
 
     /// Check if the agent has any issues (unavailable, unauthenticated, or errors)
+    #[allow(dead_code)]
     pub fn has_issues(&self) -> bool {
         !self.available || !self.authenticated || self.error.is_some() || self.timed_out
     }
@@ -119,6 +122,7 @@ pub enum HealthStatusLevel {
 }
 
 impl HealthStatusLevel {
+    #[allow(dead_code)]
     pub fn emoji(&self) -> &'static str {
         match self {
             HealthStatusLevel::Ok => "✅",

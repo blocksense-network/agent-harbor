@@ -6,6 +6,7 @@
 use ah_agents::{AgentExecutor, AgentLaunchConfig};
 use ah_core::agent_executor::ah_full_path;
 use ah_core::agent_types::AgentType;
+#[cfg(target_os = "linux")]
 use anyhow::Context;
 use clap::{Args, ValueEnum};
 use reqwest::Client;
@@ -278,9 +279,10 @@ impl AgentStartArgs {
         };
 
         // Handle LLM API proxy configuration
-        let mut config = if let Some(proxy_url) = &self.llm_api_proxy_url {
-            let session_api_key =
-                self.prepare_proxy_session(proxy_url, &agent, agent_type.clone()).await?;
+        let config = if let Some(proxy_url) = &self.llm_api_proxy_url {
+            let session_api_key = self
+                .prepare_proxy_session(proxy_url, agent.as_ref(), agent_type.clone())
+                .await?;
             let mut config = self.build_agent_config(agent_type)?;
             config = config.api_server(proxy_url.clone());
             config = config.api_key(session_api_key);
@@ -300,7 +302,7 @@ impl AgentStartArgs {
     async fn prepare_proxy_session(
         &self,
         proxy_url: &str,
-        agent: &Box<dyn AgentExecutor>,
+        agent: &dyn AgentExecutor,
         agent_type: AgentType,
     ) -> anyhow::Result<String> {
         // Generate or use provided API key for session
@@ -310,7 +312,7 @@ impl AgentStartArgs {
         });
 
         // Get API key from the agent
-        let api_key = agent.get_user_api_key().await?.unwrap_or_else(|| String::new());
+        let api_key = agent.get_user_api_key().await?.unwrap_or_default();
 
         if api_key.is_empty() {
             return Err(anyhow::anyhow!(
@@ -590,7 +592,7 @@ impl AgentStartArgs {
                     {
                         Ok(prepared_workspace) => prepared_workspace.exec_path,
                         Err(e) => {
-                            return Err(e.into());
+                            return Err(e);
                         }
                     }
                 }
@@ -773,6 +775,7 @@ impl AgentStartArgs {
         }
         #[cfg(not(target_os = "linux"))]
         {
+            let _ = &actual_cwd;
             Err(anyhow::anyhow!(
                 "Sandbox functionality is only available on Linux"
             ))
@@ -786,14 +789,14 @@ mod tests {
 
     #[test]
     fn test_parse_bool() {
-        assert_eq!(parse_bool("true").unwrap(), true);
-        assert_eq!(parse_bool("false").unwrap(), false);
-        assert_eq!(parse_bool("yes").unwrap(), true);
-        assert_eq!(parse_bool("no").unwrap(), false);
-        assert_eq!(parse_bool("1").unwrap(), true);
-        assert_eq!(parse_bool("0").unwrap(), false);
-        assert_eq!(parse_bool("y").unwrap(), true);
-        assert_eq!(parse_bool("n").unwrap(), false);
+        assert!(parse_bool("true").unwrap());
+        assert!(!parse_bool("false").unwrap());
+        assert!(parse_bool("yes").unwrap());
+        assert!(!parse_bool("no").unwrap());
+        assert!(parse_bool("1").unwrap());
+        assert!(!parse_bool("0").unwrap());
+        assert!(parse_bool("y").unwrap());
+        assert!(!parse_bool("n").unwrap());
 
         assert!(parse_bool("invalid").is_err());
     }

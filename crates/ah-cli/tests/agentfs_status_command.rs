@@ -2,12 +2,12 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use serde_json::Value;
 
 #[test]
 fn status_reports_agentfs_capabilities_in_json() {
-    let mut cmd = Command::cargo_bin("ah").expect("ah binary not built");
+    let mut cmd = cargo_bin_cmd!("ah");
     let output = cmd
         .arg("agent")
         .arg("fs")

@@ -1,18 +1,17 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use agentfs_proto::*;
 use anyhow::{Result, anyhow};
-use ssz::{Decode, Encode};
-use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
 /// Convert String to Vec<u8> for SSZ encoding
+#[allow(dead_code)]
 fn string_to_bytes(s: String) -> Vec<u8> {
     s.into_bytes()
 }
 
 /// Convert Vec<u8> to String for CLI usage
+#[allow(dead_code)]
 fn bytes_to_string(bytes: Vec<u8>) -> Result<String> {
     String::from_utf8(bytes).map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))
 }
@@ -130,7 +129,7 @@ async fn send_fuse_control_request(
     // For security, the control file should have restricted permissions
     // (typically root:root with 0600 or similar)
     if mode & 0o077 != 0 {
-        eprintln!(
+        tracing::warn!(
             "Warning: control file has overly permissive permissions: {:o}",
             mode
         );
@@ -236,8 +235,8 @@ async fn send_winfsp_control_request(
     // 2. Call DeviceIoControl with proper buffers
     // 3. Handle the response
 
-    eprintln!("WinFsp DeviceIoControl transport not fully implemented yet");
-    eprintln!("Request encoded as SSZ: {} bytes", request_bytes.len());
+    tracing::warn!("WinFsp DeviceIoControl transport not fully implemented yet");
+    tracing::warn!("Request encoded as SSZ: {} bytes", request_bytes.len());
 
     // Close handle
     unsafe { CloseHandle(handle) };
