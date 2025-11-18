@@ -3,7 +3,7 @@
 
 //! macOS implementation using DYLD interposition with redhook
 
-use crate::core::{self, SHIM_STATE, ShimState};
+use crate::core::{self, ShimState};
 use crate::posix;
 use ctor::ctor;
 
@@ -15,13 +15,13 @@ fn initialize_shim() {
     let state = core::initialize_shim_state();
 
     // Store the state globally
-    let _ = SHIM_STATE.set(std::sync::Mutex::new(state.clone()));
+    *core::get_shim_state().lock().unwrap() = state.clone();
 
     if let ShimState::Ready { .. } = &state {
         if let Err(e) = posix::initialize_client() {
             eprintln!("[ah-command-trace-shim] Failed to initialize client: {}", e);
             // Update state to error
-            *SHIM_STATE.get().unwrap().lock().unwrap() =
+            *core::get_shim_state().lock().unwrap() =
                 ShimState::Error(format!("Client initialization failed: {}", e));
         }
     }
@@ -30,8 +30,8 @@ fn initialize_shim() {
 /// Check if the shim is enabled and ready
 pub fn is_shim_enabled() -> bool {
     matches!(
-        SHIM_STATE.get().and_then(|s| s.lock().ok()),
-        Some(ref state) if matches!(**state, ShimState::Ready { .. })
+        *core::get_shim_state().lock().unwrap(),
+        ShimState::Ready { .. }
     )
 }
 

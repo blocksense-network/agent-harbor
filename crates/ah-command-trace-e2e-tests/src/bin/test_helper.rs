@@ -22,10 +22,29 @@ fn main() {
             println!("Dummy command executed");
         }
         "shell_and_interpreter" => test_shell_and_interpreter(test_args),
+        "mixed_output" => {
+            // Delegate to the mixed_output binary (find it in the same directory as this executable)
+            let current_exe =
+                std::env::current_exe().expect("Failed to get current executable path");
+            let mixed_output_path = current_exe.with_file_name("mixed_output");
+            eprintln!("[test_helper] Current exe: {:?}", current_exe);
+            eprintln!(
+                "[test_helper] Looking for mixed_output at: {:?}",
+                mixed_output_path
+            );
+            eprintln!(
+                "[test_helper] mixed_output exists: {}",
+                mixed_output_path.exists()
+            );
+            std::process::Command::new(&mixed_output_path)
+                .args(test_args)
+                .status()
+                .expect("Failed to run mixed_output helper");
+        }
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!(
-                "Available commands: print_pid, write_stdout, write_stderr, dummy, shell_and_interpreter"
+                "Available commands: print_pid, write_stdout, write_stderr, dummy, shell_and_interpreter, mixed_output"
             );
             std::process::exit(1);
         }

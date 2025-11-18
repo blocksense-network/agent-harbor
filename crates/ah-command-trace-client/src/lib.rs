@@ -8,7 +8,8 @@
 //! (such as the interpose shim) to establish a handshake and issue requests.
 
 use ah_command_trace_proto::{
-    CommandStart, HandshakeMessage, HandshakeResponse, Request, Response, decode_ssz, encode_ssz,
+    CommandChunk, CommandStart, HandshakeMessage, HandshakeResponse, Request, Response, decode_ssz,
+    encode_ssz,
 };
 use anyhow::{Context, Result, anyhow};
 use std::io::{Read, Write};
@@ -266,6 +267,11 @@ impl CommandTraceClient {
     /// Send a CommandStart notification.
     pub fn send_command_start(&mut self, command_start: CommandStart) -> Result<()> {
         self.send_request(Request::CommandStart(command_start))
+    }
+
+    /// Send a CommandChunk notification.
+    pub fn send_command_chunk(&mut self, command_chunk: CommandChunk) -> Result<()> {
+        self.send_request(Request::CommandChunk(command_chunk))
     }
 }
 

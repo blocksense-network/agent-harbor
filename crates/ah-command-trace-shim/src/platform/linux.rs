@@ -3,7 +3,7 @@
 
 //! Linux implementation using LD_PRELOAD with redhook
 
-use crate::core::{self, SHIM_STATE, ShimState};
+use crate::core::{self, ShimState};
 use crate::posix;
 use ctor::ctor;
 
@@ -13,13 +13,13 @@ fn initialize_shim() {
     let state = core::initialize_shim_state();
 
     // Store the state globally
-    let _ = SHIM_STATE.set(std::sync::Mutex::new(state.clone()));
+    *core::get_shim_state().lock().unwrap() = state.clone();
 
     if let ShimState::Ready { .. } = &state {
         if let Err(e) = posix::initialize_client() {
             eprintln!("[ah-command-trace-shim] Failed to initialize client: {}", e);
             // Update state to error
-            *SHIM_STATE.get().unwrap().lock().unwrap() =
+            *core::get_shim_state().lock().unwrap() =
                 ShimState::Error(format!("Client initialization failed: {}", e));
         }
     }
@@ -28,8 +28,8 @@ fn initialize_shim() {
 /// Check if the shim is enabled and ready
 pub fn is_shim_enabled() -> bool {
     matches!(
-        SHIM_STATE.get().and_then(|s| s.lock().ok()),
-        Some(ref state) if matches!(**state, ShimState::Ready { .. })
+        *core::get_shim_state().lock().unwrap(),
+        ShimState::Ready { .. }
     )
 }
 
@@ -54,21 +54,17 @@ pub fn send_keepalive() -> Result<(), Box<dyn std::error::Error>> {
 redhook::hook! {
     unsafe fn vfork() -> libc::pid_t => my_vfork {
         // Snapshot state in parent BEFORE vfork (avoiding work in child)
-        let parent_snapshot = if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
-            if matches!(**state, crate::core::ShimState::Ready { .. }) {
-                Some((
-                    std::process::id() as u32, // parent PID
-                    std::env::current_exe()
-                        .ok()
-                        .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
-                        .unwrap_or_else(|| b"<unknown>".to_vec()),
-                    std::env::args().map(|s| s.into_bytes()).collect::<Vec<_>>(),
-                    crate::posix::get_environment(),
-                    crate::posix::get_current_dir(),
-                ))
-            } else {
-                None
-            }
+        let parent_snapshot = if let ShimState::Ready { .. } = *crate::core::get_shim_state().lock().unwrap() {
+            Some((
+                std::process::id() as u32, // parent PID
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
+                    .unwrap_or_else(|| b"<unknown>".to_vec()),
+                std::env::args().map(|s| s.into_bytes()).collect::<Vec<_>>(),
+                crate::posix::get_environment(),
+                crate::posix::get_current_dir(),
+            ))
         } else {
             None
         };
@@ -102,24 +98,22 @@ redhook::hook! {
 
         if result > 0 && (!is_thread_like || is_vfork_like) {
             // Child process - send CommandStart if we're tracking
-            if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
-                if matches!(**state, crate::core::ShimState::Ready { .. }) {
-                    let pid = result as u32;
-                    let ppid = std::process::id() as u32;
-                    let executable = std::env::current_exe()
-                        .ok()
-                        .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
-                        .unwrap_or_else(|| b"<unknown>".to_vec());
+            if let ShimState::Ready { .. } = *crate::core::get_shim_state().lock().unwrap() {
+                let pid = result as u32;
+                let ppid = std::process::id() as u32;
+                let executable = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
+                    .unwrap_or_else(|| b"<unknown>".to_vec());
 
-                    let args: Vec<Vec<u8>> = std::env::args()
-                        .map(|s| s.into_bytes())
-                        .collect();
+                let args: Vec<Vec<u8>> = std::env::args()
+                    .map(|s| s.into_bytes())
+                    .collect();
 
-                    let env = crate::posix::get_environment();
-                    let cwd = crate::posix::get_current_dir();
+                let env = crate::posix::get_environment();
+                let cwd = crate::posix::get_current_dir();
 
-                    crate::posix::send_command_start(pid, ppid, &executable, args, env, cwd);
-                }
+                crate::posix::send_command_start(pid, ppid, &executable, args, env, cwd);
             }
         }
 

@@ -17,6 +17,8 @@ pub enum Request {
     Handshake(HandshakeMessage),
     /// Command start notification from shim
     CommandStart(CommandStart),
+    /// Command chunk notification from shim
+    CommandChunk(CommandChunk),
 }
 
 /// Response union - each variant contains operation-specific response data

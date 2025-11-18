@@ -32,7 +32,6 @@ pub mod posix;
 
 /// Core types and logic shared across platforms
 pub mod core {
-    use once_cell::sync::OnceCell;
     use std::sync::Mutex;
 
     /// Environment variable names for configuration
@@ -40,8 +39,13 @@ pub mod core {
     pub const ENV_SOCKET: &str = "AH_CMDTRACE_SOCKET";
     pub const ENV_LOG: &str = "AH_CMDTRACE_LOG";
 
-    /// Global state for the shim
-    pub static SHIM_STATE: OnceCell<Mutex<ShimState>> = OnceCell::new();
+    use std::sync::OnceLock;
+    static SHIM_STATE: OnceLock<Mutex<ShimState>> = OnceLock::new();
+
+    /// Get the global shim state, initializing it lazily if needed
+    pub fn get_shim_state() -> &'static Mutex<ShimState> {
+        SHIM_STATE.get_or_init(|| Mutex::new(ShimState::Disabled))
+    }
 
     /// Current state of the shim
     #[derive(Debug, Clone)]
