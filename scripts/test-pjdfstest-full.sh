@@ -14,7 +14,9 @@ SUMMARY_FILE="$RUN_DIR/summary.json"
 MOUNTPOINT="${1:-/tmp/agentfs}"
 PJDFSTEST_DIR="$REPO_ROOT/resources/pjdfstest"
 SKIP_FUSE_BUILD="${SKIP_FUSE_BUILD:-}"
+HARNESS_OPTIONS="${HARNESS_OPTIONS:-j32}"
 mkdir -p "$RUN_DIR"
+export HARNESS_OPTIONS
 
 log() {
   echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG_FILE"
@@ -107,18 +109,18 @@ run_prove_suite() {
     log "No tests to run for ${label}; skipping."
     return 0
   fi
-  log "Running ${label} via prove (count ${#tests[@]})"
+  log "Running ${label} via prove (count ${#tests[@]}; HARNESS_OPTIONS=${HARNESS_OPTIONS})"
   set +e
   set +o pipefail
   if [[ "$use_sudo" == "sudo" ]]; then
-    sudo -E bash -c '
+    sudo -E env HARNESS_OPTIONS="$HARNESS_OPTIONS" bash -c '
       mountpoint="$1"
       shift
       cd "$mountpoint"
       prove -vr "$@"
     ' bash "$MOUNTPOINT" "${tests[@]}" 2>&1 | tee -a "$LOG_FILE"
   else
-    bash -c '
+    env HARNESS_OPTIONS="$HARNESS_OPTIONS" bash -c '
       mountpoint="$1"
       shift
       cd "$mountpoint"
