@@ -16,26 +16,24 @@ use agentfs_proto::messages::{StatData, TimespecData};
 use agentfs_proto::*;
 use crossbeam_queue::SegQueue;
 use fuser::{
-    BackingId, FUSE_ROOT_ID, FileAttr, FileType, Notifier, ReplyAttr, ReplyCreate, ReplyData,
-    ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr,
-    Request, TimeOrNow,
+    BackingId, FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
+    ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request, TimeOrNow,
     consts::{FOPEN_DIRECT_IO, FUSE_PASSTHROUGH},
-    fuse_forget_one,
 };
 use libc::{
     EACCES, EBADF, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS, ENOTDIR,
-    ENOTEMPTY, ENOTSUP, EPERM, ESTALE, c_int,
+    ENOTEMPTY, ENOTSUP, EPERM, c_int,
 };
 use ssz::{Decode, Encode};
 use std::collections::{HashMap, HashSet};
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fs::{File, OpenOptions as StdOpenOptions};
 use std::io::Read;
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{
-    Arc, Condvar, Mutex, Weak,
+    Arc, Condvar, Mutex,
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 use std::thread::{self, JoinHandle};
@@ -59,40 +57,6 @@ const LOWER_HANDLE_BASE: u64 = 1u64 << 60;
 
 /// FUSE capability bit for writeback caching (ABI 7.23+).
 const FUSE_WRITEBACK_CACHE_FLAG: u64 = 1 << 16;
-
-/// Handle that lets the launcher thread install the kernel notifier after the FUSE
-/// session has been spawned.
-#[derive(Clone)]
-pub struct NotifierRegistration {
-    slot: Weak<Mutex<Option<Notifier>>>,
-}
-
-impl NotifierRegistration {
-    fn new(slot: &Arc<Mutex<Option<Notifier>>>) -> Self {
-        Self {
-            slot: Arc::downgrade(slot),
-        }
-    }
-
-    /// Installs the notifier if the filesystem is still alive.
-    pub fn install(&self, notifier: Notifier) {
-        if let Some(slot) = self.slot.upgrade() {
-            if let Ok(mut guard) = slot.lock() {
-                *guard = Some(notifier);
-            } else {
-                warn!(
-                    target: "agentfs::fuse",
-                    "failed to acquire notifier slot lock; cache invalidations disabled"
-                );
-            }
-        } else {
-            warn!(
-                target: "agentfs::fuse",
-                "filesystem dropped before notifier could be installed"
-            );
-        }
-    }
-}
 
 struct LowerHandle {
     file: File,
@@ -347,11 +311,6 @@ impl Drop for WriteDispatcher {
     }
 }
 
-struct RemovalOutcome {
-    inode: u64,
-    has_other_bindings: bool,
-}
-
 fn errno_from_fs_error(err: &FsError) -> i32 {
     match err {
         FsError::AccessDenied => EACCES,
@@ -414,12 +373,6 @@ pub struct AgentFsFuse {
     max_write_depth: Arc<AtomicU64>,
     /// Worker dispatcher for offloading writes
     write_dispatcher: WriteDispatcher,
-    /// Optional kernel notifier for cache invalidation
-    notifier_slot: Arc<Mutex<Option<Notifier>>>,
-    /// Outstanding lookup refcounts per inode
-    lookup_refcounts: HashMap<u64, u64>,
-    /// Inodes that have been unlinked but not yet forgotten by the kernel
-    tombstoned_inodes: HashSet<u64>,
 }
 
 impl AgentFsFuse {
@@ -456,7 +409,6 @@ impl AgentFsFuse {
         let inflight_writes = Arc::new(AtomicU64::new(0));
         let max_write_depth = Arc::new(AtomicU64::new(0));
         let write_dispatcher = WriteDispatcher::new(Arc::clone(&core), write_worker_count());
-        let notifier_slot = Arc::new(Mutex::new(None));
 
         Ok(Self {
             core,
@@ -483,105 +435,12 @@ impl AgentFsFuse {
             inflight_writes,
             max_write_depth,
             write_dispatcher,
-            notifier_slot,
-            lookup_refcounts: HashMap::new(),
-            tombstoned_inodes: HashSet::new(),
         })
-    }
-
-    /// Returns a handle that allows the launcher thread to install the kernel notifier.
-    pub fn notifier_registration(&self) -> NotifierRegistration {
-        NotifierRegistration::new(&self.notifier_slot)
-    }
-
-    fn notifier(&self) -> Option<Notifier> {
-        self.notifier_slot.lock().ok().and_then(|slot| slot.clone())
     }
 
     /// Get the path for a given inode
     fn inode_to_path(&self, ino: u64) -> Option<&[u8]> {
         self.inodes.get(&ino).map(|p| p.as_slice())
-    }
-
-    fn inode_is_tombstoned(&self, ino: u64) -> bool {
-        self.tombstoned_inodes.contains(&ino)
-    }
-
-    fn clear_tombstone(&mut self, ino: u64) {
-        self.tombstoned_inodes.remove(&ino);
-    }
-
-    fn bump_lookup(&mut self, ino: u64, delta: u64) {
-        if delta == 0 || !Self::track_lookups_for(ino) {
-            return;
-        }
-        let counter = self.lookup_refcounts.entry(ino).or_insert(0);
-        *counter = counter.saturating_add(delta);
-    }
-
-    /// Returns true if the lookup refcount reaches zero and the inode can be freed.
-    fn drop_lookup(&mut self, ino: u64, released: u64) -> bool {
-        if released == 0 {
-            return false;
-        }
-        if let Some(counter) = self.lookup_refcounts.get_mut(&ino) {
-            if *counter > released {
-                *counter -= released;
-                return false;
-            }
-        }
-        self.lookup_refcounts.remove(&ino);
-        self.clear_tombstone(ino);
-        true
-    }
-
-    fn track_lookups_for(ino: u64) -> bool {
-        ino != FUSE_ROOT_ID && ino != AGENTFS_DIR_INO && ino != CONTROL_FILE_INO
-    }
-
-    fn resolve_parent_and_name(
-        &self,
-        canonical_path: &[u8],
-        parent_hint: Option<u64>,
-        name_hint: Option<&[u8]>,
-    ) -> Option<(u64, OsString)> {
-        let name_bytes = if let Some(name) = name_hint {
-            name.to_vec()
-        } else {
-            let path = self.path_from_bytes(canonical_path);
-            path.file_name()?.as_bytes().to_vec()
-        };
-
-        let parent_ino = if let Some(parent) = parent_hint {
-            Some(parent)
-        } else {
-            let path = self.path_from_bytes(canonical_path);
-            let parent_path = path.parent()?;
-            let normalized = if parent_path.as_os_str().is_empty() {
-                Path::new("/")
-            } else {
-                parent_path
-            };
-            let parent_bytes = normalized.as_os_str().as_bytes().to_vec();
-            self.paths.get(&parent_bytes).copied()
-        }?;
-
-        Some((parent_ino, OsString::from_vec(name_bytes)))
-    }
-
-    fn invalidate_entry(&self, parent_ino: u64, name_bytes: &[u8]) {
-        if let Some(notifier) = self.notifier() {
-            let name_os = OsString::from_vec(name_bytes.to_vec());
-            if let Err(err) = notifier.inval_entry(parent_ino, &name_os) {
-                warn!(
-                    target: "agentfs::fuse",
-                    parent = parent_ino,
-                    name = %name_os.to_string_lossy(),
-                    %err,
-                    "failed to invalidate entry"
-                );
-            }
-        }
     }
 
     /// Gets the AgentFS PID for the client process making the request.
@@ -682,7 +541,6 @@ impl AgentFsFuse {
         self.whiteouts.remove(&path);
         self.paths.insert(path.clone(), inode);
         self.inodes.insert(inode, path);
-        self.clear_tombstone(inode);
     }
 
     fn cache_special_kind_for_inode(&mut self, inode: u64, special: Option<&SpecialNodeKind>) {
@@ -697,6 +555,10 @@ impl AgentFsFuse {
             );
             self.path_special_kinds.insert(path, kind.clone());
         }
+    }
+
+    fn cached_special_kind(&self, inode: u64) -> Option<&SpecialNodeKind> {
+        self.inodes.get(&inode).and_then(|path| self.path_special_kinds.get(path))
     }
 
     fn clear_cached_special_kind(&mut self, path: &[u8]) {
@@ -857,76 +719,21 @@ impl AgentFsFuse {
     }
 
     /// Remove a single path mapping and update canonical bookkeeping.
-    fn remove_path_mapping(&mut self, path: &[u8]) -> Option<RemovalOutcome> {
-        let inode = self.paths.remove(path)?;
-        let removed_was_canonical =
-            self.inodes.get(&inode).map(|p| p.as_slice() == path).unwrap_or(false);
-        let mut has_other_bindings = false;
+    fn remove_path_mapping(&mut self, path: &[u8]) -> Option<u64> {
+        if let Some(inode) = self.paths.remove(path) {
+            let removed_was_canonical =
+                self.inodes.get(&inode).map(|p| p.as_slice() == path).unwrap_or(false);
 
-        if removed_was_canonical {
-            if let Some((replacement, _)) = self.paths.iter().find(|(_, &ino)| ino == inode) {
-                has_other_bindings = true;
-                self.inodes.insert(inode, replacement.clone());
-            } else {
-                self.inodes.remove(&inode);
-            }
-        } else if self.inodes.contains_key(&inode) {
-            has_other_bindings = true;
-        }
-
-        Some(RemovalOutcome {
-            inode,
-            has_other_bindings,
-        })
-    }
-
-    fn purge_by_canonical_path(
-        &mut self,
-        canonical_path: &[u8],
-        parent_hint: Option<u64>,
-        name_hint: Option<&[u8]>,
-    ) -> Option<RemovalOutcome> {
-        let removal = self.remove_path_mapping(canonical_path)?;
-        self.clear_cached_special_kind(canonical_path);
-
-        if !removal.has_other_bindings {
-            self.tombstoned_inodes.insert(removal.inode);
-            debug!(
-                target: "agentfs::fuse",
-                event = "inode_tombstone",
-                ino = removal.inode,
-                path = %self.path_from_bytes(canonical_path).display()
-            );
-        }
-
-        if let Some((parent_ino, name_os)) =
-            self.resolve_parent_and_name(canonical_path, parent_hint, name_hint)
-        {
-            if let Some(notifier) = self.notifier() {
-                if let Err(err) = notifier.inval_entry(parent_ino, &name_os) {
-                    warn!(
-                        target: "agentfs::fuse",
-                        ino = removal.inode,
-                        parent = parent_ino,
-                        name = %name_os.to_string_lossy(),
-                        %err,
-                        "failed to invalidate directory entry"
-                    );
-                }
-                if !removal.has_other_bindings {
-                    if let Err(err) = notifier.inval_inode(removal.inode, 0, 0) {
-                        warn!(
-                            target: "agentfs::fuse",
-                            ino = removal.inode,
-                            %err,
-                            "failed to invalidate inode attributes"
-                        );
-                    }
+            if removed_was_canonical {
+                if let Some((replacement, _)) = self.paths.iter().find(|(_, &ino)| ino == inode) {
+                    self.inodes.insert(inode, replacement.clone());
                 }
             }
-        }
 
-        Some(removal)
+            Some(inode)
+        } else {
+            None
+        }
     }
 
     fn track_handle(&mut self, ino: u64, fh: u64, pid: &PID) {
@@ -977,9 +784,6 @@ impl AgentFsFuse {
         if inode == FUSE_ROOT_ID || inode == AGENTFS_DIR_INO || inode == CONTROL_FILE_INO {
             return;
         }
-
-        self.lookup_refcounts.remove(&inode);
-        self.tombstoned_inodes.remove(&inode);
 
         if let Some(handles) = self.inode_handles.remove(&inode) {
             for fh in handles {
@@ -1685,25 +1489,8 @@ impl fuser::Filesystem for AgentFsFuse {
         info!("AgentFS FUSE adapter destroyed");
     }
 
-    fn forget(&mut self, _req: &Request, ino: u64, nlookup: u64) {
-        if !Self::track_lookups_for(ino) {
-            return;
-        }
-        if self.drop_lookup(ino, nlookup) {
-            self.forget_inode(ino);
-        }
-    }
-
-    fn batch_forget(&mut self, _req: &Request, nodes: &[fuse_forget_one]) {
-        for node in nodes {
-            let ino = node.nodeid;
-            if !Self::track_lookups_for(ino) {
-                continue;
-            }
-            if self.drop_lookup(ino, node.nlookup) {
-                self.forget_inode(ino);
-            }
-        }
+    fn forget(&mut self, _req: &Request, ino: u64, _nlookup: u64) {
+        self.forget_inode(ino);
     }
 
     fn lookup(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
@@ -1794,7 +1581,6 @@ impl fuser::Filesystem for AgentFsFuse {
                 let ino = self.get_or_alloc_inode(&full_path);
                 let fuse_attr = self.attr_to_fuse(&attr, ino);
                 reply.entry(&self.entry_ttl, &fuse_attr, 0);
-                self.bump_lookup(ino, 1);
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(_) => reply.error(EIO),
@@ -1984,15 +1770,10 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
-        if self.inode_is_tombstoned(ino) {
-            reply.error(ESTALE);
-            return;
-        }
-
         let path_bytes = match self.inode_to_path(ino) {
             Some(p) => p,
             None => {
-                reply.error(ESTALE);
+                reply.error(ENOENT);
                 return;
             }
         };
@@ -2011,7 +1792,7 @@ impl fuser::Filesystem for AgentFsFuse {
         let req_uid = req.uid();
         let req_gid = req.gid();
 
-        let cached_special = self.path_special_kinds.get(&canonical_path).cloned();
+        let cached_special = self.cached_special_kind(ino).cloned();
         let mut is_fifo = matches!(cached_special, Some(SpecialNodeKind::Fifo));
         match self.core.getattr(&client_pid, path) {
             Ok(attrs) => {
@@ -2286,7 +2067,6 @@ impl fuser::Filesystem for AgentFsFuse {
                         path = %self.path_from_bytes(&full_path).display(),
                         special = ?attr.special_kind
                     );
-                    self.bump_lookup(ino, 1);
                 }
                 Err(_) => reply.error(EIO),
             },
@@ -2592,7 +2372,6 @@ impl fuser::Filesystem for AgentFsFuse {
                         let ino = self.get_or_alloc_inode(&full_path);
                         let fuse_attr = self.attr_to_fuse(&attr, ino);
                         self.track_handle(ino, handle_id.0 as u64, &client_pid);
-                        self.bump_lookup(ino, 1);
                         reply.created(
                             &self.entry_ttl,
                             &fuse_attr,
@@ -2659,7 +2438,6 @@ impl fuser::Filesystem for AgentFsFuse {
                     let ino = self.get_or_alloc_inode(&full_path);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
                     reply.entry(&self.entry_ttl, &fuse_attr, 0);
-                    self.bump_lookup(ino, 1);
                 }
                 Err(_) => reply.error(EIO),
             },
@@ -2695,13 +2473,17 @@ impl fuser::Filesystem for AgentFsFuse {
 
         match self.core.unlink(&client_pid, path) {
             Ok(()) => {
-                self.purge_by_canonical_path(&full_path, Some(parent), Some(name.as_bytes()));
+                if self.remove_path_mapping(&full_path).is_some() {
+                    self.clear_cached_special_kind(&full_path);
+                }
                 reply.ok();
             }
             Err(FsError::NotFound) => {
                 if self.overlay_enabled() && self.lower_entry_exists(path) {
                     self.record_whiteout(full_path.clone());
-                    self.purge_by_canonical_path(&full_path, Some(parent), Some(name.as_bytes()));
+                    if self.remove_path_mapping(&full_path).is_some() {
+                        self.clear_cached_special_kind(&full_path);
+                    }
                     reply.ok();
                 } else {
                     reply.error(ENOENT);
@@ -2738,7 +2520,9 @@ impl fuser::Filesystem for AgentFsFuse {
 
         match self.core.rmdir(&client_pid, path) {
             Ok(()) => {
-                self.purge_by_canonical_path(&full_path, Some(parent), Some(name.as_bytes()));
+                if self.remove_path_mapping(&full_path).is_some() {
+                    self.clear_cached_special_kind(&full_path);
+                }
                 reply.ok();
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
@@ -2793,25 +2577,14 @@ impl fuser::Filesystem for AgentFsFuse {
         }
         new_path.extend_from_slice(newname.as_bytes());
 
-        if old_path == new_path {
-            reply.ok();
-            return;
-        }
-
         let old_path_obj = self.path_from_bytes(&old_path);
         let new_path_obj = self.path_from_bytes(&new_path);
         let client_pid = self.get_client_pid(req);
 
-        let old_name_bytes = name.as_bytes();
-        let new_name_bytes = newname.as_bytes();
-
         match self.core.rename(&client_pid, old_path_obj, new_path_obj) {
             Ok(()) => {
-                self.purge_by_canonical_path(&new_path, Some(newparent), Some(new_name_bytes));
-
                 let moved_special = self.path_special_kinds.remove(&old_path);
-                if let Some(removal) = self.remove_path_mapping(&old_path) {
-                    let inode = removal.inode;
+                if let Some(inode) = self.remove_path_mapping(&old_path) {
                     self.record_path_for_inode(new_path.clone(), inode);
                     if let Some(kind) = moved_special {
                         self.path_special_kinds.insert(new_path.clone(), kind);
@@ -2820,9 +2593,6 @@ impl fuser::Filesystem for AgentFsFuse {
                     // Restore metadata if the mapping removal failed.
                     self.path_special_kinds.insert(old_path.clone(), kind);
                 }
-
-                self.invalidate_entry(parent, old_name_bytes);
-                self.invalidate_entry(newparent, new_name_bytes);
                 reply.ok();
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
@@ -2873,7 +2643,6 @@ impl fuser::Filesystem for AgentFsFuse {
                     let ino = self.get_or_alloc_inode(&linkpath);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
                     reply.entry(&self.entry_ttl, &fuse_attr, 0);
-                    self.bump_lookup(ino, 1);
                 }
                 Err(_) => reply.error(EIO),
             },
@@ -2929,7 +2698,6 @@ impl fuser::Filesystem for AgentFsFuse {
                     self.record_path_for_inode(new_path.clone(), ino);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
                     reply.entry(&self.entry_ttl, &fuse_attr, 0);
-                    self.bump_lookup(ino, 1);
                 }
                 Err(_) => reply.error(EIO),
             },

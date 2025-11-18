@@ -35,6 +35,28 @@ log() {
   echo "[$(date +%H:%M:%S)] $*" | tee -a "$RUN_DIR/performance.log"
 }
 
+wait_for_mount_state() {
+  local mount_path="$1"
+  local expect="$2"
+  local max_attempts=50
+  local attempt=0
+  while ((attempt < max_attempts)); do
+    if mountpoint -q "$mount_path" 2>/dev/null; then
+      if [[ "$expect" == "mounted" ]]; then
+        return 0
+      fi
+    else
+      if [[ "$expect" == "unmounted" ]]; then
+        return 0
+      fi
+    fi
+    sleep 0.1
+    ((attempt += 1))
+  done
+  log "Timed out waiting for $mount_path to become $expect"
+  return 1
+}
+
 if ! ulimit -n "$NOFILE_LIMIT" 2>/dev/null; then
   log "Warning: unable to raise RLIMIT_NOFILE to $NOFILE_LIMIT; continuing with $(ulimit -n)"
 fi
@@ -145,6 +167,10 @@ mount_agentfs() {
 JSON
   log "Mounting AgentFS at $MOUNTPOINT"
   (cd "$REPO_ROOT" && AGENTFS_FUSE_CONFIG="$FUSE_CONFIG" AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse "$MOUNTPOINT") >>"$RUN_DIR/performance.log" 2>&1
+  if ! wait_for_mount_state "$MOUNTPOINT" "mounted"; then
+    log "Failed to verify mount at $MOUNTPOINT; aborting performance run."
+    exit 1
+  fi
 }
 
 prepare_agentfs_workspace() {
