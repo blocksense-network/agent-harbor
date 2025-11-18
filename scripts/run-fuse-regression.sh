@@ -71,11 +71,9 @@ cleanup_mount() {
 
 trap cleanup_mount EXIT
 
-log "Starting AgentFS FUSE regression run"
+log "Starting AgentFS FUSE regression run (FUSE suites only)"
 log "Repository root: $REPO_ROOT"
 log "Logs under: $LOG_ROOT"
-
-run_step "Rust workspace tests" just test-rust
 
 mkdir -p "$MOUNTPOINT"
 cleanup_mount
