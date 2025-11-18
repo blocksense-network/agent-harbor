@@ -44,6 +44,7 @@ pub use replay::{
 };
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::replay::*;
     use crate::terminal_state::{InMemoryLineIndex, LineIndex};

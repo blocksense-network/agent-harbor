@@ -266,6 +266,7 @@ impl AhrWriter {
 }
 
 impl Drop for AhrWriter {
+    #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         if !self.finalized {
             // Best-effort flush on drop
