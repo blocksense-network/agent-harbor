@@ -35,6 +35,7 @@
 
 use ah_mux_core::*;
 use std::process::{Command, Stdio};
+use tracing::{debug, error, info, instrument, warn};
 
 /// kitty multiplexer implementation
 ///
@@ -118,7 +119,10 @@ impl KittyMultiplexer {
     /// Uses socket connection if socket_path is set, otherwise uses stdio (for commands within kitty).
     ///
     /// See: https://sw.kovidgoyal.net/kitty/remote-control/
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "run_kitty_command", socket_path = ?self.socket_path, args = ?args))]
     fn run_kitty_command(&self, args: &[&str]) -> Result<String, MuxError> {
+        debug!("Executing kitty @ command");
+
         // Build command args
         let mut cmd_args = vec!["@"];
 
@@ -140,8 +144,10 @@ impl KittyMultiplexer {
             .output()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
+                    error!("kitty command not found");
                     MuxError::NotAvailable("kitty")
                 } else {
+                    error!(error = %e, "Failed to execute kitty command");
                     MuxError::CommandFailed(format!("Failed to execute kitty command: {}", e))
                 }
             })?;
@@ -151,25 +157,30 @@ impl KittyMultiplexer {
 
             // Check for specific error messages indicating remote control issues
             if stderr.contains("Remote control is disabled") {
+                error!("kitty remote control is disabled");
                 return Err(MuxError::CommandFailed(
                     "Remote control is disabled. Add 'allow_remote_control yes' to ~/.config/kitty/kitty.conf".to_string(),
                 ));
             }
 
             if stderr.contains("Could not connect") || stderr.contains("no socket") {
+                error!(stderr = %stderr, "Could not connect to kitty socket");
                 return Err(MuxError::CommandFailed(format!(
                     "Could not connect to kitty socket. Ensure kitty is running with 'listen_on unix:/tmp/kitty-ah.sock' in kitty.conf. Error: {}",
                     stderr
                 )));
             }
 
+            error!(stderr = %stderr, "kitty @ command failed");
             return Err(MuxError::CommandFailed(format!(
                 "kitty @ command failed: {}",
                 stderr
             )));
         }
 
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        let result = String::from_utf8_lossy(&output.stdout).to_string();
+        debug!(output_length = %result.len(), "kitty @ command executed successfully");
+        Ok(result)
     }
 
     /// Check if kitty remote control is available
@@ -357,6 +368,8 @@ mod tests {
     }
 
     /// Stop the test Kitty instance
+    #[cfg(test)]
+    #[allow(dead_code)]
     fn stop_test_kitty() {
         let mut kitty_guard = TEST_KITTY.lock().unwrap();
         if let Some(mut child) = kitty_guard.take() {
@@ -1228,7 +1241,10 @@ impl Multiplexer for KittyMultiplexer {
         "kitty"
     }
 
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "is_available"))]
     fn is_available(&self) -> bool {
+        debug!("Checking kitty availability");
+
         // Check if kitty command exists
         let kitty_exists = std::process::Command::new("kitty")
             .arg("--version")
@@ -1239,6 +1255,7 @@ impl Multiplexer for KittyMultiplexer {
             .unwrap_or(false);
 
         if !kitty_exists {
+            debug!("kitty command not found");
             return false;
         }
 
@@ -1246,6 +1263,7 @@ impl Multiplexer for KittyMultiplexer {
         let remote_control_available = self.is_remote_control_available();
 
         if !remote_control_available {
+            warn!("kitty remote control is not available");
             // Log helpful message for debugging
             eprintln!("⚠️  Kitty remote control is not available.");
             eprintln!(
@@ -1254,24 +1272,34 @@ impl Multiplexer for KittyMultiplexer {
             eprintln!("   allow_remote_control yes");
             eprintln!("   listen_on unix:/tmp/kitty-ah.sock");
             eprintln!("   Then restart kitty or reload config (Cmd/Ctrl+Shift+F5)");
+        } else {
+            debug!("kitty remote control is available");
         }
 
+        debug!(available = %remote_control_available, "kitty availability check completed");
         remote_control_available
     }
 
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "open_window", title = ?opts.title, focus = %opts.focus))]
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
+        info!("Opening new kitty window");
+
         // Instead of creating a new tab, we'll use the current window for task layouts
         // This provides a better user experience by keeping everything in one view
         // The layout will be: TUI on left, lazygit + agent on right (split vertically)
 
         // Get the current window ID
         if let Some(window_id) = self.current_window()? {
+            debug!(window_id = %window_id, "Using current kitty window");
             // If focus is requested, focus the window
             if opts.focus {
+                debug!("Focusing current window");
                 self.focus_window(&window_id)?;
             }
+            info!(window_id = %window_id, "kitty window opened successfully");
             Ok(window_id)
         } else {
+            debug!("No current window found, creating new tab");
             // Fallback: if no current window exists, create a new tab
             let mut args = vec![
                 "launch".to_string(),
@@ -1293,18 +1321,22 @@ impl Multiplexer for KittyMultiplexer {
             let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
             // Run the command and capture the window ID
+            debug!(args = ?args_str, "Running kitty launch command");
             let output = self.run_kitty_command(&args_str)?;
             let window_id = self.parse_window_id_from_output(&output)?;
 
             // Focus the window if requested
             if opts.focus {
+                debug!("Focusing newly created window");
                 self.focus_window(&window_id)?;
             }
 
+            info!(window_id = %window_id, "kitty window opened successfully");
             Ok(window_id)
         }
     }
 
+    #[instrument(skip(self, opts), fields(component = "ah_mux", operation = "split_pane", direction = ?dir, percent = ?percent, has_initial_cmd = %initial_cmd.is_some()))]
     fn split_pane(
         &self,
         window: Option<&WindowId>,
@@ -1314,6 +1346,8 @@ impl Multiplexer for KittyMultiplexer {
         opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
+        info!("Splitting kitty pane");
+
         let mut args = vec![
             "launch".to_string(),
             "--type".to_string(),
@@ -1328,12 +1362,15 @@ impl Multiplexer for KittyMultiplexer {
         let location = if target.is_none() && window.is_none() {
             // When operating on "current" (which will be the lazygit pane after run_command),
             // use vsplit to create agent below it, regardless of requested direction
+            debug!("Using vsplit for current pane to create bottom split");
             "vsplit".to_string()
         } else {
-            match dir {
+            let loc = match dir {
                 SplitDirection::Horizontal => "hsplit".to_string(),
                 SplitDirection::Vertical => "vsplit".to_string(),
-            }
+            };
+            debug!(direction = ?dir, location = %loc, "Using explicit split direction");
+            loc
         };
         args.extend_from_slice(&["--location".to_string(), location]);
 
@@ -1341,6 +1378,7 @@ impl Multiplexer for KittyMultiplexer {
         // Split sizes are determined automatically by kitty's layout algorithm
         // The percent parameter is ignored for kitty
         if cfg!(debug_assertions) && percent.is_some() {
+            warn!("kitty does not support custom split sizes, ignoring percent parameter");
             eprintln!(
                 "DEBUG: kitty does not support custom split sizes, ignoring percent parameter"
             );
@@ -1381,8 +1419,12 @@ impl Multiplexer for KittyMultiplexer {
         let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         // Run the command and capture the pane ID
+        debug!(args = ?args_str, "Running kitty launch command for pane split");
         let output = self.run_kitty_command(&args_str)?;
-        self.parse_pane_id_from_output(&output)
+        let pane_id = self.parse_pane_id_from_output(&output)?;
+
+        info!(pane_id = %pane_id, "kitty pane split successfully");
+        Ok(pane_id)
     }
 
     fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {

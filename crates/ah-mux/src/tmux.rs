@@ -9,6 +9,7 @@
 use ah_mux_core::*;
 use std::process::{Command, Stdio};
 use std::time::Duration;
+use tracing::{debug, error, info, instrument, warn};
 
 /// tmux multiplexer implementation
 pub struct TmuxMultiplexer {
@@ -60,19 +61,27 @@ impl TmuxMultiplexer {
     }
 
     /// Run a tmux command and return its output
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "run_tmux_command", session = %self.session_name, args = ?args))]
     fn run_tmux_command(&self, args: &[&str]) -> Result<String, MuxError> {
+        debug!("Executing tmux command");
+
         let output = Command::new("tmux").args(args).output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
+                error!("tmux command not found");
                 MuxError::NotAvailable("tmux")
             } else {
+                error!(error = %e, "Failed to execute tmux command");
                 MuxError::Io(e)
             }
         })?;
 
         if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            debug!(output_length = %result.len(), "tmux command executed successfully");
+            Ok(result)
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            error!(stderr = %stderr, "tmux command failed");
             Err(MuxError::CommandFailed(format!(
                 "tmux {} failed: {}",
                 args.join(" "),
@@ -82,18 +91,26 @@ impl TmuxMultiplexer {
     }
 
     /// Ensure a tmux session exists
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "ensure_session", session = %self.session_name, assume_exists = %self.assume_session_exists))]
     fn ensure_session(&self) -> Result<(), MuxError> {
         if self.assume_session_exists {
+            debug!("Checking that tmux session exists (assume_session_exists=true)");
             // Just check that session exists, don't create it
             self.run_tmux_command(&["has-session", "-t", &self.session_name])?;
+            debug!("tmux session confirmed to exist");
             Ok(())
         } else {
+            debug!("Ensuring tmux session exists, will create if missing");
             // Check if session exists
             let result = self.run_tmux_command(&["has-session", "-t", &self.session_name]);
 
             match result {
-                Ok(_) => Ok(()), // Session exists
+                Ok(_) => {
+                    debug!("tmux session already exists");
+                    Ok(()) // Session exists
+                }
                 Err(MuxError::CommandFailed(_)) => {
+                    info!("tmux session does not exist, creating new session");
                     // Session doesn't exist, create it
                     self.run_tmux_command(&[
                         "new-session",
@@ -103,9 +120,13 @@ impl TmuxMultiplexer {
                         "-c",
                         &std::env::current_dir().map_err(MuxError::Io)?.to_string_lossy(),
                     ])?;
+                    info!("tmux session created successfully");
                     Ok(())
                 }
-                Err(e) => Err(e),
+                Err(e) => {
+                    error!(error = %e, "Failed to check tmux session status");
+                    Err(e)
+                }
             }
         }
     }
@@ -116,17 +137,24 @@ impl Multiplexer for TmuxMultiplexer {
         "tmux"
     }
 
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "is_available"))]
     fn is_available(&self) -> bool {
-        std::process::Command::new("tmux")
+        let available = std::process::Command::new("tmux")
             .arg("-V")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .map(|s| s.success())
-            .unwrap_or(false)
+            .unwrap_or(false);
+
+        debug!(available = %available, "tmux availability check completed");
+        available
     }
 
+    #[instrument(skip(self), fields(component = "ah_mux", operation = "open_window", session = %self.session_name, title = ?opts.title, focus = %opts.focus))]
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
+        info!("Opening new tmux window");
+
         // Ensure session exists first
         self.ensure_session()?;
 
@@ -149,6 +177,7 @@ impl Multiplexer for TmuxMultiplexer {
         let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         // Run the command and capture output
+        debug!(args = ?args_str, "Running tmux new-window command");
         let output = self.run_tmux_command(&args_str)?;
 
         // new-window -P returns session:window.pane, but we need session:window as WindowId
@@ -159,14 +188,19 @@ impl Multiplexer for TmuxMultiplexer {
             pane_id.to_string()
         };
 
+        debug!(window_id = %window_id, pane_id = %pane_id, "tmux window created");
+
         // Focus the window if requested
         if opts.focus {
+            debug!("Focusing newly created window");
             self.focus_window(&window_id)?;
         }
 
+        info!(window_id = %window_id, "tmux window opened successfully");
         Ok(window_id)
     }
 
+    #[instrument(skip(self, opts), fields(component = "ah_mux", operation = "split_pane", session = %self.session_name, direction = ?dir, percent = ?percent, has_initial_cmd = %initial_cmd.is_some()))]
     fn split_pane(
         &self,
         window: Option<&WindowId>,
@@ -176,6 +210,8 @@ impl Multiplexer for TmuxMultiplexer {
         opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
+        info!("Splitting tmux pane");
+
         let mut args = vec!["split-window".to_string(), "-P".to_string()];
 
         // Add direction
@@ -211,9 +247,11 @@ impl Multiplexer for TmuxMultiplexer {
         let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         // Run the command and capture the new pane ID
+        debug!(args = ?args_str, "Running tmux split-window command");
         let output = self.run_tmux_command(&args_str)?;
         let pane_id = output.trim().to_string();
 
+        info!(pane_id = %pane_id, "tmux pane split successfully");
         Ok(pane_id)
     }
 

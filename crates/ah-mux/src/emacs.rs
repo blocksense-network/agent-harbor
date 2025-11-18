@@ -10,18 +10,25 @@ use std::process::Command;
 use ah_mux_core::{
     CommandOptions, Multiplexer, MuxError, PaneId, SplitDirection, WindowId, WindowOptions,
 };
+use tracing::{debug, info, instrument, warn};
 
 /// Emacs multiplexer implementation
+#[derive(Debug)]
 pub struct EmacsMultiplexer;
 
 impl EmacsMultiplexer {
     /// Create a new Emacs multiplexer instance
+    #[instrument]
     pub fn new() -> Result<Self, MuxError> {
+        info!("Initializing Emacs multiplexer");
         Ok(Self)
     }
 
     /// Check if emacs is available and has vterm
+    #[instrument]
     pub fn is_available() -> bool {
+        debug!("Checking if Emacs is available");
+
         // Check if emacs is available
         let emacs_available = Command::new("emacs")
             .arg("--version")
@@ -30,8 +37,11 @@ impl EmacsMultiplexer {
             .unwrap_or(false);
 
         if !emacs_available {
+            debug!("Emacs is not available");
             return false;
         }
+
+        debug!("Emacs is available");
 
         // For a more thorough check, we could verify vterm is installed
         // but for now, we'll assume it's available if emacs is
