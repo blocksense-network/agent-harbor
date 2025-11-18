@@ -290,7 +290,7 @@ expect:
     assert_eq!(tool_call["function"]["name"], "write_file"); // Codex mapping for OpenAI format
 
     let args: serde_json::Value =
-        serde_json::from_str(&tool_call["function"]["arguments"].as_str().unwrap()).unwrap();
+        serde_json::from_str(tool_call["function"]["arguments"].as_str().unwrap()).unwrap();
     assert_eq!(args["path"], "output.txt");
     assert_eq!(args["text"], "Generated content");
 }
@@ -374,25 +374,32 @@ async fn test_streaming_tool_call_conversion_unit() {
     use llm_api_proxy::converters::openai_to_anthropic::convert_stream_chunk;
 
     // Create a mock streaming chunk with tool call deltas
+    // Build delta separately to narrowly allow deprecated field usage required by the upstream type.
+    let delta = {
+        #[allow(deprecated)]
+        ChatCompletionStreamResponseDelta {
+            content: None,
+            refusal: None,
+            tool_calls: Some(vec![ChatCompletionMessageToolCallChunk {
+                index: 0,
+                id: Some("call_test123".to_string()),
+                r#type: Some(ChatCompletionToolType::Function),
+                function: Some(async_openai::types::FunctionCallStream {
+                    name: Some("runCmd".to_string()),
+                    arguments: Some(r#"{"cmd":"echo hello","cwd":"."}"#.to_string()),
+                }),
+            }]),
+            role: Some(Role::Assistant),
+            // Deprecated upstream field remains required for construction; set to None explicitly.
+            function_call: None,
+        }
+    };
+
     let chunk = CreateChatCompletionStreamResponse {
         id: "chatcmpl-test".to_string(),
         choices: vec![ChatChoiceStream {
             index: 0,
-            delta: ChatCompletionStreamResponseDelta {
-                content: None,
-                function_call: None,
-                tool_calls: Some(vec![ChatCompletionMessageToolCallChunk {
-                    index: 0,
-                    id: Some("call_test123".to_string()),
-                    r#type: Some(ChatCompletionToolType::Function),
-                    function: Some(async_openai::types::FunctionCallStream {
-                        name: Some("runCmd".to_string()),
-                        arguments: Some(r#"{"cmd":"echo hello","cwd":"."}"#.to_string()),
-                    }),
-                }]),
-                role: Some(Role::Assistant),
-                refusal: None,
-            },
+            delta,
             finish_reason: None,
             logprobs: None,
         }],
@@ -1175,7 +1182,7 @@ expect:
     let _player_minimized = ScenarioPlayer::new(config_minimized.clone()).await.unwrap();
 
     // Create test request
-    let request = ProxyRequest {
+    let _request = ProxyRequest {
         client_format: ApiFormat::OpenAI,
         mode: ProxyMode::Scenario,
         payload: serde_json::json!({"messages": [{"role": "user", "content": "test"}]}),
@@ -1190,7 +1197,7 @@ expect:
 
     // Test pretty-printed logs (to file) - use unique temp directory to avoid interference
     let temp_dir_pretty = tempfile::TempDir::new().unwrap();
-    let log_path_pretty = temp_dir_pretty.path().join("pretty_log.json");
+    let _log_path_pretty = temp_dir_pretty.path().join("pretty_log.json");
 }
 
 #[tokio::test]
@@ -1570,7 +1577,7 @@ async fn test_session_end() {
 #[tokio::test]
 async fn test_session_model_routing_substring_matching() {
     // Create a session config with model mappings
-    let providers = vec![
+    let _providers = [
         ProviderDefinition {
             name: "anthropic".to_string(),
             base_url: "https://api.anthropic.com".to_string(),
@@ -1681,7 +1688,7 @@ async fn test_session_model_routing_substring_matching() {
 #[tokio::test]
 async fn test_session_model_routing_priority() {
     // Test that more specific patterns take priority over general ones
-    let providers = vec![
+    let _providers = [
         ProviderDefinition {
             name: "anthropic".to_string(),
             base_url: "https://api.anthropic.com".to_string(),
@@ -1776,7 +1783,7 @@ async fn test_session_model_routing_priority() {
 #[tokio::test]
 async fn test_session_model_routing_default_fallback() {
     // Test default provider fallback when no mappings match
-    let providers = vec![
+    let _providers = [
         ProviderDefinition {
             name: "anthropic".to_string(),
             base_url: "https://api.anthropic.com".to_string(),

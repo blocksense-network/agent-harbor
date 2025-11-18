@@ -224,6 +224,12 @@ impl SessionManager {
     }
 }
 
+impl Default for SessionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Main LLM API proxy struct
 pub struct LlmApiProxy {
     config: Arc<RwLock<ProxyConfig>>,
@@ -360,20 +366,20 @@ impl LlmApiProxy {
         let provider = if let Some(session_config) = &session_config {
             // Use session-specific routing
             let session_router = DynamicRouter::new_from_session(session_config.clone()).await?;
-            session_router.select_provider(&request).await?
+            session_router.select_provider(request).await?
         } else {
             // Use default routing
-            self.router.select_provider(&request).await?
+            self.router.select_provider(request).await?
         };
 
         // Convert request format if needed
-        let converted_request = self.convert_request_for_provider(&request, &provider).await?;
+        let converted_request = self.convert_request_for_provider(request, &provider).await?;
 
         // Send request to provider
         let response = self.send_provider_request(&provider, converted_request).await?;
 
         // Convert response back to client's expected format
-        let final_response = self.convert_response_for_client(response, &request).await?;
+        let final_response = self.convert_response_for_client(response, request).await?;
 
         Ok(final_response)
     }

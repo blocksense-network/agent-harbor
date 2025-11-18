@@ -298,7 +298,7 @@ impl ScenarioPlayer {
                         )
                     };
 
-                    println!("TOOLS VALIDATION ERROR: {}", error_msg);
+                    tracing::warn!("TOOLS VALIDATION ERROR: {}", error_msg);
 
                     // Save the request for tracking tool definition changes
                     self.save_agent_request(request_body, tool_name, &error_msg, agent_version)?;
@@ -463,7 +463,8 @@ impl ScenarioPlayer {
         };
 
         if log_path == "stdout" {
-            println!("{}", json_string);
+            use std::io::{self, Write};
+            let _ = writeln!(io::stdout(), "{}", json_string);
             return Ok(());
         }
 
@@ -551,8 +552,8 @@ impl ScenarioPlayer {
                     format!("Unknown tool '{}' for profile '{}'", tool_name, agent_type)
                 };
 
-                println!("TOOLS VALIDATION ERROR: {}", error_msg);
-                println!(
+                tracing::warn!("TOOLS VALIDATION ERROR: {}", error_msg);
+                tracing::info!(
                     "TOOL CALL DUMP: {}",
                     serde_json::to_string_pretty(tool_call).unwrap_or_default()
                 );
@@ -614,7 +615,7 @@ impl ScenarioPlayer {
             message: format!("Failed to write agent request: {}", e),
         })?;
 
-        println!("SAVED AGENT REQUEST: {}", request_file.display());
+        tracing::info!("SAVED AGENT REQUEST: {}", request_file.display());
         Ok(())
     }
 
@@ -1152,7 +1153,7 @@ impl ScenarioSession {
                                             }
                                             _ => {
                                                 let part = self
-                                                    .response_element_to_response_part(&element)?;
+                                                    .response_element_to_response_part(element)?;
                                                 response_parts.push(part);
                                             }
                                         }
@@ -1254,7 +1255,7 @@ impl ScenarioSession {
                                             }
                                             _ => {
                                                 let part = self
-                                                    .response_element_to_response_part(&element)?;
+                                                    .response_element_to_response_part(element)?;
                                                 response_parts.push(part);
                                             }
                                         }
@@ -1495,7 +1496,7 @@ impl ScenarioSession {
                                 return self.generate_error_response(error.clone(), client_format);
                             }
                             _ => {
-                                let part = self.response_element_to_response_part(&element)?;
+                                let part = self.response_element_to_response_part(element)?;
                                 response_parts.push(part);
                             }
                         }
@@ -2468,7 +2469,7 @@ impl ScenarioSession {
             let chunk_size = if chars.len() - i <= min_chunk_size {
                 chars.len() - i // Last chunk gets remaining characters
             } else {
-                let variation = (i % 3) as usize; // Simple pseudo-random variation
+                let variation = i % 3; // Simple pseudo-random variation
                 (min_chunk_size + variation).min(max_chunk_size).min(chars.len() - i)
             };
 

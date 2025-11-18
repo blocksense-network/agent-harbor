@@ -280,7 +280,7 @@ pub fn convert_stream_chunk_to_anthropic(
     if let Some(finish) = choice.finish_reason {
         let event = anthropic::StreamEvent::MessageDelta {
             delta: anthropic::MessageDeltaContent {
-                stop_reason: map_finish_reason_to_stop(finish.clone()),
+                stop_reason: map_finish_reason_to_stop(finish),
                 stop_sequence: None,
             },
             usage: chunk.usage.as_ref().map(|usage| anthropic::StreamUsage {
