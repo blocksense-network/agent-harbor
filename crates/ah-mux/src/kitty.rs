@@ -63,6 +63,11 @@ impl Default for KittyMultiplexer {
 
 impl KittyMultiplexer {
     pub fn new() -> Result<Self, MuxError> {
+        // Run configuration checks to ensure kitty is properly set up
+        // This validates that kitty is installed, remote control is enabled,
+        // and layout splitting is configured before creating the instance
+        Self::check_configuration()?;
+
         Ok(Self::default())
     }
 
@@ -913,7 +918,12 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(env)]
     fn test_kitty_multiplexer_creation() {
+        // Set up a test environment with proper kitty configuration
+        let test_config = "# Test kitty configuration\nallow_remote_control yes\nenabled_layouts splits\nlisten_on unix:/tmp/kitty-ah.sock\n";
+        let _guard = setup_test_home_with_config(test_config);
+
         let kitty = KittyMultiplexer::new().unwrap();
         assert_eq!(kitty.id(), "kitty");
         assert_eq!(kitty.socket_path, std::env::var("KITTY_LISTEN_ON").ok());
