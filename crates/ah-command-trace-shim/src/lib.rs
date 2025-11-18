@@ -2,15 +2,15 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Command Trace Interposition Shim
-//!
-//! This crate provides a cross-platform interposition shim that captures command
-//! execution and output streams. It uses:
-//! - macOS: DYLD_INSERT_LIBRARIES for dynamic library interposition
-//! - Linux: LD_PRELOAD for shared library preloading
-//!
-//! The shim maintains an internal FD table to track file descriptors across
-//! dup/fork operations and captures stdout/stderr writes from child processes.
+/// Command Trace Interposition Shim
+///
+/// This crate provides a cross-platform interposition shim that captures command
+/// execution and output streams. It uses:
+/// - macOS: DYLD_INSERT_LIBRARIES for dynamic library interposition
+/// - Linux: LD_PRELOAD for shared library preloading
+///
+/// The shim maintains an internal FD table to track file descriptors across
+/// dup/fork operations and captures stdout/stderr writes from child processes.
 
 #[cfg(target_os = "macos")]
 pub mod platform;
