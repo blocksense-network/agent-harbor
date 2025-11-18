@@ -3,13 +3,12 @@
 
 //! Shared test utilities for TUI tests
 
-use std::io::Write;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use ah_core::{
     BranchesEnumerator, DefaultWorkspaceTermsEnumerator, MockWorkspaceTermsEnumerator,
-    RepositoriesEnumerator, TaskManager, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
+    RepositoriesEnumerator, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
 };
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::Settings;
@@ -17,7 +16,7 @@ use ah_tui::view_model::ViewModel;
 use ah_workflows::{
     WorkflowCommand, WorkflowCommandSource, WorkflowError, WorkspaceWorkflowsEnumerator,
 };
-use futures::stream::{self, StreamExt};
+use futures::stream::{self};
 use std::path::PathBuf;
 
 /// Simple test implementation of WorkspaceFilesEnumerator for testing
@@ -85,6 +84,7 @@ impl WorkspaceWorkflowsEnumerator for TestWorkspaceWorkflowsEnumerator {
 }
 
 /// Create a temporary log file for test debugging
+#[allow(dead_code)] // Useful for diagnosing flaky tests; disabled by default to keep logs minimal.
 pub fn create_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
     let mut dir = std::env::temp_dir();
     dir.push("ah_tui_vm_logs");
@@ -141,10 +141,12 @@ pub fn build_view_model() -> ViewModel {
     )
 }
 
+#[allow(dead_code)] // Alternate builder for future term-focused tests.
 pub fn build_view_model_with_terms(terms: Vec<String>) -> ViewModel {
     build_view_model_with_terms_and_settings(terms, Settings::default())
 }
 
+#[allow(dead_code)] // Extended builder variant kept for future settings-driven tests.
 pub fn build_view_model_with_terms_and_settings(
     terms: Vec<String>,
     settings: Settings,
@@ -184,7 +186,9 @@ pub fn build_view_model_with_terms_and_settings(
 }
 
 /// Build a ViewModel with additional repository/branch data for modal tests
+#[allow(dead_code)] // Builder retained for repository-focused test scenarios.
 pub fn build_view_model_with_repos() -> ViewModel {
+    #[allow(dead_code)] // Alternate builder retained for future repository enumeration tests.
     let mut vm = build_view_model();
 
     // For tests, synchronously populate the available repositories and branches

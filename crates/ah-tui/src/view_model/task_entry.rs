@@ -3,7 +3,7 @@
 
 //! Task Entry ViewModel - for draft/editable task cards
 
-use super::{ButtonViewModel, DashboardFocusState, DraftSaveState};
+use super::{ButtonViewModel, DraftSaveState};
 
 /// Result of handling a keyboard operation in TaskEntryViewModel
 #[derive(Debug, PartialEq, Eq)]
@@ -30,10 +30,7 @@ pub enum KeyboardOperationResult {
     },
 }
 use crate::settings::KeyboardOperation;
-use ah_core::{
-    SplitMode, branches_enumerator::BranchesEnumerator,
-    repositories_enumerator::RepositoriesEnumerator,
-};
+use ah_core::SplitMode;
 use ah_domain_types::AgentChoice;
 use ratatui::crossterm::event::{KeyEvent, KeyModifiers};
 use std::sync::Arc;
@@ -387,7 +384,7 @@ impl TaskEntryViewModel {
                 self.update_selection_for_motion(shift_pressed, needs_redraw);
 
                 self.description.move_cursor(CursorMove::Up);
-                let mut new_cursor = self.description.cursor();
+                let new_cursor = self.description.cursor();
                 if new_cursor != old_cursor {
                     *needs_redraw = true;
                     KeyboardOperationResult::Handled
@@ -769,7 +766,7 @@ impl TaskEntryViewModel {
                 // Recenter cursor in middle of screen (Ctrl+L)
                 // Get current cursor line and viewport height
                 let cursor = self.description.cursor();
-                let lines = self.description.lines();
+                let _lines = self.description.lines();
                 let viewport_height = self.description.viewport_origin().1 as usize; // Approximation
 
                 // Calculate target top line to center cursor
@@ -781,7 +778,7 @@ impl TaskEntryViewModel {
             }
             KeyboardOperation::DuplicateLineSelection => {
                 // Duplicate line/selection (Ctrl+Shift+D / Cmd+Shift+D) - copy and paste below
-                let cursor_row = self.description.cursor().0 as usize;
+                let cursor_row = self.description.cursor().0;
                 let lines = self.description.lines();
 
                 if cursor_row < lines.len() {
@@ -799,8 +796,8 @@ impl TaskEntryViewModel {
             KeyboardOperation::ToggleComment => {
                 // Toggle comment (Ctrl+/) - add/remove comment markers from lines
                 let lines = self.description.lines();
-                let cursor_row = self.description.cursor().0 as usize;
-                let cursor_col = self.description.cursor().1 as usize;
+                let cursor_row = self.description.cursor().0;
+                let _cursor_col = self.description.cursor().1;
 
                 // Determine lines to comment/uncomment
                 let (_start_line, _end_line) =
@@ -844,8 +841,8 @@ impl TaskEntryViewModel {
             }
             KeyboardOperation::MoveLineUp => {
                 // Move line up (Alt+↑) - cut and reinsert above previous line
-                let cursor_row = self.description.cursor().0 as usize;
-                let lines = self.description.lines();
+                let cursor_row = self.description.cursor().0;
+                let _lines = self.description.lines();
 
                 // Can't move first line up
                 if cursor_row == 0 {
@@ -873,7 +870,7 @@ impl TaskEntryViewModel {
             }
             KeyboardOperation::MoveLineDown => {
                 // Move line down (Alt+↓) - cut and reinsert below next line
-                let cursor_row = self.description.cursor().0 as usize;
+                let cursor_row = self.description.cursor().0;
                 let lines = self.description.lines();
 
                 // Can't move last line down
@@ -907,7 +904,7 @@ impl TaskEntryViewModel {
                     if let Some(range) = self.description.selection_range() {
                         (range.0.0, range.1.0)
                     } else {
-                        let cursor_row = self.description.cursor().0 as usize;
+                        let cursor_row = self.description.cursor().0;
                         (cursor_row, cursor_row)
                     };
 
@@ -923,7 +920,7 @@ impl TaskEntryViewModel {
                     if let Some(range) = self.description.selection_range() {
                         (range.0.0, range.1.0)
                     } else {
-                        let cursor_row = self.description.cursor().0 as usize;
+                        let cursor_row = self.description.cursor().0;
                         (cursor_row, cursor_row)
                     };
 
@@ -969,8 +966,7 @@ impl TaskEntryViewModel {
                             new_line.extend(&chars[word_end..]);
 
                             // Replace the entire line
-                            let mut all_lines: Vec<String> =
-                                lines.into_iter().map(|s| s.clone()).collect();
+                            let mut all_lines: Vec<String> = lines.to_vec();
                             all_lines[cursor_row] = new_line;
                             self.description = tui_textarea::TextArea::new(all_lines);
                             self.description.disable_cursor_rendering();
@@ -1025,8 +1021,7 @@ impl TaskEntryViewModel {
                             new_line.extend(&chars[word_end..]);
 
                             // Replace the entire line
-                            let mut all_lines: Vec<String> =
-                                lines.into_iter().map(|s| s.clone()).collect();
+                            let mut all_lines: Vec<String> = lines.to_vec();
                             all_lines[cursor_row] = new_line;
                             self.description = tui_textarea::TextArea::new(all_lines);
                             self.description.disable_cursor_rendering();
@@ -1097,7 +1092,7 @@ impl TaskEntryViewModel {
                     let selected_text = self.description.yank_text();
                     if !selected_text.is_empty() {
                         // Replace selection with wrapped text
-                        self.description.insert_str(&format!("**{}**", selected_text));
+                        self.description.insert_str(format!("**{}**", selected_text));
                     }
                 } else {
                     // Insert ** and position cursor between them
@@ -1120,7 +1115,7 @@ impl TaskEntryViewModel {
                     let selected_text = self.description.yank_text();
                     if !selected_text.is_empty() {
                         // Replace selection with wrapped text
-                        self.description.insert_str(&format!("*{}*", selected_text));
+                        self.description.insert_str(format!("*{}*", selected_text));
                     }
                 } else {
                     // Insert ** and position cursor between them
@@ -1139,7 +1134,7 @@ impl TaskEntryViewModel {
                     let selected_text = self.description.yank_text();
                     if !selected_text.is_empty() {
                         // Replace selection with wrapped text
-                        self.description.insert_str(&format!("<u>{}</u>", selected_text));
+                        self.description.insert_str(format!("<u>{}</u>", selected_text));
                     }
                 } else {
                     // Insert tags and position cursor
@@ -1177,7 +1172,7 @@ impl TaskEntryViewModel {
             KeyboardOperation::IncrementalSearchForward => {
                 // Incremental search forward (Ctrl+S) - start search mode
                 // Set search pattern (would need search dialog/input in real implementation)
-                let _ = self.description.set_search_pattern("search_term".to_string());
+                let _ = self.description.set_search_pattern("search_term");
                 let _ = self.description.search_forward(false);
                 self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 KeyboardOperationResult::Handled
@@ -1185,7 +1180,7 @@ impl TaskEntryViewModel {
             KeyboardOperation::IncrementalSearchBackward => {
                 // Incremental search backward (Ctrl+R) - start reverse search mode
                 // Set search pattern and search backward
-                let _ = self.description.set_search_pattern("search_term".to_string());
+                let _ = self.description.set_search_pattern("search_term");
                 let _ = self.description.search_back(false);
                 self.autocomplete.after_textarea_change(&self.description, needs_redraw);
                 KeyboardOperationResult::Handled

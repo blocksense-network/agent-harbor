@@ -16,7 +16,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use std::{
-    io::{self, Stdout},
+    io::{self},
     panic,
     sync::{
         Arc,
@@ -223,7 +223,7 @@ pub fn key_event_to_bytes_with_features(
     }
 
     // Helper to maybe prefix ESC for Alt/meta
-    fn maybe_meta(mut bytes: Vec<u8>, mods: KeyModifiers) -> Vec<u8> {
+    fn maybe_meta(bytes: Vec<u8>, mods: KeyModifiers) -> Vec<u8> {
         if mods.contains(KeyModifiers::ALT) {
             let mut v = Vec::with_capacity(1 + bytes.len());
             v.push(0x1B); // ESC
@@ -274,7 +274,7 @@ pub fn key_event_to_bytes_with_features(
         KeyCode::Tab => {
             if mods.contains(KeyModifiers::SHIFT) {
                 // Shift-Tab is CSI Z
-                let seq = format!("\x1b[Z");
+                let seq = "\x1b[Z".to_string();
                 Some(maybe_meta(seq.into_bytes(), mods - KeyModifiers::SHIFT))
             } else {
                 Some(maybe_meta(vec![b'\t'], mods))

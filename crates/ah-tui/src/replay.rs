@@ -10,8 +10,7 @@
 use crate::record::CliGutterPosition;
 use crate::view_model::session_viewer_model::{GutterConfig, GutterPosition};
 use crate::viewer::{ViewerConfig, ViewerEventLoop, build_session_viewer_view_model};
-use ah_core::{AgentExecutionConfig, local_task_manager::GenericLocalTaskManager};
-use ah_mux::TmuxMultiplexer;
+use ah_core;
 use ah_recorder::replay_ahr_file;
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -86,6 +85,7 @@ pub async fn execute(args: ReplayArgs) -> Result<()> {
 }
 
 /// Print metadata and statistics about the recording
+#[allow(clippy::disallowed_methods)]
 async fn print_metadata(ahr_path: &PathBuf) -> Result<()> {
     let replay_result =
         replay_ahr_file(ahr_path).context("Failed to replay recording for metadata")?;
@@ -119,6 +119,7 @@ async fn print_metadata(ahr_path: &PathBuf) -> Result<()> {
 }
 
 /// Perform fast-forward replay and display final terminal state
+#[allow(clippy::disallowed_methods)]
 async fn fast_replay(ahr_path: &PathBuf, no_colors: bool) -> Result<()> {
     let replay_result = replay_ahr_file(ahr_path).context("Failed to replay recording")?;
 
@@ -249,6 +250,8 @@ fn strip_ansi_codes(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
 
+    // Allow while_let_on_iterator for explicit peek/next control
+    #[allow(clippy::while_let_on_iterator)]
     while let Some(ch) = chars.next() {
         if ch == '\x1b' {
             // Start of ANSI escape sequence

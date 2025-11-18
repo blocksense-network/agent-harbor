@@ -24,7 +24,7 @@ use ratatui::style::{Color, Modifier, Style};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use tracing::{debug, trace};
+use tracing::debug;
 
 // Minor mode for terminal navigation operations that work even when task entry is focused
 pub static TERMINAL_NAVIGATION_MODE: crate::view_model::input::InputMinorMode =
@@ -469,10 +469,10 @@ impl SessionViewerViewModel {
                     }
                 }
 
-                let mut autocomplete_manager = AutocompleteManagerImpl {
+                let _autocomplete_manager = AutocompleteManagerImpl {
                     autocomplete: &mut self.autocomplete,
                     needs_redraw: &mut false, // Recorder doesn't need redraw signals
-                };
+                }; // unused: manager logic not required in recorder context
                 match self.task_entry.handle_keyboard_operation(operation, key, &mut false) {
                     KeyboardOperationResult::Handled => {
                         // Operation was handled by task entry
@@ -482,8 +482,8 @@ impl SessionViewerViewModel {
                         // Let the operation continue bubbling to session viewer handlers
                     }
                     KeyboardOperationResult::TaskLaunched {
-                        split_mode,
-                        focus,
+                        split_mode: _, // ignored in recorder continuation context
+                        focus: _,      // ignored in recorder continuation context
                         starting_point,
                         working_copy_mode,
                     } => {
@@ -1168,7 +1168,7 @@ impl SessionViewerViewModel {
             }
 
             if let Some(task_entry) = self.task_entry_overlay_mut() {
-                let mut autocomplete_manager = NoOpAutocompleteManager;
+                let _autocomplete_manager = NoOpAutocompleteManager; // unused: overlay task_entry path does not need autocomplete manager
                 let mut needs_redraw = false;
                 match task_entry.handle_keyboard_operation(operation, key, &mut needs_redraw) {
                     KeyboardOperationResult::Handled => return true,

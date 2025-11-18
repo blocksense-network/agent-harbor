@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_filter_bar_default_rendering() {
-        let mut backend = TestBackend::new(80, 1);
+        let backend = TestBackend::new(80, 1);
         let mut terminal = Terminal::new(backend).unwrap();
 
         let view_model = FilterBarViewModel::default();
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_filter_bar_focused_rendering() {
-        let mut backend = TestBackend::new(80, 1);
+        let backend = TestBackend::new(80, 1);
         let mut terminal = Terminal::new(backend).unwrap();
 
         let view_model = FilterBarViewModel {
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_filter_control_focused_rendering() {
-        let mut backend = TestBackend::new(80, 1);
+        let backend = TestBackend::new(80, 1);
         let mut terminal = Terminal::new(backend).unwrap();
 
         let view_model = FilterBarViewModel {

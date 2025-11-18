@@ -21,6 +21,7 @@ use anyhow::Result;
 pub const MAX_RESULTS: usize = 50_000; // High ceiling to allow full navigation through large result sets
 pub const MENU_WIDTH: u16 = 48;
 pub const MAX_MENU_HEIGHT: u16 = 10;
+#[allow(dead_code)] // Placeholder for future async debounce of indexing queries.
 const QUERY_DEBOUNCE: Duration = Duration::from_millis(80);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -116,7 +117,7 @@ pub struct Item {
     pub replacement: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct InlineMenuViewModel {
     open: bool,
     context: Option<MenuContext>,
@@ -125,20 +126,6 @@ struct InlineMenuViewModel {
     results: Vec<ScoredMatch>,
     token: Option<TokenPosition>,
     last_applied_id: u64,
-}
-
-impl Default for InlineMenuViewModel {
-    fn default() -> Self {
-        Self {
-            open: false,
-            context: None,
-            query: String::new(),
-            selected: 0,
-            results: Vec::new(),
-            token: None,
-            last_applied_id: 0,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -350,9 +337,8 @@ impl InlineAutocomplete {
                         Ok(mut stream) => {
                             let mut files = Vec::new();
                             while let Some(result) = stream.next().await {
-                                match result {
-                                    Ok(file) => files.push(file.path),
-                                    Err(_) => {} // Skip files that can't be read
+                                if let Ok(file) = result {
+                                    files.push(file.path);
                                 }
                             }
                             Some(files)
@@ -875,9 +861,7 @@ impl InlineAutocomplete {
                 self.vm.token = None;
                 self.vm.query.clear();
             }
-            if self.update_plaintext_ghost(textarea) {
-                *needs_redraw = true;
-            } else if was_open {
+            if self.update_plaintext_ghost(textarea) || was_open {
                 *needs_redraw = true;
             }
             if was_open != self.vm.open || prev_context != self.vm.context {

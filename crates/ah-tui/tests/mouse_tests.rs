@@ -190,7 +190,7 @@ mod tests {
         let padding = 1;
         let click_x = 11;
 
-        let relative_x = (click_x as i32 - textarea_x as i32 - padding as i32).max(0) as u16;
+        let relative_x = (click_x - textarea_x - padding).max(0) as u16;
         assert_eq!(relative_x, 5); // 11 - 5 - 1 = 5
 
         // Test with wide characters (simple heuristic)
@@ -212,12 +212,17 @@ mod tests {
 
     #[test]
     fn test_mouse_disabled_setting() {
-        let mut settings = ah_tui::settings::Settings::default();
-        settings.mouse_enabled = Some(false);
-        assert!(!settings.mouse_enabled());
+        let settings_disabled = ah_tui::settings::Settings {
+            mouse_enabled: Some(false),
+            ..Default::default()
+        };
+        assert!(!settings_disabled.mouse_enabled());
 
-        settings.mouse_enabled = Some(true);
-        assert!(settings.mouse_enabled());
+        let settings_enabled = ah_tui::settings::Settings {
+            mouse_enabled: Some(true),
+            ..Default::default()
+        };
+        assert!(settings_enabled.mouse_enabled());
 
         // Test default
         let default_settings = ah_tui::settings::Settings::default();

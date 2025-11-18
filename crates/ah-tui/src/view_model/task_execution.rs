@@ -3,7 +3,7 @@
 
 //! Task Execution ViewModel - for active/completed/merged task cards
 
-use super::{ButtonViewModel, DashboardFocusState};
+// No super imports needed here; remove unused imports
 use crate::settings::Settings;
 use ah_core::TaskEvent;
 use ah_domain_types::task::ToolStatus;
@@ -109,11 +109,11 @@ impl TaskExecutionViewModel {
                 TaskState::Completed | TaskState::Failed | TaskState::Cancelled => {
                     TaskState::Completed
                 }
-                TaskState::Draft | TaskState::Merged => status.clone(), // Keep as-is for these states
+                TaskState::Draft | TaskState::Merged => *status, // Keep as-is for these states
             };
 
             // Update the domain task state
-            self.task.state = new_task_state.clone();
+            self.task.state = new_task_state;
 
             // Mark that we need a redraw due to state change
             self.needs_redraw = true;
@@ -251,7 +251,7 @@ impl TaskExecutionViewModel {
                             matches!(entry, AgentActivityRow::ToolUse { tool_execution_id: exec_id, .. } if exec_id == &tool_execution_id)
                         }) {
                         *completed = true;
-                        *status = result_status.clone();
+                        *status = result_status;
                         // Set last_line to first line of final output if not already set
                         if last_line.is_none() {
                             *last_line = Some(tool_output.lines().next().unwrap_or("Completed").to_string());

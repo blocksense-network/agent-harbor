@@ -3,17 +3,8 @@
 
 //! Scenario-based initial render test
 
-use ah_core::TaskManager;
-use ah_core::WorkspaceFilesEnumerator;
-use ah_repo::VcsRepo;
-use ah_rest_mock_client::MockRestClient;
-use ah_test_scenarios::{Scenario, ScenarioTerminal};
+use ah_test_scenarios::Scenario;
 use ah_tui::create_test_terminal;
-use ah_tui::settings::Settings;
-use ah_tui::view_model::ViewModel;
-use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
-use ratatui::widgets::ListState;
-use std::sync::Arc;
 
 #[test]
 fn test_initial_render_from_minimal_scenario() -> anyhow::Result<()> {
@@ -34,7 +25,7 @@ fn test_initial_render_from_minimal_scenario() -> anyhow::Result<()> {
 
     // Render basic test content
     term.draw(|f| {
-        let area = f.size();
+        let area = f.area();
         // Simple test rendering
         let paragraph = ratatui::widgets::Paragraph::new("Scenario test content");
         f.render_widget(paragraph, area);

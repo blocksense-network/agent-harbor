@@ -42,7 +42,7 @@ fn pick_free_port() -> u16 {
         .port()
 }
 
-fn extract_path<'a>(label: &str, output: &'a str) -> PathBuf {
+fn extract_path(label: &str, output: &str) -> PathBuf {
     output
         .lines()
         .find_map(|line| line.split_once(label).map(|(_, value)| PathBuf::from(value.trim())))

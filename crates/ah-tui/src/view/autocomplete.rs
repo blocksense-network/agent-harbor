@@ -221,7 +221,7 @@ fn compute_position_for(
             for line_idx in start_row..target_row {
                 let width = textarea.display_width_of_line(line_idx);
                 if width > 0 {
-                    let wraps = (width + content_width - 1) / content_width;
+                    let wraps = width.div_ceil(content_width);
                     if wraps > 0 {
                         additional_rows = additional_rows.saturating_add(wraps.saturating_sub(1));
                     }
@@ -241,7 +241,7 @@ fn compute_position_for(
         }
     }
 
-    let text_start_x = area.x.saturating_add(gutter as u16);
+    let text_start_x = area.x.saturating_add(gutter);
     let max_x = area.x.saturating_add(area.width.saturating_sub(1));
     let max_y = area.y.saturating_add(area.height.saturating_sub(1));
 

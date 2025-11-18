@@ -185,19 +185,19 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::settings::KeyboardOperation;
 
-/// Resolve a key event to a keyboard operation using the provided input minor mode and settings
-///
-/// This function checks if the given key event matches any keyboard shortcut configured
-/// for the operations in the provided input minor mode. It's more efficient than the global
-/// `key_event_to_operation` function because it only checks the operations you care about.
-///
-/// # Parameters
-/// - `key_event`: The key event to resolve
-/// - `minor_mode`: Input minor mode containing the operations to check for matches
-/// - `settings`: Settings containing the keymap configuration
-///
-/// # Returns
-/// `Some(operation)` if a matching operation was found, `None` otherwise
+// Resolve a key event to a keyboard operation using the provided input minor mode and settings
+//
+// This function checks if the given key event matches any keyboard shortcut configured
+// for the operations in the provided input minor mode. It's more efficient than the global
+// `key_event_to_operation` function because it only checks the operations you care about.
+//
+// # Parameters
+// - `key_event`: The key event to resolve
+// - `minor_mode`: Input minor mode containing the operations to check for matches
+// - `settings`: Settings containing the keymap configuration
+//
+// # Returns
+// `Some(operation)` if a matching operation was found, `None` otherwise
 
 /// Result of handling a keyboard operation by an input context
 #[derive(Debug, Clone, PartialEq, Eq)]

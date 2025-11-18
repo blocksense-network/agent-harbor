@@ -42,19 +42,17 @@ use crate::view::autocomplete::{render_autocomplete, render_autocomplete_ghost};
 use crate::view::draft_card;
 use crate::view::{HitTestRegistry, Theme, ViewCache};
 use crate::view_model::AgentActivityRow;
-use crate::view_model::task_entry::CardFocusElement;
 use crate::view_model::{DashboardFocusState, TaskCardType};
 use crate::view_model::{
     DraftSaveState, TaskEntryViewModel, TaskExecutionFocusState, TaskExecutionViewModel,
 };
 use crate::view_model::{MouseAction, TaskCardTypeEnum, ViewModel};
-use ah_core::TaskStatus;
-use ah_core::task_manager::TaskEvent;
+// (no ah_core items needed at module scope)
 use ah_domain_types::TaskState;
 use ah_domain_types::task::ToolStatus;
 use ratatui::{prelude::*, widgets::*};
 use ratatui_image::StatefulImage;
-use tracing::{debug, warn};
+use tracing::warn;
 
 /// Display item types (exact same as main.rs)
 #[derive(Debug, Clone)]
@@ -146,7 +144,7 @@ fn render_header(
         // Check for encoding errors and log them (don't fail the whole UI)
         if let Some(Err(e)) = protocol.last_encoding_result() {
             // If image rendering fails, fall through to ASCII
-            eprintln!("Image logo rendering failed: {}", e);
+            tracing::warn!("Image logo rendering failed: {}", e);
         } else {
             // Image rendered successfully, we're done
             return;
@@ -462,9 +460,10 @@ pub fn render(
 
     // Check if a textarea is currently focused
     let textarea_focused = if let DashboardFocusState::DraftTask(idx) = view_model.focus_element {
-        view_model.draft_cards.get(idx).map_or(false, |card| {
-            card.focus_element == CardFocusElement::TaskDescription
-        })
+        view_model
+            .draft_cards
+            .get(idx)
+            .is_some_and(|card| card.focus_element == CardFocusElement::TaskDescription)
     } else {
         false
     };
@@ -494,7 +493,9 @@ pub fn render(
     // If no textarea is focused, Ratatui will hide the cursor by default
 }
 
-// Helper function to find the textarea area for a given card (needed for cursor positioning)
+// Helper function to find the textarea area for a given card (needed for cursor positioning).
+// Currently unused in production rendering; kept for forthcoming precise caret tracking work.
+#[allow(dead_code)]
 fn find_textarea_area_for_card(
     _view_model: &ViewModel,
     _card: &TaskEntryViewModel,
@@ -752,8 +753,8 @@ fn render_active_task_card(
 
     // Add activity lines (up to 3)
     let activity_count = activity_lines.len().min(3);
-    for i in 0..activity_count {
-        all_lines.push(activity_lines[i].clone());
+    for line in activity_lines.iter().take(activity_count) {
+        all_lines.push(line.clone());
     }
 
     // Add spacing line
@@ -1030,7 +1031,9 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, view_model: &ViewModel, them
     );
 }
 
-/// Format a DraftSaveState for display
+/// Format a DraftSaveState for display.
+/// Currently unused; retained for future status footer enhancements.
+#[allow(dead_code)]
 fn format_save_state(state: &DraftSaveState) -> String {
     match state {
         DraftSaveState::Unsaved => "Unsaved".to_string(),

@@ -12,21 +12,20 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock; // Arc imported locally where needed; remove unused top-level Arc.
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ah_recorder::{AhrSnapshot, ColumnIndex, LineIndex, Snapshot, TerminalState};
+use ah_recorder::{AhrSnapshot, LineIndex, Snapshot, TerminalState};
 use ah_tui::Msg;
-use ah_tui::settings::KeyboardOperation;
 use ah_tui::view_model::autocomplete::AutocompleteDependencies;
 use ah_tui::view_model::session_viewer_model::{
-    DisplayItem, DisplayStructure, GutterConfig, SESSION_VIEWER_MODE, SessionViewerFocusState,
-    SessionViewerMode, SessionViewerMsg, SessionViewerViewModel,
+    DisplayItem, GutterConfig, SessionViewerFocusState, SessionViewerMode, SessionViewerMsg,
+    SessionViewerViewModel,
 };
-use ah_tui::view_model::task_entry::TaskEntryViewModel;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Test helper to create a mock settings object with minimal key bindings
+#[allow(dead_code)] // Retained for future test expansion of keymap bindings (keymap variants)
 fn create_mock_settings() -> ah_tui::Settings {
     use ah_tui::settings::KeyMatcher;
 
@@ -46,11 +45,12 @@ fn create_mock_settings() -> ah_tui::Settings {
     );
 
     // Create keymap with bindings
-    let mut keymap = ah_tui::settings::KeymapConfig::default();
-    keymap.dismiss_overlay = Some(vec![esc_matcher]);
-    keymap.incremental_search_forward = Some(vec![ctrl_s_matcher]);
-    keymap.draft_new_task = Some(vec![ctrl_n_matcher]);
-
+    let keymap = ah_tui::settings::KeymapConfig {
+        dismiss_overlay: Some(vec![esc_matcher]),
+        incremental_search_forward: Some(vec![ctrl_s_matcher]),
+        draft_new_task: Some(vec![ctrl_n_matcher]),
+        ..Default::default()
+    };
     ah_tui::Settings {
         keymap: Some(keymap),
         ..Default::default()
@@ -129,14 +129,14 @@ fn create_test_view_model(
 
     // Create mock dependencies for testing
     let workspace_files: Arc<dyn WorkspaceFilesEnumerator> =
-        Arc::new(ah_repo::VcsRepo::new(std::path::Path::new(".").to_path_buf()).unwrap());
+        Arc::new(ah_repo::VcsRepo::new(std::path::PathBuf::from(".")).unwrap());
     let workspace_workflows: Arc<dyn WorkspaceWorkflowsEnumerator> =
         Arc::new(WorkflowProcessor::new(WorkflowConfig::default()));
     let mock_client = MockRestClient::new();
-    let repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
+    let _repositories_enumerator: Arc<dyn RepositoriesEnumerator> = Arc::new(
         ah_core::RemoteRepositoriesEnumerator::new(mock_client.clone(), "http://test".to_string()),
     );
-    let branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
+    let _branches_enumerator: Arc<dyn BranchesEnumerator> = Arc::new(
         ah_core::RemoteBranchesEnumerator::new(mock_client, "http://test".to_string()),
     );
     let settings = ah_tui::settings::Settings::from_config()
@@ -240,18 +240,13 @@ fn test_auto_scroll_behavior() {
 
     // Initially has some empty lines from VT100 initialization
     let initial_display_items = get_display_items(&mut view_model);
-    println!("Initial display items: {:?}", initial_display_items);
-    println!(
-        "Total lines in memory: {}",
-        view_model.recording_terminal_state.borrow().total_output_lines_in_memory()
-    );
     // Should show some initial lines (likely empty)
     assert!(!initial_display_items.is_empty());
 
     // Test that auto-scroll shows the most recent lines initially
     // With 24 total lines and display_rows() = 23 (24-1 for status bar), should show last 23 lines
     let total_lines = view_model.recording_terminal_state.borrow().total_output_lines_in_memory();
-    println!("Total lines: {}", total_lines);
+    // total_lines validated below; removed debug print
     assert_eq!(total_lines, 24, "Expected 24 total lines");
     assert_eq!(
         initial_display_items.len(),
@@ -298,7 +293,7 @@ fn test_no_empty_lines_added_progressively() {
     // Since the test environment doesn't actually store line content like the real app,
     // we'll focus on ensuring the display structure calculations remain correct
 
-    println!("Testing progressive content addition with display structure validation...");
+    // Progressive content addition validation loop
 
     // Add more than 24 lines to force scrolling and test progressive behavior
     for i in 1..=30 {
@@ -370,26 +365,7 @@ fn test_no_empty_lines_added_progressively() {
             );
         }
 
-        // Debug: check what screen.contents() looks like
-        let recording_state = view_model.recording_terminal_state.borrow();
-        let screen = recording_state.parser().screen();
-        let contents = screen.contents();
-        println!("After {} additions: screen.contents() = {:?}", i, contents);
-        let all_lines: Vec<&str> = contents.lines().collect();
-        println!("After {} additions: all_lines = {:?}", i, all_lines);
-
-        // Note: line_content_by_line_index is known to be broken due to VT100 screen.contents() behavior
-        // The important test is that the display structure remains correct and doesn't add empty lines
-        // The rendering code now gets content directly from screen.contents() rather than individual lookups
-
-        println!(
-            "After {} additions: display_range=[{}..{}], before_span_len={}, after_span_len={}",
-            i,
-            start_line,
-            end_line,
-            display_structure.before_task_entry.len(),
-            display_structure.after_task_entry.len()
-        );
+        // Display range and span contiguity validated by assertions above; removed verbose debug prints.
     }
 
     // Final validation that the display structure is still correct
@@ -400,9 +376,7 @@ fn test_no_empty_lines_added_progressively() {
         viewport_height
     );
 
-    println!(
-        "Test completed successfully - display structure calculations remain correct after progressive content addition"
-    );
+    // Test completed successfully.
 }
 
 #[test]
@@ -420,18 +394,9 @@ fn test_no_empty_lines_when_scrolling_with_limited_scrollback() {
         let _ = view_model.update(SessionViewerMsg::Tick);
     }
 
-    println!("Total rows after filling: {}", view_model.total_rows());
-
     // Get the display structure
     let display_structure = view_model.get_display_structure();
     let viewport_height = view_model.display_rows() as usize;
-
-    println!(
-        "Display structure: before={}, after={}, terminal_output={}",
-        display_structure.before_task_entry.len(),
-        display_structure.after_task_entry.len(),
-        display_structure.terminal_output.len()
-    );
 
     // Check that the total span length doesn't exceed viewport height
     let total_span =
@@ -447,11 +412,6 @@ fn test_no_empty_lines_when_scrolling_with_limited_scrollback() {
     let start_line = display_structure.terminal_output.first_line.as_usize();
     let end_line = display_structure.terminal_output.last_line.as_usize();
     let total_lines = view_model.total_rows();
-
-    println!(
-        "Display range: {} to {} (total lines: {})",
-        start_line, end_line, total_lines
-    );
 
     // The end line should not exceed the total lines
     assert!(
@@ -471,11 +431,6 @@ fn test_no_empty_lines_when_scrolling_with_limited_scrollback() {
             empty_lines_in_display += 1;
         }
     }
-
-    println!(
-        "Empty lines in display range: {} out of {}",
-        empty_lines_in_display, total_span
-    );
 
     // We expect some empty lines (from terminal initialization or fallen-out lines), but not excessive
     // The issue would be if empty lines are added beyond what's expected
@@ -505,10 +460,7 @@ fn test_task_entry_navigation() {
     // Initially no task entry visible
     assert!(!view_model.task_entry_visible);
     let display_items = get_display_items(&mut view_model);
-    assert!(matches!(
-        display_items.iter().all(|item| matches!(item, DisplayItem::TerminalLine(_))),
-        true
-    ));
+    assert!(display_items.iter().all(|item| matches!(item, DisplayItem::TerminalLine(_))));
 
     // Show task entry at latest snapshot (live mode) - simulate MoveToPreviousSnapshot key
     let _ = view_model.update(SessionViewerMsg::Key(*PREVIOUS_SNAPSHOT_KEY));
@@ -704,25 +656,14 @@ fn test_mouse_scrolling() {
     let _ = view_model.get_display_structure();
 
     let total_lines = view_model.recording_terminal_state.borrow().total_output_lines_in_memory();
-    println!("Total lines before scroll: {}", total_lines);
-    println!("Total rows: {}", view_model.total_rows());
 
     // Mouse scroll up should scroll back and disable auto-follow
     let _ = view_model.update(SessionViewerMsg::MouseScrollUp);
-    println!(
-        "After mouse scroll up: auto_follow={}, scroll_offset={}",
-        view_model.auto_follow,
-        view_model.scroll_offset.as_usize()
-    );
     assert!(!view_model.auto_follow);
     // When auto-following with viewport_height = 23, auto-follow positions at total_lines - 23
     // Scrolling up 3 lines gives (total_lines - 23) - 3
     let viewport_height = view_model.display_rows() as usize;
     let expected_scroll = total_lines.saturating_sub(viewport_height).saturating_sub(3);
-    println!(
-        "Expected scroll: {} (viewport_height={})",
-        expected_scroll, viewport_height
-    );
     assert_eq!(view_model.scroll_offset.as_usize(), expected_scroll);
 
     // Mouse scroll down should scroll forward
@@ -784,7 +725,6 @@ fn test_snapshot_navigation_visible_no_scroll() {
     );
 
     // Record the scroll offset before navigation
-    let scroll_before = view_model.scroll_offset.as_usize();
 
     // Navigate to the target snapshot (just 1 step back to ensure it's still visible with room)
     let _ = view_model.update(SessionViewerMsg::Key(*PREVIOUS_SNAPSHOT_KEY));
@@ -889,8 +829,8 @@ fn test_scroll_to_bottom() {
     assert_eq!(display_before, display_after);
 
     // Simulate scrolling to bottom (End key)
-    let viewport_height = view_model.display_rows() as usize;
-    view_model.scroll_offset = LineIndex(view_model.total_rows().saturating_sub(viewport_height));
+    view_model.scroll_offset =
+        LineIndex(view_model.total_rows().saturating_sub(view_model.display_rows() as usize));
     view_model.auto_follow = true;
 
     // Should be auto-following since we scrolled to bottom
@@ -918,9 +858,7 @@ fn test_auto_follow_suppressed_when_task_entry_visible() {
 
     // Ensure we're auto-following initially
     assert!(view_model.auto_follow);
-    let viewport_height = view_model.display_rows() as usize;
-    let initial_scroll_offset = view_model.scroll_offset.as_usize();
-    let initial_total_lines = view_model.total_rows();
+    let _viewport_height = view_model.display_rows() as usize; // underscore to silence unused warning; retained for potential future assertions
 
     // Activate task entry at the latest snapshot (should be at the bottom)
     let _ = view_model.update(SessionViewerMsg::Key(*PREVIOUS_SNAPSHOT_KEY));
@@ -997,11 +935,6 @@ fn test_manual_scrolling_moves_task_entry_with_snapshot() {
 
     // Get initial display structure
     let initial_display = view_model.get_display_structure();
-    let initial_snapshot_line = view_model
-        .recording_terminal_state
-        .borrow()
-        .snapshot_line_index(target_snapshot_index)
-        .as_usize();
     assert!(initial_display.task_entry_height > 0);
 
     // Record the initial scroll offset
@@ -1179,14 +1112,7 @@ fn test_scrolling_operations() {
     view_model.scroll_offset = LineIndex(30); // Scroll to middle (past viewport height)
     view_model.auto_follow = false;
     let page_up_key = key_event(KeyCode::PageUp, KeyModifiers::empty());
-    let settings = ah_tui::Settings::default();
-    let operation = SESSION_VIEWER_MODE.resolve_key_to_operation(&page_up_key, &settings);
-    println!("PageUp operation: {:?}", operation);
     let result = view_model.update(SessionViewerMsg::Key(page_up_key));
-    println!(
-        "Scroll offset after PageUp: {}",
-        view_model.scroll_offset.as_usize()
-    );
     assert_eq!(view_model.scroll_offset.as_usize(), 30 - viewport_height);
     assert!(!view_model.auto_follow);
     assert!(result.is_empty());
@@ -1250,7 +1176,7 @@ fn test_minor_mode_integration() {
     view_model.search_state = None; // Reset search state
 
     // Show task entry first
-    let result = view_model.update(SessionViewerMsg::Key(ctrl_n_key));
+    let _result = view_model.update(SessionViewerMsg::Key(ctrl_n_key));
     assert!(view_model.task_entry_visible);
 
     // Now Ctrl+S should still start search (because it's in TERMINAL_NAVIGATION_MODE)
