@@ -7,7 +7,6 @@ use crate::core::{self, SHIM_STATE, ShimState};
 use ah_command_trace_client::{ClientConfig, CommandTraceClient};
 use ah_command_trace_proto::CommandStart;
 use std::ffi::CStr;
-use std::os::unix::net::UnixStream;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
