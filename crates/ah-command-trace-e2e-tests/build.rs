@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use std::env;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 fn main() {
@@ -25,16 +26,33 @@ fn main() {
     // Copy the shim library to a predictable location
     if shim_src.exists() {
         if let Err(e) = std::fs::copy(&shim_src, &shim_dst) {
-            eprintln!("Warning: Failed to copy shim library: {}", e);
+            let _ = writeln!(io::stderr(), "Warning: Failed to copy shim library: {}", e);
         } else {
-            println!("Copied shim library to: {}", shim_dst.display());
+            let _ = writeln!(
+                io::stdout(),
+                "Copied shim library to: {}",
+                shim_dst.display()
+            );
         }
     } else {
-        println!("Warning: Shim library not found at: {}", shim_src.display());
-        println!("Make sure to build the ah-command-trace-shim crate first");
+        let _ = writeln!(
+            io::stdout(),
+            "Warning: Shim library not found at: {}",
+            shim_src.display()
+        );
+        let _ = writeln!(
+            io::stdout(),
+            "Make sure to build the ah-command-trace-shim crate first"
+        );
     }
 
     // Re-run build script if the shim library changes
-    println!("cargo:rerun-if-changed=../ah-command-trace-shim/src");
-    println!("cargo:rerun-if-changed=../ah-command-trace-shim/Cargo.toml");
+    let _ = writeln!(
+        io::stdout(),
+        "cargo:rerun-if-changed=../ah-command-trace-shim/src"
+    );
+    let _ = writeln!(
+        io::stdout(),
+        "cargo:rerun-if-changed=../ah-command-trace-shim/Cargo.toml"
+    );
 }

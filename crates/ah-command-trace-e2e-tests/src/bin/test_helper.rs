@@ -6,7 +6,7 @@ use std::io::{self, Write};
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: {} <command> [args...]", args[0]);
+        let _ = writeln!(io::stderr(), "Usage: {} <command> [args...]", args[0]);
         std::process::exit(1);
     }
 
@@ -19,38 +19,41 @@ fn main() {
         "write_stderr" => test_write_stderr(test_args),
         "dummy" => {
             // Do nothing, just exit successfully to test interposition loading
-            println!("Dummy command executed");
+            let _ = writeln!(io::stdout(), "Dummy command executed");
         }
         _ => {
-            eprintln!("Unknown command: {}", command);
-            eprintln!("Available commands: print_pid, write_stdout, write_stderr, dummy");
+            let _ = writeln!(io::stderr(), "Unknown command: {}", command);
+            let _ = writeln!(
+                io::stderr(),
+                "Available commands: print_pid, write_stdout, write_stderr, dummy"
+            );
             std::process::exit(1);
         }
     }
 }
 
 fn test_print_pid(_args: &[String]) {
-    println!("PID: {}", std::process::id());
+    let _ = writeln!(io::stdout(), "PID: {}", std::process::id());
     // Write a single byte to stdout as required by M0
     io::stdout().write_all(&[42]).unwrap();
 }
 
 fn test_write_stdout(args: &[String]) {
     if args.is_empty() {
-        eprintln!("Usage: write_stdout <message>");
+        let _ = writeln!(io::stderr(), "Usage: write_stdout <message>");
         std::process::exit(1);
     }
 
     let message = &args[0];
-    println!("{}", message);
+    let _ = writeln!(io::stdout(), "{}", message);
 }
 
 fn test_write_stderr(args: &[String]) {
     if args.is_empty() {
-        eprintln!("Usage: write_stderr <message>");
+        let _ = writeln!(io::stderr(), "Usage: write_stderr <message>");
         std::process::exit(1);
     }
 
     let message = &args[0];
-    eprintln!("{}", message);
+    let _ = writeln!(io::stderr(), "{}", message);
 }
