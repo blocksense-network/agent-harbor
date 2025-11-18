@@ -12,6 +12,7 @@ This document describes automating Kitty via its remote‑control interface `kit
 **Configuration Required:**
 
 Remote control must be enabled in `~/.config/kitty/kitty.conf`:
+Also we need to enable the splits layout. This way we can create any arrangement of windows by splitting existing windows repeatedly.
 
 ```conf
 # Enable remote control (required for all kitty @ commands)
@@ -20,12 +21,17 @@ allow_remote_control yes
 # Set up UNIX socket for external control (scripts, other terminals)
 # Kitty creates this socket file automatically when it starts
 listen_on unix:/tmp/kitty-ah.sock
+
+# Set up Split Layout. ref: https://sw.kovidgoyal.net/kitty/layouts/#the-splits-layout
+# This way AH TUI can manage splits as needed
+enabled_layouts splits
 ```
 
 **How it works:**
 
 - `allow_remote_control yes` - Enables remote control; required for all `kitty @` commands
 - `listen_on unix:/tmp/kitty-ah.sock` - Tells Kitty to create a UNIX domain socket file at this path when it starts
+- `enabled_layouts splits` - Enables the splits layout, allowing for more flexible window management
 - Kitty automatically creates the socket file (type `srwxr-xr-x`) using the `bind()` system call
 - The socket file is automatically removed when Kitty exits
 - Commands from **within** Kitty windows don't need `--to` (they use stdio/environment)
