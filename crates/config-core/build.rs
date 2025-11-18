@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_methods)] // Build scripts must emit Cargo directives via println!
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -151,10 +152,7 @@ fn main() {
             let generated_pretty = serde_json::to_string_pretty(&generated_canonical).unwrap();
             fs::write(&expected_path, &generated_pretty).expect("Failed to update expected schema");
 
-            println!(
-                "Updated expected schema with new flattened structure: {}",
-                expected_path.display()
-            );
+            // Informational output removed to keep build scripts quiet
         }
     } else {
         // Create expected schema file
@@ -164,10 +162,7 @@ fn main() {
         let generated_pretty = serde_json::to_string_pretty(&generated).unwrap();
         fs::write(&expected_path, generated_pretty).expect("Failed to write expected schema");
 
-        println!(
-            "Generated initial expected schema at: {}",
-            expected_path.display()
-        );
+        // Informational output removed to keep build scripts quiet
     }
 
     println!("cargo:rerun-if-changed=src/schema.rs");

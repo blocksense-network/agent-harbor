@@ -99,7 +99,6 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
                 enforcement::mask_layer(&mut masked_layer, &enforcement);
             }
 
-            let before = json.clone();
             merge::merge_two_json(&mut json, masked_layer.clone());
             // Record provenance for the actual values that were set
             record_layer_provenance(&masked_layer, scope, &mut prov, "");
@@ -107,7 +106,7 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
     }
 
     // Mark enforced keys in provenance
-    prov.enforced.extend(enforcement.keys.into_iter());
+    prov.enforced.extend(enforcement.keys);
 
     Ok(Resolved {
         json,
@@ -134,7 +133,7 @@ fn record_layer_provenance(
                 record_layer_provenance(v, scope, prov, &pfx);
             }
         }
-        Array(arr) => {
+        Array(_) => {
             // Record the entire array
             prov.winner.insert(prefix.to_string(), scope);
             prov.changes.entry(prefix.to_string()).or_default().push((scope, layer.clone()));
@@ -163,7 +162,6 @@ fn enforcement_from_layer(system_json: &J) -> enforcement::Enforcement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]
@@ -361,7 +359,6 @@ mod tests {
         assert_eq!(resolved.json["repo"]["init"]["task-runner"], "just");
 
         // Check provenance
-        println!("Provenance winners: {:?}", resolved.provenance.winner);
         assert_eq!(resolved.provenance.winner.get("ui"), Some(&Scope::User));
         assert_eq!(
             resolved.provenance.winner.get("repo.supported-agents"),
