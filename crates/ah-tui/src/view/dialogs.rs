@@ -17,7 +17,7 @@ pub enum ModalState {
     RepositorySearch,
     BranchSearch,
     ModelSearch,
-    ModelSelection,
+    AgentSelection,
     Settings,
     GoToLine,
     FindReplace,
@@ -48,7 +48,7 @@ pub struct ShortcutHelpModal {
 
 /// Model selection modal
 #[derive(Debug, Clone)]
-pub struct ModelSelectionModal {
+pub struct AgentSelectionModal {
     pub available_models: Vec<String>,
     pub selected_models: Vec<ah_domain_types::AgentChoice>,
     pub selected_index: usize, // Index in available_models for adding new models
@@ -246,7 +246,7 @@ pub fn render_fuzzy_modal(
 pub fn render_model_selection_modal_with_hit_regions(
     frame: &mut Frame,
     modal: &crate::view_model::ModalViewModel,
-    options: &[crate::view_model::ModelOptionViewModel],
+    options: &[crate::view_model::AgentSelectionViewModel],
     area: Rect,
     theme: &Theme,
     hit_registry: &mut crate::view::HitTestRegistry<crate::view_model::MouseAction>,
@@ -324,7 +324,7 @@ pub fn render_model_selection_modal_with_hit_regions(
 
     // Calculate visible range
     let start_index = modal.selected_index.saturating_sub(3);
-    let visible_options: Vec<(usize, &crate::view_model::ModelOptionViewModel)> = options
+    let visible_options: Vec<(usize, &crate::view_model::AgentSelectionViewModel)> = options
         .iter()
         .enumerate()
         .skip(start_index)
@@ -412,7 +412,7 @@ pub fn render_model_selection_modal_with_hit_regions(
 /// Render model selection modal
 pub fn render_model_selection_modal(
     frame: &mut Frame,
-    modal: &ModelSelectionModal,
+    modal: &AgentSelectionModal,
     area: Rect,
     theme: &Theme,
 ) {

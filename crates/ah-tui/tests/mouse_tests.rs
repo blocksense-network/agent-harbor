@@ -3,7 +3,7 @@
 
 //! Unit tests for mouse interaction functionality
 
-use ah_tui::view_model::dashboard_model::{MouseAction, Msg, ViewModel};
+use ah_tui::view_model::agents_selector_model::{MouseAction, Msg, ViewModel};
 use ratatui::layout::Rect;
 
 mod common;
@@ -125,7 +125,7 @@ mod tests {
 
         // Check initial count
         let initial_count = if let Some(modal) = &vm.active_modal {
-            if let ah_tui::view_model::ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ah_tui::view_model::ModalType::AgentSelection { options } = &modal.modal_type {
                 options[0].count
             } else {
                 0
@@ -137,7 +137,7 @@ mod tests {
         // Test increment
         vm.perform_mouse_action(MouseAction::ModelIncrementCount(0));
         if let Some(modal) = &vm.active_modal {
-            if let ah_tui::view_model::ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ah_tui::view_model::ModalType::AgentSelection { options } = &modal.modal_type {
                 assert_eq!(options[0].count, initial_count + 1);
             }
         }
@@ -145,7 +145,7 @@ mod tests {
         // Test decrement
         vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
         if let Some(modal) = &vm.active_modal {
-            if let ah_tui::view_model::ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ah_tui::view_model::ModalType::AgentSelection { options } = &modal.modal_type {
                 assert_eq!(options[0].count, initial_count);
             }
         }
@@ -154,7 +154,7 @@ mod tests {
         vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
         vm.perform_mouse_action(MouseAction::ModelDecrementCount(0));
         if let Some(modal) = &vm.active_modal {
-            if let ah_tui::view_model::ModalType::ModelSelection { options } = &modal.modal_type {
+            if let ah_tui::view_model::ModalType::AgentSelection { options } = &modal.modal_type {
                 assert_eq!(options[0].count, 0); // Should not go below 0
             }
         }

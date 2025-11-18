@@ -87,8 +87,8 @@ export const DraftExecutionControls = () => {
         </label>
         <ModelMultiSelect
           availableModels={DEFAULT_MODEL_OPTIONS}
-          selectedModels={state.modelSelections()}
-          onSelectionChange={state.changeModelSelections}
+          selectedModels={state.AgentSelections()}
+          onSelectionChange={state.changeAgentSelections}
           placeholder="Models"
           testId="model-selector"
           class="flex-1"

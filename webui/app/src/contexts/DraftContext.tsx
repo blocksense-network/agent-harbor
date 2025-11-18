@@ -18,9 +18,9 @@ import {
 import { apiClient, DraftTask, DraftCreate, DraftUpdate, CreateTaskRequest } from '../lib/api';
 import { useFocus } from './FocusContext';
 import { useDraftPromptAutoSave } from '../components/task-feed/draft/useDraftPromptAutoSave';
-import type { ModelSelection } from '../components/task-feed/draft/ModelMultiSelect';
+import type { AgentSelection } from '../components/task-feed/draft/ModelMultiSelect';
 import {
-  agentToModelSelection,
+  agentToAgentSelection,
   buildBranchUpdate,
   buildRepositoryUpdate,
   countAgents,
@@ -262,8 +262,8 @@ export type DraftCardState = {
   changeRepository: (repository: DraftRepository | null) => void;
   selectedBranch: () => string;
   changeBranch: (branch: string | null) => void;
-  modelSelections: () => ModelSelection[];
-  changeModelSelections: (selections: ModelSelection[]) => void;
+  AgentSelections: () => AgentSelection[];
+  changeAgentSelections: (selections: AgentSelection[]) => void;
   canSubmit: () => boolean;
   isSubmitting: () => boolean;
   submit: () => Promise<void>;
@@ -278,7 +278,7 @@ const createDraftCardState = (getDraft: () => DraftTask): DraftCardState => {
     useDrafts();
 
   const [isSubmitting, setIsSubmitting] = createSignal(false);
-  const [modelSelections, setModelSelections] = createSignal<ModelSelection[]>([]);
+  const [AgentSelections, setAgentSelections] = createSignal<AgentSelection[]>([]);
   let textareaRef: HTMLTextAreaElement | undefined;
 
   const draft = createMemo(() => getDraft());
@@ -301,17 +301,17 @@ const createDraftCardState = (getDraft: () => DraftTask): DraftCardState => {
     if (isSelected() && textareaRef && typeof window !== 'undefined') {
       if (document.activeElement !== textareaRef) {
         textareaRef.focus();
-        setDraftFocus(draft().id, countAgents(modelSelections()));
+        setDraftFocus(draft().id, countAgents(AgentSelections()));
       }
     }
   });
 
   const handlePromptFocus = () => {
-    setDraftFocus(draft().id, countAgents(modelSelections()));
+    setDraftFocus(draft().id, countAgents(AgentSelections()));
   };
 
-  const changeModelSelections = (selections: ModelSelection[]) => {
-    setModelSelections(selections);
+  const changeAgentSelections = (selections: AgentSelection[]) => {
+    setAgentSelections(selections);
     updateDraftAgentCount(draft().id, countAgents(selections));
     void updateDraft(draft().id, { agents: selectionsToAgents(selections) });
   };
@@ -347,7 +347,7 @@ const createDraftCardState = (getDraft: () => DraftTask): DraftCardState => {
       autoSave.prompt().trim() &&
         selectedRepository() &&
         selectedBranch() &&
-        countAgents(modelSelections()) > 0,
+        countAgents(AgentSelections()) > 0,
     ),
   );
 
@@ -356,7 +356,7 @@ const createDraftCardState = (getDraft: () => DraftTask): DraftCardState => {
 
     setIsSubmitting(true);
     try {
-      const selections = modelSelections();
+      const selections = AgentSelections();
       const agents = selections.length > 0 ? selectionsToAgents(selections) : draft().agents;
       const primaryAgent = agents?.[0];
       if (!primaryAgent) {
@@ -402,27 +402,27 @@ const createDraftCardState = (getDraft: () => DraftTask): DraftCardState => {
     }
   };
 
-  const syncModelSelectionsFromDraft = () => {
+  const syncAgentSelectionsFromDraft = () => {
     const agents = draft().agents || [];
     if (agents.length === 0) {
       return;
     }
 
-    const selections = agents.map(agentToModelSelection);
-    const currentKey = JSON.stringify(modelSelections());
+    const selections = agents.map(agentToAgentSelection);
+    const currentKey = JSON.stringify(AgentSelections());
     const nextKey = JSON.stringify(selections);
     if (currentKey !== nextKey) {
-      setModelSelections(selections);
+      setAgentSelections(selections);
     }
     updateDraftAgentCount(draft().id, countAgents(selections));
   };
 
   onMount(() => {
-    syncModelSelectionsFromDraft();
+    syncAgentSelectionsFromDraft();
   });
 
   createEffect(() => {
-    syncModelSelectionsFromDraft();
+    syncAgentSelectionsFromDraft();
   });
 
   return {
@@ -438,8 +438,8 @@ const createDraftCardState = (getDraft: () => DraftTask): DraftCardState => {
     changeRepository,
     selectedBranch,
     changeBranch,
-    modelSelections,
-    changeModelSelections,
+    AgentSelections,
+    changeAgentSelections,
     canSubmit,
     isSubmitting,
     submit,

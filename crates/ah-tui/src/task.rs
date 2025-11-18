@@ -10,7 +10,7 @@ use std::time::SystemTime;
 
 /// Represents a model selection with instance count
 #[derive(Debug, Clone, PartialEq)]
-pub struct ModelSelection {
+pub struct AgentSelection {
     pub model_name: String,
     pub instance_count: u32,
     pub selected: bool,
@@ -48,7 +48,7 @@ pub enum TaskState {
         description: String,
         selected_repo: String,
         selected_branch: String,
-        selected_models: Vec<ModelSelection>,
+        selected_models: Vec<AgentSelection>,
         focused_button: ButtonFocus,
         modal_state: Option<ModalState>,
     },
@@ -82,7 +82,7 @@ pub enum ModalState {
     /// Model selection modal
     ModelSelect {
         query: String,
-        options: Vec<ModelSelection>,
+        options: Vec<AgentSelection>,
         selected_index: usize,
     },
 }
@@ -247,24 +247,24 @@ pub fn create_sample_branches() -> Vec<String> {
 }
 
 /// Create default model selections for new tasks
-pub fn create_default_models() -> Vec<ModelSelection> {
+pub fn create_default_models() -> Vec<AgentSelection> {
     vec![
-        ModelSelection {
+        AgentSelection {
             model_name: "GPT-4".to_string(),
             instance_count: 1,
             selected: true,
         },
-        ModelSelection {
+        AgentSelection {
             model_name: "Claude-3".to_string(),
             instance_count: 0,
             selected: false,
         },
-        ModelSelection {
+        AgentSelection {
             model_name: "Gemini".to_string(),
             instance_count: 0,
             selected: false,
         },
-        ModelSelection {
+        AgentSelection {
             model_name: "Llama-3".to_string(),
             instance_count: 0,
             selected: false,

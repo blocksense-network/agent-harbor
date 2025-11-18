@@ -17,7 +17,7 @@ use super::dialogs::{
     FuzzySearchModal, render_fuzzy_modal, render_model_selection_modal_with_hit_regions,
     render_settings_dialog,
 };
-use crate::view_model::dashboard_model::FilteredOption;
+use crate::view_model::agents_selector_model::FilteredOption;
 use crate::view_model::{ModalState, ViewModel};
 
 /// Render active modal dialogs
@@ -47,9 +47,9 @@ pub fn render_modals(
         ModalState::ModelSearch => {
             // Use the actual modal data from view_model
             if let Some(modal) = &view_model.active_modal {
-                if let crate::view_model::ModalType::ModelSelection { options } = &modal.modal_type
+                if let crate::view_model::ModalType::AgentSelection { options } = &modal.modal_type
                 {
-                    // For ModelSelection, render with +/- controls and register hit regions
+                    // For AgentSelection, render with +/- controls and register hit regions
                     render_model_selection_modal_with_hit_regions(
                         frame,
                         modal,

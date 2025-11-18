@@ -30,13 +30,14 @@ pub use settings::{
     FontStyle, KeyMatcher, KeyboardLocalization, KeyboardOperation, KeyboardShortcut, MetaKey,
     Platform, SelectionDialogStyle, Settings,
 };
-pub use task::{ButtonFocus, ModalState, ModelSelection, Task, TaskState};
+pub use task::{AgentSelection, ButtonFocus, ModalState, Task, TaskState};
 
 // Re-export workspace files enumerator types from ah-core
 pub use ah_core::{RepositoryFile, WorkspaceFilesEnumerator};
 pub use view::{Theme, ViewCache};
 pub use view_model::{
     AgentActivityRow,
+    AgentSelectionViewModel,
     AutoSaveState,
     ButtonStyle,
     ButtonViewModel,
@@ -47,7 +48,6 @@ pub use view_model::{
     FooterAction,
     ModalType,
     ModalViewModel,
-    ModelOptionViewModel,
     // Dashboard ViewModel types
     MouseAction,
     Msg,

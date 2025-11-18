@@ -4,7 +4,7 @@
  */
 
 import { DraftTask, DraftUpdate } from '../../../lib/api';
-import type { ModelSelection } from './ModelMultiSelect';
+import type { AgentSelection } from './ModelMultiSelect';
 
 export type DraftRepository = {
   id: string;
@@ -14,12 +14,12 @@ export type DraftRepository = {
   keywords?: string[];
 };
 
-export const agentToModelSelection = (agent: DraftTask['agents'][number]): ModelSelection => ({
+export const agentToAgentSelection = (agent: DraftTask['agents'][number]): AgentSelection => ({
   model: `${agent.type.charAt(0).toUpperCase() + agent.type.slice(1)} ${agent.version.replace(/-/g, ' ')}`,
   instances: (agent as { instances?: number }).instances || 1,
 });
 
-export const selectionsToAgents = (selections: ModelSelection[]): DraftTask['agents'] =>
+export const selectionsToAgents = (selections: AgentSelection[]): DraftTask['agents'] =>
   selections.map(selection => {
     const [type, ...versionParts] = selection.model.toLowerCase().split(' ');
     return {
@@ -58,5 +58,5 @@ export const buildBranchUpdate = (
   ...(draft.repo?.url !== undefined && { url: draft.repo.url }),
 });
 
-export const countAgents = (selections: ModelSelection[]): number =>
+export const countAgents = (selections: AgentSelection[]): number =>
   selections.reduce((total, selection) => total + selection.instances, 0);
