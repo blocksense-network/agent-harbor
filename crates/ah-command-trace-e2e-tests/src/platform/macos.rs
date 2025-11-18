@@ -3,8 +3,9 @@
 
 //! macOS-specific test utilities for shim injection
 
+use std::io::{self, Write};
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 /// Inject the shim using DYLD_INSERT_LIBRARIES and run a command
 pub async fn inject_shim_and_run(
@@ -15,9 +16,9 @@ pub async fn inject_shim_and_run(
 ) -> Result<Output, Box<dyn std::error::Error>> {
     let shim_path_str = shim_path.to_string_lossy();
 
-    eprintln!("Injecting shim: {}", shim_path_str);
-    eprintln!("Socket path: {}", socket_path);
-    eprintln!("Command: {} {:?}", command, args);
+    let _ = writeln!(io::stderr(), "Injecting shim: {}", shim_path_str);
+    let _ = writeln!(io::stderr(), "Socket path: {}", socket_path);
+    let _ = writeln!(io::stderr(), "Command: {} {:?}", command, args);
 
     // Set all environment variables directly on the command
     let output = tokio::process::Command::new(command)
@@ -29,7 +30,7 @@ pub async fn inject_shim_and_run(
         .output()
         .await?;
 
-    eprintln!("Command output: {:?}", output);
+    let _ = writeln!(io::stderr(), "Command output: {:?}", output);
 
     Ok(output)
 }

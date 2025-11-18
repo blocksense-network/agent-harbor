@@ -1,8 +1,8 @@
 // Copyright 2025 Schelling Point Labs Inc
 //! Smoke tests for shim injection and basic functionality
 
-use ah_command_trace_proto::Request;
 use ah_command_trace_server::test_utils::TestServer;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -31,7 +31,10 @@ async fn shim_injection_smoke_basic() {
 async fn shim_injection_smoke_with_socket() {
     // Skip this test in CI environments where shim injection may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping shim injection smoke test with socket in CI environment");
+        let _ = writeln!(
+            io::stdout(),
+            "⚠️  Skipping shim injection smoke test with socket in CI environment"
+        );
         return;
     }
 
@@ -71,7 +74,7 @@ async fn shim_injection_smoke_with_socket() {
     .await;
 
     match result {
-        Ok((server_result, output)) => {
+        Ok((server_result, _output)) => {
             server_result.expect("Server failed");
             let messages = server.get_requests().await;
 
@@ -145,7 +148,10 @@ async fn shim_disabled_dormant() {
 async fn shim_teardown_clean_exit() {
     // Skip this test in CI environments where shim injection may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping shim teardown clean exit test in CI environment");
+        let _ = writeln!(
+            io::stdout(),
+            "⚠️  Skipping shim teardown clean exit test in CI environment"
+        );
         return;
     }
 
@@ -208,7 +214,10 @@ async fn shim_teardown_clean_exit() {
 async fn shim_teardown_underscore_exit() {
     // Skip this test in CI environments where shim injection may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping shim teardown underscore exit test in CI environment");
+        let _ = writeln!(
+            io::stdout(),
+            "⚠️  Skipping shim teardown underscore exit test in CI environment"
+        );
         return;
     }
 
@@ -276,13 +285,17 @@ fn find_test_helper_path() -> PathBuf {
     let helper_path = root.join("test_helper");
 
     // Print debug info
-    eprintln!("Looking for test_helper at: {}", helper_path.display());
-    eprintln!("Current dir: {:?}", std::env::current_dir());
+    let _ = writeln!(
+        io::stderr(),
+        "Looking for test_helper at: {}",
+        helper_path.display()
+    );
+    let _ = writeln!(io::stderr(), "Current dir: {:?}", std::env::current_dir());
 
     if !helper_path.exists() {
         // Try target/debug/deps/test_helper
         let deps_path = root.join("deps").join("test_helper");
-        eprintln!("Also tried: {}", deps_path.display());
+        let _ = writeln!(io::stderr(), "Also tried: {}", deps_path.display());
         if deps_path.exists() {
             return deps_path;
         }
@@ -307,12 +320,16 @@ fn find_spawn_tree_path() -> PathBuf {
     let helper_path = root.join("spawn_tree");
 
     // Print debug info
-    eprintln!("Looking for spawn_tree at: {}", helper_path.display());
+    let _ = writeln!(
+        io::stderr(),
+        "Looking for spawn_tree at: {}",
+        helper_path.display()
+    );
 
     if !helper_path.exists() {
         // Try target/debug/deps/spawn_tree
         let deps_path = root.join("deps").join("spawn_tree");
-        eprintln!("Also tried: {}", deps_path.display());
+        let _ = writeln!(io::stderr(), "Also tried: {}", deps_path.display());
         if deps_path.exists() {
             return deps_path;
         }
@@ -331,7 +348,10 @@ fn find_spawn_tree_path() -> PathBuf {
 async fn shim_records_spawn_tree() {
     // Skip this test in CI environments where shim injection may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping shim spawn tree test in CI environment");
+        let _ = writeln!(
+            io::stdout(),
+            "⚠️  Skipping shim spawn tree test in CI environment"
+        );
         return;
     }
 
@@ -391,7 +411,8 @@ async fn shim_records_spawn_tree() {
                     }
                     ah_command_trace_proto::Request::CommandStart(cmd_start) => {
                         command_starts.push(cmd_start.clone());
-                        eprintln!(
+                        let _ = writeln!(
+                            io::stderr(),
                             "Received CommandStart: pid={}, executable={:?}",
                             cmd_start.pid,
                             String::from_utf8_lossy(&cmd_start.executable)
@@ -408,7 +429,11 @@ async fn shim_records_spawn_tree() {
 
             // For a basic test, we expect at least the parent process to be reported
             // The spawn_tree program creates multiple processes, so we should see several
-            eprintln!("Received {} CommandStart messages", command_starts.len());
+            let _ = writeln!(
+                io::stderr(),
+                "Received {} CommandStart messages",
+                command_starts.len()
+            );
 
             // TODO: Add more detailed assertions about the expected process tree structure
             // For now, verify we have a reasonable number of command starts

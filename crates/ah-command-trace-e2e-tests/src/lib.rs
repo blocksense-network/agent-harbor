@@ -16,7 +16,6 @@ pub mod platform;
 pub use platform::*;
 
 use std::path::PathBuf;
-use std::process::Command;
 
 /// Find the path to the built shim library
 pub fn find_shim_path() -> PathBuf {
