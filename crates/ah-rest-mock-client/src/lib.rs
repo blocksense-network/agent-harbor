@@ -8,16 +8,11 @@
 //! It's designed for testing the TUI and other components with realistic
 //! behavior and configurable delays.
 
-use ah_core::{
-    SplitMode, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager, TaskState,
-    agent_types::AgentType, task_manager::SaveDraftResult,
-};
+use ah_core::{SplitMode, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager, TaskState};
 use ah_domain_types::{
-    AgentChoice, AgentSoftware, AgentSoftwareBuild, Branch, DeliveryStatus, Repository,
-    TaskExecution, TaskInfo,
+    AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, TaskExecution, TaskInfo,
 };
 use ah_domain_types::{LogLevel, ToolStatus};
-use ah_rest_api_contract::*;
 use async_trait::async_trait;
 use futures::stream;
 use futures::{Stream, StreamExt};
@@ -62,7 +57,6 @@ pub struct MockRestClient {
     simulate_failures: bool,
     /// Whether to return mock data when no tasks are stored
     return_mock_data: bool,
-    /// Next task ID counter
     next_task_id: Arc<RwLock<u64>>,
 }
 
@@ -116,6 +110,7 @@ impl MockRestClient {
     }
 
     /// Generate a unique draft ID
+    #[allow(dead_code)] // Will be used when draft feature endpoints integrate
     async fn generate_draft_id(&self) -> String {
         let mut counter = self.next_task_id.write().await;
         let id = *counter;
@@ -235,7 +230,7 @@ impl TaskManager for MockRestClient {
         }
 
         // Get any stored tasks/drafts
-        let mut drafts: Vec<TaskInfo> = self.drafts.read().await.values().cloned().collect();
+        let drafts: Vec<TaskInfo> = self.drafts.read().await.values().cloned().collect();
         let mut tasks: Vec<TaskExecution> = Vec::new();
 
         // Convert stored TaskInfo to TaskExecution and add any mock data
@@ -426,10 +421,9 @@ impl ah_core::RestApiClient for MockRestClient {
                     },
                 })
             }
-            ah_core::TaskLaunchResult::Failure { error } => Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                error,
-            ))),
+            ah_core::TaskLaunchResult::Failure { error } => {
+                Err(Box::new(std::io::Error::other(error)))
+            }
         }
     }
 
@@ -803,10 +797,7 @@ impl ah_core::RestApiClient for MockRestClient {
 
         // Simulate failures if enabled
         if self.simulate_failures {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Mock REST client failure",
-            )));
+            return Err(Box::new(std::io::Error::other("Mock REST client failure")));
         }
 
         // Mock successful save - in a real implementation, this would persist to the server
@@ -885,7 +876,7 @@ impl MockEventState {
     fn next_delay_ms(&self) -> u64 {
         match self.event_index {
             // Status changes are quick
-            0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 => self.delay_ms,
+            0..=15 => self.delay_ms,
             // Tool execution lines are fast (50-200ms)
             16..=50 => 50 + (rand::random::<u64>() % 150).max(10),
             // Thoughts and file edits are slower (2-5 seconds)
@@ -1290,7 +1281,7 @@ impl MockEventState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ah_core::RestApiClient;
+    use ah_core::{RestApiClient, agent_types::AgentType};
 
     #[tokio::test]
     async fn mock_client_launches_successful_task() {
