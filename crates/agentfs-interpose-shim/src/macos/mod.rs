@@ -1,9 +1,6 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
-
-#![allow(non_snake_case)]
-#![allow(unused_doc_comments)]
-#![allow(clippy::empty_line_after_doc_comments)]
+#![allow(non_snake_case)] // Allow FFI/macOS symbol-style names for interposed functions
 
 use libc::{c_int, c_void};
 use once_cell::sync::{Lazy, OnceCell};
@@ -1300,7 +1297,12 @@ fn log_message(message: &str) {
         return;
     }
     let pid = std::process::id();
-    eprintln!("{LOG_PREFIX} [pid={pid}] {message}");
+    // Avoid clippy::disallowed_methods (eprintln). Write directly to stderr.
+    {
+        use std::io::Write;
+        let mut stderr = std::io::stderr();
+        let _ = writeln!(stderr, "{LOG_PREFIX} [pid={pid}] {message}");
+    }
 }
 
 #[no_mangle]
@@ -1758,7 +1760,7 @@ mod tests {
         // Note: We can't easily test the actual hook behavior without mocking
         // the CoreFoundation APIs, but we can verify the hook functions are defined
         // by checking that the module compiles successfully with the hooks present.
-        assert!(true); // Placeholder assertion - the real test is compilation success
+        // Placeholder removed (clippy::assertions_on_constants). The compile-time presence of hooks is validated by successful compilation of this test.
     }
 }
 
@@ -1781,6 +1783,7 @@ mod interpose {
 
     // attrlist types for getattrlist operations
     #[repr(C)]
+    #[allow(non_camel_case_types)] // Preserve C struct name required for FFI correctness
     struct attrlist {
         bitmapcount: u16,
         reserved: u16,
@@ -1806,7 +1809,6 @@ mod interpose {
     use std::mem;
 
     /// Generic function to send a request and receive a response
-
     /// Send dir_open request and receive directory handle
     fn send_dir_open_request(path: &CStr) -> Result<u64, String> {
         let stream_arc = {
@@ -2260,7 +2262,6 @@ mod interpose {
         Ok(())
     }
 
-    /// Interposed open function (fd_open + fd tracking)
     redhook::hook! {
         unsafe fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_open {
             if path.is_null() {
@@ -2308,7 +2309,6 @@ mod interpose {
         }
     }
 
-    /// Interposed openat function
     redhook::hook! {
         unsafe fn openat(dirfd: c_int, path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_openat {
             if path.is_null() {
@@ -2324,7 +2324,6 @@ mod interpose {
         }
     }
 
-    /// Interposed creat function
     redhook::hook! {
         unsafe fn creat(path: *const c_char, mode: mode_t) -> c_int => my_creat {
             if path.is_null() {
@@ -2349,7 +2348,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fopen function
     redhook::hook! {
         unsafe fn fopen(filename: *const c_char, mode: *const c_char) -> *mut libc::FILE => my_fopen {
             log_message("interposing fopen() - not yet implemented, falling back to original");
@@ -2359,7 +2357,6 @@ mod interpose {
         }
     }
 
-    /// Interposed freopen function
     redhook::hook! {
         unsafe fn freopen(filename: *const c_char, mode: *const c_char, stream: *mut libc::FILE) -> *mut libc::FILE => my_freopen {
             log_message("interposing freopen() - not yet implemented, falling back to original");
@@ -2369,7 +2366,6 @@ mod interpose {
         }
     }
 
-    /// Interposed opendir function
     redhook::hook! {
         unsafe fn opendir(dirname: *const c_char) -> *mut libc::DIR => my_opendir {
             if dirname.is_null() {
@@ -2398,7 +2394,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fdopendir function
     redhook::hook! {
         unsafe fn fdopendir(fd: c_int) -> *mut libc::DIR => my_fdopendir {
             log_message(&format!("interposing fdopendir({}) - not yet implemented, falling back to original", fd));
@@ -2408,7 +2403,6 @@ mod interpose {
         }
     }
 
-    /// Interposed readdir function
     redhook::hook! {
         unsafe fn readdir(dirp: *mut libc::DIR) -> *mut libc::dirent => my_readdir {
             log_message(&format!("interposing readdir({:?})", dirp));
@@ -2440,7 +2434,6 @@ mod interpose {
         }
     }
 
-    /// Interposed closedir function
     redhook::hook! {
         unsafe fn closedir(dirp: *mut libc::DIR) -> c_int => my_closedir {
             log_message(&format!("interposing closedir({:?})", dirp));
@@ -2463,7 +2456,6 @@ mod interpose {
         }
     }
 
-    /// Interposed readlink function
     redhook::hook! {
         unsafe fn readlink(pathname: *const c_char, buf: *mut c_char, bufsiz: libc::size_t) -> libc::ssize_t => my_readlink {
             if pathname.is_null() {
@@ -2495,7 +2487,6 @@ mod interpose {
         }
     }
 
-    /// Interposed readlinkat function
     redhook::hook! {
         unsafe fn readlinkat(dirfd: c_int, pathname: *const c_char, buf: *mut c_char, bufsiz: libc::size_t) -> libc::ssize_t => my_readlinkat {
             if pathname.is_null() {
@@ -2985,7 +2976,6 @@ mod interpose {
         })
     }
 
-    /// Interposed stat function
     redhook::hook! {
         unsafe fn stat(path: *const c_char, buf: *mut libc::stat) -> c_int => my_stat {
             if path.is_null() || buf.is_null() {
@@ -3042,7 +3032,6 @@ mod interpose {
         }
     }
 
-    /// Interposed lstat function
     redhook::hook! {
         unsafe fn lstat(path: *const c_char, buf: *mut libc::stat) -> c_int => my_lstat {
             if path.is_null() || buf.is_null() {
@@ -3099,7 +3088,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fstat function
     redhook::hook! {
         unsafe fn fstat(fd: c_int, buf: *mut libc::stat) -> c_int => my_fstat {
             if buf.is_null() {
@@ -3155,7 +3143,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fstatat function
     redhook::hook! {
         unsafe fn fstatat(dirfd: c_int, path: *const c_char, buf: *mut libc::stat, flags: c_int) -> c_int => my_fstatat {
             if path.is_null() || buf.is_null() {
@@ -3212,7 +3199,6 @@ mod interpose {
         }
     }
 
-    /// Interposed statfs function
     redhook::hook! {
         unsafe fn statfs(path: *const c_char, buf: *mut libc::statfs) -> c_int => my_statfs {
             if path.is_null() || buf.is_null() {
@@ -3258,7 +3244,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fstatfs function
     redhook::hook! {
         unsafe fn fstatfs(fd: c_int, buf: *mut libc::statfs) -> c_int => my_fstatfs {
             if buf.is_null() {
@@ -3303,7 +3288,6 @@ mod interpose {
         }
     }
 
-    /// Interposed truncate function
     redhook::hook! {
         unsafe fn truncate(path: *const c_char, length: off_t) -> c_int => my_truncate {
             if path.is_null() {
@@ -3327,7 +3311,6 @@ mod interpose {
         }
     }
 
-    /// Interposed ftruncate function
     redhook::hook! {
         unsafe fn ftruncate(fd: c_int, length: off_t) -> c_int => my_ftruncate {
             log_message(&format!("interposing ftruncate({}, {})", fd, length));
@@ -3346,7 +3329,6 @@ mod interpose {
         }
     }
 
-    /// Interposed utimes function
     redhook::hook! {
         unsafe fn utimes(path: *const c_char, times: *const timespec) -> c_int => my_utimes {
             if path.is_null() {
@@ -3376,7 +3358,6 @@ mod interpose {
         }
     }
 
-    /// Interposed futimes function
     redhook::hook! {
         unsafe fn futimes(fd: c_int, times: *const timespec) -> c_int => my_futimes {
             let times_opt = if times.is_null() {
@@ -3401,7 +3382,6 @@ mod interpose {
         }
     }
 
-    /// Interposed utimensat function
     redhook::hook! {
         unsafe fn utimensat(dirfd: c_int, path: *const c_char, times: *const timespec, flags: c_int) -> c_int => my_utimensat {
             if path.is_null() {
@@ -3431,7 +3411,6 @@ mod interpose {
         }
     }
 
-    /// Interposed futimens function
     redhook::hook! {
         unsafe fn futimens(fd: c_int, times: *const timespec) -> c_int => my_futimens {
             let times_opt = if times.is_null() {
@@ -3456,7 +3435,6 @@ mod interpose {
         }
     }
 
-    /// Interposed chown function
     redhook::hook! {
         unsafe fn chown(path: *const c_char, uid: uid_t, gid: gid_t) -> c_int => my_chown {
             if path.is_null() {
@@ -3480,7 +3458,6 @@ mod interpose {
         }
     }
 
-    /// Interposed lchown function
     redhook::hook! {
         unsafe fn lchown(path: *const c_char, uid: uid_t, gid: gid_t) -> c_int => my_lchown {
             if path.is_null() {
@@ -3504,7 +3481,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fchown function
     redhook::hook! {
         unsafe fn fchown(fd: c_int, uid: uid_t, gid: gid_t) -> c_int => my_fchown {
             log_message(&format!("interposing fchown({}, {}, {})", fd, uid, gid));
@@ -3523,7 +3499,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fchownat function
     redhook::hook! {
         unsafe fn fchownat(dirfd: c_int, path: *const c_char, uid: uid_t, gid: gid_t, flags: c_int) -> c_int => my_fchownat {
             if path.is_null() {
@@ -3547,7 +3522,6 @@ mod interpose {
         }
     }
 
-    /// Interposed chmod function
     redhook::hook! {
         unsafe fn chmod(path: *const c_char, mode: mode_t) -> c_int => my_chmod {
             if path.is_null() {
@@ -3571,7 +3545,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fchmod function
     redhook::hook! {
         unsafe fn fchmod(fd: c_int, mode: mode_t) -> c_int => my_fchmod {
             log_message(&format!("interposing fchmod({}, {:#o})", fd, mode));
@@ -3590,7 +3563,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fchmodat function
     redhook::hook! {
         unsafe fn fchmodat(dirfd: c_int, path: *const c_char, mode: mode_t, flags: c_int) -> c_int => my_fchmodat {
             if path.is_null() {
@@ -3614,7 +3586,6 @@ mod interpose {
         }
     }
 
-    /// Send rename request
     fn send_rename_request(old_path: &CStr, new_path: &CStr) -> Result<(), String> {
         let old_path_str = old_path.to_string_lossy().into_owned();
         let new_path_str = new_path.to_string_lossy().into_owned();
@@ -3907,7 +3878,6 @@ mod interpose {
         })
     }
 
-    /// Interposed rename function
     redhook::hook! {
         unsafe fn rename(old_path: *const c_char, new_path: *const c_char) -> c_int => my_rename {
             if old_path.is_null() || new_path.is_null() {
@@ -3932,7 +3902,6 @@ mod interpose {
         }
     }
 
-    /// Interposed renameat function
     redhook::hook! {
         unsafe fn renameat(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char) -> c_int => my_renameat {
             if old_path.is_null() || new_path.is_null() {
@@ -3957,7 +3926,6 @@ mod interpose {
         }
     }
 
-    /// Interposed renameatx_np function (macOS-specific)
     redhook::hook! {
         unsafe fn renameatx_np(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: libc::c_uint) -> c_int => my_renameatx_np {
             if old_path.is_null() || new_path.is_null() {
@@ -3982,7 +3950,6 @@ mod interpose {
         }
     }
 
-    /// Interposed link function
     redhook::hook! {
         unsafe fn link(old_path: *const c_char, new_path: *const c_char) -> c_int => my_link {
             if old_path.is_null() || new_path.is_null() {
@@ -4007,7 +3974,6 @@ mod interpose {
         }
     }
 
-    /// Interposed linkat function
     redhook::hook! {
         unsafe fn linkat(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: c_int) -> c_int => my_linkat {
             if old_path.is_null() || new_path.is_null() {
@@ -4032,7 +3998,6 @@ mod interpose {
         }
     }
 
-    /// Interposed symlink function
     redhook::hook! {
         unsafe fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int => my_symlink {
             if target.is_null() || linkpath.is_null() {
@@ -4057,7 +4022,6 @@ mod interpose {
         }
     }
 
-    /// Interposed symlinkat function
     redhook::hook! {
         unsafe fn symlinkat(target: *const c_char, new_dirfd: c_int, linkpath: *const c_char) -> c_int => my_symlinkat {
             if target.is_null() || linkpath.is_null() {
@@ -4082,7 +4046,6 @@ mod interpose {
         }
     }
 
-    /// Interposed unlink function
     redhook::hook! {
         unsafe fn unlink(path: *const c_char) -> c_int => my_unlink {
             if path.is_null() {
@@ -4106,7 +4069,6 @@ mod interpose {
         }
     }
 
-    /// Interposed unlinkat function
     redhook::hook! {
         unsafe fn unlinkat(dirfd: c_int, path: *const c_char, flags: c_int) -> c_int => my_unlinkat {
             if path.is_null() {
@@ -4130,7 +4092,6 @@ mod interpose {
         }
     }
 
-    /// Interposed remove function (alias for unlink)
     redhook::hook! {
         unsafe fn remove(path: *const c_char) -> c_int => my_remove {
             if path.is_null() {
@@ -4154,7 +4115,6 @@ mod interpose {
         }
     }
 
-    /// Interposed mkdir function
     redhook::hook! {
         unsafe fn mkdir(path: *const c_char, mode: mode_t) -> c_int => my_mkdir {
             if path.is_null() {
@@ -4178,7 +4138,6 @@ mod interpose {
         }
     }
 
-    /// Interposed mkdirat function
     redhook::hook! {
         unsafe fn mkdirat(dirfd: c_int, path: *const c_char, mode: mode_t) -> c_int => my_mkdirat {
             if path.is_null() {
@@ -4202,7 +4161,6 @@ mod interpose {
         }
     }
 
-    /// Interposed close function (for fd tracking)
     redhook::hook! {
         unsafe fn close(fd: c_int) -> c_int => my_close_fd_tracking {
             // Check if this fd is a kqueue or being watched by kqueue and notify daemon to unregister
@@ -4264,7 +4222,6 @@ mod interpose {
         }
     }
 
-    /// Interposed dup function (for fd tracking)
     redhook::hook! {
         unsafe fn dup(oldfd: c_int) -> c_int => my_dup_fd_tracking {
             let result = redhook::real!(dup)(oldfd);
@@ -4279,7 +4236,6 @@ mod interpose {
         }
     }
 
-    /// Interposed dup2 function (for fd tracking)
     redhook::hook! {
         unsafe fn dup2(oldfd: c_int, newfd: c_int) -> c_int => my_dup2_fd_tracking {
             let result = redhook::real!(dup2)(oldfd, newfd);
@@ -4294,7 +4250,6 @@ mod interpose {
         }
     }
 
-    /// Interposed dup3 function (for fd tracking)
     redhook::hook! {
         unsafe fn dup3(oldfd: c_int, newfd: c_int, flags: c_int) -> c_int => my_dup3_fd_tracking {
             let result = redhook::real!(dup3)(oldfd, newfd, flags);
@@ -4309,7 +4264,6 @@ mod interpose {
         }
     }
 
-    /// Interposed chdir function (for cwd tracking)
     redhook::hook! {
         unsafe fn chdir(path: *const c_char) -> c_int => my_chdir_fd_tracking {
             if path.is_null() {
@@ -4333,7 +4287,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fchdir function (for cwd tracking)
     redhook::hook! {
         unsafe fn fchdir(fd: c_int) -> c_int => my_fchdir_fd_tracking {
             let result = redhook::real!(fchdir)(fd);
@@ -4350,7 +4303,6 @@ mod interpose {
         }
     }
 
-    /// Interposed getxattr function
     redhook::hook! {
         unsafe fn getxattr(path: *const c_char, name: *const c_char, value: *mut c_void, size: size_t) -> ssize_t => my_getxattr {
             if path.is_null() || name.is_null() {
@@ -4403,7 +4355,6 @@ mod interpose {
         }
     }
 
-    /// Interposed lgetxattr function
     redhook::hook! {
         unsafe fn lgetxattr(path: *const c_char, name: *const c_char, value: *mut c_void, size: size_t, position: u32, options: c_int) -> ssize_t => my_lgetxattr {
             if path.is_null() || name.is_null() {
@@ -4452,7 +4403,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fgetxattr function
     redhook::hook! {
         unsafe fn fgetxattr(fd: c_int, name: *const c_char, value: *mut c_void, size: size_t, position: u32, options: c_int) -> ssize_t => my_fgetxattr {
             if name.is_null() {
@@ -4500,7 +4450,6 @@ mod interpose {
         }
     }
 
-    /// Interposed setxattr function
     redhook::hook! {
         unsafe fn setxattr(path: *const c_char, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_setxattr {
             if path.is_null() || name.is_null() || value.is_null() {
@@ -4533,7 +4482,6 @@ mod interpose {
         }
     }
 
-    /// Interposed lsetxattr function
     redhook::hook! {
         unsafe fn lsetxattr(path: *const c_char, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_lsetxattr {
             if path.is_null() || name.is_null() || value.is_null() {
@@ -4566,7 +4514,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fsetxattr function
     redhook::hook! {
         unsafe fn fsetxattr(fd: c_int, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_fsetxattr {
             if name.is_null() || value.is_null() {
@@ -4598,7 +4545,6 @@ mod interpose {
         }
     }
 
-    /// Interposed listxattr function
     redhook::hook! {
         unsafe fn listxattr(path: *const c_char, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_listxattr {
             if path.is_null() {
@@ -4646,7 +4592,6 @@ mod interpose {
         }
     }
 
-    /// Interposed llistxattr function
     redhook::hook! {
         unsafe fn llistxattr(path: *const c_char, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_llistxattr {
             if path.is_null() {
@@ -4694,7 +4639,6 @@ mod interpose {
         }
     }
 
-    /// Interposed flistxattr function
     redhook::hook! {
         unsafe fn flistxattr(fd: c_int, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_flistxattr {
             log_message(&format!("interposing flistxattr({}, {}, {}, {})",
@@ -4736,7 +4680,6 @@ mod interpose {
         }
     }
 
-    /// Interposed removexattr function
     redhook::hook! {
         unsafe fn removexattr(path: *const c_char, name: *const c_char, options: c_int) -> c_int => my_removexattr {
             if path.is_null() || name.is_null() {
@@ -4766,7 +4709,6 @@ mod interpose {
         }
     }
 
-    /// Interposed lremovexattr function
     redhook::hook! {
         unsafe fn lremovexattr(path: *const c_char, name: *const c_char, options: c_int) -> c_int => my_lremovexattr {
             if path.is_null() || name.is_null() {
@@ -4796,7 +4738,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fremovexattr function
     redhook::hook! {
         unsafe fn fremovexattr(fd: c_int, name: *const c_char, options: c_int) -> c_int => my_fremovexattr {
             if name.is_null() {
@@ -4825,7 +4766,6 @@ mod interpose {
         }
     }
 
-    /// Interposed acl_get_file function
     redhook::hook! {
         unsafe fn acl_get_file(path: *const c_char, acl_type: acl_type_t) -> acl_t => my_acl_get_file {
             if path.is_null() {
@@ -4861,7 +4801,6 @@ mod interpose {
         }
     }
 
-    /// Interposed acl_set_file function
     redhook::hook! {
         unsafe fn acl_set_file(path: *const c_char, acl_type: acl_type_t, acl: acl_t) -> c_int => my_acl_set_file {
             if path.is_null() || acl.is_null() {
@@ -4898,7 +4837,6 @@ mod interpose {
         }
     }
 
-    /// Interposed acl_get_fd function
     redhook::hook! {
         unsafe fn acl_get_fd(fd: c_int, acl_type: acl_type_t) -> acl_t => my_acl_get_fd {
             log_message(&format!("interposing acl_get_fd({}, {})", fd, acl_type));
@@ -4927,7 +4865,6 @@ mod interpose {
         }
     }
 
-    /// Interposed acl_set_fd function
     redhook::hook! {
         unsafe fn acl_set_fd(fd: c_int, acl_type: acl_type_t, acl: acl_t) -> c_int => my_acl_set_fd {
             if acl.is_null() {
@@ -4961,7 +4898,6 @@ mod interpose {
         }
     }
 
-    /// Interposed acl_delete_def_file function
     redhook::hook! {
         unsafe fn acl_delete_def_file(path: *const c_char) -> c_int => my_acl_delete_def_file {
             if path.is_null() {
@@ -4989,7 +4925,6 @@ mod interpose {
         }
     }
 
-    /// Interposed chflags function
     redhook::hook! {
         unsafe fn chflags(path: *const c_char, flags: libc::c_uint) -> c_int => my_chflags {
             if path.is_null() {
@@ -5018,7 +4953,6 @@ mod interpose {
         }
     }
 
-    /// Interposed lchflags function
     redhook::hook! {
         unsafe fn lchflags(path: *const c_char, flags: libc::c_uint) -> c_int => my_lchflags {
             if path.is_null() {
@@ -5047,7 +4981,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fchflags function
     redhook::hook! {
         unsafe fn fchflags(fd: c_int, flags: libc::c_uint) -> c_int => my_fchflags {
             log_message(&format!("interposing fchflags({}, {:#x})", fd, flags));
@@ -5069,7 +5002,6 @@ mod interpose {
         }
     }
 
-    /// Interposed getattrlist function
     redhook::hook! {
         unsafe fn getattrlist(path: *const c_char, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_long) -> c_int => my_getattrlist {
             if path.is_null() || attr_list.is_null() {
@@ -5121,7 +5053,6 @@ mod interpose {
         }
     }
 
-    /// Interposed setattrlist function
     redhook::hook! {
         unsafe fn setattrlist(path: *const c_char, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_long) -> c_int => my_setattrlist {
             if path.is_null() || attr_list.is_null() {
@@ -5166,7 +5097,6 @@ mod interpose {
         }
     }
 
-    /// Interposed getattrlistbulk function
     redhook::hook! {
         unsafe fn getattrlistbulk(dirfd: c_int, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_int64_t) -> c_int => my_getattrlistbulk {
             if attr_list.is_null() {
@@ -5223,7 +5153,6 @@ mod interpose {
         }
     }
 
-    /// Interposed copyfile function
     redhook::hook! {
         unsafe fn copyfile(from: *const c_char, to: *const c_char, state: copyfile_state_t, flags: copyfile_flags_t) -> c_int => my_copyfile {
             if from.is_null() || to.is_null() {
@@ -5262,7 +5191,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fcopyfile function
     redhook::hook! {
         unsafe fn fcopyfile(from_fd: c_int, to_fd: c_int, state: copyfile_state_t, flags: copyfile_flags_t) -> c_int => my_fcopyfile {
             log_message(&format!("interposing fcopyfile({}, {}, state={:p}, flags={:#x})",
@@ -5294,7 +5222,6 @@ mod interpose {
         }
     }
 
-    /// Interposed clonefile function
     redhook::hook! {
         unsafe fn clonefile(from: *const c_char, to: *const c_char, flags: c_int) -> c_int => my_clonefile {
             if from.is_null() || to.is_null() {
@@ -5325,7 +5252,6 @@ mod interpose {
         }
     }
 
-    /// Interposed fclonefileat function
     redhook::hook! {
         unsafe fn fclonefileat(from_fd: c_int, to_fd: c_int, to: *const c_char, flags: c_int) -> c_int => my_fclonefileat {
             if to.is_null() {
@@ -5356,8 +5282,6 @@ mod interpose {
             }
         }
     }
-
-    /// Interposed FSEventStreamCreate function - translate overlay paths to backstore paths
 
     redhook::hook! {
         unsafe fn FSEventStreamCreate(allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, paths_to_watch: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create {
@@ -5439,8 +5363,6 @@ mod interpose {
         }
     }
 
-    /// Interposed FSEventStreamCreateRelativeToDevice function
-
     redhook::hook! {
         unsafe fn FSEventStreamCreateRelativeToDevice(allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, device_to_watch: dev_t, paths_to_watch_relative_to_device: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create_relative_to_device {
             log_message(&format!("interposing FSEventStreamCreateRelativeToDevice(device={}, since_when={}, latency={}, flags={:#x})",
@@ -5489,8 +5411,6 @@ mod interpose {
         }
     }
 
-    /// Interposed FSEventStreamScheduleWithRunLoop function
-
     redhook::hook! {
         unsafe fn FSEventStreamScheduleWithRunLoop(stream_ref: FSEventStreamRef, run_loop: CFRunLoopRef, run_loop_mode: CFStringRef) -> () => my_fsevent_stream_schedule_with_run_loop {
             log_message(&format!("interposing FSEventStreamScheduleWithRunLoop for stream {:p}", stream_ref));
@@ -5510,8 +5430,6 @@ mod interpose {
         }
     }
 
-    /// Interposed FSEventStreamStop function - clean up callback information
-
     redhook::hook! {
         unsafe fn FSEventStreamStop(stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_stop {
             log_message(&format!("interposing FSEventStreamStop for stream {:p}", stream_ref));
@@ -5526,8 +5444,6 @@ mod interpose {
         }
     }
 
-    /// Interposed FSEventStreamInvalidate function - clean up callback information
-
     redhook::hook! {
         unsafe fn FSEventStreamInvalidate(stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_invalidate {
             log_message(&format!("interposing FSEventStreamInvalidate for stream {:p}", stream_ref));
@@ -5541,8 +5457,6 @@ mod interpose {
             log_message(&format!("FSEvents: cleaned up callback info for invalidated stream {:p}", stream_ref));
         }
     }
-
-    /// Interposed kevent function - filter and inject vnode events based on AgentFS state
 
     redhook::hook! {
         unsafe fn kevent(kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, timeout: *const libc::timespec) -> c_int => my_kevent {
@@ -5693,8 +5607,6 @@ mod interpose {
         }
     }
 
-    /// Interposed kqueue function - setup doorbell channel to daemon
-
     redhook::hook! {
         unsafe fn kqueue() -> c_int => my_kqueue {
             log_message("interposing kqueue() - setting up doorbell channel");
@@ -5752,7 +5664,6 @@ mod interpose {
     }
 
     /// Send a request to daemon with FD passing via SCM_RIGHTS
-
     fn send_request_with_fd(request: Request, fd_to_send: c_int) -> Result<(), String> {
         use std::os::unix::io::AsRawFd;
 
@@ -5827,7 +5738,6 @@ mod interpose {
     }
 
     /// Request pending synthesized events from the daemon for a specific kqueue
-
     fn request_pending_events(kq_fd: c_int) -> Vec<SynthesizedKevent> {
         let pid = std::process::id();
 
@@ -5852,8 +5762,6 @@ mod interpose {
             }
         }
     }
-
-    /// Interposed kevent64 function (64-bit variant)
 
     redhook::hook! {
         unsafe fn kevent64(kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, flags: c_uint, timeout: *const libc::timespec) -> c_int => my_kevent64 {
