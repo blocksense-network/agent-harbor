@@ -6,14 +6,20 @@
 import { Layout, Navbar } from 'nextra-theme-docs';
 import { Head } from 'nextra/components';
 import { getPageMap } from 'nextra/page-map';
+import { ReactNode } from 'react';
+import { Metadata } from 'next';
 
 import './globals.css';
 
-export const metadata = {};
+export const metadata: Metadata = {};
 
 const navbar = <Navbar logo={<b>Nextra</b>} />;
 
-export default async function RootLayout({ children }) {
+type RootLayoutProps = {
+  children: ReactNode;
+};
+
+export default async function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <Head></Head>
