@@ -13,8 +13,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     let size = common::measure_terminal_size()?;
-
-    println!("{}", serde_json::to_string(&size)?);
+    // Emit structured JSON size information via tracing instead of stdout print
+    use tracing::info;
+    info!(terminal_size = %serde_json::to_string(&size)?, "captured terminal size");
 
     // Keep the process alive briefly so the multiplexer can capture the output
     std::thread::sleep(std::time::Duration::from_millis(200));

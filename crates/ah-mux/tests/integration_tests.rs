@@ -59,16 +59,19 @@ impl BorderInfo {
 /// This test exercises the core multiplexer functionality that should work
 /// across all implementations: window creation, pane splitting, command execution.
 fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplexer + Send + Sync>) {
-    println!("Testing multiplexer: {}", mux_name);
+    tracing::info!(multiplexer = mux_name, "Testing multiplexer");
 
     // Skip multiplexers that don't support the required operations
     if matches!(mux_name, "zellij") {
-        println!("  Skipping {} - limited pane splitting support", mux_name);
+        tracing::info!(
+            multiplexer = mux_name,
+            "Skipping - limited pane splitting support"
+        );
         return;
     }
 
     // Step 1: Create a new window
-    println!("  Step 1: Creating multiplexer window...");
+    tracing::info!("Step 1: Creating multiplexer window...");
     let window_id = mux
         .open_window(&WindowOptions {
             title: Some(&format!("test-{}-{}", mux_name, std::process::id())),
@@ -78,19 +81,22 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
         })
         .expect("Failed to create window");
 
-    println!("    Created window: {}", window_id);
+    tracing::info!(window_id = window_id.as_str(), "Created window");
 
     // Give the window time to initialize
     thread::sleep(Duration::from_millis(200));
 
     // Step 2: Test that we can list windows
-    println!("  Step 2: Listing windows...");
+    tracing::info!("Step 2: Listing windows...");
     let windows_before = mux.list_windows(None).expect("Failed to list windows");
-    println!("    Found {} windows before creation", windows_before.len());
+    tracing::debug!(
+        count = windows_before.len(),
+        "Found windows before creation"
+    );
 
     // List windows again after creation
     let windows_after = mux.list_windows(None).expect("Failed to list windows");
-    println!("    Found {} windows after creation", windows_after.len());
+    tracing::debug!(count = windows_after.len(), "Found windows after creation");
 
     // We should have at least one window now (some multiplexers may create default windows)
     assert!(
@@ -101,7 +107,7 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
 
     // Step 3: Test pane splitting (if supported)
     if !matches!(mux_name, "zellij") {
-        println!("  Step 3: Testing pane splitting...");
+        tracing::info!("Step 3: Testing pane splitting...");
 
         let pane_id = mux.split_pane(
             Some(&window_id),
@@ -117,30 +123,36 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
 
         match pane_id {
             Ok(pane) => {
-                println!("    Successfully created pane: {}", pane);
+                tracing::info!(pane_id = pane.as_str(), "Successfully created pane");
 
                 // Test command execution in the pane
                 if mux.send_text(&pane, "echo 'hello from pane'\n").is_ok() {
-                    println!("    Successfully sent text to pane");
+                    tracing::debug!(pane_id = pane.as_str(), "Successfully sent text to pane");
                 } else {
-                    println!("    Text sending not supported (expected for some multiplexers)");
+                    tracing::debug!(
+                        pane_id = pane.as_str(),
+                        "Text sending not supported for this multiplexer"
+                    );
                 }
 
                 // Test pane focusing
                 if mux.focus_pane(&pane).is_ok() {
-                    println!("    Successfully focused pane");
+                    tracing::debug!(pane_id = pane.as_str(), "Successfully focused pane");
                 } else {
-                    println!("    Pane focusing not supported (expected for some multiplexers)");
+                    tracing::debug!(
+                        pane_id = pane.as_str(),
+                        "Pane focusing not supported for this multiplexer"
+                    );
                 }
             }
             Err(e) => {
-                println!("    Pane splitting failed (may be expected): {:?}", e);
+                tracing::warn!(error = ?e, "Pane splitting failed (may be expected)");
             }
         }
     }
 
     // Step 4: Test command execution
-    println!("  Step 4: Testing command execution...");
+    tracing::info!("Step 4: Testing command execution...");
     let cmd_result = mux.run_command(
         &window_id,
         "echo 'multiplexer test'",
@@ -151,18 +163,18 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
     );
 
     match cmd_result {
-        Ok(_) => println!("    Command execution successful"),
-        Err(e) => println!("    Command execution failed: {:?}", e),
+        Ok(_) => tracing::debug!("Command execution successful"),
+        Err(e) => tracing::error!(error = ?e, "Command execution failed"),
     }
 
     // Step 5: Test window focusing
-    println!("  Step 5: Testing window focusing...");
+    tracing::info!("Step 5: Testing window focusing...");
     match mux.focus_window(&window_id) {
-        Ok(_) => println!("    Window focusing successful"),
-        Err(e) => println!("    Window focusing failed: {:?}", e),
+        Ok(_) => tracing::debug!("Window focusing successful"),
+        Err(e) => tracing::error!(error = ?e, "Window focusing failed"),
     }
 
-    println!("  ✅ Basic operations test completed for {}", mux_name);
+    tracing::info!(multiplexer = mux_name, "Basic operations test completed");
 }
 
 /// Test that verifies pane sizing math works correctly
