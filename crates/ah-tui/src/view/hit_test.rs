@@ -60,6 +60,11 @@ impl<A: Clone> HitTestRegistry<A> {
         self.zones.len()
     }
 
+    /// Returns true if there are no registered zones.
+    pub fn is_empty(&self) -> bool {
+        self.zones.is_empty()
+    }
+
     /// Debug dump all registered zones.
     pub fn debug_dump(&self)
     where

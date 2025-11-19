@@ -349,7 +349,7 @@ mod keyboard {
             &mut vm,
             "pressing Tab to focus AdvancedOptionsButton",
             |vm| {
-                assert!(vm.handle_key_event(tab.clone()));
+                assert!(vm.handle_key_event(tab));
             },
         );
         assert_eq!(
@@ -378,7 +378,7 @@ mod keyboard {
             &mut vm,
             "pressing Shift+Tab to focus AdvancedOptionsButton",
             |vm| {
-                assert!(vm.handle_key_event(shift_tab.clone()));
+                assert!(vm.handle_key_event(shift_tab));
             },
         );
         assert_eq!(
@@ -1103,7 +1103,7 @@ mod mouse {
         // Verify modal content
         if let Some(modal) = &vm.active_modal {
             assert_eq!(modal.title, "Advanced Launch Options");
-            assert!(modal.filtered_options.len() > 0);
+            assert!(!modal.filtered_options.is_empty());
         }
     }
 
@@ -1120,37 +1120,37 @@ mod mouse {
         vm.change_focus(DashboardFocusState::DraftTask(0));
 
         // Initial state: focused on TaskDescription
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
         // TAB to RepositorySelector
         send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::RepositorySelector);
         }
 
         // TAB to BranchSelector
         send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::BranchSelector);
         }
 
         // TAB to ModelSelector
         send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
         }
 
         // TAB to GoButton
         send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::GoButton);
         }
 
         // TAB to AdvancedOptionsButton
         send_key(&mut vm, KeyCode::Tab, KeyModifiers::empty());
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::AdvancedOptionsButton);
         }
 
@@ -1164,13 +1164,13 @@ mod mouse {
         // Verify modal content
         if let Some(modal) = &vm.active_modal {
             assert_eq!(modal.title, "Advanced Launch Options");
-            assert!(modal.filtered_options.len() > 0);
+            assert!(!modal.filtered_options.is_empty());
         }
     }
 
     #[tokio::test]
     async fn launch_in_background_shortcut_launches_task() {
-        let (mut vm, mock_client) = new_view_model_with_mock_client();
+        let (mut vm, _mock_client) = new_view_model_with_mock_client();
         if let Some(card) = vm.draft_cards.first_mut() {
             card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
             card.description.insert_str("Background task");
@@ -1216,7 +1216,7 @@ mod mouse {
 
     #[tokio::test]
     async fn launch_in_split_view_shortcut_launches_task() {
-        let (mut vm, mock_client) = new_view_model_with_mock_client();
+        let (mut vm, _mock_client) = new_view_model_with_mock_client();
         if let Some(card) = vm.draft_cards.first_mut() {
             card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
             card.description.insert_str("Split view task");
@@ -1259,7 +1259,7 @@ mod mouse {
 
     #[tokio::test]
     async fn launch_in_horizontal_split_with_focus_shortcut_launches_task() {
-        let (mut vm, mock_client) = new_view_model_with_mock_client();
+        let (mut vm, _mock_client) = new_view_model_with_mock_client();
         if let Some(card) = vm.draft_cards.first_mut() {
             card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
             card.description.insert_str("Horizontal split focus task");
@@ -1302,7 +1302,7 @@ mod mouse {
 
     #[tokio::test]
     async fn launch_in_vertical_split_shortcut_launches_task() {
-        let (mut vm, mock_client) = new_view_model_with_mock_client();
+        let (mut vm, _mock_client) = new_view_model_with_mock_client();
         if let Some(card) = vm.draft_cards.first_mut() {
             card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
             card.description.insert_str("Vertical split task");
@@ -3844,7 +3844,7 @@ mod mouse {
                 .iter()
                 .filter(|opt| matches!(opt, FilteredOption::Option { .. }))
                 .collect();
-            assert!(claude_options.len() >= 1); // Should have at least Claude Code
+            assert!(!claude_options.is_empty()); // Should have at least Claude Code
 
             // Check that all visible options contain "claude" (case insensitive)
             for option in &claude_options {
