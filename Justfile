@@ -356,6 +356,22 @@ test-fuse-overlay-ops:
 test-fuse-control-plane:
     ./scripts/test-fuse-control-plane.sh
 
+# Extended attributes harness (F8.1)
+test-fuse-xattrs:
+    ./scripts/test-fuse-xattrs.sh
+
+# Special file creation harness (F8.2)
+test-fuse-mknod:
+    ./scripts/test-fuse-mknod.sh
+
+# Mount option harness (F8.3)
+test-fuse-mount-options:
+    ./scripts/test-fuse-mount-options.sh
+
+# Advanced I/O harness (F8.4)
+test-fuse-advanced-io:
+    ./scripts/test-fuse-advanced-io.sh
+
 # Performance benchmarks (F6)
 test-fuse-performance:
     ./scripts/test-fuse-performance.sh
