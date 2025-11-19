@@ -8,12 +8,14 @@
 
 use std::env;
 use std::process::Command;
+use tracing::{error, info, warn};
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {
-        eprintln!("Usage: {} <ip_address>", args[0]);
+        warn!(program = %args[0], "Usage: <program> <ip_address>");
         std::process::exit(1);
     }
 
@@ -40,19 +42,15 @@ fn main() -> anyhow::Result<()> {
         let status_code = status_code_str.trim();
         if status_code == "200" || status_code == "000" || status_code == "301" {
             // 000 means connection succeeded but no HTTP response (common for IP addresses)
-            println!("SUCCESS: Connected to {}", ip_address);
+            info!(ip = %ip_address, status = %status_code, "Connection succeeded");
             std::process::exit(0);
         } else {
-            println!("FAILED: HTTP {} from {}", status_code, ip_address);
+            error!(ip = %ip_address, status = %status_code, "Connection failed with HTTP status");
             std::process::exit(1);
         }
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        println!(
-            "FAILED: Could not connect to {}: {}",
-            ip_address,
-            stderr.trim()
-        );
+        error!(ip = %ip_address, error = %stderr.trim(), "Connection attempt failed");
         std::process::exit(1);
     }
 }
