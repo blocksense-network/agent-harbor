@@ -1990,6 +1990,10 @@ impl fuser::Filesystem for AgentFsFuse {
 
         if let Some((fh_raw, owner_pid)) = fh_candidate {
             debug!("getattr using fh {} for ino {}", fh_raw, ino);
+            if let Err(errno) = self.wait_for_handle_writes(fh_raw) {
+                reply.error(errno);
+                return;
+            }
             let handle_id = HandleId(fh_raw);
             match self.core.fstat(&owner_pid, handle_id) {
                 Ok(stat) => {
