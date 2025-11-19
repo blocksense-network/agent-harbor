@@ -47,6 +47,7 @@ use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::oneshot;
+use tracing::{debug, error, info};
 
 /// Errors that can occur when running the command trace server
 #[derive(Error, Debug)]
@@ -106,7 +107,7 @@ impl CommandTraceServer {
         }
 
         let listener = UnixListener::bind(&self.socket_path)?;
-        eprintln!("Command trace server listening on {:?}", self.socket_path);
+        info!(?self.socket_path, "Command trace server listening");
 
         loop {
             // Use timeout to make the server cancellable
@@ -114,16 +115,16 @@ impl CommandTraceServer {
                 .await
             {
                 Ok(Ok((stream, addr))) => {
-                    eprintln!("Accepted connection from {:?}", addr);
+                    debug!(?addr, "Accepted connection");
                     let handler = handler.clone();
                     tokio::spawn(async move {
                         if let Err(e) = Self::handle_connection(stream, handler).await {
-                            eprintln!("Error handling connection: {:?}", e);
+                            error!(error = ?e, "Error handling connection");
                         }
                     });
                 }
                 Ok(Err(e)) => {
-                    eprintln!("Accept error: {:?}", e);
+                    error!(error = ?e, "Accept error");
                     return Err(ServerError::Io(e));
                 }
                 Err(_) => {
