@@ -1,4 +1,4 @@
-<!-- cSpell:ignore erms subtests SGID -->
+<!-- cSpell:ignore erms subtests subtest SGID -->
 
 ### Overview
 
@@ -62,15 +62,8 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
     - `ftruncate/02.t`: 2/5 tests failed
     - `ftruncate/03.t`: 2/5 tests failed
     - `ftruncate/05.t`: 6/15 tests failed
-  - [ ] **F1.2 Fix chown permission enforcement** - Extensive chown test failures (321/1280 in chown/00.t alone):
-    - Root ownership changes failing when they should succeed
-    - Non-root chown operations failing with incorrect error codes
-    - Sticky bit directory ownership validation issues
-  - [ ] **F1.3 Fix chmod permission enforcement** - Widespread chmod permission check failures:
-    - `chmod/00.t`: 7/119 tests failed
-    - `chmod/07.t`: 4/25 tests failed
-    - `chmod/11.t`: 24/109 tests failed
-    - `chmod/12.t`: 6/14 tests failed
+  - [ ] **F1.2 Fix chown permission enforcement** – pjdfstest now only reports the upstream `chown/00.t` TODO diagnostics (IDs 650, 654, 665–666, 671–672, etc.), but we are keeping this box open until the harness clears those TODOs or we ship a targeted override; documenting the limitation prevents us from silently regressing.
+  - [ ] **F1.3 Fix chmod permission enforcement** – `chmod/12.t` still fails because unprivileged FUSE mounts are forced `nosuid`/`nodev` by the kernel, so Linux rejects the open before AgentFS can clear the SUID/SGID bits. Fix requires a privileged mount path; we keep this unchecked and track the limitation under F5.
   - [ ] **F1.4 Fix link operation permissions** - Hard link creation permission issues:
     - `link/00.t`: 19/202 tests failed
   - [ ] **F1.5 Fix open permission enforcement** - File open permission validation failures:
@@ -230,9 +223,10 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T5.3 Critical Test Validation**: Ensure all basic POSIX filesystem operations pass
   - **T5.4 Regression Detection**: Compare results against established baseline, fail on regressions
 - **Verification Results**:
-  - [x] Full-suite harness – `scripts/test-pjdfstest-full.sh` (`just test-pjdfstest-full`) sets up pjdfstest, mounts AgentFS with `--allow-other`, streams `prove -vr` output to `logs/pjdfstest-full-<ts>/pjdfstest.log`, and persists a machine-readable `summary.json`. The current baseline of known failures lives in `specs/Public/AgentFS/pjdfstest.baseline.json`; the harness compares every run against it (latest log: `logs/pjdfstest-full-20251115-135821/`).
+  - [x] Full-suite harness – `scripts/test-pjdfstest-full.sh` (`just test-pjdfstest-full`) sets up pjdfstest, mounts AgentFS with `--allow-other`, streams `prove -vr` output to `logs/pjdfstest-full-<ts>/pjdfstest.log`, and persists a machine-readable `summary.json`. The current baseline of known failures lives in `specs/Public/AgentFS/pjdfstest.baseline.json`; the harness compares every run against it (latest log: `logs/pjdfstest-full-20251119-065317/`).
   - [x] CI gating – GitHub Actions now runs the pjdfstest job after the FUSE harness; it executes `SKIP_FUSE_BUILD=1 just test-pjdfstest-full`, compares results to `specs/Public/AgentFS/pjdfstest.baseline.json`, and uploads the log directory so regressions fail automatically.
-  - [x] Current compliance status – `logs/pjdfstest-full-20251119-023733/summary.json` now shows a clean run except for the upstream `chown/00.t` TODO diagnostics and the kernel-expected `chmod/12.t` nosuid failure. The refreshed baseline in `specs/Public/AgentFS/pjdfstest.baseline.json` mirrors this output so any regression outside those known exceptions fails the harness immediately.
+  - [x] Current compliance status – `logs/pjdfstest-full-20251119-065317/summary.json` shows a clean run except for the upstream `chown/00.t` TODO diagnostics and the kernel-expected `chmod/12.t` nosuid failure. The refreshed baseline mirrors this output so any regression outside those known exceptions fails the harness immediately.
+  - [x] Regression watch – `unlink/14.t` briefly failed (subtest 6) when the kernel returned an empty read after `unlink`; we reran `just pjdfs-file unlink/14.t` and two consecutive full-suite harnesses (`logs/pjdfstest-full-20251119-063815/` and `…065317/`), both green. If the kernel behaviour changes we will promote the reproduction into the baseline.
   - [ ] Kernel limitation snapshot – `chmod/12.t` is an expected failure for the unprivileged mount because Linux treats FUSE mounts as `nosuid`/`nodev` unless the filesystem is mounted by root. The kernel refuses `O_TRUNC` and other writes on SUID/SGID files before forwarding the request to AgentFS, so the server cannot clear the bits in time. The privileged follow-up harness validates the intended behavior, while the main run keeps this test in the known-failure list (see `man mount.fuse(8)` for the underlying restriction).
 
 **F6. Performance Benchmarking Suite** (3–4d) 🔄 IN PROGRESS
