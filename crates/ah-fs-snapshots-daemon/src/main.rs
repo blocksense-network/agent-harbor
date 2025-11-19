@@ -116,7 +116,7 @@ async fn run_stdin_mode() -> Result<()> {
 
         // Encode response as SSZ and output as hex
         let response_bytes = Encode::as_ssz_bytes(&response);
-        println!("{}", hex::encode(&response_bytes));
+        tracing::info!(response_hex = %hex::encode(&response_bytes), "daemon response");
     }
 
     Ok(())

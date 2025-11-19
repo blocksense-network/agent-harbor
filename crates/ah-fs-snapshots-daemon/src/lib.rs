@@ -81,7 +81,7 @@ mod tests {
         });
 
         if !zfs_available {
-            eprintln!("ZFS not available, skipping test");
+            tracing::warn!("ZFS not available, skipping test");
             return;
         }
 
@@ -90,10 +90,7 @@ mod tests {
         let test_dataset_exists = tokio_test::block_on(zfs_dataset_exists(test_dataset));
 
         if !test_dataset_exists {
-            eprintln!(
-                "ZFS test dataset {} does not exist, skipping test",
-                test_dataset
-            );
+            tracing::warn!(dataset = %test_dataset, "ZFS test dataset does not exist, skipping test");
             return;
         }
 
@@ -218,31 +215,31 @@ mod integration_tests {
     #[tokio::test]
     async fn test_daemon_liveness() {
         if !daemon_socket_exists() {
-            println!("⚠️  Daemon socket not found at {}", DAEMON_SOCKET_PATH);
-            println!("💡 To run integration tests, start the daemon first:");
-            println!("   just start-ah-fs-snapshots-daemon");
+            tracing::warn!(socket=%DAEMON_SOCKET_PATH, "Daemon socket not found");
+            tracing::info!(
+                "To run integration tests, start the daemon first: just start-ah-fs-snapshots-daemon"
+            );
             return;
         }
 
         if !ping_daemon().await {
-            println!("⚠️  Daemon is not responsive (socket exists but ping failed)");
-            println!("💡 To run integration tests, ensure daemon is running:");
-            println!("   just start-ah-fs-snapshots-daemon");
+            tracing::warn!("Daemon not responsive (socket exists but ping failed)");
+            tracing::info!("Ensure daemon running: just start-ah-fs-snapshots-daemon");
             return;
         }
 
-        println!("✅ Daemon is alive and responsive");
+        tracing::info!("Daemon is alive and responsive");
     }
 
     #[tokio::test]
     async fn test_daemon_ping_via_socket() {
         if !daemon_socket_exists() {
-            println!("⚠️  Skipping ping test - daemon socket not found");
+            tracing::warn!("Skipping ping test - daemon socket not found");
             return;
         }
 
         if !ping_daemon().await {
-            println!("⚠️  Skipping ping test - daemon not responsive");
+            tracing::warn!("Skipping ping test - daemon not responsive");
             return;
         }
 
@@ -254,7 +251,7 @@ mod integration_tests {
                     "Expected Success response, got {:?}",
                     response
                 );
-                println!("✅ Ping test passed - daemon responds correctly to ping requests");
+                tracing::info!("Ping test passed - daemon responds correctly to ping requests");
             }
             Err(e) => {
                 panic!("Failed to send ping request: {}", e);
@@ -265,12 +262,12 @@ mod integration_tests {
     #[tokio::test]
     async fn test_daemon_zfs_operations() {
         if !daemon_socket_exists() {
-            println!("⚠️  Skipping ZFS operations test - daemon socket not found");
+            tracing::warn!("Skipping ZFS operations test - daemon socket not found");
             return;
         }
 
         if !ping_daemon().await {
-            println!("⚠️  Skipping ZFS operations test - daemon not responsive");
+            tracing::warn!("Skipping ZFS operations test - daemon not responsive");
             return;
         }
 
@@ -284,20 +281,21 @@ mod integration_tests {
         {
             Ok(response) => match response {
                 Response::Success(_) => {
-                    println!("✅ ZFS snapshot creation test passed");
+                    tracing::info!("ZFS snapshot creation test passed");
                 }
                 Response::Error(msg) => {
                     let error_msg = String::from_utf8_lossy(&msg);
-                    println!("⚠️  ZFS snapshot test failed with error: {}", error_msg);
-                    println!("💡 Ensure ZFS test filesystem is set up:");
-                    println!("   just create-test-filesystems");
+                    tracing::warn!(error=%error_msg, "ZFS snapshot test failed");
+                    tracing::info!(
+                        "Ensure ZFS test filesystem is set up: just create-test-filesystems"
+                    );
                 }
                 _ => {
-                    println!("⚠️  Unexpected response for ZFS snapshot: {:?}", response);
+                    tracing::warn!(?response, "Unexpected response for ZFS snapshot");
                 }
             },
             Err(e) => {
-                println!("❌ Failed to send ZFS snapshot request: {}", e);
+                tracing::error!(error=%e, "Failed to send ZFS snapshot request");
             }
         }
     }
@@ -305,12 +303,12 @@ mod integration_tests {
     #[tokio::test]
     async fn test_daemon_btrfs_operations() {
         if !daemon_socket_exists() {
-            println!("⚠️  Skipping Btrfs operations test - daemon socket not found");
+            tracing::warn!("Skipping Btrfs operations test - daemon socket not found");
             return;
         }
 
         if !ping_daemon().await {
-            println!("⚠️  Skipping Btrfs operations test - daemon not responsive");
+            tracing::warn!("Skipping Btrfs operations test - daemon not responsive");
             return;
         }
 
@@ -325,17 +323,14 @@ mod integration_tests {
             Ok(response) => match response {
                 Response::Error(msg) => {
                     let error_msg = String::from_utf8_lossy(&msg);
-                    println!(
-                        "ℹ️  Btrfs snapshot test (expected to fail without setup): {}",
-                        error_msg
-                    );
+                    tracing::info!(error=%error_msg, "Btrfs snapshot test (expected failure without setup)");
                 }
                 _ => {
-                    println!("✅ Btrfs snapshot creation test passed (unexpected!)");
+                    tracing::info!("Btrfs snapshot creation test passed (unexpected!)");
                 }
             },
             Err(e) => {
-                println!("❌ Failed to send Btrfs snapshot request: {}", e);
+                tracing::error!(error=%e, "Failed to send Btrfs snapshot request");
             }
         }
     }
@@ -343,12 +338,12 @@ mod integration_tests {
     #[tokio::test]
     async fn test_daemon_communication_protocol() {
         if !daemon_socket_exists() {
-            println!("⚠️  Skipping protocol test - daemon socket not found");
+            tracing::warn!("Skipping protocol test - daemon socket not found");
             return;
         }
 
         if !ping_daemon().await {
-            println!("⚠️  Skipping protocol test - daemon not responsive");
+            tracing::warn!("Skipping protocol test - daemon not responsive");
             return;
         }
 
@@ -380,10 +375,10 @@ mod integration_tests {
             match send_daemon_request(request.clone()).await {
                 Ok(_response) => {
                     // Any response is fine - we just want to ensure the protocol works
-                    println!("✅ Protocol test passed for request: {:?}", request);
+                    tracing::info!(?request, "Protocol test passed");
                 }
                 Err(e) => {
-                    println!("❌ Protocol test failed for request {:?}: {}", request, e);
+                    tracing::error!(?request, error=%e, "Protocol test failed");
                 }
             }
         }
