@@ -69,8 +69,18 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         let title = format!("ah-task-{}", config.task_id);
 
         let window_id = match config.split_mode {
-            SplitMode::None | SplitMode::Auto | SplitMode::Horizontal | SplitMode::Vertical => {
-                // Use the current window for all split modes
+            SplitMode::None => {
+                // Create new window
+                let window_opts = WindowOptions {
+                    title: Some(&title),
+                    cwd: Some(config.working_dir),
+                    profile: None,
+                    focus: true,
+                };
+                self.mux.open_window(&window_opts)?
+            }
+            SplitMode::Auto | SplitMode::Horizontal | SplitMode::Vertical => {
+                // Split the current window
                 self.mux.current_window()?.ok_or_else(|| {
                     AwMuxError::Layout(
                         "Not running in a multiplexer window, cannot create split view".to_string(),
@@ -81,17 +91,9 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
         let mut panes = HashMap::new();
 
-        // Get the current pane (where TUI is running) to use as the editor pane
-        let editor_pane = self.mux.current_pane()?.ok_or_else(|| {
-            AwMuxError::Layout("Cannot detect current pane for editor".to_string())
-        })?;
-
-        eprintln!("DEBUG: editor_pane = {:?}", editor_pane);
-        eprintln!("DEBUG: window_id = {:?}", window_id);
-
+        // The window_id is session:window, the initial pane is session:window.0
+        let editor_pane = format!("{}", window_id);
         let editor_cmd = config.editor_cmd.unwrap_or("bash");
-        eprintln!("DEBUG: editor_cmd = {:?}", editor_cmd);
-
         self.mux.run_command(
             &editor_pane,
             editor_cmd,
@@ -151,7 +153,6 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
         Ok(LayoutHandle { window_id, panes })
     }
-
     /// Find an existing task layout by task ID
     pub fn find_task_layout(&self, task_id: &str) -> Result<Option<LayoutHandle>, AwMuxError> {
         let title_substr = format!("ah-task-{}", task_id);
