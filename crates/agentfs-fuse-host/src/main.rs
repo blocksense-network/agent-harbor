@@ -190,7 +190,9 @@ mod tests {
         assert!(config.track_events);
     }
 
-    #[cfg(feature = "fuse")]
+    // The adapter module is only compiled on Linux with the `fuse` feature;
+    // align the test's cfg with the module's cfg to avoid unresolved module errors on other targets.
+    #[cfg(all(feature = "fuse", target_os = "linux"))]
     #[test]
     fn test_adapter_creation() {
         let config = FsConfig::default();
