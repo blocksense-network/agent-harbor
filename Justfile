@@ -360,6 +360,17 @@ test-fuse-overlay-ops:
 test-fuse-control-plane:
     ./scripts/test-fuse-control-plane.sh
 
+# Performance benchmarks (F6)
+test-fuse-performance:
+    ./scripts/test-fuse-performance.sh
+
+test-fuse-performance-release:
+    FUSE_BUILD_PROFILE=release AGENTFS_FUSE_HOST_BIN="target/release/agentfs-fuse-host" ./scripts/test-fuse-performance.sh
+
+# Stress + fault-injection harness (F7)
+test-fuse-stress:
+    ./scripts/test-fuse-stress.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 # See docs/PJDFSTest-Guide.md for detailed usage instructions

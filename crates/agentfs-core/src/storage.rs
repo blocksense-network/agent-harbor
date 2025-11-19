@@ -3,9 +3,10 @@
 
 //! Storage backend implementations for AgentFS Core
 
+use libc;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error};
@@ -14,6 +15,7 @@ use tracing::{debug, error};
 
 use crate::config::BackstoreMode;
 use crate::error::FsResult;
+use crate::fault::{FaultInjector, FaultOp};
 use crate::{Backstore, ContentId, FsError};
 
 pub trait StorageBackend: Send + Sync {
@@ -179,6 +181,69 @@ impl Default for InMemoryBackend {
     }
 }
 
+/// Wrapper backend that injects configured failures before delegating to the real backend.
+pub struct FaultInjectingBackend {
+    inner: Arc<dyn StorageBackend>,
+    injector: Arc<FaultInjector>,
+}
+
+impl FaultInjectingBackend {
+    pub fn new(inner: Arc<dyn StorageBackend>, injector: Arc<FaultInjector>) -> Self {
+        Self { inner, injector }
+    }
+
+    fn guard(&self, op: FaultOp) -> FsResult<()> {
+        if let Some(err) = self.injector.should_fault(op) {
+            return Err(err);
+        }
+        Ok(())
+    }
+}
+
+impl StorageBackend for FaultInjectingBackend {
+    fn read(&self, id: ContentId, offset: u64, buf: &mut [u8]) -> FsResult<usize> {
+        self.guard(FaultOp::Read)?;
+        self.inner.read(id, offset, buf)
+    }
+
+    fn write(&self, id: ContentId, offset: u64, data: &[u8]) -> FsResult<usize> {
+        self.guard(FaultOp::Write)?;
+        self.inner.write(id, offset, data)
+    }
+
+    fn truncate(&self, id: ContentId, new_len: u64) -> FsResult<()> {
+        self.guard(FaultOp::Truncate)?;
+        self.inner.truncate(id, new_len)
+    }
+
+    fn allocate(&self, initial: &[u8]) -> FsResult<ContentId> {
+        self.guard(FaultOp::Allocate)?;
+        self.inner.allocate(initial)
+    }
+
+    fn clone_cow(&self, base: ContentId) -> FsResult<ContentId> {
+        self.guard(FaultOp::CloneCow)?;
+        self.inner.clone_cow(base)
+    }
+
+    fn sync(&self, id: ContentId, data_only: bool) -> FsResult<()> {
+        self.guard(FaultOp::Sync)?;
+        self.inner.sync(id, data_only)
+    }
+
+    fn seal(&self, id: ContentId) -> FsResult<()> {
+        self.inner.seal(id)
+    }
+
+    fn get_content_path(&self, id: ContentId) -> Option<std::path::PathBuf> {
+        self.inner.get_content_path(id)
+    }
+
+    fn seal_content_tree(&self, root_content_id: ContentId) -> FsResult<()> {
+        self.inner.seal_content_tree(root_content_id)
+    }
+}
+
 /// In-memory backstore implementation
 pub struct InMemoryBackstore;
 
@@ -275,7 +340,12 @@ impl HostFsBackend {
         }
 
         let path = self.content_path(id);
-        let file = OpenOptions::new().read(true).write(true).create(false).open(&path)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .map_err(io_to_fs_error)?;
         let arc = Arc::new(Mutex::new(file));
         handles.insert(id, arc.clone());
         Ok(arc)
@@ -339,7 +409,8 @@ impl StorageBackend for HostFsBackend {
             .write(true)
             .create(true)
             .truncate(true)
-            .open(&path)?;
+            .open(&path)
+            .map_err(io_to_fs_error)?;
         let handle = self.insert_handle(id, file);
         {
             let mut guard = handle.lock().unwrap();
@@ -384,6 +455,21 @@ impl HostFsBackend {
         // Simple copy for now - in real implementation would use platform-specific reflink
         fs::copy(from_path, to_path)?;
         Ok(())
+    }
+}
+
+fn io_to_fs_error(err: io::Error) -> FsError {
+    if let Some(code) = err.raw_os_error() {
+        match code {
+            libc::EMFILE | libc::ENFILE => return FsError::TooManyOpenFiles,
+            libc::ENOSPC => return FsError::NoSpace,
+            libc::EACCES => return FsError::AccessDenied,
+            _ => {}
+        }
+    }
+    match err.kind() {
+        io::ErrorKind::PermissionDenied => FsError::AccessDenied,
+        _ => err.into(),
     }
 }
 
