@@ -620,9 +620,9 @@ impl FileSystem for AgentFsWinFsp {
 fn main() -> Result<()> {
     #[cfg(not(target_os = "windows"))]
     {
-        println!("AgentFS WinFsp Host - Windows-only binary");
-        println!("This binary requires Windows with WinFsp installed.");
-        println!("On Windows, it would mount AgentFS volumes using the WinFsp framework.");
+        tracing::info!("AgentFS WinFsp Host - Windows-only binary");
+        tracing::info!("This binary requires Windows with WinFsp installed.");
+        tracing::info!("On Windows, it would mount AgentFS volumes using the WinFsp framework.");
         Ok(())
     }
 
