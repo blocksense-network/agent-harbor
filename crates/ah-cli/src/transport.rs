@@ -1,7 +1,13 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+#[cfg(feature = "agentfs")]
+use agentfs_proto::messages::{Request, Response};
 use anyhow::{Result, anyhow};
+#[cfg(feature = "agentfs")]
+use ssz::{Decode, Encode};
+#[cfg(all(feature = "agentfs", unix))]
+use std::os::fd::AsRawFd; // for as_raw_fd on opened control file
 use std::path::PathBuf;
 
 /// Convert String to Vec<u8> for SSZ encoding
