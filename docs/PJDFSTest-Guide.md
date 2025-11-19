@@ -1,6 +1,6 @@
 # PJDFSTest Guide
 
-This guide covers the essential workflows for running POSIX filesystem tests against AgentFS FUSE.
+This guide covers the essential workflows for running POSIX filesystem tests against AgentFS FUSE. The mount helper now passes `--allow-other` by default so every pjdfstest process (which runs as many different UIDs) can reach the filesystem; export `AGENTFS_FUSE_ALLOW_OTHER=0` before invoking a `just` target if you need to revert to the legacy single-user behavior.
 
 ## Quick Start
 

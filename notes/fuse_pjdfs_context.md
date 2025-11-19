@@ -6,6 +6,7 @@
 
 - Working branch remains `feat/agentfs-fuse-f5`; pjdfstest compliance is effectively complete with the current harness reporting only the upstream `chown/00.t` TODO lines and the kernel-imposed `chmod/12.t` nosuid mismatch.
 - Harness workflow (per AGENTS.md / user): continue fixing any future pjdfstest regressions one-by-one via single `prove` runs while mounted with `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`, and only rerun `AGENTFS_FUSE_ALLOW_OTHER=1 just test-pjdfstest-full /tmp/agentfs` after each targeted fix (commits allowed, pushes still blocked).
+- `mount-fuse.sh` now enables `--allow-other` by default; set `AGENTFS_FUSE_ALLOW_OTHER=0` if a local experiment needs to restrict access to the mounting user.
 - Latest logs: `logs/pjdfstest-full-20251119-023733/summary.json` (manual full-suite recheck) and `logs/pjdfstest-full-20251119-023930/summary.json` (regression harness) match the refreshed `specs/Public/AgentFS/pjdfstest.baseline.json` verbatim.
 - Known exception: `chmod/12.t` continues to fail because Linux refuses writes on nosuid FUSE mounts before AgentFS can clear SUID bits. Capturing runs in `notes` + `specs` remains critical until we have a privileged helper or alternate mitigation.
 - Permission tracing stays available under `/tmp/agentfs-*.log` for any targeted reproduction; synthetic PID logging is still enabled so `pid=0` events map to unique pseudo-PIDs per `(uid,gid)` pair.
