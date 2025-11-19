@@ -11,6 +11,7 @@ use fs_snapshots_test_harness::{btrfs_available, btrfs_is_root};
 #[cfg(feature = "zfs")]
 use fs_snapshots_test_harness::{zfs_available, zfs_is_root};
 use std::process::Command as StdCommand;
+use tracing::info;
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 fn configure_agentfs_env(
@@ -84,12 +85,12 @@ fn harness_driver_reports_unsupported() -> anyhow::Result<()> {
 fn git_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
     // Skip this test in CI environments where git snapshots may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping git snapshot scenario test in CI environment");
+        info!("Skipping git snapshot scenario test in CI environment");
         return Ok(());
     }
 
     if !ah_repo::test_helpers::git_available() {
-        eprintln!("Skipping Git snapshot scenario: git command not available");
+        info!("Skipping Git snapshot scenario: git command not available");
         return Ok(());
     }
 
@@ -125,12 +126,12 @@ fn git_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
 fn git_provider_matrix_runs_successfully() -> anyhow::Result<()> {
     // Skip this test in CI environments where git provider matrix may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping git provider matrix test in CI environment");
+        info!("Skipping git provider matrix test in CI environment");
         return Ok(());
     }
 
     if !ah_repo::test_helpers::git_available() {
-        eprintln!("Skipping Git provider matrix: git command not available");
+        info!("Skipping Git provider matrix: git command not available");
         return Ok(());
     }
 
@@ -162,12 +163,12 @@ fn git_provider_matrix_runs_successfully() -> anyhow::Result<()> {
 fn git_snapshot_scenario_matches_legacy_checks() -> anyhow::Result<()> {
     // Skip this test in CI environments where git snapshot scenario matching may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping git snapshot scenario matches legacy checks test in CI environment");
+        info!("Skipping git snapshot scenario matches legacy checks test in CI environment");
         return Ok(());
     }
 
     if !ah_repo::test_helpers::git_available() {
-        eprintln!("Skipping Git snapshot scenario: git command not available");
+        info!("Skipping Git snapshot scenario: git command not available");
         return Ok(());
     }
 
@@ -178,12 +179,12 @@ fn git_snapshot_scenario_matches_legacy_checks() -> anyhow::Result<()> {
 #[test]
 fn zfs_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
     if !zfs_is_root() {
-        eprintln!("Skipping ZFS snapshot scenario: requires root privileges");
+        info!("Skipping ZFS snapshot scenario: requires root privileges");
         return Ok(());
     }
 
     if !zfs_available() {
-        eprintln!("Skipping ZFS snapshot scenario: ZFS tooling not available");
+        info!("Skipping ZFS snapshot scenario: ZFS tooling not available");
         return Ok(());
     }
 
@@ -213,12 +214,12 @@ fn zfs_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
 #[test]
 fn zfs_provider_matrix_runs_successfully() -> anyhow::Result<()> {
     if !zfs_is_root() {
-        eprintln!("Skipping ZFS provider matrix: requires root privileges");
+        info!("Skipping ZFS provider matrix: requires root privileges");
         return Ok(());
     }
 
     if !zfs_available() {
-        eprintln!("Skipping ZFS provider matrix: ZFS tooling not available");
+        info!("Skipping ZFS provider matrix: ZFS tooling not available");
         return Ok(());
     }
 
@@ -250,12 +251,12 @@ fn zfs_provider_matrix_runs_successfully() -> anyhow::Result<()> {
 #[test]
 fn zfs_snapshot_scenario_matches_legacy_checks() -> anyhow::Result<()> {
     if !zfs_is_root() {
-        eprintln!("Skipping ZFS snapshot scenario: requires root privileges");
+        info!("Skipping ZFS snapshot scenario: requires root privileges");
         return Ok(());
     }
 
     if !zfs_available() {
-        eprintln!("Skipping ZFS snapshot scenario: ZFS tooling not available");
+        info!("Skipping ZFS snapshot scenario: ZFS tooling not available");
         return Ok(());
     }
 
@@ -266,12 +267,12 @@ fn zfs_snapshot_scenario_matches_legacy_checks() -> anyhow::Result<()> {
 #[test]
 fn btrfs_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
     if !btrfs_is_root() {
-        eprintln!("Skipping Btrfs snapshot scenario: requires root privileges");
+        info!("Skipping Btrfs snapshot scenario: requires root privileges");
         return Ok(());
     }
 
     if !btrfs_available() {
-        eprintln!("Skipping Btrfs snapshot scenario: Btrfs tooling not available");
+        info!("Skipping Btrfs snapshot scenario: Btrfs tooling not available");
         return Ok(());
     }
 
@@ -301,12 +302,12 @@ fn btrfs_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
 #[test]
 fn btrfs_provider_matrix_runs_successfully() -> anyhow::Result<()> {
     if !btrfs_is_root() {
-        eprintln!("Skipping Btrfs provider matrix: requires root privileges");
+        info!("Skipping Btrfs provider matrix: requires root privileges");
         return Ok(());
     }
 
     if !btrfs_available() {
-        eprintln!("Skipping Btrfs provider matrix: Btrfs tooling not available");
+        info!("Skipping Btrfs provider matrix: Btrfs tooling not available");
         return Ok(());
     }
 
@@ -338,12 +339,12 @@ fn btrfs_provider_matrix_runs_successfully() -> anyhow::Result<()> {
 #[test]
 fn btrfs_snapshot_scenario_matches_legacy_checks() -> anyhow::Result<()> {
     if !btrfs_is_root() {
-        eprintln!("Skipping Btrfs snapshot scenario: requires root privileges");
+        info!("Skipping Btrfs snapshot scenario: requires root privileges");
         return Ok(());
     }
 
     if !btrfs_available() {
-        eprintln!("Skipping Btrfs snapshot scenario: Btrfs tooling not available");
+        info!("Skipping Btrfs snapshot scenario: Btrfs tooling not available");
         return Ok(());
     }
 

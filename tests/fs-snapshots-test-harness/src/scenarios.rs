@@ -79,19 +79,19 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
             }
             #[cfg(not(feature = "git"))]
             {
-                println!("Skipping Git provider matrix: git feature disabled");
+                tracing::info!("Skipping Git provider matrix: git feature disabled");
                 Ok(())
             }
         }
         #[cfg(feature = "btrfs")]
         "btrfs" => {
             if !btrfs_is_root() {
-                println!("Skipping Btrfs provider matrix: requires root privileges");
+                tracing::info!("Skipping Btrfs provider matrix: requires root privileges");
                 return Ok(());
             }
 
             if !btrfs_available() {
-                println!("Skipping Btrfs provider matrix: Btrfs tooling not available");
+                tracing::info!("Skipping Btrfs provider matrix: Btrfs tooling not available");
                 return Ok(());
             }
 
@@ -137,18 +137,18 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
         }
         #[cfg(not(feature = "btrfs"))]
         "btrfs" => {
-            println!("Skipping Btrfs provider matrix: btrfs feature disabled");
+            tracing::info!("Skipping Btrfs provider matrix: btrfs feature disabled");
             Ok(())
         }
         #[cfg(feature = "zfs")]
         "zfs" => {
             if !zfs_is_root() {
-                println!("Skipping ZFS provider matrix: requires root privileges");
+                tracing::info!("Skipping ZFS provider matrix: requires root privileges");
                 return Ok(());
             }
 
             if !zfs_available() {
-                println!("Skipping ZFS provider matrix: ZFS tooling not available");
+                tracing::info!("Skipping ZFS provider matrix: ZFS tooling not available");
                 return Ok(());
             }
 
@@ -157,7 +157,7 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
             let mount_point = match env.create_zfs_test_pool("matrix_zfs_pool", 200) {
                 Ok(path) => path,
                 Err(err) => {
-                    println!("Skipping ZFS provider matrix: unable to create test pool: {err}");
+                    tracing::info!(error = ?err, "Skipping ZFS provider matrix: unable to create test pool");
                     return Ok(());
                 }
             };
@@ -198,14 +198,14 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
         }
         #[cfg(not(feature = "zfs"))]
         "zfs" => {
-            println!("Skipping ZFS provider matrix: zfs feature disabled");
+            tracing::info!("Skipping ZFS provider matrix: zfs feature disabled");
             Ok(())
         }
         #[cfg(feature = "agentfs")]
         "agentfs" => {
             #[cfg(not(target_os = "macos"))]
             {
-                println!("AgentFS provider matrix is only supported on macOS");
+                tracing::info!("AgentFS provider matrix is only supported on macOS");
                 return Ok(());
             }
 
@@ -246,7 +246,7 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
         }
         #[cfg(not(feature = "agentfs"))]
         "agentfs" => {
-            println!("Skipping AgentFS provider matrix: agentfs feature disabled");
+            tracing::info!("Skipping AgentFS provider matrix: agentfs feature disabled");
             Ok(())
         }
         other => bail!("unsupported provider '{}' for matrix run", other),
@@ -285,9 +285,12 @@ where
     P: FsSnapshotProvider,
 {
     let capabilities = provider.detect_capabilities(repo_path);
-    println!(
+    tracing::info!(
         "{} matrix capabilities: kind={:?}, score={}, supports_cow={}",
-        provider_name, capabilities.kind, capabilities.score, capabilities.supports_cow_overlay
+        provider_name,
+        capabilities.kind,
+        capabilities.score,
+        capabilities.supports_cow_overlay
     );
     ensure!(
         capabilities.score > 0,
@@ -301,13 +304,13 @@ where
         .prepare_writable_workspace(repo_path, workspace_mode)
         .with_context(|| format!("failed to prepare {} writable workspace", provider_name))?;
     let creation_time = creation_start.elapsed();
-    println!(
+    tracing::info!(
         "{} matrix workspace: {}",
         provider_name,
         workspace.exec_path.display()
     );
     if std::env::var("FS_SNAPSHOTS_HARNESS_DEBUG").is_ok() {
-        println!(
+        tracing::info!(
             "{} matrix env AGENTFS_INTERPOSE_SOCKET={:?}",
             provider_name,
             std::env::var_os("AGENTFS_INTERPOSE_SOCKET")
@@ -342,7 +345,7 @@ where
             "matrix marker should not appear in the base repository"
         );
     } else {
-        println!(
+        tracing::info!(
             "AgentFS base repo marker present? {}",
             repo_path.join(&marker_name).exists()
         );
@@ -351,12 +354,12 @@ where
     let snapshot = provider
         .snapshot_now(&workspace, Some("matrix-snapshot"))
         .with_context(|| format!("failed to create {} matrix snapshot", provider_name))?;
-    println!("{} matrix snapshot created: {}", provider_name, snapshot.id);
+    tracing::info!("{} matrix snapshot created: {}", provider_name, snapshot.id);
 
     let mut readonly_export: Option<PathBuf> = None;
     match provider.mount_readonly(&snapshot) {
         Ok(readonly_path) => {
-            println!(
+            tracing::info!(
                 "{} matrix readonly mount: {}",
                 provider_name,
                 readonly_path.display()
@@ -368,13 +371,14 @@ where
             readonly_export = Some(readonly_path);
         }
         Err(err) => {
-            println!(
+            tracing::info!(
                 "{} matrix readonly mount unavailable: {}",
-                provider_name, err
+                provider_name,
+                err
             );
         }
     }
-    println!(
+    tracing::info!(
         "{} matrix recorded readonly export: {}",
         provider_name,
         readonly_export.is_some()
@@ -383,7 +387,7 @@ where
     if let Some(mode) = branch_mode {
         match provider.branch_from_snapshot(&snapshot, mode) {
             Ok(branch_ws) => {
-                println!(
+                tracing::info!(
                     "{} matrix branch workspace: {}",
                     provider_name,
                     branch_ws.exec_path.display()
@@ -407,14 +411,15 @@ where
                 branch_result?;
             }
             Err(err) => {
-                println!(
+                tracing::info!(
                     "{} matrix branch creation unavailable: {}",
-                    provider_name, err
+                    provider_name,
+                    err
                 );
             }
         }
     } else {
-        println!(
+        tracing::info!(
             "{} matrix branch step skipped because branch mode is not supported",
             provider_name
         );
@@ -437,26 +442,25 @@ where
                 provider_name,
                 readonly_path.display()
             );
-            println!(
+            tracing::info!(
                 "{} matrix readonly export cleaned: {}",
                 provider_name,
                 readonly_path.display()
             );
         } else {
-            println!(
+            tracing::info!(
                 "{} matrix readonly export removed: {}",
                 provider_name,
                 readonly_path.display()
             );
         }
     } else {
-        println!(
+        tracing::info!(
             "{} matrix readonly export not produced; skipping cleanup assertion",
             provider_name
         );
     }
-
-    println!("{} provider matrix completed successfully", provider_name);
+    tracing::info!("{} provider matrix completed successfully", provider_name);
     Ok(MatrixOutcome {
         creation_time,
         cleanup_time,
@@ -478,9 +482,11 @@ fn verify_performance(
     max_creation: Duration,
     max_cleanup: Duration,
 ) -> Result<()> {
-    println!(
+    tracing::info!(
         "{} performance metrics: creation {:?}, cleanup {:?}",
-        provider_name, outcome.creation_time, outcome.cleanup_time
+        provider_name,
+        outcome.creation_time,
+        outcome.cleanup_time
     );
     ensure!(
         outcome.creation_time <= max_creation,
@@ -513,10 +519,10 @@ where
     if concurrency <= 1 {
         return Ok(());
     }
-
-    println!(
+    tracing::info!(
         "{} concurrency test: launching {} workers",
-        provider_name, concurrency
+        provider_name,
+        concurrency
     );
 
     let mut handles = Vec::with_capacity(concurrency);
@@ -547,8 +553,7 @@ where
             .join()
             .map_err(|_| anyhow!("{} concurrency worker panicked", provider_name))??;
     }
-
-    println!("{} concurrency test completed", provider_name);
+    tracing::info!("{} concurrency test completed", provider_name);
     Ok(())
 }
 
@@ -564,9 +569,10 @@ where
     P: FsSnapshotProvider,
     F: Fn() -> P,
 {
-    println!(
+    tracing::info!(
         "{} space efficiency test: max additional usage {} bytes",
-        provider_name, max_delta_bytes
+        provider_name,
+        max_delta_bytes
     );
 
     let baseline = filesystem_used_bytes(repo_path)
@@ -587,9 +593,12 @@ where
         )
     })?;
     let delta = after.saturating_sub(baseline);
-    println!(
+    tracing::info!(
         "{} space efficiency delta: {} bytes (baseline {}, after {})",
-        provider_name, delta, baseline, after
+        provider_name,
+        delta,
+        baseline,
+        after
     );
 
     let cleanup_token = workspace.cleanup_token.clone();
@@ -638,15 +647,14 @@ fn run_btrfs_quota_test(repo_path: &Path, mode: WorkingCopyMode) -> Result<()> {
     if !btrfs_available() || !btrfs_is_root() {
         return Ok(());
     }
-
-    println!("Btrfs quota enforcement test starting");
+    tracing::info!("Btrfs quota enforcement test starting");
     let enable_status = Command::new("btrfs")
         .args(["quota", "enable"])
         .arg(repo_path)
         .status()
         .context("failed to enable btrfs quota")?;
     if !enable_status.success() {
-        println!("Btrfs quota enable failed, skipping quota test");
+        tracing::info!("Btrfs quota enable failed, skipping quota test");
         return Ok(());
     }
 
@@ -659,7 +667,7 @@ fn run_btrfs_quota_test(repo_path: &Path, mode: WorkingCopyMode) -> Result<()> {
         .status()
         .context("failed to set btrfs qgroup limit")?;
     if !limit_status.success() {
-        println!("Btrfs qgroup limit failed, skipping quota test");
+        tracing::info!("Btrfs qgroup limit failed, skipping quota test");
         provider.cleanup(&workspace.cleanup_token)?;
         return Ok(());
     }
@@ -681,20 +689,20 @@ fn run_btrfs_quota_test(repo_path: &Path, mode: WorkingCopyMode) -> Result<()> {
         "Btrfs quota test expected ENOSPC/EDQUOT but got {:?}",
         write_result
     );
-    println!("Btrfs quota enforcement test completed");
+    tracing::info!("Btrfs quota enforcement test completed");
     Ok(())
 }
 
 #[cfg(feature = "zfs")]
 fn run_zfs_quota_test(repo_path: &Path, mode: WorkingCopyMode) -> Result<()> {
-    println!("ZFS quota enforcement test starting");
+    tracing::info!("ZFS quota enforcement test starting");
 
     let provider = ZfsProvider::new();
     let workspace = provider.prepare_writable_workspace(repo_path, mode)?;
     let dataset = match find_zfs_dataset_for_path(&workspace.exec_path)? {
         Some(name) => name,
         None => {
-            println!(
+            tracing::info!(
                 "ZFS quota test skipping: no dataset found for {}",
                 workspace.exec_path.display()
             );
@@ -708,7 +716,7 @@ fn run_zfs_quota_test(repo_path: &Path, mode: WorkingCopyMode) -> Result<()> {
         .status()
         .context("failed to set ZFS quota")?;
     if !limit_status.success() {
-        println!("ZFS quota set failed, skipping quota test");
+        tracing::info!("ZFS quota set failed, skipping quota test");
         provider.cleanup(&workspace.cleanup_token)?;
         return Ok(());
     }
@@ -726,7 +734,7 @@ fn run_zfs_quota_test(repo_path: &Path, mode: WorkingCopyMode) -> Result<()> {
         "ZFS quota test expected ENOSPC/EDQUOT but got {:?}",
         write_result
     );
-    println!("ZFS quota enforcement test completed");
+    tracing::info!("ZFS quota enforcement test completed");
     Ok(())
 }
 
@@ -771,7 +779,7 @@ where
         provider_name,
         invalid_repo.display()
     );
-    println!(
+    tracing::info!(
         "{} error handling test confirmed invalid path is rejected",
         provider_name
     );
@@ -797,11 +805,12 @@ pub fn git_snapshot_scenario() -> Result<()> {
 
     let provider = GitProvider::new();
     let capabilities = provider.detect_capabilities(temp_dir.path());
-    println!(
+    tracing::info!(
         "Provider: {:?}, capability score: {}",
-        capabilities.kind, capabilities.score
+        capabilities.kind,
+        capabilities.score
     );
-    println!(
+    tracing::info!(
         "Supports CoW overlay: {}",
         capabilities.supports_cow_overlay
     );
@@ -813,7 +822,7 @@ pub fn git_snapshot_scenario() -> Result<()> {
     let workspace = provider
         .prepare_writable_workspace(temp_dir.path(), WorkingCopyMode::Worktree)
         .context("failed to prepare writable workspace")?;
-    println!("Git workspace created: {}", workspace.exec_path.display());
+    tracing::info!("Git workspace created: {}", workspace.exec_path.display());
     ensure!(
         workspace.exec_path.exists(),
         "workspace directory must exist"
@@ -826,12 +835,12 @@ pub fn git_snapshot_scenario() -> Result<()> {
     let snapshot = provider
         .snapshot_now(&workspace, Some("integration_test"))
         .context("failed to create snapshot")?;
-    println!("Git snapshot created: {}", snapshot.id);
+    tracing::info!("Git snapshot created: {}", snapshot.id);
 
     let readonly_path = provider
         .mount_readonly(&snapshot)
         .context("failed to mount snapshot readonly")?;
-    println!("Readonly mount: {}", readonly_path.display());
+    tracing::info!("Readonly mount: {}", readonly_path.display());
     ensure!(
         readonly_path.join("README.md").exists(),
         "readonly mount missing README.md"
@@ -851,7 +860,7 @@ pub fn git_snapshot_scenario() -> Result<()> {
     let branch_ws = provider
         .branch_from_snapshot(&snapshot, WorkingCopyMode::Worktree)
         .context("failed to create branch from snapshot")?;
-    println!("Git branch workspace: {}", branch_ws.exec_path.display());
+    tracing::info!("Git branch workspace: {}", branch_ws.exec_path.display());
 
     let branch_content = fs::read_to_string(branch_ws.exec_path.join("test_file.txt"))
         .context("failed to read test file from branch workspace")?;
@@ -867,7 +876,7 @@ pub fn git_snapshot_scenario() -> Result<()> {
         .cleanup(&workspace.cleanup_token)
         .context("failed to cleanup Git workspace")?;
 
-    println!("Git snapshot scenario completed successfully");
+    tracing::info!("Git snapshot scenario completed successfully");
     Ok(())
 }
 
@@ -882,12 +891,12 @@ pub fn git_snapshot_scenario() -> Result<()> {
 #[cfg(feature = "btrfs")]
 pub fn btrfs_snapshot_scenario() -> Result<()> {
     if !btrfs_is_root() {
-        println!("Skipping Btrfs snapshot scenario: requires root privileges");
+        tracing::info!("Skipping Btrfs snapshot scenario: requires root privileges");
         return Ok(());
     }
 
     if !btrfs_available() {
-        println!("Skipping Btrfs snapshot scenario: Btrfs tooling not available");
+        tracing::info!("Skipping Btrfs snapshot scenario: Btrfs tooling not available");
         return Ok(());
     }
 
@@ -901,11 +910,12 @@ pub fn btrfs_snapshot_scenario() -> Result<()> {
 
     let provider = BtrfsProvider::new();
     let capabilities = provider.detect_capabilities(&repo_path);
-    println!(
+    tracing::info!(
         "Provider: {:?}, capability score: {}",
-        capabilities.kind, capabilities.score
+        capabilities.kind,
+        capabilities.score
     );
-    println!(
+    tracing::info!(
         "Supports CoW overlay: {}",
         capabilities.supports_cow_overlay
     );
@@ -917,7 +927,7 @@ pub fn btrfs_snapshot_scenario() -> Result<()> {
     let workspace = provider
         .prepare_writable_workspace(&repo_path, WorkingCopyMode::CowOverlay)
         .context("failed to prepare Btrfs writable workspace")?;
-    println!("Btrfs workspace created: {}", workspace.exec_path.display());
+    tracing::info!("Btrfs workspace created: {}", workspace.exec_path.display());
     ensure!(
         workspace.exec_path.exists(),
         "Btrfs workspace path should exist"
@@ -929,7 +939,7 @@ pub fn btrfs_snapshot_scenario() -> Result<()> {
         "Btrfs workspace content written by harness",
     )
     .context("failed to write test data into Btrfs workspace")?;
-    println!(
+    tracing::info!(
         "Btrfs workspace write succeeded: {}",
         workspace_only_file.display()
     );
@@ -945,12 +955,12 @@ pub fn btrfs_snapshot_scenario() -> Result<()> {
     let snapshot = provider
         .snapshot_now(&workspace, Some("harness_btrfs_snapshot"))
         .context("failed to create Btrfs snapshot")?;
-    println!("Btrfs snapshot created: {}", snapshot.id);
+    tracing::info!("Btrfs snapshot created: {}", snapshot.id);
 
     let readonly_path = provider
         .mount_readonly(&snapshot)
         .context("failed to mount Btrfs snapshot readonly")?;
-    println!("Readonly mount: {}", readonly_path.display());
+    tracing::info!("Readonly mount: {}", readonly_path.display());
     for entry in ["README.md", "test_file.txt"] {
         ensure!(
             readonly_path.join(entry).exists(),
@@ -964,7 +974,7 @@ pub fn btrfs_snapshot_scenario() -> Result<()> {
 
     match provider.branch_from_snapshot(&snapshot, WorkingCopyMode::CowOverlay) {
         Ok(branch_ws) => {
-            println!("Btrfs branch workspace: {}", branch_ws.exec_path.display());
+            tracing::info!("Btrfs branch workspace: {}", branch_ws.exec_path.display());
             ensure!(
                 branch_ws.exec_path.join("test_file.txt").exists(),
                 "Btrfs branch workspace missing expected file contents"
@@ -978,7 +988,7 @@ pub fn btrfs_snapshot_scenario() -> Result<()> {
                 .context("failed to cleanup Btrfs branch workspace")?;
         }
         Err(err) => {
-            println!("Branch creation unavailable for Btrfs snapshot: {err}");
+            tracing::info!("Branch creation unavailable for Btrfs snapshot: {err}");
         }
     }
 
@@ -986,7 +996,7 @@ pub fn btrfs_snapshot_scenario() -> Result<()> {
         .cleanup(&workspace.cleanup_token)
         .context("failed to cleanup Btrfs workspace")?;
 
-    println!("Btrfs snapshot scenario completed successfully");
+    tracing::info!("Btrfs snapshot scenario completed successfully");
     Ok(())
 }
 
@@ -994,12 +1004,12 @@ pub fn btrfs_snapshot_scenario() -> Result<()> {
 #[cfg(feature = "zfs")]
 pub fn zfs_snapshot_scenario() -> Result<()> {
     if !zfs_is_root() {
-        println!("Skipping ZFS snapshot scenario: requires root privileges");
+        tracing::info!("Skipping ZFS snapshot scenario: requires root privileges");
         return Ok(());
     }
 
     if !zfs_available() {
-        println!("Skipping ZFS snapshot scenario: ZFS tooling not available");
+        tracing::info!("Skipping ZFS snapshot scenario: ZFS tooling not available");
         return Ok(());
     }
 
@@ -1008,19 +1018,19 @@ pub fn zfs_snapshot_scenario() -> Result<()> {
     let mount_point = match env.create_zfs_test_pool("integration_zfs_pool", 200) {
         Ok(path) => path,
         Err(err) => {
-            println!("Skipping ZFS snapshot scenario: unable to create test pool: {err}");
+            tracing::info!("Skipping ZFS snapshot scenario: unable to create test pool: {err}");
             return Ok(());
         }
     };
-
-    println!("Successfully created ZFS pool at {}", mount_point.display());
+    tracing::info!("Successfully created ZFS pool at {}", mount_point.display());
     populate_test_repo(&mount_point)?;
 
     let provider = ZfsProvider::new();
     let capabilities = provider.detect_capabilities(&mount_point);
-    println!(
+    tracing::info!(
         "ZFS provider capabilities: score={}, supports_cow={}",
-        capabilities.score, capabilities.supports_cow_overlay
+        capabilities.score,
+        capabilities.supports_cow_overlay
     );
     ensure!(
         matches!(capabilities.kind, SnapshotProviderKind::Zfs),
@@ -1030,7 +1040,7 @@ pub fn zfs_snapshot_scenario() -> Result<()> {
     let workspace = provider
         .prepare_writable_workspace(&mount_point, WorkingCopyMode::Worktree)
         .context("failed to prepare ZFS writable workspace")?;
-    println!("ZFS workspace created: {}", workspace.exec_path.display());
+    tracing::info!("ZFS workspace created: {}", workspace.exec_path.display());
     ensure!(
         workspace.exec_path.exists(),
         "ZFS workspace should exist after preparation"
@@ -1046,11 +1056,11 @@ pub fn zfs_snapshot_scenario() -> Result<()> {
     let snapshot = provider
         .snapshot_now(&workspace, Some("integration_test"))
         .context("failed to create ZFS snapshot")?;
-    println!("ZFS snapshot created: {}", snapshot.id);
+    tracing::info!("ZFS snapshot created: {}", snapshot.id);
 
     match provider.mount_readonly(&snapshot) {
         Ok(readonly_path) => {
-            println!("ZFS readonly mount: {}", readonly_path.display());
+            tracing::info!("ZFS readonly mount: {}", readonly_path.display());
             for entry in ["README.md", "test_file.txt", "integration_test.txt"] {
                 ensure!(
                     readonly_path.join(entry).exists(),
@@ -1059,13 +1069,13 @@ pub fn zfs_snapshot_scenario() -> Result<()> {
             }
         }
         Err(err) => {
-            println!("Readonly mount unavailable for ZFS snapshot: {err}");
+            tracing::info!("Readonly mount unavailable for ZFS snapshot: {err}");
         }
     }
 
     match provider.branch_from_snapshot(&snapshot, WorkingCopyMode::Worktree) {
         Ok(branch_ws) => {
-            println!("ZFS branch workspace: {}", branch_ws.exec_path.display());
+            tracing::info!("ZFS branch workspace: {}", branch_ws.exec_path.display());
             ensure!(
                 branch_ws.exec_path.join("integration_test.txt").exists(),
                 "ZFS branch workspace missing integration test file"
@@ -1075,25 +1085,25 @@ pub fn zfs_snapshot_scenario() -> Result<()> {
                 .context("failed to cleanup ZFS branch workspace")?;
         }
         Err(err) => {
-            println!("Branch creation unavailable for ZFS snapshot: {err}");
+            tracing::info!("Branch creation unavailable for ZFS snapshot: {err}");
         }
     }
 
     let used_space = env.get_used_space(&mount_point).unwrap_or(0);
-    println!("ZFS dataset used space (bytes): {}", used_space);
+    tracing::info!("ZFS dataset used space (bytes): {}", used_space);
 
     provider
         .cleanup(&workspace.cleanup_token)
         .context("failed to cleanup ZFS workspace")?;
 
-    println!("ZFS snapshot scenario completed successfully");
+    tracing::info!("ZFS snapshot scenario completed successfully");
     Ok(())
 }
 
 /// Fallback when the `zfs` feature is disabled.
 #[cfg(not(feature = "zfs"))]
 pub fn zfs_snapshot_scenario() -> Result<()> {
-    println!("Skipping ZFS snapshot scenario: zfs feature disabled");
+    tracing::info!("Skipping ZFS snapshot scenario: zfs feature disabled");
     Ok(())
 }
 

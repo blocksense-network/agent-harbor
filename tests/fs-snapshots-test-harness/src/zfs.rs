@@ -7,8 +7,6 @@
 //! temporary pools inside the external harness process and exercise the ZFS
 //! snapshot provider end-to-end in the same way the original Rust tests did.
 
-#![cfg(feature = "zfs")]
-
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -166,9 +164,6 @@ pub fn zfs_is_root() -> bool {
 
 /// Check whether the ZFS tooling is present on the PATH.
 pub fn zfs_available() -> bool {
-    Command::new("which").arg("zfs").output().map_or(false, |o| o.status.success())
-        && Command::new("which")
-            .arg("zpool")
-            .output()
-            .map_or(false, |o| o.status.success())
+    Command::new("which").arg("zfs").output().is_ok_and(|o| o.status.success())
+        && Command::new("which").arg("zpool").output().is_ok_and(|o| o.status.success())
 }
