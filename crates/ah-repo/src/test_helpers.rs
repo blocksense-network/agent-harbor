@@ -383,7 +383,7 @@ mod tests {
     #[tokio::test]
     async fn test_simple_git_repo_creation() {
         if !git_available() {
-            println!("Skipping Git test: git command not available");
+            tracing::warn!("skipping git test: git command not available");
             return;
         }
 
@@ -410,7 +410,7 @@ mod tests {
     #[tokio::test]
     async fn test_git_test_repo_creation() {
         if !git_available() {
-            println!("Skipping Git test: git command not available");
+            tracing::warn!("skipping git test: git command not available");
             return;
         }
 
@@ -440,7 +440,7 @@ mod tests {
     #[tokio::test]
     async fn test_simple_git_repo_commit_creation() {
         if !git_available() {
-            println!("Skipping Git test: git command not available");
+            tracing::warn!("skipping git test: git command not available");
             return;
         }
 
@@ -469,7 +469,7 @@ mod tests {
     #[tokio::test]
     async fn test_simple_git_repo_staging() {
         if !git_available() {
-            println!("Skipping Git test: git command not available");
+            tracing::warn!("skipping git test: git command not available");
             return;
         }
 
@@ -484,7 +484,7 @@ mod tests {
     #[tokio::test]
     async fn test_simple_git_repo_uncommitted() {
         if !git_available() {
-            println!("Skipping Git test: git command not available");
+            tracing::warn!("skipping git test: git command not available");
             return;
         }
 

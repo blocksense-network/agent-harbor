@@ -20,10 +20,10 @@ async fn test_claude_version_detection() {
 
     if result.is_ok() {
         let version = result.unwrap();
-        println!("Detected Claude version: {}", version.version);
+        tracing::info!(version = %version.version, "detected claude version");
         assert!(!version.version.is_empty());
     } else {
-        println!("Claude not found in PATH (expected in some environments)");
+        tracing::warn!("claude not found in PATH (expected in some environments)");
     }
 }
 
@@ -36,10 +36,10 @@ async fn test_codex_version_detection() {
 
     if result.is_ok() {
         let version = result.unwrap();
-        println!("Detected Codex version: {}", version.version);
+        tracing::info!(version = %version.version, "detected codex version");
         assert!(!version.version.is_empty());
     } else {
-        println!("Codex not found in PATH (expected in some environments)");
+        tracing::warn!("codex not found in PATH (expected in some environments)");
     }
 }
 
@@ -141,7 +141,7 @@ async fn test_launch_config_builder() {
 fn test_available_agents() {
     let agents = ah_agents::available_agents();
     assert!(!agents.is_empty());
-    println!("Available agents: {:?}", agents);
+    tracing::info!(agents = ?agents, "available agents list");
 }
 
 #[cfg(feature = "claude")]

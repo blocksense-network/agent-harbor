@@ -10,6 +10,8 @@ use std::process::Command;
 use tempfile::NamedTempFile;
 
 // Use structured logging instead of println!/eprintln! which are disallowed by clippy.
+#[cfg(feature = "agentfs")]
+use tracing::error;
 use tracing::{info, warn};
 
 // Initialize tracing subscriber once for the test module.

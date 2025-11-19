@@ -8,6 +8,9 @@
 
 pub mod c_api;
 
+// Re-export C API functions before tests to satisfy items_after_test_module lint
+pub use c_api::*;
+
 #[cfg(test)]
 mod tests {
     use super::c_api::*;
@@ -157,6 +160,3 @@ mod tests {
         assert_eq!(rc, 0);
     }
 }
-
-// Re-export C API functions
-pub use c_api::*;

@@ -1061,8 +1061,7 @@ mod tests {
             }
 
             if self.should_fail {
-                return Err(AgentError::ProcessSpawnFailed(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                return Err(AgentError::ProcessSpawnFailed(std::io::Error::other(
                     "Test failure",
                 )));
             }

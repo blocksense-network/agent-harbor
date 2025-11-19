@@ -951,7 +951,7 @@ mod tests {
     fn test_complex_layout_creation() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::warn!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -1060,7 +1060,7 @@ mod tests {
     fn test_session_isolation() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::warn!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -1128,7 +1128,6 @@ mod tests {
 }
 
 /// Strategic snapshot testing utilities for tmux integration tests
-
 #[cfg(test)]
 mod snapshot_testing {
     use expectrl::spawn;
@@ -1137,7 +1136,7 @@ mod snapshot_testing {
 
     // Thread-local state for continuous tmux session during tests
     thread_local! {
-        static CONTINUOUS_SESSION: std::cell::RefCell<Option<(expectrl::session::Session, Parser, String)>> = std::cell::RefCell::new(None);
+        static CONTINUOUS_SESSION: std::cell::RefCell<Option<(expectrl::session::Session, Parser, String)>> = const { std::cell::RefCell::new(None) };
     }
 
     /// Start a continuous attached tmux session for testing
@@ -1150,7 +1149,7 @@ mod snapshot_testing {
 
             // Kill any existing session first
             let _ = std::process::Command::new("tmux")
-                .args(&["kill-session", "-t", session_name])
+                .args(["kill-session", "-t", session_name])
                 .output();
 
             // Give it a moment to clean up
@@ -1223,7 +1222,7 @@ set-environment -g ZDOTDIR ""
             let mut session = session_cell.borrow_mut();
             if let Some((mut p, _, config_path)) = session.take() {
                 // Send exit command to tmux
-                let _ = p.send("exit\n");
+                std::mem::drop(p.send("exit\n"));
                 std::thread::sleep(Duration::from_millis(200));
 
                 // Clean up temporary config file
@@ -1240,7 +1239,7 @@ set-environment -g ZDOTDIR ""
 
         // Then kill any remaining session by name
         let _ = std::process::Command::new("tmux")
-            .args(&["kill-session", "-t", session_name])
+            .args(["kill-session", "-t", session_name])
             .output();
 
         // Give it a moment to die
