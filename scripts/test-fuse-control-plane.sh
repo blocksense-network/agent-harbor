@@ -50,7 +50,7 @@ trap cleanup EXIT
 
 run_control() {
   local output
-  output=$("$REPO_ROOT/target/debug/agentfs-control-cli" --mount "$MOUNTPOINT" "$@" 2>&1)
+  output=$(sudo -E "$REPO_ROOT/target/debug/agentfs-control-cli" --mount "$MOUNTPOINT" "$@" 2>&1)
   local status=$?
   echo "[$(date +%H:%M:%S)] [control] $* (status=$status)" >>"$LOG_FILE"
   echo "$output" >>"$LOG_FILE"
@@ -180,7 +180,8 @@ AGENTFS_FUSE_ALLOW_OTHER=1 AGENTFS_FUSE_CONFIG="$CONFIG_PATH" "$SCRIPT_DIR/mount
 wait_state "$MOUNTPOINT" mounted
 
 log "Creating workspace"
-mkdir -p "$TESTDIR"
+sudo mkdir -p "$TESTDIR"
+sudo chown "$USER_ID:$GROUP_ID" "$TESTDIR"
 BASELINE_CONTENT="base-v1"
 BASELINE_UPDATED="base-v2"
 printf "%s" "$BASELINE_CONTENT" >"$TESTDIR/data.txt"

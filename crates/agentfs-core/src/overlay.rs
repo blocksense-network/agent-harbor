@@ -10,7 +10,7 @@ use crate::error::{FsError, FsResult};
 use crate::{Attributes, DirEntry, LowerFs};
 use std::io::Read;
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 
 /// Host filesystem implementation of LowerFs trait
@@ -68,8 +68,8 @@ impl LowerFs for HostLowerFs {
         Ok(Attributes {
             len,
             times,
-            uid: 0, // Host FS doesn't have meaningful uid/gid
-            gid: 0,
+            uid: metadata.uid(),
+            gid: metadata.gid(),
             is_dir: file_type.is_dir(),
             is_symlink: file_type.is_symlink(),
             special_kind: None,
