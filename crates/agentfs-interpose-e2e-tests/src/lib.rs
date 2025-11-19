@@ -334,13 +334,14 @@ mod tests {
     use std::thread;
     use std::time::Duration;
     use tempfile::tempdir;
+    use tracing::{debug, info};
 
     #[test]
     fn shim_performs_handshake_when_allowed() {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -476,7 +477,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -533,7 +534,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -579,7 +580,7 @@ mod tests {
         match processes_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
                 DaemonStateResponse::Processes(processes) => {
-                    println!("Daemon processes state: {} processes", processes.len());
+                    info!(process_count = processes.len(), "Daemon processes state");
                     assert!(
                         processes.iter().any(|p| p.os_pid == 12345),
                         "Daemon should have registered the test process"
@@ -597,9 +598,12 @@ mod tests {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::Stats(stats) => {
-                        println!(
-                            "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
-                            stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
+                        info!(
+                            branches = stats.branches,
+                            snapshots = stats.snapshots,
+                            handles = stats.open_handles,
+                            memory = stats.memory_usage,
+                            "Daemon stats"
                         );
                         // Stats values are unsigned; previous non-negativity assertions were tautologies.
                     }
@@ -612,7 +616,7 @@ mod tests {
         // Verify that the file exists with expected content (matching test_helper behavior)
         // File was created and verified by test_helper through interposed operations
         // The test_helper verified the file content matches expectations
-        println!("File operations completed successfully - content verified by test_helper");
+        info!("File operations completed successfully - content verified by test_helper");
 
         // Test filesystem state query - should show that FsCore state capture works
         // File operations may not create persistent state due to FsCore/real filesystem disconnect
@@ -625,15 +629,15 @@ mod tests {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::FilesystemState(filesystem_state) => {
-                        println!(
-                            "Daemon filesystem state: {} entries",
-                            filesystem_state.entries.len()
+                        info!(
+                            entry_count = filesystem_state.entries.len(),
+                            "Daemon filesystem state"
                         );
 
                         // Verify that FsCore state capture works - the query completed successfully
-                        println!(
-                            "Verified FsCore filesystem state capture works ({} entries)",
-                            filesystem_state.entries.len()
+                        info!(
+                            entry_count = filesystem_state.entries.len(),
+                            "Verified FsCore filesystem state capture works"
                         );
                     }
                     _ => panic!("Expected filesystem response"),
@@ -658,7 +662,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -701,7 +705,7 @@ mod tests {
         match processes_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
                 DaemonStateResponse::Processes(processes) => {
-                    println!("Daemon processes state: {} processes", processes.len());
+                    info!(process_count = processes.len(), "Daemon processes state");
                     assert!(
                         processes.iter().any(|p| p.os_pid == 12345),
                         "Daemon should have registered the test process"
@@ -719,9 +723,12 @@ mod tests {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::Stats(stats) => {
-                        println!(
-                            "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
-                            stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
+                        info!(
+                            branches = stats.branches,
+                            snapshots = stats.snapshots,
+                            handles = stats.open_handles,
+                            memory = stats.memory_usage,
+                            "Daemon stats"
                         );
                         // Stats values are unsigned; previous non-negativity assertions were tautologies.
                     }
@@ -733,7 +740,7 @@ mod tests {
 
         // Directory operations completed successfully - files were created in FsCore
         // The test_helper verified that directory operations work and found the expected entries
-        println!("Directory operations completed successfully");
+        info!("Directory operations completed successfully");
 
         // Test filesystem state query - should show the files created by test_helper
         // Now that directory operations are fully delegated to FsCore, the files created by test_helper
@@ -747,16 +754,16 @@ mod tests {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::FilesystemState(filesystem_state) => {
-                        println!(
-                            "Daemon filesystem state: {} entries",
-                            filesystem_state.entries.len()
+                        info!(
+                            entry_count = filesystem_state.entries.len(),
+                            "Daemon filesystem state"
                         );
 
                         // Directory operations work - files created by test_helper exist in FsCore
                         // but may not appear in filesystem state due to path resolution issues
-                        println!(
-                            "Verified FsCore filesystem state capture works ({} entries)",
-                            filesystem_state.entries.len()
+                        info!(
+                            entry_count = filesystem_state.entries.len(),
+                            "Verified FsCore filesystem state capture works"
                         );
                     }
                     _ => panic!("Expected filesystem response"),
@@ -781,7 +788,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -827,7 +834,7 @@ mod tests {
         match processes_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
                 DaemonStateResponse::Processes(processes) => {
-                    println!("Daemon processes state: {} processes", processes.len());
+                    info!(process_count = processes.len(), "Daemon processes state");
                     assert!(
                         processes.iter().any(|p| p.os_pid == 12345),
                         "Daemon should have registered the test process"
@@ -841,28 +848,28 @@ mod tests {
         // Test filesystem state query - should show that FsCore state capture works
         // Now that readlink operations are fully delegated to FsCore, we verify that
         // the state capture mechanism works properly
-        println!("Starting filesystem state query...");
+        info!("Starting filesystem state query...");
         let fs_response = query_daemon_state_structured(
             socket_path,
             Request::daemon_state_filesystem(3, false, 1024), // Slightly deeper scan for faster test
         )
         .unwrap();
-        println!("Filesystem state query completed");
+        info!("Filesystem state query completed");
         match fs_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::FilesystemState(filesystem_state) => {
-                        println!(
-                            "Daemon filesystem state: {} entries",
-                            filesystem_state.entries.len()
+                        info!(
+                            entry_count = filesystem_state.entries.len(),
+                            "Daemon filesystem state"
                         );
 
                         // Verify that FsCore state capture works - it should contain at least the root
 
                         // Verify the state capture mechanism works
-                        println!(
-                            "Verified FsCore filesystem state capture works ({} entries)",
-                            filesystem_state.entries.len()
+                        info!(
+                            entry_count = filesystem_state.entries.len(),
+                            "Verified FsCore filesystem state capture works"
                         );
                     }
                     _ => panic!("Expected filesystem response"),
@@ -874,13 +881,13 @@ mod tests {
         // Stop daemon - handle gracefully in case it already crashed
         match daemon.kill() {
             Ok(_) => {
-                println!("Successfully sent kill signal to daemon");
+                info!("Successfully sent kill signal to daemon");
                 // Give daemon time to clean up
                 thread::sleep(Duration::from_millis(100));
             }
             Err(_) => {
                 // Daemon might have already exited, that's fine
-                println!("Daemon was already stopped or kill failed");
+                debug!("Daemon was already stopped or kill failed");
             }
         }
         let _ = daemon.wait();
@@ -896,7 +903,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -934,7 +941,7 @@ mod tests {
         match processes_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
                 DaemonStateResponse::Processes(processes) => {
-                    println!("Daemon processes state: {} processes", processes.len());
+                    info!(process_count = processes.len(), "Daemon processes state");
                     assert!(
                         processes.iter().any(|p| p.os_pid == 12345),
                         "Daemon should have registered the test process"
@@ -952,9 +959,12 @@ mod tests {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::Stats(stats) => {
-                        println!(
-                            "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
-                            stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
+                        info!(
+                            branches = stats.branches,
+                            snapshots = stats.snapshots,
+                            handles = stats.open_handles,
+                            memory = stats.memory_usage,
+                            "Daemon stats"
                         );
                         // Stats values are unsigned; previous non-negativity assertions were tautologies.
                     }
@@ -966,7 +976,7 @@ mod tests {
 
         // Metadata operations completed successfully - all operations should have been intercepted
         // and handled through the AgentFS daemon
-        println!("Metadata operations completed successfully through interposition");
+        info!("Metadata operations completed successfully through interposition");
 
         // Stop daemon - handle gracefully in case it already crashed
         match daemon.kill() {
@@ -984,7 +994,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1022,7 +1032,7 @@ mod tests {
         match processes_response {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => match response {
                 DaemonStateResponse::Processes(processes) => {
-                    println!("Daemon processes state: {} processes", processes.len());
+                    info!(process_count = processes.len(), "Daemon processes state");
                     assert!(
                         processes.iter().any(|p| p.os_pid == 12345),
                         "Daemon should have registered the test process"
@@ -1040,9 +1050,12 @@ mod tests {
             Response::DaemonState(DaemonStateResponseWrapper { response }) => {
                 match response {
                     DaemonStateResponse::Stats(stats) => {
-                        println!(
-                            "Daemon stats: branches={}, snapshots={}, handles={}, memory={}",
-                            stats.branches, stats.snapshots, stats.open_handles, stats.memory_usage
+                        info!(
+                            branches = stats.branches,
+                            snapshots = stats.snapshots,
+                            handles = stats.open_handles,
+                            memory = stats.memory_usage,
+                            "Daemon stats"
                         );
                         // Stats values are unsigned; previous non-negativity assertions were tautologies.
                     }
@@ -1054,7 +1067,7 @@ mod tests {
 
         // Namespace operations completed successfully - all operations should have been intercepted
         // and handled through the AgentFS daemon
-        println!("Namespace mutation operations completed successfully through interposition");
+        info!("Namespace mutation operations completed successfully through interposition");
 
         // Stop daemon - handle gracefully in case it already crashed
         match daemon.kill() {
@@ -1126,7 +1139,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1161,12 +1174,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.1 test");
 
-        println!(
+        info!(
             "T25.1 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.1 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1200,7 +1213,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1238,12 +1251,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.2 test");
 
-        println!(
+        info!(
             "T25.2 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.2 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1275,7 +1288,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1309,12 +1322,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.3 test");
 
-        println!(
+        info!(
             "T25.3 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.3 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1346,7 +1359,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1389,12 +1402,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.4 test");
 
-        println!(
+        info!(
             "T25.4 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.4 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1425,7 +1438,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1456,12 +1469,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.5 test");
 
-        println!(
+        info!(
             "T25.5 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.5 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1500,7 +1513,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1535,12 +1548,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.6 test");
 
-        println!(
+        info!(
             "T25.6 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.6 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1578,7 +1591,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1612,12 +1625,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.7 test");
 
-        println!(
+        info!(
             "T25.7 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.7 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1649,7 +1662,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1683,12 +1696,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.9 test");
 
-        println!(
+        info!(
             "T25.9 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.9 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1718,7 +1731,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1764,12 +1777,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.8 test");
 
-        println!(
+        info!(
             "T25.8 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.8 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1800,7 +1813,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1843,12 +1856,12 @@ mod tests {
 
         let duration = start_time.elapsed();
 
-        println!(
+        info!(
             "T25.10 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.10 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1911,7 +1924,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -1953,12 +1966,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.11 overlay test");
 
-        println!(
+        info!(
             "T25.11 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.11 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -1989,7 +2002,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -2018,7 +2031,7 @@ mod tests {
 
         // Execute process isolation test
         let helper = find_helper_binary();
-        println!(
+        info!(
             "T25.12: Executing helper '{}' with args: --test-t25-12",
             helper.display()
         );
@@ -2028,12 +2041,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.12 process isolation test");
 
-        println!(
+        info!(
             "T25.12 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.12 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -2064,7 +2077,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -2102,12 +2115,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.13 cross-process FD sharing test");
 
-        println!(
+        info!(
             "T25.13 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.13 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -2138,7 +2151,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -2178,12 +2191,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.14 memory leak test");
 
-        println!(
+        info!(
             "T25.14 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.14 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -2213,7 +2226,7 @@ mod tests {
         let _lock = match ENV_GUARD.lock() {
             Ok(lock) => lock,
             Err(poisoned) => {
-                eprintln!(
+                debug!(
                     "Warning: ENV_GUARD was poisoned by a previous test crash, continuing anyway"
                 );
                 poisoned.into_inner()
@@ -2244,12 +2257,12 @@ mod tests {
             .output()
             .expect("Failed to execute T25.15 test");
 
-        println!(
+        info!(
             "T25.15 Test output: {}",
             String::from_utf8_lossy(&output.stdout)
         );
         if !output.stderr.is_empty() {
-            println!(
+            debug!(
                 "T25.15 Test stderr: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -2292,7 +2305,7 @@ mod tests {
         const NOTE_WRITE: u32 = 0x00000002;
         const NOTE_DELETE: u32 = 0x00000001;
 
-        println!("Starting Milestone 2 integration test...");
+        info!("Starting Milestone 2 integration test...");
 
         // Create AgentFsDaemon which now includes the watch service
         let daemon = AgentFsDaemon::new().expect("Failed to create daemon");
@@ -2319,7 +2332,7 @@ mod tests {
             1000,                     // latency
         );
 
-        println!(
+        info!(
             "Registered watches: kqueue={}, fsevents={}",
             kq_reg_id, fsevents_reg_id
         );
@@ -2331,7 +2344,7 @@ mod tests {
         let core_clone = core.clone();
         let tx_clone = tx.clone();
         thread::spawn(move || {
-            println!("Thread 1: Starting filesystem operations...");
+            info!("Thread 1: Starting filesystem operations...");
 
             // Give the event subscription time to set up
             thread::sleep(Duration::from_millis(100));
@@ -2357,7 +2370,7 @@ mod tests {
             );
             match result {
                 Ok(handle_id) => {
-                    println!("Thread 1: Created file, handle_id={:?}", handle_id);
+                    info!(?handle_id, "Thread 1: Created file");
                     tx_clone.send("created".to_string()).unwrap();
 
                     // Write to the file (should trigger Modified event)
@@ -2365,36 +2378,36 @@ mod tests {
                     let write_result = core_guard.write(&pid, handle_id, 0, &data[..]);
                     match write_result {
                         Ok(bytes_written) => {
-                            println!("Thread 1: Wrote {} bytes", bytes_written);
+                            info!(bytes_written, "Thread 1: Wrote bytes");
                             tx_clone.send("modified".to_string()).unwrap();
 
                             // Close the file
                             let _ = core_guard.close(&pid, handle_id);
                         }
                         Err(e) => {
-                            println!("Thread 1: Write failed: {:?}", e);
+                            debug!(error = ?e, "Thread 1: Write failed");
                         }
                     }
                 }
                 Err(e) => {
-                    println!("Thread 1: Create failed: {:?}", e);
+                    debug!(error = ?e, "Thread 1: Create failed");
                     tx_clone.send("create_failed".to_string()).unwrap();
                 }
             }
 
-            println!("Thread 1: Finished operations");
+            info!("Thread 1: Finished operations");
         });
 
         // Thread 2: Monitor the daemon and verify event routing
         thread::spawn(move || {
-            println!("Thread 2: Monitoring event routing...");
+            info!("Thread 2: Monitoring event routing...");
 
             // Wait for operations to complete (give enough time for thread 1)
             thread::sleep(Duration::from_millis(200));
 
             // Check daemon stats to see if events were processed
             let stats = core.lock().unwrap().stats();
-            println!(
+            info!(
                 "Thread 2: FsCore stats - snapshots: {}, branches: {}, handles: {}",
                 stats.snapshots, stats.branches, stats.open_handles
             );
@@ -2404,7 +2417,7 @@ mod tests {
             // This test verifies the pipeline setup and that operations complete
             // without panicking. Future enhancements could add routing inspection.
 
-            println!("Thread 2: Event pipeline test completed");
+            info!("Thread 2: Event pipeline test completed");
             tx.send("monitoring_complete".to_string()).unwrap();
         });
 
@@ -2421,11 +2434,11 @@ mod tests {
                     "modified" => modified = true,
                     "monitoring_complete" => monitoring_complete = true,
                     "create_failed" => {
-                        println!(
+                        info!(
                             "Filesystem operation failed - this may be expected in test environment"
                         );
                     }
-                    _ => println!("Received message: {}", msg),
+                    _ => debug!(%msg, "Received message"),
                 },
                 Err(_) => break, // timeout
             }
@@ -2438,11 +2451,11 @@ mod tests {
         // Verify that the pipeline executed without panicking
         // Note: In a full implementation, we'd verify that events were actually routed
         // to the registered watches. For now, we verify the setup works.
-        println!("Milestone 2 integration test completed successfully");
-        println!("- FsCore event tracking: enabled");
-        println!("- Daemon event subscription: active");
-        println!("- Watch registrations: {} kqueue, {} fsevents", 1, 1);
-        println!(
+        info!("Milestone 2 integration test completed successfully");
+        info!("- FsCore event tracking: enabled");
+        info!("- Daemon event subscription: active");
+        info!(kqueue = 1, fsevents = 1, "- Watch registrations");
+        info!(
             "- Filesystem operations: {} created, {} modified",
             created as i32, modified as i32
         );
@@ -2454,10 +2467,10 @@ mod tests {
             "Event monitoring thread should complete"
         );
 
-        println!("✅ Milestone 2: Daemon 'watch service' + event fanout - PASSED");
-        println!("   - Event subscription pipeline is functional");
-        println!("   - Watch service can register kqueue and FSEvents watchers");
-        println!("   - Event routing infrastructure is in place");
+        info!("✅ Milestone 2: Daemon 'watch service' + event fanout - PASSED");
+        info!("   - Event subscription pipeline is functional");
+        info!("   - Watch service can register kqueue and FSEvents watchers");
+        info!("   - Event routing infrastructure is in place");
     }
 
     #[test]
@@ -2467,14 +2480,14 @@ mod tests {
         use std::thread;
         use std::time::Duration;
 
-        println!("Starting Milestone 6 FSEvents CFMessagePort interposition test...");
+        info!("Starting Milestone 6 FSEvents CFMessagePort interposition test...");
 
         // Find the test helper binary and daemon
         let daemon_path = find_daemon_path();
         let test_helper_path = find_test_helper_path();
 
-        println!("Daemon path: {}", daemon_path.display());
-        println!("Test helper path: {}", test_helper_path.display());
+        info!(daemon_path = %daemon_path.display(), "Daemon path");
+        info!(test_helper_path = %test_helper_path.display(), "Test helper path");
 
         // For this test, we just verify that the interposition infrastructure works
         // The test_helper creates an FSEvents stream, registers it with the daemon,
@@ -2522,7 +2535,7 @@ mod tests {
         let tx_thread1 = tx_main.clone();
         let test_helper_path_clone = test_helper_path.clone();
         let test_helper_handle = thread::spawn(move || {
-            println!("Thread 1: Starting test helper process with FSEvents test...");
+            info!("Thread 1: Starting test helper process with FSEvents test...");
 
             // Create the test helper with FSEvents test command
             // Pass the overlay upper directory as an argument so the test operates on the monitored filesystem
@@ -2553,7 +2566,7 @@ mod tests {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
                 for line in reader.lines().map_while(Result::ok) {
-                    println!("TEST HELPER STDOUT: {}", line);
+                    debug!(%line, "TEST HELPER STDOUT");
                     if line.contains("FSEvents callback: received") {
                         let _ = tx_stdout.send(format!("EVENT: {}", line));
                     } else if line.contains("✅ Started FSEvents stream") {
@@ -2570,13 +2583,13 @@ mod tests {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("TEST HELPER STDERR: {}", line);
+                    debug!(%line, "TEST HELPER STDERR");
                 }
             });
 
             // Wait for the test helper to complete
             let status = test_cmd.wait().expect("Test helper failed");
-            println!("Test helper exited with status: {}", status);
+            info!(%status, "Test helper exited");
             let _ = tx_thread1.send(format!("EXIT_STATUS: {}", status));
         });
 
@@ -2600,19 +2613,19 @@ mod tests {
             while let Ok(msg) = rx_main.try_recv() {
                 if msg == "STREAM_READY" {
                     stream_ready = true;
-                    println!("Main: FSEvents stream is ready - interposition working!");
+                    info!("Main: FSEvents stream is ready - interposition working!");
                 } else if msg == "TEST_COMPLETED" {
                     test_completed = true;
-                    println!("Main: Test helper completed successfully");
+                    info!("Main: Test helper completed successfully");
                 } else if msg == "SUCCESS_MESSAGE" {
                     success_message = true;
-                    println!("Main: Test helper reported success!");
+                    info!("Main: Test helper reported success!");
                 } else if msg.starts_with("EVENT: ") {
                     events_received = true;
-                    println!("Main: FSEvents events received: {}", &msg[6..]);
+                    debug!(events = %&msg[6..], "Main: FSEvents events received");
                 } else if msg.starts_with("EXIT_STATUS: ") {
                     exit_status = Some(msg.clone());
-                    println!("Main: Test helper exit: {}", msg);
+                    info!(%msg, "Main: Test helper exit");
                     test_completed = true;
                 }
             }
@@ -2630,11 +2643,11 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
 
         // Verify results
-        println!("Test results:");
-        println!("  FSEvents stream ready: {}", stream_ready);
-        println!("  Test completed: {}", test_completed);
-        println!("  Success message received: {}", success_message);
-        println!("  Events received: {}", events_received);
+        info!("Test results:");
+        info!(stream_ready, "  FSEvents stream ready");
+        info!(test_completed, "  Test completed");
+        info!(success_message, "  Success message received");
+        info!(events_received, "  Events received");
 
         // The test passes if the FSEvents interposition infrastructure is working
         assert!(
@@ -2655,13 +2668,13 @@ mod tests {
             );
         }
 
-        println!("Milestone 6 FSEvents CFMessagePort interposition test passed!");
-        println!("✅ Verified: FSEvents streams created via intercepted APIs");
-        println!("✅ Verified: Shim registers streams with daemon successfully");
-        println!("✅ Verified: CFMessagePort communication infrastructure established");
-        println!("✅ Verified: Filesystem operations trigger FSEvents callbacks");
-        println!("✅ Verified: All filesystem operation types are covered");
-        println!("✅ Verified: Run-loop-based delivery preserved");
+        info!("Milestone 6 FSEvents CFMessagePort interposition test passed!");
+        info!("✅ Verified: FSEvents streams created via intercepted APIs");
+        info!("✅ Verified: Shim registers streams with daemon successfully");
+        info!("✅ Verified: CFMessagePort communication infrastructure established");
+        info!("✅ Verified: Filesystem operations trigger FSEvents callbacks");
+        info!("✅ Verified: All filesystem operation types are covered");
+        info!("✅ Verified: Run-loop-based delivery preserved");
     }
 
     #[allow(dead_code)]
@@ -2671,14 +2684,14 @@ mod tests {
         use std::thread;
         use std::time::Duration;
 
-        println!("Starting Milestone 4 kevent hook + injectable queue test...");
+        info!("Starting Milestone 4 kevent hook + injectable queue test...");
 
         // Find the test helper binary and daemon
         let daemon_path = find_daemon_path();
         let test_helper_path = find_test_helper_path();
 
-        println!("Daemon path: {}", daemon_path.display());
-        println!("Test helper path: {}", test_helper_path.display());
+        info!(daemon_path = %daemon_path.display(), "Daemon path");
+        info!(test_helper_path = %test_helper_path.display(), "Test helper path");
 
         // Start the daemon in a separate process
         let mut daemon_cmd = Command::new(&daemon_path)
@@ -2698,7 +2711,7 @@ mod tests {
         let tx_thread1 = tx_main.clone();
         let test_helper_path_clone = test_helper_path.clone();
         let test_helper_handle = thread::spawn(move || {
-            println!("Thread 1: Starting test helper process...");
+            info!("Thread 1: Starting test helper process...");
 
             // Create the test helper with kevent test command
             let mut test_cmd = Command::new(&test_helper_path_clone)
@@ -2729,7 +2742,7 @@ mod tests {
                             let chunk = String::from_utf8_lossy(&buf[..n]);
                             output.push_str(&chunk);
                             if output.contains("READY_FOR_EVENTS") {
-                                println!("Thread 1: Test helper is ready for events");
+                                info!("Thread 1: Test helper is ready for events");
                                 tx_thread1.send("helper_ready".to_string()).unwrap();
                                 break;
                             }
@@ -2751,11 +2764,11 @@ mod tests {
                         let chunk = String::from_utf8_lossy(&buf[..n]);
                         output.push_str(&chunk);
                         if output.contains("EVENT_RECEIVED") {
-                            println!("Thread 1: Test helper received an event!");
+                            info!("Thread 1: Test helper received an event!");
                             tx_thread1.send("event_received".to_string()).unwrap();
                         }
                         if output.contains("UNRELATED_FILTER_PASSED") {
-                            println!("Thread 1: Unrelated filter passed through correctly");
+                            info!("Thread 1: Unrelated filter passed through correctly");
                             tx_thread1.send("unrelated_filter_passed".to_string()).unwrap();
                         }
                     }
@@ -2772,7 +2785,7 @@ mod tests {
 
             // Get final output
             let exit_status = test_cmd.wait().expect("Test helper failed");
-            println!(
+            info!(
                 "Thread 1: Test helper exited with status: {:?}",
                 exit_status
             );
@@ -2784,7 +2797,7 @@ mod tests {
         // Thread 2: Wait a bit then signal completion (simulating FsCore operations)
         let tx_thread2 = tx_thread2.clone();
         thread::spawn(move || {
-            println!("Thread 2: Simulating FsCore operations...");
+            info!("Thread 2: Simulating FsCore operations...");
 
             // Give some time for the test helper to get ready and for operations to generate events
             thread::sleep(Duration::from_millis(1000));
@@ -2792,7 +2805,7 @@ mod tests {
             // Signal completion
             tx_thread2.send("operations_complete".to_string()).unwrap();
 
-            println!("Thread 2: FsCore operations simulation completed");
+            info!("Thread 2: FsCore operations simulation completed");
         });
 
         // Main test thread: coordinate and verify results
@@ -2818,7 +2831,9 @@ mod tests {
                     s if s.starts_with("helper_output:") => {
                         _helper_output = s[14..].to_string();
                     }
-                    _ => println!("Received message from thread 1: {}", msg),
+                    _ => {
+                        debug!(message = %msg, "Received message from thread 1");
+                    }
                 }
             }
 
@@ -2829,7 +2844,9 @@ mod tests {
                         timeout_occurred = true;
                         break;
                     }
-                    _ => println!("Received message from thread 2: {}", msg),
+                    _ => {
+                        debug!(message = %msg, "Received message from thread 2");
+                    }
                 }
             }
 
@@ -2846,27 +2863,27 @@ mod tests {
         let _ = daemon_cmd.kill();
         let _ = daemon_cmd.wait();
 
-        println!("Milestone 4 kevent hook test results:");
-        println!("- Helper ready: {}", helper_ready);
-        println!("- Event received: {}", event_received);
-        println!("- Unrelated filter passed: {}", unrelated_filter_passed);
-        println!("- Operations complete: {}", operations_complete);
-        println!("- Timeout occurred: {}", timeout_occurred);
+        info!("Milestone 4 kevent hook test results:");
+        info!(helper_ready, "- Helper ready");
+        info!(event_received, "- Event received");
+        info!(unrelated_filter_passed, "- Unrelated filter passed");
+        info!(operations_complete, "- Operations complete");
+        info!(timeout_occurred, "- Timeout occurred");
 
         if !timeout_occurred {
-            println!("✅ Milestone 4: kevent hook + injectable queue - PASSED");
-            println!("   - Test helper successfully registered kqueue watches");
-            println!("   - FsCore operations were issued to generate events");
-            println!("   - Event injection pipeline is functional");
+            info!("✅ Milestone 4: kevent hook + injectable queue - PASSED");
+            info!("   - Test helper successfully registered kqueue watches");
+            info!("   - FsCore operations were issued to generate events");
+            info!("   - Event injection pipeline is functional");
 
             // In a complete implementation, we'd assert that event_received is true
             // For now, we verify the test infrastructure works
             assert!(helper_ready, "Test helper should become ready");
             assert!(operations_complete, "Operations should complete");
         } else {
-            println!("⚠️  Milestone 4: kevent hook + injectable queue - SKIPPED");
-            println!("   - Test timed out (may require manual setup of DYLD environment)");
-            println!("   - This test requires DYLD_INSERT_LIBRARIES to work properly");
+            info!("⚠️  Milestone 4: kevent hook + injectable queue - SKIPPED");
+            info!("   - Test timed out (may require manual setup of DYLD environment)");
+            info!("   - This test requires DYLD_INSERT_LIBRARIES to work properly");
         }
     }
 
@@ -2877,14 +2894,14 @@ mod tests {
         use std::thread;
         use std::time::Duration;
 
-        println!("Starting Milestone 7 FD close lifecycle test...");
+        info!("Starting Milestone 7 FD close lifecycle test...");
 
         // Find the test helper binary and daemon
         let daemon_path = find_daemon_path();
         let test_helper_path = find_test_helper_path();
 
-        println!("Daemon path: {}", daemon_path.display());
-        println!("Test helper path: {}", test_helper_path.display());
+        info!(daemon_path = %daemon_path.display(), "Daemon path");
+        info!(test_helper_path = %test_helper_path.display(), "Test helper path");
 
         // Start the daemon in a separate process for the interposition to connect to
         let socket_path = "/tmp/agentfs-test.sock";
@@ -2931,7 +2948,7 @@ mod tests {
         let test_helper_path_clone = test_helper_path.clone();
         let test_file_clone = test_file.clone();
         let _test_helper_handle = thread::spawn(move || {
-            println!("Thread 1: Starting FD close lifecycle test helper...");
+            info!("Thread 1: Starting FD close lifecycle test helper...");
 
             let mut test_cmd = Command::new(&test_helper_path_clone)
                 .arg("lifecycle-fd-close-test")
@@ -2960,7 +2977,7 @@ mod tests {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
                 for line in reader.lines().map_while(Result::ok) {
-                    println!("TEST HELPER STDOUT: {}", line);
+                    debug!(%line, "TEST HELPER STDOUT");
                     if line.contains("FD close lifecycle test completed successfully") {
                         let _ = tx_stdout.send("TEST_PASSED".to_string());
                     }
@@ -2972,7 +2989,7 @@ mod tests {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    println!("TEST HELPER STDERR: {}", line);
+                    debug!(%line, "TEST HELPER STDERR");
                     // Check for any error messages that indicate test failure
                     if line.contains("Failed") || line.contains("ERROR") {
                         let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
@@ -2982,7 +2999,7 @@ mod tests {
 
             // Wait for the test helper to complete
             let status = test_cmd.wait().expect("Test helper process failed");
-            println!("Test helper exited with status: {}", status);
+            info!(%status, "Test helper exited");
 
             if status.success() {
                 tx_thread1.send("TEST_COMPLETED".to_string()).unwrap();
@@ -3011,7 +3028,7 @@ mod tests {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(e) => {
-                    println!("Channel receive error: {}", e);
+                    debug!(error = %e, "Channel receive error");
                     break;
                 }
             }
@@ -3029,20 +3046,20 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
 
         // Report results
-        println!("Test results:");
-        println!("- Test passed: {}", test_passed);
-        println!("- Test completed: {}", test_completed);
-        println!("- Test error: {:?}", test_error);
+        info!("Test results:");
+        info!(test_passed, "- Test passed");
+        info!(test_completed, "- Test completed");
+        info!(error = ?test_error, "- Test error");
 
         if test_completed && test_passed && test_error.is_none() {
-            println!("✅ Milestone 7: FD close lifecycle - PASSED");
-            println!("   - Application successfully closed watched FD");
-            println!("   - Daemon properly cleaned up watch registrations");
-            println!("   - No crashes or deadlocks occurred");
+            info!("✅ Milestone 7: FD close lifecycle - PASSED");
+            info!("   - Application successfully closed watched FD");
+            info!("   - Daemon properly cleaned up watch registrations");
+            info!("   - No crashes or deadlocks occurred");
         } else {
-            println!("❌ Milestone 7: FD close lifecycle - FAILED");
+            info!("❌ Milestone 7: FD close lifecycle - FAILED");
             if let Some(error) = test_error {
-                println!("   - Error: {}", error);
+                info!(error = %error, "   - Error");
             }
             panic!("FD close lifecycle test failed");
         }
@@ -3055,14 +3072,14 @@ mod tests {
         use std::thread;
         use std::time::Duration;
 
-        println!("Starting Milestone 7 process exit lifecycle test...");
+        info!("Starting Milestone 7 process exit lifecycle test...");
 
         // Find the test helper binary and daemon
         let daemon_path = find_daemon_path();
         let test_helper_path = find_test_helper_path();
 
-        println!("Daemon path: {}", daemon_path.display());
-        println!("Test helper path: {}", test_helper_path.display());
+        info!(daemon_path = %daemon_path.display(), "Daemon path");
+        info!(test_helper_path = %test_helper_path.display(), "Test helper path");
 
         // Start the daemon in a separate process for the interposition to connect to
         let socket_path = "/tmp/agentfs-test.sock";
@@ -3109,7 +3126,7 @@ mod tests {
         let test_helper_path_clone = test_helper_path.clone();
         let test_file_clone = test_file.clone();
         let _test_helper_handle = thread::spawn(move || {
-            println!("Thread 1: Starting process exit lifecycle test helper...");
+            info!("Thread 1: Starting process exit lifecycle test helper...");
 
             let mut test_cmd = Command::new(&test_helper_path_clone)
                 .arg("lifecycle-process-exit-test")
@@ -3138,7 +3155,7 @@ mod tests {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
                 for line in reader.lines().map_while(Result::ok) {
-                    println!("TEST HELPER STDOUT: {}", line);
+                    debug!(%line, "TEST HELPER STDOUT");
                     if line.contains("Process exit lifecycle test completed") {
                         let _ = tx_stdout.send("TEST_SETUP_COMPLETE".to_string());
                     }
@@ -3150,7 +3167,7 @@ mod tests {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    println!("TEST HELPER STDERR: {}", line);
+                    debug!(%line, "TEST HELPER STDERR");
                     if line.contains("Failed") || line.contains("ERROR") {
                         let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
                     }
@@ -3159,7 +3176,7 @@ mod tests {
 
             // Wait for the test helper to complete (it should exit after setting up watches)
             let status = test_cmd.wait().expect("Test helper process failed");
-            println!("Test helper exited with status: {}", status);
+            info!(%status, "Test helper exited");
 
             tx_thread1.send("PROCESS_EXITED".to_string()).unwrap();
         });
@@ -3184,7 +3201,7 @@ mod tests {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(e) => {
-                    println!("Channel receive error: {}", e);
+                    debug!(error = %e, "Channel receive error");
                     break;
                 }
             }
@@ -3208,20 +3225,20 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
 
         // Report results
-        println!("Test results:");
-        println!("- Setup complete: {}", setup_complete);
-        println!("- Process exited: {}", process_exited);
-        println!("- Test error: {:?}", test_error);
+        info!("Test results:");
+        info!(setup_complete, "- Setup complete");
+        info!(process_exited, "- Process exited");
+        info!(error = ?test_error, "- Test error");
 
         if setup_complete && process_exited && test_error.is_none() {
-            println!("✅ Milestone 7: Process exit lifecycle - PASSED");
-            println!("   - Application successfully set up watches");
-            println!("   - Application exited cleanly");
-            println!("   - Daemon should have detected socket close and cleaned up resources");
+            info!("✅ Milestone 7: Process exit lifecycle - PASSED");
+            info!("   - Application successfully set up watches");
+            info!("   - Application exited cleanly");
+            info!("   - Daemon should have detected socket close and cleaned up resources");
         } else {
-            println!("❌ Milestone 7: Process exit lifecycle - FAILED");
+            info!("❌ Milestone 7: Process exit lifecycle - FAILED");
             if let Some(error) = test_error {
-                println!("   - Error: {}", error);
+                info!(error = %error, "   - Error");
             }
             panic!("Process exit lifecycle test failed");
         }
@@ -3234,14 +3251,14 @@ mod tests {
         use std::thread;
         use std::time::Duration;
 
-        println!("Starting Milestone 7 daemon restart recovery test...");
+        info!("Starting Milestone 7 daemon restart recovery test...");
 
         // Find the test helper binary and daemon
         let daemon_path = find_daemon_path();
         let test_helper_path = find_test_helper_path();
 
-        println!("Daemon path: {}", daemon_path.display());
-        println!("Test helper path: {}", test_helper_path.display());
+        info!(daemon_path = %daemon_path.display(), "Daemon path");
+        info!(test_helper_path = %test_helper_path.display(), "Test helper path");
 
         // Start the daemon in a separate process for the interposition to connect to
         let socket_path = "/tmp/agentfs-test.sock";
@@ -3289,7 +3306,7 @@ mod tests {
         let test_helper_path_clone = test_helper_path.clone();
         let test_file_clone = test_file.clone();
         let _test_helper_handle = thread::spawn(move || {
-            println!("Thread 1: Starting daemon restart recovery test helper...");
+            info!("Thread 1: Starting daemon restart recovery test helper...");
 
             let mut test_cmd = Command::new(&test_helper_path_clone)
                 .arg("lifecycle-daemon-restart-test")
@@ -3318,7 +3335,7 @@ mod tests {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
                 for line in reader.lines().map_while(Result::ok) {
-                    println!("TEST HELPER STDOUT: {}", line);
+                    debug!(%line, "TEST HELPER STDOUT");
                     if line.contains("Daemon restart recovery test completed") {
                         let _ = tx_stdout.send("TEST_SETUP_COMPLETE".to_string());
                     }
@@ -3330,7 +3347,7 @@ mod tests {
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    println!("TEST HELPER STDERR: {}", line);
+                    debug!(%line, "TEST HELPER STDERR");
                     if line.contains("Failed") || line.contains("ERROR") {
                         let _ = tx_stderr.send(format!("TEST_ERROR: {}", line));
                     }
@@ -3339,7 +3356,7 @@ mod tests {
 
             // Wait for the test helper to complete
             let status = test_cmd.wait().expect("Test helper process failed");
-            println!("Test helper exited with status: {}", status);
+            info!(%status, "Test helper exited");
 
             if status.success() {
                 tx_thread1.send("TEST_COMPLETED".to_string()).unwrap();
@@ -3368,7 +3385,7 @@ mod tests {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(e) => {
-                    println!("Channel receive error: {}", e);
+                    debug!(error = %e, "Channel receive error");
                     break;
                 }
             }
@@ -3380,7 +3397,7 @@ mod tests {
 
         if setup_complete && test_error.is_none() {
             // Simulate daemon restart by killing and restarting it
-            println!("Simulating daemon restart...");
+            info!("Simulating daemon restart...");
             let _ = daemon_cmd.kill();
 
             // Wait a moment for cleanup
@@ -3417,20 +3434,20 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
 
         // Report results
-        println!("Test results:");
-        println!("- Setup complete: {}", setup_complete);
-        println!("- Test completed: {}", test_completed);
-        println!("- Test error: {:?}", test_error);
+        info!("Test results:");
+        info!(setup_complete, "- Setup complete");
+        info!(test_completed, "- Test completed");
+        info!(error = ?test_error, "- Test error");
 
         if setup_complete && test_completed && test_error.is_none() {
-            println!("✅ Milestone 7: Daemon restart recovery - PASSED");
-            println!("   - Application successfully set up watches");
-            println!("   - Daemon restart simulation completed");
-            println!("   - Shim should reconnect and re-register watches on restart");
+            info!("✅ Milestone 7: Daemon restart recovery - PASSED");
+            info!("   - Application successfully set up watches");
+            info!("   - Daemon restart simulation completed");
+            info!("   - Shim should reconnect and re-register watches on restart");
         } else {
-            println!("❌ Milestone 7: Daemon restart recovery - FAILED");
+            info!("❌ Milestone 7: Daemon restart recovery - FAILED");
             if let Some(error) = test_error {
-                println!("   - Error: {}", error);
+                info!(error = %error, "   - Error");
             }
             panic!("Daemon restart recovery test failed");
         }
