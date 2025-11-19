@@ -267,7 +267,7 @@ jobs:
   pjdfstest:
     name: pjdfstest suite
     needs: fuse-harness
-    runs-on: [self-hosted, nixos, x86-64-v3, microvm, fine-tuned-systemd-sandbox]
+    runs-on: [self-hosted, nixos, x86-64-v3, microvm]
 
     steps:
       - name: Test passwordless `sudo`
