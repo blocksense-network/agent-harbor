@@ -7,8 +7,6 @@
 //! and exposes convenience helpers so tests can exercise the Btrfs snapshot
 //! provider end-to-end in the same way the legacy in-process tests did.
 
-#![cfg(feature = "btrfs")]
-
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
@@ -157,20 +155,11 @@ pub fn btrfs_is_root() -> bool {
 
 /// Check whether the required Btrfs tooling is present on the PATH.
 pub fn btrfs_available() -> bool {
-    Command::new("which")
-        .arg("btrfs")
-        .output()
-        .map_or(false, |o| o.status.success())
+    Command::new("which").arg("btrfs").output().is_ok_and(|o| o.status.success())
         && Command::new("which")
             .arg("mkfs.btrfs")
             .output()
-            .map_or(false, |o| o.status.success())
-        && Command::new("which")
-            .arg("losetup")
-            .output()
-            .map_or(false, |o| o.status.success())
-        && Command::new("which")
-            .arg("mount")
-            .output()
-            .map_or(false, |o| o.status.success())
+            .is_ok_and(|o| o.status.success())
+        && Command::new("which").arg("losetup").output().is_ok_and(|o| o.status.success())
+        && Command::new("which").arg("mount").output().is_ok_and(|o| o.status.success())
 }

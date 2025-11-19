@@ -9,6 +9,7 @@ use fs_snapshots_test_harness::{assert_driver_exists, assert_interpose_shim_exis
 use std::env;
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 use std::fs;
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -67,13 +68,13 @@ fn run_shim_smoke() -> Result<()> {
     let shim_path = assert_interpose_shim_exists()?;
     env::set_var("DYLD_INSERT_LIBRARIES", &shim_path);
 
-    println!("shim located at {}", shim_path.display());
+    info!(path = %shim_path.display(), "shim located");
     Ok(())
 }
 
 #[cfg(not(target_os = "macos"))]
 fn run_shim_smoke() -> Result<()> {
-    println!("shim smoke test unsupported on this platform");
+    info!("shim smoke test unsupported on this platform");
     Ok(())
 }
 
@@ -94,21 +95,13 @@ fn run_provider_matrix(provider: String) -> Result<()> {
             let exe_path =
                 env::current_exe().context("failed to resolve driver executable path")?;
             env::set_var("AGENTFS_INTERPOSE_EXE", &exe_path);
-            println!(
-                "AgentFS interpose shim configured for matrix run: {}",
-                shim_path.display()
-            );
-            println!(
-                "AgentFS provider opt-in flag set to {:?}",
-                env::var("AH_ENABLE_AGENTFS_PROVIDER").ok()
-            );
+            info!(path = %shim_path.display(), "AgentFS interpose shim configured for matrix run");
+            info!(flag = ?env::var("AH_ENABLE_AGENTFS_PROVIDER").ok(), "AgentFS provider opt-in flag set");
         }
 
         #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
         {
-            println!(
-                "AgentFS provider matrix unavailable (feature disabled or unsupported platform)"
-            );
+            info!("AgentFS provider matrix unavailable (feature disabled or unsupported platform)");
             return Ok(());
         }
     }

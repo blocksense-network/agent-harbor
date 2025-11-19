@@ -8,6 +8,7 @@
 
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 pub mod scenarios;
 
@@ -67,15 +68,9 @@ pub fn assert_driver_exists() -> Result<PathBuf> {
     let path = paths::harness_driver_binary();
     if std::env::var("FS_SNAPSHOTS_HARNESS_DEBUG").is_ok() {
         if std::env::var("CARGO_BIN_EXE_fs-snapshots-harness-driver").is_ok() {
-            println!(
-                "fs-snapshots harness driver located via CARGO_BIN_EXE at {}",
-                path.display()
-            );
+            debug!(path = %path.display(), "fs-snapshots harness driver located via CARGO_BIN_EXE");
         } else {
-            println!(
-                "fs-snapshots harness driver falling back to workspace target at {}",
-                path.display()
-            );
+            debug!(path = %path.display(), "fs-snapshots harness driver falling back to workspace target");
         }
     }
     if !Path::new(&path).exists() {
