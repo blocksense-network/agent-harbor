@@ -7,9 +7,11 @@
 use std::fs;
 use std::path::Path;
 use std::process;
+use tracing::{error, info, warn};
 
 fn main() {
-    println!("🧪 Overlay writer starting...");
+    tracing_subscriber::fmt::init();
+    info!("Overlay writer starting");
 
     // Test paths that should be overlaid
     let test_cases = vec![
@@ -19,51 +21,46 @@ fn main() {
     ];
 
     for (path, content) in test_cases {
-        println!("Creating file in overlay path: {}", path);
+        info!(path, "Creating file in overlay path");
 
         // Ensure parent directory exists
         if let Some(parent) = Path::new(path).parent() {
             if let Err(e) = fs::create_dir_all(parent) {
-                println!(
-                    "❌ Failed to create parent directory {}: {}",
-                    parent.display(),
-                    e
-                );
+                error!(dir = %parent.display(), error = %e, "Failed to create parent directory");
                 continue;
             }
         }
 
         match fs::write(path, content) {
             Ok(_) => {
-                println!("✅ Successfully wrote to {}", path);
+                info!(path, "Successfully wrote file");
 
                 // Verify the content
                 match fs::read_to_string(path) {
                     Ok(read_content) => {
                         if read_content == content {
-                            println!("✅ Content verification passed for {}", path);
+                            info!(path, "Content verification passed");
                         } else {
-                            println!(
-                                "❌ Content mismatch for {}: expected '{}', got '{}'",
-                                path, content, read_content
+                            error!(
+                                path,
+                                expected = content,
+                                got = read_content,
+                                "Content mismatch"
                             );
                             process::exit(1);
                         }
                     }
                     Err(e) => {
-                        println!("❌ Failed to read back content from {}: {}", path, e);
+                        error!(path, error = %e, "Failed to read back content");
                         process::exit(1);
                     }
                 }
             }
             Err(e) => {
-                println!("❌ Failed to write to {}: {}", path, e);
-                // In some test environments, this might fail due to permissions
-                // We'll continue but note the failure
-                println!("   Continuing test despite write failure (may be expected in test env)");
+                error!(path, error = %e, "Failed to write file");
+                warn!("Continuing test despite write failure (may be expected in test env)");
             }
         }
     }
-
-    println!("✅ Overlay writer completed - files created in overlay paths");
+    info!("Overlay writer completed - files processed");
 }

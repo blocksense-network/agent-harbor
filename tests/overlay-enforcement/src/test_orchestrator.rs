@@ -7,6 +7,7 @@
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
+use tracing::{error, info, warn};
 
 #[derive(Debug)]
 enum OverlayTestType {
@@ -67,13 +68,16 @@ fn run_overlay_test(
     test_type: OverlayTestType,
     sbx_helper_path: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🧪 Running {} test", test_type.description());
-    println!("   Binary: {}", test_type.binary_name());
+    info!(
+        test = test_type.description(),
+        binary = test_type.binary_name(),
+        "Starting overlay test"
+    );
 
     let binary_path = sbx_helper_path.parent().unwrap().join(test_type.binary_name());
 
     if !binary_path.exists() {
-        println!("❌ Test binary not found: {}", binary_path.display());
+        error!(path = %binary_path.display(), "Test binary not found");
         return Err(format!("Test binary {} not found", binary_path.display()).into());
     }
 
@@ -86,18 +90,18 @@ fn run_overlay_test(
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
-    println!("   Command: {:?}", cmd);
+    info!(?cmd, "Spawn sandbox helper command");
 
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn sbx-helper: {}", e))?;
 
     // Wait for completion with timeout
-    let timeout = Duration::from_secs(30);
+    let _timeout = Duration::from_secs(30); // reserved for future explicit timeout handling
     thread::sleep(Duration::from_millis(100)); // Brief pause
 
     match child.wait() {
         Ok(status) => {
             if status.success() {
-                println!("✅ {} test PASSED", test_type.description());
+                info!(test = test_type.description(), "Test passed");
                 Ok(())
             } else {
                 // Check if this is a permission error (expected in non-privileged environments)
@@ -105,24 +109,10 @@ fn run_overlay_test(
                     // This might be a permission error - check stderr for EPERM
                     // For now, we'll treat exit code 1 as potentially a permission issue
                     // and report it as a skip rather than a failure
-                    println!(
-                        "⚠️  {} test SKIPPED - likely due to insufficient privileges (exit code: {:?})",
-                        test_type.description(),
-                        status.code()
-                    );
-                    println!(
-                        "   This test requires privileges to create namespaces and mount filesystems"
-                    );
-                    println!(
-                        "   Run with appropriate privileges (e.g., sudo) or in a privileged environment"
-                    );
+                    warn!(test = test_type.description(), code = ?status.code(), "Test skipped - likely insufficient privileges (requires namespace/mount capabilities)");
                     Ok(()) // Treat as success (skipped)
                 } else {
-                    println!(
-                        "❌ {} test FAILED - exit code: {:?}",
-                        test_type.description(),
-                        status.code()
-                    );
+                    error!(test = test_type.description(), code = ?status.code(), "Test failed with unexpected exit code");
                     Err(format!(
                         "Test {} failed with exit code {:?}",
                         test_type.description(),
@@ -133,19 +123,15 @@ fn run_overlay_test(
             }
         }
         Err(e) => {
-            println!(
-                "❌ {} test FAILED - wait error: {}",
-                test_type.description(),
-                e
-            );
+            error!(test = test_type.description(), error = %e, "Test failed waiting for process");
             Err(format!("Test {} failed: {}", test_type.description(), e).into())
         }
     }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 Starting Overlay Filesystem E2E Tests");
-    println!("========================================");
+    tracing_subscriber::fmt::init();
+    info!("Starting Overlay Filesystem E2E Tests");
 
     // Get paths
     let project_root = std::env::current_dir()
@@ -159,15 +145,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sbx_helper_path = project_root.join("target/debug/sbx-helper");
     let test_binaries_dir = project_root.join("target/debug");
 
-    println!("Project root: {}", project_root.display());
-    println!("sbx-helper path: {}", sbx_helper_path.display());
+    info!(project_root = %project_root.display(), sbx_helper = %sbx_helper_path.display(), "Resolved paths");
 
     if !sbx_helper_path.exists() {
-        println!(
-            "❌ sbx-helper binary not found: {}",
-            sbx_helper_path.display()
-        );
-        println!("   Build with: cargo build --bin sbx-helper");
+        error!(path = %sbx_helper_path.display(), "sbx-helper binary not found; build with `cargo build --bin sbx-helper`");
         std::process::exit(1);
     }
 
@@ -187,23 +168,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match run_overlay_test(test_type, &sbx_helper_path) {
             Ok(_) => passed += 1,
             Err(e) => {
-                println!("❌ Test failed: {}", e);
+                error!(error = %e, "Overlay test failed");
                 failed += 1;
             }
         }
-        println!();
     }
 
-    println!("📊 Test Results:");
-    println!("   ✅ Passed: {}", passed);
-    println!("   ❌ Failed: {}", failed);
-    println!("   📈 Total: {}", passed + failed);
+    info!(
+        passed,
+        failed,
+        total = passed + failed,
+        "Overlay test results summary"
+    );
 
     if failed == 0 {
-        println!("🎉 All overlay E2E tests PASSED!");
+        info!("All overlay E2E tests passed");
         Ok(())
     } else {
-        println!("💥 {} overlay E2E tests FAILED!", failed);
+        error!(failed, "Some overlay E2E tests failed");
         std::process::exit(1);
     }
 }
