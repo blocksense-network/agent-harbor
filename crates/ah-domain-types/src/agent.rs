@@ -230,7 +230,7 @@ impl AgentMetadata {
             _ => None, // Non-experimental agents
         };
 
-        required_feature.map_or(false, |feature| enabled_features.contains(&feature))
+        required_feature.is_some_and(|feature| enabled_features.contains(&feature))
     }
 }
 
@@ -260,7 +260,7 @@ impl AgentCatalog {
     }
 
     /// Merge two catalogs, with later catalogs taking precedence
-    pub fn merge(mut self, other: Self) -> Self {
+    pub fn merge(self, other: Self) -> Self {
         // Create a map of existing agents by key (software + version)
         let mut agent_map: std::collections::HashMap<(AgentSoftware, String), AgentMetadata> = self
             .agents
