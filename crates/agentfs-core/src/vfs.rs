@@ -12,8 +12,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tracing::debug;
-
 use crate::error::{FsError, FsResult};
 use crate::storage::StorageBackend;
 use crate::{
@@ -1656,10 +1654,7 @@ impl FsCore {
             } else if backstore.supports_native_reflink() {
                 // Collect all upper layer files that need to be materialized
                 let upper_files = self.collect_upper_layer_files(branch_root_id)?;
-                debug!(
-                    "Collected {} upper files for snapshot",
-                    upper_files.len()
-                );
+                debug!("Collected {} upper files for snapshot", upper_files.len());
                 for (upper_path, overlay_path) in &upper_files {
                     debug!(
                         "Upper file: {} -> {}",
