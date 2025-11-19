@@ -183,7 +183,7 @@ mod tests {
         #[cfg(not(feature = "git"))]
         {
             // If git feature is not enabled, this test should be skipped
-            println!("Git feature not enabled, skipping git provider test");
+            tracing::info!("Git feature not enabled, skipping git provider test");
         }
     }
 
