@@ -8,11 +8,13 @@
 
 pub mod config;
 pub mod error;
+pub mod fault;
 pub mod types;
 
 // Re-export key types for convenience
 pub use config::{CachePolicy, CaseSensitivity, FsConfig, FsLimits, MemoryPolicy};
 pub use error::FsError;
+pub use fault::{FaultErrno, FaultOp, FaultPolicy, FaultPolicySummary};
 pub use types::*;
 
 // Core implementation modules
