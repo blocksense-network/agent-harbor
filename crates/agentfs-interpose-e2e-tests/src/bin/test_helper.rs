@@ -12,6 +12,6 @@ fn main() {
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
-    eprintln!("agentfs-interpose-test-helper is only available on macOS");
+    tracing::warn!("agentfs-interpose-test-helper is only available on macOS");
     std::process::exit(1);
 }
