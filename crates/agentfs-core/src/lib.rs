@@ -1755,6 +1755,7 @@ mod tests {
                 enabled: true,
                 lower_root: Some(temp_dir.path().join("lower")),
                 copyup_mode: CopyUpMode::Lazy,
+                visible_subdir: None,
             },
             interpose: InterposeConfig::default(),
         };
@@ -2076,6 +2077,7 @@ mod tests {
                     enabled: true,
                     lower_root: Some(lower_dir.clone()),
                     copyup_mode: crate::config::CopyUpMode::Lazy,
+                    visible_subdir: None,
                 },
                 interpose: InterposeConfig {
                     enabled: true,
@@ -2163,6 +2165,7 @@ mod tests {
                     enabled: true,
                     lower_root: Some(lower_dir.clone()),
                     copyup_mode: crate::config::CopyUpMode::Lazy,
+                    visible_subdir: None,
                 },
                 interpose: InterposeConfig {
                     enabled: true,
@@ -2224,6 +2227,7 @@ mod tests {
                     enabled: true,
                     lower_root: Some(lower_dir.clone()),
                     copyup_mode: crate::config::CopyUpMode::Lazy,
+                    visible_subdir: None,
                 },
                 interpose: InterposeConfig {
                     enabled: false, // Interpose disabled
@@ -2285,6 +2289,7 @@ mod tests {
                     enabled: true,
                     lower_root: Some(lower_dir.clone()),
                     copyup_mode: crate::config::CopyUpMode::Lazy,
+                    visible_subdir: None,
                 },
                 interpose: InterposeConfig {
                     enabled: true,
