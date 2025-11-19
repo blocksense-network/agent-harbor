@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::tui::FsSnapshotsType;
-use ah_fs_snapshots::{PreparedWorkspace, SnapshotProviderKind, WorkingCopyMode};
+use ah_fs_snapshots::{
+    FsSnapshotProvider, PreparedWorkspace, SnapshotProviderKind, WorkingCopyMode,
+};
+#[cfg(target_os = "macos")]
+use ah_sandbox_macos::SbplBuilder;
 use anyhow::{Context, Result};
 use clap::Args;
 #[cfg(target_os = "linux")]
@@ -89,6 +93,7 @@ impl SandboxRunArgs {
             seccomp,
             seccomp_debug,
             mount_rw,
+            #[allow(unused_variables)]
             overlay,
             agentfs_socket,
             command,
@@ -101,9 +106,13 @@ impl SandboxRunArgs {
         }
 
         let allow_network = parse_bool_flag(&allow_network)?;
+        #[allow(unused_variables)]
         let allow_containers = parse_bool_flag(&allow_containers)?;
+        #[allow(unused_variables)]
         let allow_kvm = parse_bool_flag(&allow_kvm)?;
+        #[allow(unused_variables)]
         let seccomp = parse_bool_flag(&seccomp)?;
+        #[allow(unused_variables)]
         let seccomp_debug = parse_bool_flag(&seccomp_debug)?;
 
         // On non-Linux targets, these variables are unused; mark them as used to silence warnings
@@ -220,11 +229,39 @@ impl SandboxRunArgs {
             outcome
         };
 
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        let result: Result<()> = {
+            use ah_macos_launcher::launch_in_sandbox;
+
+            let exec_dir = prepared_workspace.exec_path.clone();
+
+            tracing::info!(
+                workspace_path = %exec_dir.display(),
+                command = ?command,
+                allow_network = allow_network,
+                "Running command inside macOS sandbox workspace"
+            );
+
+            let launcher_config = configure_macos_launcher(
+                command,
+                allow_network,
+                Some(exec_dir.as_path()),
+                &mount_rw,
+            );
+
+            // Launch the process in sandbox (this replaces the current process)
+            let launch_result = launch_in_sandbox(launcher_config);
+
+            // If we get here, launch failed - clean up workspace
+            cleanup_prepared_workspace(&workspace_path, provider_kind, &cleanup_token);
+            launch_result
+        };
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         let result: Result<()> = {
             cleanup_prepared_workspace(&workspace_path, provider_kind, &cleanup_token);
             Err(anyhow::anyhow!(
-                "Sandbox functionality is only available on Linux"
+                "Sandbox functionality is only available on Linux and macOS"
             ))
         };
 
@@ -248,8 +285,11 @@ fn convert_fs_snapshots_type(fs_snapshots: FsSnapshotsType) -> FsProviderArg {
 pub async fn prepare_workspace_with_fallback(
     workspace_path: &std::path::Path,
     fs_snapshots: FsSnapshotsType,
-    _agentfs_socket: Option<&std::path::Path>,
+    agentfs_socket: Option<&std::path::Path>,
 ) -> Result<PreparedWorkspace> {
+    #[cfg(not(feature = "agentfs"))]
+    let _ = agentfs_socket;
+
     let fs_provider = convert_fs_snapshots_type(fs_snapshots);
     // Handle explicit provider selection or auto-detection
     match fs_provider {
@@ -433,11 +473,7 @@ pub async fn prepare_workspace_with_fallback(
                 let capabilities = provider.detect_capabilities(workspace_path);
 
                 if capabilities.score > 0 {
-                    let modes_to_try = if capabilities.supports_cow_overlay {
-                        vec![WorkingCopyMode::CowOverlay]
-                    } else {
-                        vec![WorkingCopyMode::InPlace]
-                    };
+                    let modes_to_try = vec![WorkingCopyMode::CowOverlay, WorkingCopyMode::InPlace];
 
                     for mode in modes_to_try {
                         tracing::debug!(mode = ?mode, "Trying Git workspace preparation mode");
@@ -587,11 +623,7 @@ pub async fn prepare_workspace_with_fallback(
                 let capabilities = provider.detect_capabilities(workspace_path);
 
                 if capabilities.score > 0 {
-                    let modes_to_try = if capabilities.supports_cow_overlay {
-                        vec![WorkingCopyMode::CowOverlay]
-                    } else {
-                        vec![WorkingCopyMode::InPlace]
-                    };
+                    let modes_to_try = vec![WorkingCopyMode::CowOverlay, WorkingCopyMode::InPlace];
 
                     for mode in modes_to_try {
                         tracing::debug!(mode = ?mode, "Trying Git workspace preparation mode");
@@ -694,9 +726,117 @@ pub fn create_sandbox_from_args(
     Ok(sandbox)
 }
 
+/// Create a macOS sandbox configuration (returns launcher arguments)
+#[cfg(target_os = "macos")]
+pub fn create_sandbox_from_args(
+    allow_network: bool,
+    _allow_containers: bool,
+    _allow_kvm: bool,
+    _seccomp: bool,
+    _seccomp_debug: bool,
+    mount_rw: &[PathBuf],
+    _overlay: &[PathBuf],
+    working_dir: Option<&Path>,
+) -> Result<MacosSandboxConfig> {
+    // Build SBPL profile with default deny and explicit allowances
+    let mut builder = SbplBuilder::new()
+        .allow_read_subpath("/") // Allow reading everything (read-only baseline)
+        .allow_write_subpath("/tmp") // Allow writing to temp directory (symlink)
+        .allow_write_subpath("/private/tmp") // Allow writing to actual temp directory
+        .harden_process_info() // Deny global process info, allow self
+        // .allow_signal_same_group()  // Allow signals within same group - generates invalid SBPL
+        .deny_apple_events() // Deny Apple Events
+        .deny_mach_lookup() // Deny Mach service lookups
+        .allow_process_fork(); // Allow spawning child processes inside sandbox
+
+    // Add explicit write allowances
+    for path in mount_rw {
+        if let Some(path_str) = path.to_str() {
+            builder = builder.allow_write_subpath(path_str);
+        }
+    }
+
+    // Add working directory write allowance if specified
+    if let Some(wd) = working_dir {
+        if let Some(wd_str) = wd.to_str() {
+            builder = builder.allow_write_subpath(wd_str);
+        }
+    }
+
+    // Allow network if requested
+    if allow_network {
+        builder = builder.allow_network();
+    }
+
+    Ok(MacosSandboxConfig {
+        sbpl_builder: builder,
+        working_dir: working_dir.map(|p| p.to_path_buf()),
+    })
+}
+
+/// Configure a macOS launcher with standard sandbox rules
+#[cfg(target_os = "macos")]
+pub fn configure_macos_launcher(
+    command: Vec<String>,
+    allow_network: bool,
+    working_dir: Option<&std::path::Path>,
+    mount_rw: &[PathBuf],
+) -> ah_macos_launcher::LauncherConfig {
+    use ah_macos_launcher::LauncherConfig;
+
+    let mut config = LauncherConfig::new(command).allow_network(allow_network).harden_process(true); // Always harden process for security
+
+    // Add working directory allowance if specified
+    if let Some(wd) = working_dir {
+        let wd_string = wd.to_string_lossy().to_string();
+        config = config.workdir(wd_string.clone()).allow_write(wd_string);
+    }
+
+    // Add basic read/write/exec allowances
+    config = config
+        .allow_read("/")
+        .allow_write("/tmp")
+        .allow_write("/private/tmp")
+        .allow_exec("/bin")
+        .allow_exec("/usr/bin")
+        .allow_exec("/usr/local/bin")
+        .allow_exec("/usr/lib")
+        .allow_exec("/System/Library");
+
+    // Add Nix store allowance if it exists (needed for dev environments)
+    if std::path::Path::new("/nix/store").exists() {
+        config = config.allow_exec("/nix/store");
+    }
+
+    // Add Python and related paths if available (useful for Python-based agents)
+    if let Ok(python_path) = std::env::var("PYTHON") {
+        if let Some(parent) = std::path::Path::new(&python_path).parent() {
+            if let Some(parent_str) = parent.to_str() {
+                config = config.allow_exec(parent_str);
+            }
+        }
+    }
+
+    // Add extra writable mounts
+    for path in mount_rw {
+        if let Some(path_str) = path.to_str() {
+            config = config.allow_write(path_str);
+        }
+    }
+
+    config
+}
+
+/// Configuration for macOS sandbox
+#[cfg(target_os = "macos")]
+#[derive(Debug)]
+pub struct MacosSandboxConfig {
+    pub sbpl_builder: SbplBuilder,
+    pub working_dir: Option<PathBuf>,
+}
+
 /// Create a sandbox instance configured from CLI parameters (non-Linux stub)
-#[cfg(not(target_os = "linux"))]
-#[allow(clippy::too_many_arguments)]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn create_sandbox_from_args(
     _allow_network: bool,
     _allow_containers: bool,
@@ -708,7 +848,7 @@ pub fn create_sandbox_from_args(
     _working_dir: Option<&Path>,
 ) -> Result<()> {
     Err(anyhow::anyhow!(
-        "Sandbox functionality is only available on Linux"
+        "Sandbox functionality is only available on Linux and macOS"
     ))
 }
 
@@ -825,7 +965,8 @@ mod tests {
                     || stderr.contains("No filesystem snapshot provider")
                     || stderr.contains("permission denied")
                     || stderr.contains("Operation not permitted")
-                    || stderr.contains("Sandbox functionality is only available on Linux"),
+                    || stderr
+                        .contains("Sandbox functionality is only available on Linux and macOS"),
                 "Unexpected failure: stdout={}, stderr={}",
                 stdout,
                 stderr
@@ -835,6 +976,12 @@ mod tests {
             );
         } else {
             println!("✅ Sandbox command executed successfully");
+            // Verify the expected output from the echo command
+            assert!(
+                stdout.contains("sandbox test"),
+                "Expected 'sandbox test' in output, got: {}",
+                stdout
+            );
         }
 
         // Test 2: Invalid sandbox type rejection
@@ -904,7 +1051,7 @@ mod tests {
         cmd.args([
             "agent",
             "sandbox",
-            "--fs-provider",
+            "--fs-snapshots",
             "agentfs",
             "--",
             "echo",
@@ -931,7 +1078,9 @@ mod tests {
                     || stderr.contains("AgentFS provider requested but not compiled")
                     || stderr.contains("permission denied")
                     || stderr.contains("Operation not permitted")
-                    || stderr.contains("Sandbox functionality is only available on Linux"),
+                    || stderr
+                        .contains("Sandbox functionality is only available on Linux and macOS")
+                    || stderr.contains("Failed to prepare AgentFS workspace"),
                 "Unexpected failure: stdout={}, stderr={}",
                 stdout,
                 stderr
@@ -941,6 +1090,12 @@ mod tests {
             );
         } else {
             println!("✅ AgentFS sandbox command executed successfully");
+            // Verify the expected output from the echo command
+            assert!(
+                stdout.contains("agentfs test"),
+                "Expected 'agentfs test' in output, got: {}",
+                stdout
+            );
         }
 
         // Test 2: Disable provider (should always work)
@@ -948,7 +1103,7 @@ mod tests {
         cmd_disable.args([
             "agent",
             "sandbox",
-            "--fs-provider",
+            "--fs-snapshots",
             "disable",
             "--",
             "echo",
@@ -966,17 +1121,24 @@ mod tests {
             println!("Disable sandbox stderr: {}", stderr_disable);
         }
 
-        // Disable should work on Linux (may fail on macOS due to sandbox not being implemented)
+        // Disable provider should work on both Linux and macOS
         if !output_disable.status.success() {
             assert!(
-                stderr_disable.contains("Sandbox functionality is only available on Linux"),
-                "Disable provider should work on Linux: stdout={}, stderr={}",
+                stderr_disable
+                    .contains("Sandbox functionality is only available on Linux and macOS"),
+                "Disable provider should work on Linux/macOS: stdout={}, stderr={}",
                 stdout_disable,
                 stderr_disable
             );
-            println!("⚠️  Sandbox disable test skipped (not on Linux)");
+            println!("⚠️  Sandbox disable test skipped (not on Linux/macOS)");
         } else {
             println!("✅ Disable provider sandbox executed successfully");
+            // Verify the expected output from the echo command
+            assert!(
+                stdout_disable.contains("disable test"),
+                "Expected 'disable test' in output, got: {}",
+                stdout_disable
+            );
         }
 
         println!("✅ AgentFS provider CLI integration test completed");

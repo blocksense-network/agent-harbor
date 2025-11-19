@@ -92,6 +92,10 @@ ah-fs-snapshots-zfs = { path = "../ah-fs-snapshots-zfs" }
 ah-fs-snapshots-btrfs = { path = "../ah-fs-snapshots-btrfs" }
 ah-fs-snapshots-git = { path = "../ah-fs-snapshots-git" }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+ah-sandbox-macos = { path = "../ah-sandbox-macos" }
+ah-macos-launcher = { path = "../ah-macos-launcher" }
+
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = [
   "handleapi",
@@ -101,7 +105,7 @@ winapi = { version = "0.3", features = [
 ] }
 
 [features]
-default = []
+default = ["git"]
 zfs = ["ah-fs-snapshots/zfs"]
 btrfs = ["ah-fs-snapshots/btrfs"]
 git = ["ah-fs-snapshots/git"]

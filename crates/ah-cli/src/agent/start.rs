@@ -6,7 +6,6 @@
 use ah_agents::{AgentExecutor, AgentLaunchConfig};
 use ah_core::agent_executor::ah_full_path;
 use ah_core::agent_types::AgentType;
-#[cfg(target_os = "linux")]
 use anyhow::Context;
 use clap::{Args, ValueEnum};
 use reqwest::Client;
@@ -292,10 +291,124 @@ impl AgentStartArgs {
         };
 
         // Execute the agent (replace current process)
-        agent.exec(config).await?;
+        if self.sandbox {
+            #[cfg(target_os = "macos")]
+            {
+                use ah_macos_launcher::launch_in_sandbox;
 
-        // This should never return on success
-        unreachable!("exec() should replace the current process")
+                // Prepare command to get env vars and args
+                let cmd = agent.prepare_launch(config.clone()).await?;
+
+                // Apply environment variables to current process so they propagate
+                for (key, val) in cmd.as_std().get_envs() {
+                    if let Some(val_str) = val {
+                        std::env::set_var(key, val_str);
+                    } else {
+                        std::env::remove_var(key);
+                    }
+                }
+
+                // Extract program and args
+                let program = cmd.as_std().get_program().to_string_lossy().to_string();
+                let args: Vec<String> =
+                    cmd.as_std().get_args().map(|s| s.to_string_lossy().to_string()).collect();
+
+                // Construct full command vector (program + args)
+                let mut full_cmd = vec![program];
+                full_cmd.extend(args);
+
+                let launcher_config = crate::sandbox::configure_macos_launcher(
+                    full_cmd,
+                    self.allow_network.unwrap_or(false),
+                    Some(&config.working_dir),
+                    &self.mount_rw,
+                );
+
+                // Launch in sandbox
+                launch_in_sandbox(launcher_config).context("Failed to launch agent in sandbox")?;
+
+                // This should never return on success
+                unreachable!("launch_in_sandbox should replace the current process")
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                // Linux sandbox implementation for real agents
+                use sandbox_core::ProcessConfig;
+
+                // Validate sandbox type
+                if self.sandbox_type != "local" {
+                    return Err(anyhow::anyhow!(
+                        "Only 'local' sandbox type is currently supported, got '{}'",
+                        self.sandbox_type
+                    ));
+                }
+
+                // Create sandbox configuration from CLI parameters
+                let mut sandbox = crate::sandbox::create_sandbox_from_args(
+                    self.allow_network.unwrap_or(false),
+                    self.allow_containers.unwrap_or(false),
+                    self.allow_kvm.unwrap_or(false),
+                    self.seccomp.unwrap_or(false),
+                    self.seccomp_debug.unwrap_or(false),
+                    &self.mount_rw,
+                    &self.overlay,
+                    Some(&config.working_dir),
+                )?;
+
+                // Prepare command
+                let cmd = agent.prepare_launch(config.clone()).await?;
+                let program = cmd.as_std().get_program().to_string_lossy().to_string();
+                let args: Vec<String> =
+                    cmd.as_std().get_args().map(|s| s.to_string_lossy().to_string()).collect();
+                let mut full_cmd = vec![program];
+                full_cmd.extend(args);
+
+                // Extract env vars
+                let mut env_vars = Vec::new();
+                for (key, val) in cmd.as_std().get_envs() {
+                    if let Some(val_str) = val {
+                        env_vars.push((
+                            key.to_string_lossy().to_string(),
+                            val_str.to_string_lossy().to_string(),
+                        ));
+                    }
+                }
+
+                let process_config = ProcessConfig {
+                    command: full_cmd,
+                    working_dir: Some(config.working_dir.to_string_lossy().to_string()),
+                    env: env_vars,
+                };
+
+                sandbox = sandbox.with_process_config(process_config);
+
+                let exec_result = sandbox.exec_process().await;
+
+                if let Err(err) = sandbox.stop() {
+                    tracing::warn!(error = %err, "Sandbox stop cleanup encountered an error");
+                }
+
+                if let Err(err) = sandbox.cleanup().await {
+                    tracing::warn!(error = %err, "Sandbox filesystem cleanup encountered an error");
+                }
+
+                exec_result.context("Failed to execute agent in sandbox")?;
+                Ok(())
+            }
+
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            {
+                tracing::warn!(
+                    "Sandboxing is not supported on this platform. Running without sandbox."
+                );
+                agent.exec(config).await?;
+                unreachable!("exec() should replace the current process")
+            }
+        } else {
+            agent.exec(config).await?;
+            unreachable!("exec() should replace the current process")
+        }
     }
 
     /// Prepare a session with the LLM API proxy
@@ -773,11 +886,99 @@ impl AgentStartArgs {
 
             Ok(())
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        {
+            use ah_macos_launcher::{LauncherConfig, launch_in_sandbox};
+
+            // Validate sandbox type
+            if self.sandbox_type != "local" {
+                return Err(anyhow::anyhow!(
+                    "Only 'local' sandbox type is currently supported on macOS, got '{}'",
+                    self.sandbox_type
+                ));
+            }
+
+            // Build the command for the mock agent
+            let mut agent_cmd = vec![
+                Self::resolve_python_interpreter()?,
+                "-m".to_string(),
+                "src.cli".to_string(),
+            ];
+
+            // Parse agent flags
+            let agent_flags: Vec<String> = self
+                .agent_flags
+                .as_ref()
+                .map(|s| s.split_whitespace().map(|s| s.to_string()).collect())
+                .unwrap_or_default();
+
+            // Check if this is a scenario run or demo run
+            let is_scenario_run = agent_flags.iter().any(|flag| flag.contains("--scenario"));
+
+            if is_scenario_run {
+                agent_cmd.push("run".to_string());
+                // Add all the agent flags
+                for flag in &agent_flags {
+                    agent_cmd.push(flag.clone());
+                }
+            } else {
+                // Run in demo mode
+                agent_cmd.push("demo".to_string());
+                agent_cmd.push("--workspace".to_string());
+                agent_cmd.push(actual_cwd.to_string_lossy().to_string());
+                // Add any additional flags (like --tui-testing-uri)
+                for flag in &agent_flags {
+                    agent_cmd.push(flag.clone());
+                }
+            }
+
+            // Add output format flags based on the configured output mode
+            match self.output {
+                OutputFormat::Json | OutputFormat::JsonNormalized => {
+                    agent_cmd.push("--json".to_string());
+                }
+                OutputFormat::Text | OutputFormat::TextNormalized => {
+                    // Text is the default, no flag needed
+                }
+            }
+
+            // Build launcher configuration
+            let mut launcher_config = LauncherConfig::new(agent_cmd)
+                .workdir(actual_cwd.to_string_lossy().to_string())
+                .allow_network(self.allow_network.unwrap_or(false))
+                .harden_process(true); // Always harden process for security
+
+            // Add basic read/write/exec allowances
+            launcher_config = launcher_config
+                .allow_read("/")
+                .allow_write("/tmp")
+                .allow_exec("/bin")
+                .allow_exec("/usr/bin")
+                .allow_exec("/usr/local/bin");
+
+            // Add Python and related paths
+            if let Ok(python_path) = Self::resolve_python_interpreter() {
+                if let Some(parent) = std::path::Path::new(&python_path).parent() {
+                    if let Some(parent_str) = parent.to_str() {
+                        launcher_config = launcher_config.allow_exec(parent_str);
+                    }
+                }
+            }
+
+            // Always pass the TUI_TESTING_URI environment variable to the mock agent
+            if let Ok(tui_testing_uri) = std::env::var("TUI_TESTING_URI") {
+                std::env::set_var("TUI_TESTING_URI", &tui_testing_uri);
+            }
+
+            // Launch the process in sandbox (this replaces the current process)
+            launch_in_sandbox(launcher_config)
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         {
             let _ = &actual_cwd;
             Err(anyhow::anyhow!(
-                "Sandbox functionality is only available on Linux"
+                "Sandbox functionality is only available on Linux and macOS"
             ))
         }
     }

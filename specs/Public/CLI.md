@@ -58,7 +58,7 @@ Shell completions are provided via the `ah shell-completion` command group. They
 - **TUI vs WebUI:** `ah` can start either a terminal dashboard (TUI) or open the WebUI. The UIs present the same concepts (tasks, sessions, logs, time‑travel) with different affordances. See [TUI-PRD](TUI-PRD.md) and [WebUI-PRD](WebUI-PRD.md).
 - **Orthogonal choices:** UI (TUI/WebUI) and execution location (local/remote) are orthogonal. Any combination is possible; e.g., run the TUI against a remote REST service or use the WebUI locally.
 - **Fleets combine local and remote:** [Multi-OS testing fleets](Multi-OS-Testing.md) can mix local and remote agents. For example, a local Linux container leader may have remote followers (e.g., a Windows VM on a server). The `ah` client and server may need to orchestrate together the connectivity between all the machines in the fleet.
-- **Sandbox profiles (orthogonal):** When launching locally, sandbox profiles define the isolation level (local, container, VM, or nosandbox per policy). See [Sandbox-Profiles](Sandbox-Profiles.md) and configuration mapping below.
+- **Sandbox profiles (orthogonal):** When launching locally, sandbox profiles define the isolation level (local, container, VM, or nosandbox per policy). Local sandboxing is supported on Linux (using namespaces and seccomp) and macOS (using Seatbelt profiles and Endpoint Security). See [Sandbox-Profiles](Sandbox-Profiles.md) and configuration mapping below.
 
 ### Global Behavior and Flags
 
@@ -199,7 +199,7 @@ Behavior overview:
 
 - Local vs Remote: With a configured/provided `remote-server`, AH calls the server's REST API to create/manage the task. Otherwise, AH runs locally.
 - Third‑party clouds: Some agents can run on external clouds (e.g., Google Jules, OpenAI Cloud Codex). In such cases, flags like `--instances`, `--browser-*`, or `--codex-workspace` apply only when supported by the selected agent/platform. AH surfaces capabilities via discovery and validates flags accordingly.
-- Sandbox/runtime: Local runs honor `--sandbox`: `devcontainer` (when available), `local` (default, process sandbox/profile), or `disabled` (policy‑gated, direct host process execution). See [Sandbox-Profiles](Sandbox-Profiles.md) and [FS-Snapshots-Overview](../Public/FS Snapshots/FS-Snapshots-Overview.md).
+- Sandbox/runtime: Local runs honor `--sandbox`: `devcontainer` (when available), `local` (default, process sandbox/profile using namespaces/seccomp on Linux or Seatbelt profiles on macOS), or `disabled` (policy‑gated, direct host process execution). See [Sandbox-Profiles](Sandbox-Profiles.md) and [FS-Snapshots-Overview](../Public/FS Snapshots/FS-Snapshots-Overview.md).
 - Target branch: `--target-branch` specifies the branch where agent results should be delivered/pushed (used with `--delivery branch` or `--delivery pr` modes).
 
 #### Preserved `agent-task` Behaviors
@@ -433,7 +433,7 @@ Push to default remote? [Y/n]:
 
 **Runtime and Execution:**
 
-- Runtimes: `devcontainer`, `local` (sandbox profile), `disabled` (policy‑gated).
+- Runtimes: `devcontainer`, `local` (sandbox profile using namespaces/seccomp on Linux or Seatbelt profiles on macOS), `disabled` (policy‑gated).
 - Multi‑OS fleets: Snapshots are taken on the leader only; followers receive synchronized state. See [Multi-OS-Testing](Multi-OS-Testing.md).
 - Fleet resolution and orchestration: When `--fleet` is provided (or a default fleet is defined in config), the `ah task` invocation produces an explicit fleet plan that assigns each member to a controller (`client` or `server`). No reachability probing is used to decide this. The client then orchestrates both local and remote execution accordingly:
   - Local members (controller: client): The client creates one or more local executions, potentially combining a local sandbox and local VMs, applying the selected sandbox profile to each member.
@@ -1143,7 +1143,7 @@ OPTIONS:
 ```
 ah agent sandbox [OPTIONS] -- <CMD> [ARGS...]
 
-DESCRIPTION: Launches a process inside the configured sandbox profile. Useful for testing.
+DESCRIPTION: Launches a process inside the configured sandbox profile. Supported on Linux (namespaces/seccomp) and macOS (Seatbelt profiles). Useful for testing.
 
 OPTIONS:
   --type <local|devcontainer|vm>  Sandbox profile (default: local).
@@ -1205,9 +1205,10 @@ See also: Local-Sandboxing-on-Linux.md for detailed semantics.
 ah agent start [OPTIONS]
 
 DESCRIPTION: Starts an agent by setting up an isolated working copy, configuring the
-             chosen sandbox environment, and launching the coding agent software with
-             the provided prompt. This command is used internally by the TUI to execute
-             agents in the agent pane and by the REST server for task execution.
+             chosen sandbox environment (Linux: namespaces/seccomp, macOS: Seatbelt profiles),
+             and launching the coding agent software with the provided prompt. This command
+             is used internally by the TUI to execute agents in the agent pane and by the REST
+             server for task execution.
 
 OPTIONS:
   --agent <TYPE>[@VERSION]           Agent type and optional version to use

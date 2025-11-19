@@ -69,11 +69,13 @@ fn test_sbpl_builder_snapshot() {
         .allow_signal_same_group()
         .deny_apple_events()
         .deny_mach_lookup()
+        .allow_process_fork()
         .build();
     assert!(sbpl.contains("(deny default)"));
     assert!(sbpl.contains("(allow file-read* (subpath \"/usr/bin\"))"));
     assert!(sbpl.contains("(allow file-write* (subpath \"/tmp\"))"));
     assert!(sbpl.contains("(allow process-exec (subpath \"/bin\"))"));
+    assert!(sbpl.contains("(allow process-fork)"));
     assert!(sbpl.contains("(deny appleevent-send)"));
     assert!(sbpl.contains("(deny mach-lookup)"));
 }

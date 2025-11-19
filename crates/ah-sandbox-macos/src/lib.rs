@@ -66,6 +66,7 @@ mod macos {
         allow_signal_same_group: bool,
         deny_apple_events: bool,
         deny_mach_lookup: bool,
+        allow_process_fork: bool,
     }
 
     impl Default for SbplBuilder {
@@ -85,6 +86,7 @@ mod macos {
                 allow_signal_same_group: false,
                 deny_apple_events: false,
                 deny_mach_lookup: false,
+                allow_process_fork: false,
             }
         }
 
@@ -130,6 +132,12 @@ mod macos {
         /// Deny Mach service lookup by default.
         pub fn deny_mach_lookup(mut self) -> Self {
             self.deny_mach_lookup = true;
+            self
+        }
+
+        /// Allow processes inside the sandbox to `fork(2)`.
+        pub fn allow_process_fork(mut self) -> Self {
+            self.allow_process_fork = true;
             self
         }
 
@@ -182,6 +190,10 @@ mod macos {
                 lines.push("(deny mach-lookup)".to_string());
             }
 
+            if self.allow_process_fork {
+                lines.push("(allow process-fork)".to_string());
+            }
+
             lines.join("\n")
         }
     }
@@ -232,6 +244,9 @@ mod macos {
             self
         }
         pub fn deny_mach_lookup(self) -> Self {
+            self
+        }
+        pub fn allow_process_fork(self) -> Self {
             self
         }
         pub fn build(self) -> String {
