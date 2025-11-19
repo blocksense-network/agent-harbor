@@ -6,7 +6,11 @@ name = "ah-macos-launcher"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Launcher that mounts AgentFS (external), chroots, applies Seatbelt, and execs"
+description = "macOS sandbox launcher library and binary"
+
+[lib]
+name = "ah_macos_launcher"
+path = "src/lib.rs"
 
 [[bin]]
 name = "ah-macos-launcher"
@@ -14,9 +18,15 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-ah-logging = { path = "../ah-logging" }
-clap = { workspace = true }
 ah-sandbox-macos = { path = "../ah-sandbox-macos" }
 libc = "0.2"
+
+# Binary-only dependencies
+clap = { workspace = true, optional = true }
+ah-logging = { path = "../ah-logging", optional = true }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+
+[features]
+default = ["binary"]
+binary = ["clap", "ah-logging", "tracing", "tracing-subscriber"]
