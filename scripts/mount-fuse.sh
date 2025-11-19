@@ -45,7 +45,8 @@ if ! sudo chown "$(whoami)" "$mountpoint"; then
 fi
 
 FUSE_FLAGS=()
-if [ "${AGENTFS_FUSE_ALLOW_OTHER:-}" = "1" ]; then
+ALLOW_OTHER="${AGENTFS_FUSE_ALLOW_OTHER:-1}"
+if [ "$ALLOW_OTHER" = "1" ]; then
   FUSE_FLAGS+=("--allow-other")
 fi
 
