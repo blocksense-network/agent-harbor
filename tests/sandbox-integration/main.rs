@@ -3,6 +3,8 @@
 
 //! Integration tests for sandbox functionality
 
+// Use structured logging
+
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn test_sandbox_integration() {
@@ -96,10 +98,7 @@ fn test_ah_macos_launcher_denies_write_outside_tmp() {
     let launcher_path = project_root.join("target/debug/ah-macos-launcher");
 
     if !launcher_path.exists() {
-        eprintln!(
-            "⚠️  Skipping macOS E2E - ah-macos-launcher not found at {:?}. Build it first: cargo build --bin ah-macos-launcher",
-            launcher_path
-        );
+        tracing::warn!(path = ?launcher_path, "Skipping macOS E2E - ah-macos-launcher not found. Build with: cargo build --bin ah-macos-launcher");
         return;
     }
 
@@ -113,7 +112,7 @@ fn test_ah_macos_launcher_denies_write_outside_tmp() {
         fi
     "#;
 
-    let status = Command::new(&launcher_path)
+    let _status = Command::new(&launcher_path)
         .args([
             "--allow-write",
             "/tmp",
@@ -739,7 +738,7 @@ fn test_filesystem_isolation_principles() {
         original_filesystem.get("file2.txt").unwrap(),
         &"original content 2"
     );
-    assert!(original_filesystem.get("new_file.txt").is_none()); // New file shouldn't exist in original
+    assert!(!original_filesystem.contains_key("new_file.txt")); // New file shouldn't exist in original
 
     // Verify sandbox view has changes
     assert_eq!(
@@ -751,7 +750,7 @@ fn test_filesystem_isolation_principles() {
         &"created by sandbox"
     );
 
-    println!(
-        "✅ Filesystem isolation principles test passed - conceptual overlay isolation verified"
+    tracing::info!(
+        "Filesystem isolation principles test passed - conceptual overlay isolation verified"
     );
 }
