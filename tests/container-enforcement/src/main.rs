@@ -97,18 +97,15 @@ async fn main() -> anyhow::Result<()> {
     let passed_count = results.iter().filter(|r| r.passed).count();
     let total_count = results.len();
 
-    println!("\n=== Container Test Results ===");
+    info!("=== Container Test Results ===");
     for result in &results {
-        println!(
-            "{}: {}",
-            result.name,
-            if result.passed { "PASS" } else { "FAIL" }
-        );
-        if !result.passed {
-            println!("  Output: {}", result.output);
+        if result.passed {
+            info!(test = %result.name, "PASS");
+        } else {
+            error!(test = %result.name, output = %result.output, "FAIL");
         }
     }
-    println!("Passed: {}/{}", passed_count, total_count);
+    info!(passed = passed_count, total = total_count, "Summary");
 
     if passed_count == total_count {
         info!("All container tests passed!");

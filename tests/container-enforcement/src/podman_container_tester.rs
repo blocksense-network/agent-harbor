@@ -28,8 +28,7 @@ fn main() -> anyhow::Result<()> {
 
     // Check if sbx-helper exists
     if !sbx_helper_path.exists() {
-        error!("❌ sbx-helper binary not found at: {:?}", sbx_helper_path);
-        println!("FAIL: sbx-helper not found - build it first with 'cargo build --bin sbx-helper'");
+        error!(path = ?sbx_helper_path, "sbx-helper binary not found. Build with: cargo build --bin sbx-helper");
         std::process::exit(1);
     }
 
@@ -38,7 +37,7 @@ fn main() -> anyhow::Result<()> {
     // Test running a simple busybox container INSIDE the sandbox
     // This requires podman to be available and the sandbox to allow container devices
     let output = Command::new(&sbx_helper_path)
-        .args(&[
+        .args([
             "--allow-containers", // Enable container device access
             "--debug",            // Enable debug logging
             "podman",
@@ -58,36 +57,22 @@ fn main() -> anyhow::Result<()> {
 
                 // Check if the expected output is in stdout
                 if stdout.contains("Hello from container in sandbox!") {
-                    info!("✓ Podman container executed successfully within sandbox");
-                    println!("SUCCESS: Container ran inside sandbox");
-                    info!("Sandbox stderr: {}", stderr);
+                    info!("Podman container executed successfully within sandbox");
+                    info!(stderr = %stderr, "Sandbox stderr");
                     std::process::exit(0);
                 } else {
-                    error!(
-                        "✗ Container output not found. stdout: '{}', stderr: '{}'",
-                        stdout, stderr
-                    );
-                    println!("FAIL: Expected container output not found");
-                    println!("stdout: {}", stdout);
-                    println!("stderr: {}", stderr);
+                    error!(stdout = %stdout, stderr = %stderr, "Expected container output not found");
                     std::process::exit(1);
                 }
             } else {
                 let stderr = String::from_utf8_lossy(&result.stderr);
                 let stdout = String::from_utf8_lossy(&result.stdout);
-                error!(
-                    "✗ Sandbox execution failed: exit code {:?}",
-                    result.status.code()
-                );
-                println!("FAIL: Sandbox execution failed");
-                println!("stdout: {}", stdout);
-                println!("stderr: {}", stderr);
+                error!(code = ?result.status.code(), stdout = %stdout, stderr = %stderr, "Sandbox execution failed");
                 std::process::exit(1);
             }
         }
         Err(e) => {
-            error!("✗ Failed to execute sbx-helper: {}", e);
-            println!("FAIL: Could not execute sbx-helper: {}", e);
+            error!(error = %e, "Failed to execute sbx-helper");
             std::process::exit(1);
         }
     }
