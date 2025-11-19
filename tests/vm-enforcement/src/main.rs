@@ -89,18 +89,19 @@ async fn main() -> anyhow::Result<()> {
     let passed_count = results.iter().filter(|r| r.passed).count();
     let total_count = results.len();
 
-    println!("\n=== VM Test Results ===");
+    info!("vm test results summary follows");
     for result in &results {
-        println!(
-            "{}: {}",
-            result.name,
-            if result.passed { "PASS" } else { "FAIL" }
-        );
-        if !result.passed {
-            println!("  Output: {}", result.output);
+        if result.passed {
+            info!(test = %result.name, "pass");
+        } else {
+            error!(test = %result.name, output = %result.output, "fail");
         }
     }
-    println!("Passed: {}/{}", passed_count, total_count);
+    info!(
+        passed = passed_count,
+        total = total_count,
+        "vm tests pass count"
+    );
 
     if passed_count == total_count {
         info!("All VM tests passed!");
