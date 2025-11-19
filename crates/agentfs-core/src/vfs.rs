@@ -651,6 +651,11 @@ impl FsCore {
         PID(pid)
     }
 
+    pub fn node_special_kind(&self, node_id_u64: u64) -> Option<SpecialNodeKind> {
+        let nodes = self.nodes.lock().ok()?;
+        nodes.get(&NodeId(node_id_u64)).and_then(|node| node.special_kind.clone())
+    }
+
     fn normalize_groups(primary_gid: u32, groups: &[u32]) -> Vec<u32> {
         let mut normalized = Vec::new();
         if groups.is_empty() {
@@ -669,6 +674,15 @@ impl FsCore {
         }
 
         normalized
+    }
+
+    fn groups_identity_hash(groups: &[u32]) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        groups.hash(&mut hasher);
+        hasher.finish()
     }
 
     /// Finds the active branch for a process by walking up the process hierarchy.
@@ -870,6 +884,41 @@ impl FsCore {
         Ok(())
     }
 
+    fn ensure_search_permission(&self, pid: &PID, dir_id: NodeId) -> FsResult<()> {
+        if !self.config.security.enforce_posix_permissions {
+            return Ok(());
+        }
+        let Some(user) = self.user_for_process(pid) else {
+            return Err(FsError::AccessDenied);
+        };
+        let branch_id = self.branch_for_process(pid);
+        let groups_hash = Self::groups_identity_hash(&user.groups);
+        let nodes = self.nodes.lock().unwrap();
+        let dir_node = nodes.get(&dir_id).ok_or(FsError::NotFound)?;
+        let mode_str = format!("{:#o}", dir_node.mode);
+        debug!(
+            target: "agentfs::permissions",
+            event = "ensure_search_permission",
+            pid = pid.as_u32(),
+            branch = %branch_id,
+            dir_id = dir_id.0,
+            mode = %mode_str,
+            dir_uid = dir_node.uid,
+            dir_gid = dir_node.gid,
+            node_ctime = dir_node.times.ctime,
+            node_ctime_nsec = dir_node.times.ctime_nsec,
+            user_uid = user.uid,
+            user_gid = user.gid,
+            user_groups = ?user.groups,
+            user_groups_hash = format_args!("{:016x}", groups_hash)
+        );
+        if self.allowed_for_user(dir_node, &user, false, false, true) {
+            Ok(())
+        } else {
+            Err(FsError::AccessDenied)
+        }
+    }
+
     fn check_dir_cross_parent_permissions(
         &self,
         pid: &PID,
@@ -1067,6 +1116,14 @@ impl FsCore {
         Ok((current_node_id, parent_node_id.zip(parent_name)))
     }
 
+    fn path_exists(&self, pid: &PID, path: &Path) -> FsResult<bool> {
+        match self.resolve_path(pid, path) {
+            Ok(_) => Ok(true),
+            Err(FsError::NotFound) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Create a new file node
     fn create_file_node(&self, content_id: ContentId) -> FsResult<NodeId> {
         let node_id = self.allocate_node_id();
@@ -1171,13 +1228,85 @@ impl FsCore {
 
     /// Change ownership of a node addressed by path
     pub fn set_owner(&self, pid: &PID, path: &Path, uid: u32, gid: u32) -> FsResult<()> {
-        let (node_id, _) = self.resolve_path(pid, path)?;
+        let (node_id, parent_info) = match self.resolve_path(pid, path) {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                debug!(
+                    target: "agentfs::metadata",
+                    path = %path.display(),
+                    requested_uid = uid,
+                    requested_gid = gid,
+                    ?err,
+                    "set_owner failed to resolve path"
+                );
+                return Err(err);
+            }
+        };
+        let branch_id = self.branch_for_process(pid);
+        if let Some((parent_id, _)) = parent_info {
+            if self.permissions_log_enabled() {
+                let nodes = self.nodes.lock().unwrap();
+                if let Some(parent_node) = nodes.get(&parent_id) {
+                    let mode_str = format!("{:#o}", parent_node.mode);
+                    debug!(
+                        target: "agentfs::permissions",
+                        event = "set_owner_parent_mode",
+                        branch = %branch_id,
+                        pid = pid.as_u32(),
+                        parent_id = parent_id.0,
+                        mode = %mode_str,
+                        parent_uid = parent_node.uid,
+                        parent_gid = parent_node.gid,
+                        parent_ctime = parent_node.times.ctime,
+                        parent_ctime_nsec = parent_node.times.ctime_nsec
+                    );
+                }
+            }
+            self.ensure_search_permission(pid, parent_id)?;
+        }
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+        if self.permissions_log_enabled() {
+            let mode_str = format!("{:#o}", node.mode);
+            debug!(
+                target: "agentfs::permissions",
+                event = "set_owner_target_mode",
+                branch = %branch_id,
+                pid = pid.as_u32(),
+                node_id = node_id.0,
+                path = %path.display(),
+                mode = %mode_str,
+                node_uid = node.uid,
+                node_gid = node.gid,
+                requested_uid = uid,
+                requested_gid = gid,
+                node_ctime = node.times.ctime,
+                node_ctime_nsec = node.times.ctime_nsec
+            );
+        }
         let (new_uid, new_gid, changed_uid, changed_gid) =
             self.evaluate_owner_change(pid, node, uid, gid)?;
+        let old_uid = node.uid;
+        let old_gid = node.gid;
         node.uid = new_uid;
         node.gid = new_gid;
+        if self.permissions_log_enabled() {
+            let branch_id = self.branch_for_process(pid);
+            debug!(
+                target: "agentfs::permissions",
+                event = "set_node_owner_applied",
+                branch = %branch_id,
+                pid = pid.as_u32(),
+                node_id = node_id.0,
+                old_uid,
+                old_gid,
+                new_uid,
+                new_gid,
+                node_mode = format_args!("{:#o}", node.mode),
+                node_ctime = node.times.ctime,
+                node_ctime_nsec = node.times.ctime_nsec
+            );
+        }
         if changed_uid || changed_gid {
             // Clear setuid/setgid on metadata ownership change
             node.mode &= !0o6000;
@@ -1405,33 +1534,41 @@ impl FsCore {
         }
     }
 
+    fn getattr_with_node_id(
+        &self,
+        pid: &PID,
+        path: &Path,
+    ) -> FsResult<(Attributes, Option<NodeId>)> {
+        match self.resolve_path(pid, path) {
+            Ok((node_id, _)) => {
+                let attrs = self.get_node_attributes(node_id)?;
+                if let Some(kind) = &attrs.special_kind {
+                    debug!(
+                        target: "agentfs::core.attr",
+                        event = "getattr_path",
+                        path = %path.display(),
+                        node_id = node_id.0,
+                        special = ?kind,
+                        mode = format_args!("{:#o}", attrs.mode_bits)
+                    );
+                }
+                Ok((attrs, Some(node_id)))
+            }
+            Err(FsError::NotFound) => {
+                if self.is_overlay_enabled() {
+                    if let Some(lower_fs) = &self.lower_fs {
+                        return lower_fs.stat(path).map(|attrs| (attrs, None));
+                    }
+                }
+                Err(FsError::NotFound)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Get file attributes
     pub fn getattr(&self, pid: &PID, path: &Path) -> FsResult<Attributes> {
-        // First try to resolve in upper layer
-        if let Ok((node_id, _)) = self.resolve_path(pid, path) {
-            let attrs = self.get_node_attributes(node_id)?;
-            if let Some(kind) = &attrs.special_kind {
-                debug!(
-                    target: "agentfs::core.attr",
-                    event = "getattr_path",
-                    path = %path.display(),
-                    node_id = node_id.0,
-                    special = ?kind,
-                    mode = format_args!("{:#o}", attrs.mode_bits)
-                );
-            }
-            return Ok(attrs);
-        }
-
-        // If overlay is enabled and no upper entry, check lower filesystem
-        if self.is_overlay_enabled() {
-            if let Some(lower_fs) = &self.lower_fs {
-                return lower_fs.stat(path);
-            }
-        }
-
-        // No entry found
-        Err(FsError::NotFound)
+        self.getattr_with_node_id(pid, path).map(|(attrs, _)| attrs)
     }
 
     /// Get node attributes
@@ -2152,7 +2289,7 @@ impl FsCore {
         kind: SpecialNodeKind,
         mode: u32,
     ) -> FsResult<()> {
-        if self.resolve_path(pid, path).is_ok() {
+        if self.path_exists(pid, path)? {
             return Err(FsError::AlreadyExists);
         }
 
@@ -2216,7 +2353,7 @@ impl FsCore {
     // File operations
     pub fn create(&self, pid: &PID, path: &Path, opts: &OpenOptions) -> FsResult<HandleId> {
         // Check if the path already exists
-        if self.resolve_path(pid, path).is_ok() {
+        if self.path_exists(pid, path)? {
             return Err(FsError::AlreadyExists);
         }
 
@@ -2305,77 +2442,80 @@ impl FsCore {
     }
 
     pub fn open(&self, pid: &PID, path: &Path, opts: &OpenOptions) -> FsResult<HandleId> {
-        // First try to resolve in upper layer
-        if let Ok((node_id, _)) = self.resolve_path(pid, path) {
-            // Permission check
-            if self.config.security.enforce_posix_permissions {
-                let Some(user) = self.user_for_process(pid) else {
-                    return Err(FsError::AccessDenied);
-                };
-                let nodes = self.nodes.lock().unwrap();
-                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
-                let allow = self.allowed_for_user(node, &user, opts.read, opts.write, false);
-                self.log_permission_event(
-                    "open",
-                    Some(path),
-                    node,
-                    &user,
-                    opts.read,
-                    opts.write,
-                    false,
-                    None,
-                    None,
-                    None,
-                    allow,
-                );
-                if !allow {
-                    return Err(FsError::AccessDenied);
-                }
-            }
-
-            // Check share mode conflicts with existing handles
-            if self.share_mode_conflicts(node_id, opts) {
-                return Err(FsError::AccessDenied);
-            }
-
-            // Create handle
-            let handle_id = self.allocate_handle_id();
-            let handle = Handle {
-                id: handle_id,
-                node_id,
-                path: path.to_path_buf(),
-                kind: HandleType::File {
-                    options: opts.clone(),
-                    deleted: false,
-                },
-            };
-
-            self.handles.lock().unwrap().insert(handle_id, handle);
-            return Ok(handle_id);
-        }
-
-        // No upper entry, check if we can open from lower filesystem in overlay mode
-        if self.is_overlay_enabled() && opts.read && !opts.write && !opts.create {
-            if let Some(lower_fs) = &self.lower_fs {
-                // Check if lower file exists and is readable
-                if lower_fs.stat(path).is_ok() {
-                    // For interpose mode, we should provide direct access to lower files
-                    // without creating upper entries. However, the current architecture
-                    // doesn't support this, so we return Unsupported for now.
-                    if self.config.interpose.enabled {
-                        // TODO: Implement proper FD forwarding for interpose
-                        // For now, return Unsupported to indicate interpose isn't fully implemented
-                        return Err(FsError::Unsupported);
-                    } else {
-                        // Regular overlay mode - read through from lower
-                        // For now, return unsupported as we don't have direct lower handle support
-                        return Err(FsError::Unsupported);
+        match self.resolve_path(pid, path) {
+            Ok((node_id, _)) => {
+                // Permission check
+                if self.config.security.enforce_posix_permissions {
+                    let Some(user) = self.user_for_process(pid) else {
+                        return Err(FsError::AccessDenied);
+                    };
+                    let nodes = self.nodes.lock().unwrap();
+                    let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+                    let allow = self.allowed_for_user(node, &user, opts.read, opts.write, false);
+                    self.log_permission_event(
+                        "open",
+                        Some(path),
+                        node,
+                        &user,
+                        opts.read,
+                        opts.write,
+                        false,
+                        None,
+                        None,
+                        None,
+                        allow,
+                    );
+                    if !allow {
+                        return Err(FsError::AccessDenied);
                     }
                 }
-            }
-        }
 
-        Err(FsError::NotFound)
+                // Check share mode conflicts with existing handles
+                if self.share_mode_conflicts(node_id, opts) {
+                    return Err(FsError::AccessDenied);
+                }
+
+                // Create handle
+                let handle_id = self.allocate_handle_id();
+                let handle = Handle {
+                    id: handle_id,
+                    node_id,
+                    path: path.to_path_buf(),
+                    kind: HandleType::File {
+                        options: opts.clone(),
+                        deleted: false,
+                    },
+                };
+
+                self.handles.lock().unwrap().insert(handle_id, handle);
+                Ok(handle_id)
+            }
+            Err(FsError::NotFound) => {
+                // No upper entry, check if we can open from lower filesystem in overlay mode
+                if self.is_overlay_enabled() && opts.read && !opts.write && !opts.create {
+                    if let Some(lower_fs) = &self.lower_fs {
+                        // Check if lower file exists and is readable
+                        if lower_fs.stat(path).is_ok() {
+                            // For interpose mode, we should provide direct access to lower files
+                            // without creating upper entries. However, the current architecture
+                            // doesn't support this, so we return Unsupported for now.
+                            if self.config.interpose.enabled {
+                                // TODO: Implement proper FD forwarding for interpose
+                                // For now, return Unsupported to indicate interpose isn't fully implemented
+                                return Err(FsError::Unsupported);
+                            } else {
+                                // Regular overlay mode - read through from lower
+                                // For now, return unsupported as we don't have direct lower handle support
+                                return Err(FsError::Unsupported);
+                            }
+                        }
+                    }
+                }
+
+                Err(FsError::NotFound)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Check whether the current process is allowed to access a path with the requested intent.
@@ -2398,6 +2538,30 @@ impl FsCore {
         let (node_id, _) = self.resolve_path(pid, path)?;
         let nodes = self.nodes.lock().unwrap();
         let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+        if self.permissions_log_enabled() {
+            let node_mode = format!("{:o}", node.mode);
+            let branch_id = self.branch_for_process(pid);
+            let groups_hash = Self::groups_identity_hash(&user.groups);
+            debug!(
+                target: "agentfs::permissions",
+                context = "check_path_access",
+                path = %path.display(),
+                node_id = node.id.0,
+                node_uid = node.uid,
+                node_gid = node.gid,
+                node_mode = %node_mode,
+                node_ctime = node.times.ctime,
+                node_ctime_nsec = node.times.ctime_nsec,
+                branch = %branch_id,
+                user_uid = user.uid,
+                user_gid = user.gid,
+                user_groups = ?user.groups,
+                user_groups_hash = format_args!("{:016x}", groups_hash),
+                want_read,
+                want_write,
+                want_exec
+            );
+        }
 
         if self.allowed_for_user(node, &user, want_read, want_write, want_exec) {
             Ok(())
@@ -2441,105 +2605,114 @@ impl FsCore {
         let pid_struct = PID(pid);
 
         // Check if path exists in upper layer
-        if self.resolve_path(&pid_struct, path).is_ok() {
-            // File exists in upper layer, use normal open
-            let opts = OpenOptions {
-                read: true,
-                write: false,
-                create: false,
-                truncate: false,
-                append: false,
-                share: vec![],
-                stream: None,
-            };
+        match self.resolve_path(&pid_struct, path) {
+            Ok(_) => {
+                // File exists in upper layer, use normal open
+                let opts = OpenOptions {
+                    read: true,
+                    write: false,
+                    create: false,
+                    truncate: false,
+                    append: false,
+                    share: vec![],
+                    stream: None,
+                };
 
-            match self.open(&pid_struct, path, &opts) {
-                Ok(_handle_id) => {
-                    // Get the file descriptor from the handle
-                    // For now, this is a simplified implementation
-                    // In a real implementation, we'd need to track file descriptors per handle
-                    Err("Upper layer files not yet supported for fd_open".to_string())
+                match self.open(&pid_struct, path, &opts) {
+                    Ok(_handle_id) => {
+                        // Get the file descriptor from the handle
+                        // For now, this is a simplified implementation
+                        // In a real implementation, we'd need to track file descriptors per handle
+                        Err("Upper layer files not yet supported for fd_open".to_string())
+                    }
+                    Err(e) => Err(format!("Failed to open upper file: {:?}", e)),
                 }
-                Err(e) => Err(format!("Failed to open upper file: {:?}", e)),
             }
-        } else {
-            // Check if file exists in lower layer
-            if let Some(lower_fs) = &self.lower_fs {
-                match lower_fs.stat(path) {
-                    Ok(attrs) => {
-                        // File exists in lower layer, check size limits
-                        if attrs.len > self.config.interpose.max_copy_bytes {
-                            return Err("File too large for forwarding".to_string());
-                        }
-
-                        // Check if backstore supports native reflink
-                        let backstore_supports_reflink = if let Some(backstore) = &self.backstore {
-                            backstore.supports_native_reflink()
-                        } else {
-                            false
-                        };
-
-                        // Check policy requirements
-                        if self.config.interpose.require_reflink && !backstore_supports_reflink {
-                            return Err("Reflink required but not supported".to_string());
-                        }
-
-                        // Create upper entry with copy-up
-                        if let Some(backstore) = &self.backstore {
-                            // Create the upper file path
-                            let upper_path =
-                                backstore.root_path().join(path.strip_prefix("/").unwrap_or(path));
-
-                            // Ensure parent directories exist
-                            if let Some(parent) = upper_path.parent() {
-                                if let Err(e) = std::fs::create_dir_all(parent) {
-                                    return Err(format!(
-                                        "Failed to create parent directories: {}",
-                                        e
-                                    ));
-                                }
+            Err(FsError::NotFound) => {
+                // Check if file exists in lower layer
+                if let Some(lower_fs) = &self.lower_fs {
+                    match lower_fs.stat(path) {
+                        Ok(attrs) => {
+                            // File exists in lower layer, check size limits
+                            if attrs.len > self.config.interpose.max_copy_bytes {
+                                return Err("File too large for forwarding".to_string());
                             }
 
-                            // Get the lower file path
-                            let lower_root = self
-                                .config
-                                .overlay
-                                .lower_root
-                                .as_ref()
-                                .ok_or("No lower root configured")?;
-                            let lower_path =
-                                lower_root.join(path.strip_prefix("/").unwrap_or(path));
+                            // Check if backstore supports native reflink
+                            let backstore_supports_reflink =
+                                if let Some(backstore) = &self.backstore {
+                                    backstore.supports_native_reflink()
+                                } else {
+                                    false
+                                };
 
-                            // Try reflink first, then copy
-                            let copy_result = if backstore_supports_reflink {
-                                backstore.reflink(&lower_path, &upper_path)
-                            } else {
-                                // Fallback to copy
-                                match std::fs::copy(&lower_path, &upper_path) {
-                                    Ok(_) => Ok(()),
-                                    Err(e) => Err(FsError::Io(e)),
-                                }
-                            };
+                            // Check policy requirements
+                            if self.config.interpose.require_reflink && !backstore_supports_reflink
+                            {
+                                return Err("Reflink required but not supported".to_string());
+                            }
 
-                            match copy_result {
-                                Ok(()) => {
-                                    // Now open the upper file and return its file descriptor
-                                    match std::fs::File::open(&upper_path) {
-                                        Ok(file) => Ok(file.as_raw_fd()),
-                                        Err(e) => Err(format!("Failed to open upper file: {}", e)),
+                            // Create upper entry with copy-up
+                            if let Some(backstore) = &self.backstore {
+                                // Create the upper file path
+                                let upper_path = backstore
+                                    .root_path()
+                                    .join(path.strip_prefix("/").unwrap_or(path));
+
+                                // Ensure parent directories exist
+                                if let Some(parent) = upper_path.parent() {
+                                    if let Err(e) = std::fs::create_dir_all(parent) {
+                                        return Err(format!(
+                                            "Failed to create parent directories: {}",
+                                            e
+                                        ));
                                     }
                                 }
-                                Err(e) => Err(format!("Failed to copy-up file: {:?}", e)),
+
+                                // Get the lower file path
+                                let lower_root = self
+                                    .config
+                                    .overlay
+                                    .lower_root
+                                    .as_ref()
+                                    .ok_or("No lower root configured")?;
+                                let lower_path =
+                                    lower_root.join(path.strip_prefix("/").unwrap_or(path));
+
+                                // Try reflink first, then copy
+                                let copy_result = if backstore_supports_reflink {
+                                    backstore.reflink(&lower_path, &upper_path)
+                                } else {
+                                    // Fallback to copy
+                                    match std::fs::copy(&lower_path, &upper_path) {
+                                        Ok(_) => Ok(()),
+                                        Err(e) => Err(FsError::Io(e)),
+                                    }
+                                };
+
+                                match copy_result {
+                                    Ok(()) => {
+                                        // Now open the upper file and return its file descriptor
+                                        match std::fs::File::open(&upper_path) {
+                                            Ok(file) => Ok(file.as_raw_fd()),
+                                            Err(e) => {
+                                                Err(format!("Failed to open upper file: {}", e))
+                                            }
+                                        }
+                                    }
+                                    Err(e) => Err(format!("Failed to copy-up file: {:?}", e)),
+                                }
+                            } else {
+                                Err("No backstore configured for interpose mode".to_string())
                             }
-                        } else {
-                            Err("No backstore configured for interpose mode".to_string())
                         }
+                        Err(_) => Err("File not found in lower filesystem".to_string()),
                     }
-                    Err(_) => Err("File not found in lower filesystem".to_string()),
+                } else {
+                    Err("Overlay mode not enabled".to_string())
                 }
-            } else {
-                Err("Overlay mode not enabled".to_string())
             }
+            Err(err) => Err(format!("Failed to resolve upper file: {:?}", err)),
         }
     }
 
@@ -2828,6 +3001,12 @@ impl FsCore {
         false
     }
 
+    /// Returns true if the provided share vector permits the specified mode.
+    #[inline]
+    fn share_allows(share: &[ShareMode], mode: ShareMode) -> bool {
+        share.is_empty() || share.contains(&mode)
+    }
+
     /// Check if opening with given options would conflict with existing handles (Windows share modes)
     fn share_mode_conflicts(&self, node_id: NodeId, options: &OpenOptions) -> bool {
         let handles = self.handles.lock().unwrap();
@@ -2848,10 +3027,18 @@ impl FsCore {
                     }
 
                     // Check each requested access type against existing handle's share modes
-                    if options.read && !handle_options.share.contains(&ShareMode::Read) {
+                    if options.read && !Self::share_allows(&handle_options.share, ShareMode::Read) {
                         return true;
                     }
-                    if options.write && !handle_options.share.contains(&ShareMode::Write) {
+                    if options.write && !Self::share_allows(&handle_options.share, ShareMode::Write)
+                    {
+                        return true;
+                    }
+                    if handle_options.read && !Self::share_allows(&options.share, ShareMode::Read) {
+                        return true;
+                    }
+                    if handle_options.write && !Self::share_allows(&options.share, ShareMode::Write)
+                    {
                         return true;
                     }
                     // Note: Delete access conflicts are typically checked at delete time, not open time
@@ -3031,7 +3218,7 @@ impl FsCore {
     // Directory operations
     pub fn mkdir(&self, pid: &PID, path: &Path, mode: u32) -> FsResult<()> {
         // Check if the path already exists
-        if self.resolve_path(pid, path).is_ok() {
+        if self.path_exists(pid, path)? {
             return Err(FsError::AlreadyExists);
         }
 
@@ -3133,31 +3320,37 @@ impl FsCore {
     // Optional readdir+ that includes attributes without extra getattr calls (libfuse pattern)
     pub fn readdir_plus(&self, pid: &PID, path: &Path) -> FsResult<Vec<(DirEntry, Attributes)>> {
         // Check if there's an upper directory
-        if let Ok((node_id, _)) = self.resolve_path(pid, path) {
-            let nodes = self.nodes.lock().unwrap();
-            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+        match self.resolve_path(pid, path) {
+            Ok((node_id, _)) => {
+                let nodes = self.nodes.lock().unwrap();
+                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
 
-            match &node.kind {
-                NodeKind::Directory { children } => {
-                    if self.config.security.enforce_posix_permissions {
-                        if let Some(user) = self.user_for_process(pid) {
-                            if !self.allowed_for_user(node, &user, true, false, true) {
-                                return Err(FsError::AccessDenied);
+                match &node.kind {
+                    NodeKind::Directory { children } => {
+                        if self.config.security.enforce_posix_permissions {
+                            if let Some(user) = self.user_for_process(pid) {
+                                if !self.allowed_for_user(node, &user, true, false, true) {
+                                    return Err(FsError::AccessDenied);
+                                }
                             }
                         }
-                    }
 
-                    // In overlay mode, merge upper and lower entries
-                    if self.is_overlay_enabled() {
-                        return self.readdir_plus_overlay(pid, path, children, &nodes);
-                    }
+                        // In overlay mode, merge upper and lower entries
+                        if self.is_overlay_enabled() {
+                            return self.readdir_plus_overlay(pid, path, children, &nodes);
+                        }
 
-                    // Non-overlay mode: just upper entries
-                    return self.readdir_plus_upper_only(children, &nodes);
+                        // Non-overlay mode: just upper entries
+                        return self.readdir_plus_upper_only(children, &nodes);
+                    }
+                    NodeKind::File { .. } => return Err(FsError::NotADirectory),
+                    NodeKind::Symlink { .. } => return Err(FsError::NotADirectory),
                 }
-                NodeKind::File { .. } => return Err(FsError::NotADirectory),
-                NodeKind::Symlink { .. } => return Err(FsError::NotADirectory),
             }
+            Err(FsError::NotFound) => {
+                // fall through to lower filesystem handling
+            }
+            Err(e) => return Err(e),
         }
 
         // No upper entry, check lower filesystem in overlay mode
@@ -3969,7 +4162,7 @@ impl FsCore {
         let (src_node_id, _) = self.resolve_path(pid, src_path)?;
 
         // Check if destination already exists
-        if self.resolve_path(pid, dst_path).is_ok() {
+        if self.path_exists(pid, dst_path)? {
             return Err(FsError::AlreadyExists);
         }
 
@@ -4298,7 +4491,21 @@ impl FsCore {
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
         let new_mode = self.sanitize_mode_change(pid, node, mode)?;
+        let old_mode = node.mode;
         node.mode = new_mode;
+        let branch_id = self.branch_for_process(pid);
+        debug!(
+            target: "agentfs::metadata",
+            event = "set_mode_applied",
+            path = %path.display(),
+            branch = %branch_id,
+            mode = format_args!("{:#o}", new_mode),
+            previous_mode = format_args!("{:#o}", old_mode),
+            node_id = node_id.0,
+            node_uid = node.uid,
+            node_gid = node.gid,
+            pid = pid.as_u32()
+        );
         // ctime changes on metadata change
         let (sec, nsec) = FsCore::current_time_components();
         node.times.ctime = sec;
@@ -4315,50 +4522,58 @@ impl FsCore {
 
     /// Get file status (stat) for a path - follows symlinks
     pub fn stat(&self, pid: &PID, path: &Path) -> FsResult<StatData> {
-        let attrs = self.getattr(pid, path)?;
-        self.attributes_to_stat_data(attrs, path)
+        let (attrs, node_id) = self.getattr_with_node_id(pid, path)?;
+        self.attributes_to_stat_data(attrs, node_id, Some(path))
     }
 
     /// Get file status (lstat) for a path - does not follow symlinks
     pub fn lstat(&self, pid: &PID, path: &Path) -> FsResult<StatData> {
         // For lstat, we need to check if it's a symlink without following it
-        if let Ok((node_id, _)) = self.resolve_path(pid, path) {
-            // Get the node directly to check if it's a symlink
-            let nodes = self.nodes.lock().unwrap();
-            let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
-            if let NodeKind::Symlink { target } = &node.kind {
-                // For symlinks, return symlink-specific attributes
-                let attrs = Attributes {
-                    len: target.len() as u64,
-                    times: node.times,
-                    uid: node.uid,
-                    gid: node.gid,
-                    is_dir: false,
-                    is_symlink: true,
-                    special_kind: node.special_kind.clone(),
-                    nlink: node.nlink,
-                    mode_user: FileMode {
-                        read: (node.mode & libc::S_IRUSR) != 0,
-                        write: (node.mode & libc::S_IWUSR) != 0,
-                        exec: (node.mode & libc::S_IXUSR) != 0,
-                    },
-                    mode_group: FileMode {
-                        read: (node.mode & libc::S_IRGRP) != 0,
-                        write: (node.mode & libc::S_IWGRP) != 0,
-                        exec: (node.mode & libc::S_IXGRP) != 0,
-                    },
-                    mode_other: FileMode {
-                        read: (node.mode & libc::S_IROTH) != 0,
-                        write: (node.mode & libc::S_IWOTH) != 0,
-                        exec: (node.mode & libc::S_IXOTH) != 0,
-                    },
-                    mode_bits: node.mode,
-                };
-                return self.attributes_to_stat_data(attrs, path);
+        match self.resolve_path(pid, path) {
+            Ok((node_id, _)) => {
+                // Get the node directly to check if it's a symlink
+                let nodes = self.nodes.lock().unwrap();
+                let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
+                if let NodeKind::Symlink { target } = &node.kind {
+                    // For symlinks, return symlink-specific attributes
+                    let attrs = Attributes {
+                        len: target.len() as u64,
+                        times: node.times,
+                        uid: node.uid,
+                        gid: node.gid,
+                        is_dir: false,
+                        is_symlink: true,
+                        special_kind: node.special_kind.clone(),
+                        nlink: node.nlink,
+                        mode_user: FileMode {
+                            read: (node.mode & libc::S_IRUSR as u32) != 0,
+                            write: (node.mode & libc::S_IWUSR as u32) != 0,
+                            exec: (node.mode & libc::S_IXUSR as u32) != 0,
+                        },
+                        mode_group: FileMode {
+                            read: (node.mode & libc::S_IRGRP as u32) != 0,
+                            write: (node.mode & libc::S_IWGRP as u32) != 0,
+                            exec: (node.mode & libc::S_IXGRP as u32) != 0,
+                        },
+                        mode_other: FileMode {
+                            read: (node.mode & libc::S_IROTH as u32) != 0,
+                            write: (node.mode & libc::S_IWOTH as u32) != 0,
+                            exec: (node.mode & libc::S_IXOTH as u32) != 0,
+                        },
+                        mode_bits: node.mode,
+                    };
+                    return self.attributes_to_stat_data(attrs, Some(node_id), Some(path));
+                }
+                // Not a symlink, fall through to stat-style handling below
+                let attrs = self.get_node_attributes(node_id)?;
+                return self.attributes_to_stat_data(attrs, Some(node_id), Some(path));
             }
+            Err(FsError::NotFound) => {
+                // For non-existent entries, behave like stat (which will also return NotFound)
+                self.stat(pid, path)
+            }
+            Err(e) => Err(e),
         }
-        // For non-symlinks, lstat behaves like stat
-        self.stat(pid, path)
     }
 
     /// Get file status (fstat) for an open file descriptor
@@ -4366,7 +4581,7 @@ impl FsCore {
         let node_id = self.get_node_id_for_handle(pid, handle_id)?;
         let attrs = self.get_node_attributes(node_id)?;
         // For fstat, we don't have a path, so we'll use a dummy path
-        self.attributes_to_stat_data(attrs, Path::new(""))
+        self.attributes_to_stat_data(attrs, Some(node_id), None)
     }
 
     /// Get file status (fstatat) relative to a directory file descriptor
@@ -4385,7 +4600,25 @@ impl FsCore {
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
         let new_mode = self.sanitize_mode_change(pid, node, mode)?;
+        let old_mode = node.mode;
         node.mode = new_mode;
+        if self.permissions_log_enabled() {
+            let branch_id = self.branch_for_process(pid);
+            debug!(
+                target: "agentfs::permissions",
+                event = "fchmod_applied",
+                handle_id = handle_id.0,
+                branch = %branch_id,
+                pid = pid.as_u32(),
+                node_id = node_id.0,
+                previous_mode = format_args!("{:#o}", old_mode),
+                new_mode = format_args!("{:#o}", new_mode),
+                node_uid = node.uid,
+                node_gid = node.gid,
+                node_ctime = node.times.ctime,
+                node_ctime_nsec = node.times.ctime_nsec
+            );
+        }
         // ctime changes on metadata change
         let (sec, nsec) = FsCore::current_time_components();
         node.times.ctime = sec;
@@ -4542,13 +4775,22 @@ impl FsCore {
         self.statfs(pid, Path::new(""))
     }
 
-    /// Helper method to get node ID for a handle
-    fn get_node_id_for_handle(&self, pid: &PID, handle_id: HandleId) -> FsResult<NodeId> {
+    fn lookup_node_for_handle(&self, handle_id: HandleId) -> FsResult<NodeId> {
         let handles = self.handles.lock().unwrap();
         let handle = handles.get(&handle_id).ok_or(FsError::BadFileDescriptor)?;
+        Ok(handle.node_id)
+    }
+
+    /// Helper method to get node ID for a handle
+    fn get_node_id_for_handle(&self, pid: &PID, handle_id: HandleId) -> FsResult<NodeId> {
         // Check if the process can access this handle (simplified check)
         let _ = pid; // In full implementation, check process ownership
-        Ok(handle.node_id)
+        self.lookup_node_for_handle(handle_id)
+    }
+
+    /// Inspect the node backing a handle without requiring process context.
+    pub fn describe_handle_node(&self, handle_id: HandleId) -> FsResult<u64> {
+        self.lookup_node_for_handle(handle_id).map(|node_id| node_id.0)
     }
 
     /// Helper method to set node owner with permission checking
@@ -4826,9 +5068,17 @@ impl FsCore {
     }
 
     /// Helper method to convert Attributes to StatData
-    fn attributes_to_stat_data(&self, attrs: Attributes, path: &Path) -> FsResult<StatData> {
-        // Get inode number from path hash (simplified)
-        let inode = self.simple_inode_from_path(path);
+    fn attributes_to_stat_data(
+        &self,
+        attrs: Attributes,
+        node_id_hint: Option<NodeId>,
+        path_hint: Option<&Path>,
+    ) -> FsResult<StatData> {
+        // Prefer stable inode numbers derived from the node id when available.
+        let inode = node_id_hint
+            .map(|id| id.0)
+            .or_else(|| path_hint.map(|path| self.simple_inode_from_path(path)))
+            .unwrap_or(0);
 
         Ok(StatData {
             st_dev: 1, // Dummy device ID
@@ -4976,7 +5226,7 @@ impl FsCore {
     /// Create a symbolic link
     pub fn symlink(&self, pid: &PID, target: &str, linkpath: &Path) -> FsResult<()> {
         // Check if the link path already exists
-        if self.resolve_path(pid, linkpath).is_ok() {
+        if self.path_exists(pid, linkpath)? {
             return Err(FsError::AlreadyExists);
         }
 
@@ -5033,7 +5283,7 @@ impl FsCore {
         drop(nodes);
 
         // Check if the link path already exists
-        if self.resolve_path(pid, new_path).is_ok() {
+        if self.path_exists(pid, new_path)? {
             return Err(FsError::AlreadyExists);
         }
 
@@ -5588,6 +5838,25 @@ mod tests {
         // Verify ctime was updated
         let after = fs.getattr(&pid, "/test.txt".as_ref()).expect("getattr should succeed");
         assert!(after.times.ctime >= before.times.ctime);
+    }
+
+    #[test]
+    fn test_set_owner_requires_parent_search_permission() {
+        let fs = create_test_fs();
+        let root = fs.register_process(2000, 2000, 0, 0);
+        let unpriv = fs.register_process(4242, 4242, 65534, 65534);
+
+        fs.mkdir(&root, "/dir".as_ref(), 0o755).expect("mkdir dir");
+        let handle = fs.create(&root, "/dir/file".as_ref(), &rw_create()).expect("create file");
+        fs.close(&root, handle).expect("close file");
+        fs.set_owner(&root, "/dir".as_ref(), 65534, 65534).expect("chown dir");
+        fs.set_owner(&root, "/dir/file".as_ref(), 65534, 65534).expect("chown file");
+        fs.set_mode(&root, "/dir".as_ref(), 0o644).expect("chmod dir");
+
+        let err = fs
+            .set_owner(&unpriv, "/dir/file".as_ref(), u32::MAX, 65534)
+            .expect_err("non root chown should fail when search denied");
+        assert!(matches!(err, FsError::AccessDenied));
     }
 
     // M24.g - Extended attributes, ACLs, and flags unit tests
