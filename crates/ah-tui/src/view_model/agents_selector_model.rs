@@ -84,7 +84,7 @@ use ratatui::style::{Modifier, Style};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 use uuid;
 
 const ESC_CONFIRMATION_MESSAGE: &str = "Press Esc again to quit";
@@ -1003,8 +1003,8 @@ impl ViewModel {
                     if let Some(option_text) = option {
                         // Extract values before dropping the borrow
                         let draft_id = draft_id.clone();
-                        // Close modal first to avoid borrowing issues
-                        drop(modal);
+                        // Release borrow explicitly
+                        let _ = modal;
                         self.launch_task_with_option(draft_id, option_text);
                         self.close_modal();
                         return true;
@@ -2935,10 +2935,8 @@ impl ViewModel {
                         // Try dashboard operations for operations not handled by the card
                         if matches!(operation, KeyboardOperation::ShowLaunchOptions) {
                             let handled = self.handle_dashboard_operation(operation, &key);
-                            if handled {
-                                if operation != KeyboardOperation::DismissOverlay {
-                                    self.clear_exit_confirmation();
-                                }
+                            if handled && operation != KeyboardOperation::DismissOverlay {
+                                self.clear_exit_confirmation();
                             }
                             return handled;
                         }
@@ -3299,10 +3297,7 @@ impl ViewModel {
                 // Shift+Enter
                 self.handle_enter(true)
             }
-            KeyboardOperation::ActivateCurrentItem => {
-                // Enter key - activate current item (task, button, etc.)
-                self.handle_enter(false)
-            }
+            // Removed unreachable duplicate KeyboardOperation::ActivateCurrentItem arm
             KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
             KeyboardOperation::DraftNewTask => self.handle_ctrl_n(),
             KeyboardOperation::DeleteToEndOfLine => {
@@ -5102,7 +5097,7 @@ impl ViewModel {
             MouseAction::ActivateAdvancedOptionsModal => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
                 self.change_focus(DashboardFocusState::DraftTask(0));
-                if let Some(card) = self.draft_cards.get(0) {
+                if let Some(card) = self.draft_cards.first() {
                     let draft_id = card.id.clone();
                     self.open_launch_options_modal(draft_id);
                 } else {
@@ -5186,13 +5181,10 @@ impl ViewModel {
                         }
                         _ => {
                             // For other modal types, use filtered_options
-                            if let Some(option) = modal.filtered_options.get(index) {
-                                if let FilteredOption::Option { text, .. } = option {
-                                    self.apply_modal_selection(
-                                        modal.modal_type.clone(),
-                                        text.clone(),
-                                    );
-                                }
+                            if let Some(FilteredOption::Option { text, .. }) =
+                                modal.filtered_options.get(index)
+                            {
+                                self.apply_modal_selection(modal.modal_type.clone(), text.clone());
                             }
                         }
                     }
@@ -6366,7 +6358,7 @@ fn create_modal_view_model(
         }
         ModalState::ModelSearch => {
             // Create model options from available models, with counts from current draft
-            let mut model_options: Vec<AgentSelectionViewModel> = available_models
+            let model_options: Vec<AgentSelectionViewModel> = available_models
                 .iter()
                 .map(|model_info| {
                     let count = current_draft
@@ -6518,8 +6510,7 @@ fn create_footer_view_model(
     match (focus_element, modal_state) {
         (_, ModalState::RepositorySearch)
         | (_, ModalState::BranchSearch)
-        | (_, ModalState::ModelSearch)
-        | (_, ModalState::LaunchOptions) => {
+        | (_, ModalState::ModelSearch) => {
             // Modal active: "↑↓ Navigate • Enter Select • Esc Back"
             shortcuts.push(KeyboardShortcut::new(
                 KeyboardOperation::MoveToNextLine,

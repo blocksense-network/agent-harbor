@@ -152,7 +152,7 @@ mod viewmodel_tests {
 
         assert!(vm.focus_next_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::AdvancedOptionsButton);
         }
 
@@ -177,13 +177,13 @@ mod viewmodel_tests {
         // Global focus should remain on the draft task
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
         // But internal focus should move to AdvancedOptionsButton
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::AdvancedOptionsButton);
         }
 
         assert!(vm.focus_previous_control());
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        if let Some(card) = vm.draft_cards.get(0) {
+        if let Some(card) = vm.draft_cards.first() {
             assert_eq!(card.focus_element, CardFocusElement::GoButton);
         }
 
