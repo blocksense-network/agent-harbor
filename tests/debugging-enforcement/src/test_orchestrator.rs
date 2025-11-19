@@ -92,7 +92,7 @@ fn test_ptrace_in_debug_mode(sbx_helper: &str) -> (bool, bool) {
     // Start a target process in the sandbox with debug mode enabled
     // The target will be a simple sleep process
     let target_cmd = Command::new(sbx_helper)
-        .args(&[
+        .args([
             "--seccomp",
             "--seccomp-debug",
             "/nix/store/xbp2j3z0lhizr5vvzff4dgdcxgs8i2w7-coreutils-9.7/bin/sleep",
@@ -162,7 +162,7 @@ fn test_ptrace_in_debug_mode(sbx_helper: &str) -> (bool, bool) {
 
     // Now try to attach to it using our ptrace tester
     let test_result = Command::new(sbx_helper)
-        .args(&[
+        .args([
             "--seccomp",
             "--seccomp-debug",
             "../../target/debug/ptrace_tester",
@@ -199,7 +199,7 @@ fn test_ptrace_in_debug_mode(sbx_helper: &str) -> (bool, bool) {
 fn test_ptrace_in_normal_mode(sbx_helper: &str) -> (bool, bool) {
     // Start a target process in the sandbox with normal mode (no debug)
     let target_cmd = Command::new(sbx_helper)
-        .args(&[
+        .args([
             "--seccomp",
             "/nix/store/xbp2j3z0lhizr5vvzff4dgdcxgs8i2w7-coreutils-9.7/bin/sleep",
             "10",
@@ -268,7 +268,7 @@ fn test_ptrace_in_normal_mode(sbx_helper: &str) -> (bool, bool) {
 
     // Now try to attach to it using our ptrace tester
     let test_result = Command::new(sbx_helper)
-        .args(&[
+        .args([
             "--seccomp",
             "../../target/debug/ptrace_tester",
             "--target-pid",

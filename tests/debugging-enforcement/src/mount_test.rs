@@ -10,7 +10,9 @@
 
 #[cfg(target_os = "linux")]
 use libc;
-use nix::unistd::Pid;
+#[cfg(not(target_os = "linux"))]
+use tracing::info;
+#[cfg(target_os = "linux")]
 use tracing::{error, info};
 
 #[cfg(target_os = "linux")]
@@ -48,7 +50,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-fn create_user_namespace() -> anyhow::Result<Pid> {
+fn create_user_namespace() -> anyhow::Result<nix::unistd::Pid> {
     // Fork to create child process that will enter namespaces
     match unsafe { nix::unistd::fork() } {
         Ok(nix::unistd::ForkResult::Parent { child }) => {

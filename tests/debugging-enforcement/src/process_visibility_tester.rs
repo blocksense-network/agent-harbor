@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
 
     // First, verify the process exists by checking /proc/<pid>
     let proc_path = format!("/proc/{}", host_pid);
-    if !fs::metadata(&proc_path).is_ok() {
+    if fs::metadata(&proc_path).is_err() {
         error!("Host process {} does not exist or is not visible", host_pid);
         process::exit(3); // Process not found
     }
