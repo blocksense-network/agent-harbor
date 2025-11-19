@@ -32,7 +32,7 @@
 use ah_agents::test_utils::start_mock_llm_api_server;
 use ah_agents::{AgentLaunchConfig, agent_by_name};
 use ah_core::agent_binary::AgentBinary;
-use ah_core::agent_types::AgentType;
+use ah_domain_types::AgentSoftware;
 use std::ffi::OsString;
 use std::path::Path;
 use std::{fs, thread, time};
@@ -113,8 +113,8 @@ fn setup_test_env(cmd: &mut std::process::Command) {
 #[ignore]
 async fn test_claude_with_mock_server() {
     // Check if claude is available
-    let agent_binary =
-        AgentBinary::from_agent_type(AgentType::Claude).expect("Claude binary not found in PATH");
+    let agent_binary = AgentBinary::from_agent_type(&AgentSoftware::Claude)
+        .expect("Claude binary not found in PATH");
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let home_dir = temp_dir.path().join("agent_home");
@@ -248,7 +248,7 @@ async fn test_codex_with_mock_server() {
 
     tokio::time::timeout(overall_timeout, async {
         // Check if codex is available
-        let agent_binary = AgentBinary::from_agent_type(AgentType::Codex)
+        let agent_binary = AgentBinary::from_agent_type(&AgentSoftware::Codex)
             .expect("Codex binary not found in PATH");
 
         let temp_dir = TempDir::new().expect("Failed to create temp dir");

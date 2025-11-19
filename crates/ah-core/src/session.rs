@@ -17,7 +17,7 @@ pub struct SessionId(pub u64);
 pub enum SessionStatus {
     /// Session has been created but not yet started.
     Created,
-    /// Session is currently active and running.
+    /// Session is actively running.
     Active,
     /// Session is paused.
     Paused,

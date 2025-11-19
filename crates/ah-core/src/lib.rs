@@ -11,7 +11,6 @@ pub mod agent_binary;
 pub mod agent_catalog;
 pub mod agent_executor;
 pub mod agent_tasks;
-pub mod agent_types;
 pub mod branches_enumerator;
 pub mod db;
 pub mod devshell;
@@ -67,8 +66,7 @@ pub use task_manager::{TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManage
 
 /// Task manager initialization utilities.
 pub use task_manager_init::{
-    CliMultiplexerType, MultiplexerChoice, MultiplexerPreference, TaskManagerConfig,
-    create_dashboard_task_manager, create_local_task_manager,
+    MultiplexerChoice, TaskManagerConfig, create_dashboard_task_manager, create_local_task_manager,
     create_local_task_manager_with_multiplexer, create_session_viewer_task_manager,
     create_task_manager_no_recording, determine_multiplexer_choice,
 };

@@ -3,7 +3,7 @@
 
 //! Agent binary representation and utilities
 
-use crate::agent_types::AgentType;
+use ah_domain_types::AgentSoftware;
 use which::which;
 
 /// Represents an agent binary that exists on the system PATH
@@ -12,7 +12,7 @@ pub struct AgentBinary {
     /// Path to the agent binary
     pub path: std::path::PathBuf,
     /// Type of the agent
-    pub agent_type: AgentType,
+    pub agent_type: AgentSoftware,
     /// Version string of the agent
     pub version: String,
 }
@@ -20,17 +20,16 @@ pub struct AgentBinary {
 impl AgentBinary {
     /// Attempts to locate and create an AgentBinary for the given agent type
     /// Returns None if the binary is not found in PATH or version detection fails
-    pub fn from_agent_type(agent_type: AgentType) -> Option<Self> {
+    pub fn from_agent_type(agent_type: &AgentSoftware) -> Option<Self> {
         let binary_name = match agent_type {
-            AgentType::Mock => "mock-agent",
-            AgentType::Codex => "codex",
-            AgentType::Claude => "claude",
-            AgentType::Copilot => "copilot",
-            AgentType::Gemini => "gemini",
-            AgentType::Opencode => "opencode",
-            AgentType::Qwen => "qwen",
-            AgentType::CursorCli => "cursor",
-            AgentType::Goose => "goose",
+            AgentSoftware::Codex => "codex",
+            AgentSoftware::Claude => "claude",
+            AgentSoftware::Copilot => "copilot",
+            AgentSoftware::Gemini => "gemini",
+            AgentSoftware::Opencode => "opencode",
+            AgentSoftware::Qwen => "qwen",
+            AgentSoftware::CursorCli => "cursor",
+            AgentSoftware::Goose => "goose",
         };
 
         // Check if binary exists in PATH
@@ -38,7 +37,7 @@ impl AgentBinary {
 
         // Get version (agent-specific logic)
         let version = match agent_type {
-            AgentType::Claude => {
+            AgentSoftware::Claude => {
                 std::process::Command::new(&path)
                     .arg("--version")
                     .output()
@@ -65,7 +64,7 @@ impl AgentBinary {
 
         Some(AgentBinary {
             path,
-            agent_type,
+            agent_type: agent_type.clone(),
             version,
         })
     }
@@ -73,15 +72,14 @@ impl AgentBinary {
     /// Returns the tools profile name used by the mock server
     pub fn tools_profile(&self) -> &str {
         match self.agent_type {
-            AgentType::Claude => "claude",
-            AgentType::Codex => "codex",
-            AgentType::Gemini => "gemini",
-            AgentType::Opencode => "opencode",
-            AgentType::Qwen => "qwen",
-            AgentType::CursorCli => "cursor-cli",
-            AgentType::Copilot => "copilot",
-            AgentType::Goose => "goose",
-            AgentType::Mock => "mock",
+            AgentSoftware::Claude => "claude",
+            AgentSoftware::Codex => "codex",
+            AgentSoftware::Gemini => "gemini",
+            AgentSoftware::Opencode => "opencode",
+            AgentSoftware::Qwen => "qwen",
+            AgentSoftware::CursorCli => "cursor-cli",
+            AgentSoftware::Copilot => "copilot",
+            AgentSoftware::Goose => "goose",
         }
     }
 }

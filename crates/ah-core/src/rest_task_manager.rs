@@ -498,7 +498,6 @@ impl RestApiClient for ah_rest_client::RestClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent_types::AgentType;
     use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 
     #[tokio::test]
@@ -520,7 +519,7 @@ mod tests {
                 settings: std::collections::HashMap::new(),
                 display_name: None,
             }])
-            .agent_type(AgentType::Claude)
+            .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())
             .build();
         assert!(result.is_err());
@@ -532,7 +531,7 @@ mod tests {
             .branch("main".to_string())
             .description("Test task".to_string())
             .agents(vec![])
-            .agent_type(AgentType::Claude)
+            .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())
             .build();
         assert!(result.is_err());
@@ -553,7 +552,7 @@ mod tests {
                 settings: std::collections::HashMap::new(),
                 display_name: None,
             }])
-            .agent_type(AgentType::Claude)
+            .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())
             .build();
         assert!(result.is_err());
@@ -574,7 +573,7 @@ mod tests {
                 settings: std::collections::HashMap::new(),
                 display_name: None,
             }])
-            .agent_type(AgentType::Claude)
+            .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())
             .build();
         assert!(result.is_err());
@@ -598,7 +597,7 @@ mod tests {
                 settings: std::collections::HashMap::new(),
                 display_name: None,
             }])
-            .agent_type(AgentType::Claude)
+            .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())
             .build();
         assert!(result.is_ok());

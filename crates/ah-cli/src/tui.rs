@@ -4,11 +4,10 @@
 //! TUI command handling for the CLI
 
 use ah_core::{
-    CliMultiplexerType, DefaultWorkspaceTermsEnumerator, MultiplexerChoice,
-    RemoteWorkspaceFilesEnumerator, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
-    determine_multiplexer_choice,
+    DefaultWorkspaceTermsEnumerator, MultiplexerChoice, RemoteWorkspaceFilesEnumerator,
+    WorkspaceFilesEnumerator, WorkspaceTermsEnumerator, determine_multiplexer_choice,
 };
-use ah_domain_types::ExperimentalFeature;
+use ah_domain_types::{ExperimentalFeature, MultiplexerType};
 use ah_mux::detection;
 use ah_mux_core::{Multiplexer, WindowOptions};
 use ah_repo::VcsRepo;
@@ -97,28 +96,30 @@ impl CliMultiplexerArg {
 
     /// Convert CLI argument to core multiplexer type
     /// Returns None for Auto variant as it needs runtime detection
-    pub fn to_core_type(&self) -> Option<CliMultiplexerType> {
+    pub fn to_core_type(&self) -> Option<ah_domain_types::MultiplexerType> {
         match self {
             CliMultiplexerArg::Auto => None,
-            CliMultiplexerArg::Tmux => Some(CliMultiplexerType::Tmux),
-            CliMultiplexerArg::Kitty => Some(CliMultiplexerType::Kitty),
-            CliMultiplexerArg::ITerm2 => Some(CliMultiplexerType::ITerm2),
-            CliMultiplexerArg::Wezterm => Some(CliMultiplexerType::WezTerm),
-            CliMultiplexerArg::Zellij => Some(CliMultiplexerType::Zellij),
-            CliMultiplexerArg::Screen => Some(CliMultiplexerType::Screen),
-            CliMultiplexerArg::Tilix => Some(CliMultiplexerType::Tilix),
-            CliMultiplexerArg::WindowsTerminal => Some(CliMultiplexerType::WindowsTerminal),
-            CliMultiplexerArg::Ghostty => Some(CliMultiplexerType::Ghostty),
-            CliMultiplexerArg::Neovim => Some(CliMultiplexerType::Neovim),
-            CliMultiplexerArg::Vim => Some(CliMultiplexerType::Vim),
-            CliMultiplexerArg::Emacs => Some(CliMultiplexerType::Emacs),
+            CliMultiplexerArg::Tmux => Some(ah_domain_types::MultiplexerType::Tmux),
+            CliMultiplexerArg::Kitty => Some(ah_domain_types::MultiplexerType::Kitty),
+            CliMultiplexerArg::ITerm2 => Some(ah_domain_types::MultiplexerType::ITerm2),
+            CliMultiplexerArg::Wezterm => Some(ah_domain_types::MultiplexerType::WezTerm),
+            CliMultiplexerArg::Zellij => Some(ah_domain_types::MultiplexerType::Zellij),
+            CliMultiplexerArg::Screen => Some(ah_domain_types::MultiplexerType::Screen),
+            CliMultiplexerArg::Tilix => Some(ah_domain_types::MultiplexerType::Tilix),
+            CliMultiplexerArg::WindowsTerminal => {
+                Some(ah_domain_types::MultiplexerType::WindowsTerminal)
+            }
+            CliMultiplexerArg::Ghostty => Some(ah_domain_types::MultiplexerType::Ghostty),
+            CliMultiplexerArg::Neovim => Some(ah_domain_types::MultiplexerType::Neovim),
+            CliMultiplexerArg::Vim => Some(ah_domain_types::MultiplexerType::Vim),
+            CliMultiplexerArg::Emacs => Some(ah_domain_types::MultiplexerType::Emacs),
         }
     }
 }
 
-/// Helper to get display name for core CliMultiplexerType
+/// Helper to get display name for core MultiplexerType
 #[allow(dead_code)]
-fn multiplexer_display_name(mux_type: &CliMultiplexerType) -> &'static str {
+fn multiplexer_display_name(mux_type: &ah_domain_types::MultiplexerType) -> &'static str {
     mux_type.display_name()
 }
 
@@ -419,7 +420,7 @@ impl TuiArgs {
         remote_server: Option<String>,
         api_key: Option<String>,
         bearer_token: Option<String>,
-        multiplexer: Option<CliMultiplexerType>,
+        multiplexer: Option<ah_domain_types::MultiplexerType>,
         fs_snapshots: FsSnapshotsType,
         experimental_features: Vec<ExperimentalFeature>,
     ) -> Result<TuiDependencies> {
@@ -568,16 +569,32 @@ impl TuiArgs {
             // Use shared task manager initialization
             let recording_disabled = matches!(fs_snapshots, FsSnapshotsType::Disable);
             let multiplexer_preference = match multiplexer {
-                Some(CliMultiplexerType::ITerm2) => ah_core::MultiplexerPreference::ITerm2,
-                Some(CliMultiplexerType::Tmux) => ah_core::MultiplexerPreference::Tmux,
-                None => ah_core::MultiplexerPreference::Auto,
-                // For unsupported multiplexers, fall back to auto-detection
-                Some(unsupported) => {
-                    tracing::warn!(
-                        multiplexer_type = ?unsupported,
-                        "Multiplexer not yet supported for task manager, using auto-detection"
-                    );
-                    ah_core::MultiplexerPreference::Auto
+                Some(multiplexer_type) => multiplexer_type,
+                None => {
+                    // Auto detection: run detection logic
+                    let terminal_envs = detection::detect_terminal_environments();
+                    let choice = ah_core::determine_multiplexer_choice(&terminal_envs);
+                    match choice {
+                        ah_core::MultiplexerChoice::InSupportedMultiplexer(multiplexer_type) => {
+                            tracing::info!(
+                                multiplexer_type = ?multiplexer_type,
+                                "Auto-detected multiplexer for task manager"
+                            );
+                            multiplexer_type
+                        }
+                        ah_core::MultiplexerChoice::InSupportedTerminal => {
+                            tracing::info!(
+                                "Auto-detected supported terminal, using tmux for task manager"
+                            );
+                            ah_domain_types::MultiplexerType::Tmux
+                        }
+                        ah_core::MultiplexerChoice::UnsupportedEnvironment => {
+                            tracing::warn!(
+                                "Unsupported terminal environment, defaulting to tmux for task manager"
+                            );
+                            ah_domain_types::MultiplexerType::Tmux
+                        }
+                    }
                 }
             };
 
@@ -618,7 +635,7 @@ impl TuiArgs {
         remote_server: Option<String>,
         api_key: Option<String>,
         bearer_token: Option<String>,
-        multiplexer: Option<CliMultiplexerType>,
+        multiplexer: Option<ah_domain_types::MultiplexerType>,
         fs_snapshots: FsSnapshotsType,
         experimental_features: Vec<ExperimentalFeature>,
     ) -> Result<TuiDependencies> {

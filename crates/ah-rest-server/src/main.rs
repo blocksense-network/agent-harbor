@@ -3,7 +3,7 @@
 
 //! Agent Harbor REST API server binary
 
-use ah_domain_types::CliLogLevel;
+use ah_domain_types::LogLevel;
 use ah_logging::{Level, LogFormat, init};
 use ah_rest_server::{Server, ServerConfig};
 use clap::Parser;
@@ -30,7 +30,7 @@ struct Args {
 
     /// Log level
     #[arg(short, long, default_value = "info")]
-    log_level: CliLogLevel,
+    log_level: LogLevel,
 }
 
 #[tokio::main]

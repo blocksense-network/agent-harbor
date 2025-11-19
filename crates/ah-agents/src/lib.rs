@@ -91,7 +91,7 @@ pub use common::AgentStatus;
 
 // Re-export core agent types
 pub use ah_core::agent_binary::AgentBinary;
-pub use ah_core::agent_types::AgentType;
+pub use ah_domain_types::AgentSoftware;
 
 // Test utilities
 pub mod test_utils;

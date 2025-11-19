@@ -55,7 +55,7 @@
 //! execution details and returns a result that the ViewModel can translate
 //! into domain messages for the Model.
 
-use crate::agent_types::AgentType;
+use ah_domain_types::AgentSoftware;
 use ah_domain_types::{AgentChoice, LogLevel, TaskExecution, TaskInfo, TaskState, ToolStatus};
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::SplitMode;
@@ -92,7 +92,7 @@ pub struct TaskLaunchParams {
     working_copy_mode: crate::WorkingCopyMode,
     description: String,
     models: Vec<AgentChoice>,
-    agent_type: AgentType,
+    agent_type: AgentSoftware,
     split_mode: SplitMode,
     focus: bool,
     record: bool,
@@ -106,7 +106,7 @@ pub struct TaskLaunchParamsBuilder {
     working_copy_mode: Option<crate::WorkingCopyMode>,
     description: Option<String>,
     models: Option<Vec<AgentChoice>>,
-    agent_type: Option<AgentType>,
+    agent_type: Option<AgentSoftware>,
     split_mode: Option<SplitMode>,
     focus: Option<bool>,
     record: Option<bool>,
@@ -158,7 +158,7 @@ impl TaskLaunchParams {
     }
 
     /// Get the agent type
-    pub fn agent_type(&self) -> &AgentType {
+    pub fn agent_type(&self) -> &AgentSoftware {
         &self.agent_type
     }
 
@@ -201,7 +201,7 @@ impl TaskLaunchParams {
             .starting_point(starting_point)
             .description(draft.description.clone())
             .agents(models)
-            .agent_type(AgentType::Codex) // Default agent type for drafts
+            .agent_type(AgentSoftware::Codex) // Default agent type for drafts
             .task_id(draft.id.clone()) // Use the draft's existing ID
             .build()
     }
@@ -215,10 +215,10 @@ impl TaskLaunchParamsBuilder {
             working_copy_mode: Some(crate::WorkingCopyMode::InPlace), // Default working copy mode
             description: None,
             models: None,
-            agent_type: Some(AgentType::Codex), // Default agent type
-            split_mode: Some(SplitMode::None),  // Default split mode
-            focus: Some(false),                 // Default focus
-            record: Some(true),                 // Default record
+            agent_type: Some(AgentSoftware::Codex), // Default agent type
+            split_mode: Some(SplitMode::None),      // Default split mode
+            focus: Some(false),                     // Default focus
+            record: Some(true),                     // Default record
             task_id: None,
         }
     }
@@ -276,7 +276,7 @@ impl TaskLaunchParamsBuilder {
     }
 
     /// Set the agent type
-    pub fn agent_type(mut self, agent_type: AgentType) -> Self {
+    pub fn agent_type(mut self, agent_type: AgentSoftware) -> Self {
         self.agent_type = Some(agent_type);
         self
     }
@@ -328,7 +328,7 @@ impl TaskLaunchParamsBuilder {
         let task_id = self.task_id.ok_or_else(|| "Task ID is required".to_string())?;
 
         // Use defaults for optional fields
-        let agent_type = self.agent_type.unwrap_or(AgentType::Codex);
+        let agent_type = self.agent_type.unwrap_or(AgentSoftware::Codex);
         let split_mode = self.split_mode.unwrap_or(SplitMode::None);
         let focus = self.focus.unwrap_or(false);
         let record = self.record.unwrap_or(true);

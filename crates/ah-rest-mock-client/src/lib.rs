@@ -397,7 +397,7 @@ impl ah_core::RestApiClient for MockRestClient {
             .branch(request.repo.branch.clone().unwrap_or_else(|| "main".to_string()))
             .description(request.prompt.clone())
             .agents(request.agents.clone())
-            .agent_type(ah_core::agent_types::AgentType::Codex)
+            .agent_type(AgentSoftware::Codex)
             .split_mode(SplitMode::None) // Mock client doesn't support split view
             .focus(false) // Mock client doesn't support focus
             .record(true) // Mock client enables recording by default
@@ -505,7 +505,9 @@ impl ah_core::RestApiClient for MockRestClient {
                             ..
                         } => {
                             let log_level = match level {
-                                LogLevel::Debug => ah_rest_api_contract::SessionLogLevel::Debug,
+                                LogLevel::Debug | LogLevel::Trace => {
+                                    ah_rest_api_contract::SessionLogLevel::Debug
+                                }
                                 LogLevel::Info => ah_rest_api_contract::SessionLogLevel::Info,
                                 LogLevel::Warn => ah_rest_api_contract::SessionLogLevel::Warn,
                                 LogLevel::Error => ah_rest_api_contract::SessionLogLevel::Error,
@@ -1286,7 +1288,8 @@ impl MockEventState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ah_core::{RestApiClient, agent_types::AgentType};
+    use ah_core::RestApiClient;
+    use ah_domain_types::AgentSoftware as AgentType;
 
     #[tokio::test]
     async fn mock_client_launches_successful_task() {

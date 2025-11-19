@@ -17,6 +17,7 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 async-trait = "0.1"
+ah-domain-types = { path = "../ah-domain-types" }
 
 # Additional dependencies for agent management
 tar = "0.4"

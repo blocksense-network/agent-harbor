@@ -16,7 +16,10 @@ tracing = { workspace = true }
 utoipa = { version = "4.0", optional = true }
 validator = { version = "0.18", features = ["derive"] }
 strum = { version = "0.26", features = ["derive"] }
+rusqlite = { workspace = true, optional = true }
 
 [features]
 default = []
 utoipa = ["dep:utoipa"]
+clap = []
+rusqlite = ["dep:rusqlite"]

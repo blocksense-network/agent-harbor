@@ -6,6 +6,7 @@ use ah_core::{
     AgentTasks, DatabaseManager, EditorError, PushHandler, PushOptions, devshell_names,
     edit_content_interactive, parse_push_to_remote_flag,
 };
+use ah_domain_types::AgentSoftware;
 use ah_fs_snapshots::PreparedWorkspace;
 use ah_local_db::{SessionRecord, TaskRecord};
 use ah_repo::VcsRepo;
@@ -2305,10 +2306,9 @@ exit {}
 
         eprintln!("Starting mock LLM API server on port {}...", server_port);
 
-        let agent_binary = ah_core::agent_binary::AgentBinary::from_agent_type(
-            ah_core::agent_types::AgentType::Codex,
-        )
-        .expect("Codex binary not found in PATH");
+        let agent_binary =
+            ah_core::agent_binary::AgentBinary::from_agent_type(&AgentSoftware::Codex)
+                .expect("Codex binary not found in PATH");
         let scenario_path = concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../tests/tools/mock-agent/scenarios/basic_timeline_scenario.yaml"
