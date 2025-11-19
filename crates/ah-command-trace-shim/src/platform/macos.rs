@@ -6,11 +6,12 @@
 use crate::core::{self, SHIM_STATE, ShimState};
 use crate::posix;
 use ctor::ctor;
+use tracing::info;
 
 /// Initialize the shim on library load
 #[ctor]
 fn initialize_shim() {
-    eprintln!("[ah-command-trace-shim] Initializing macOS shim");
+    info!("[ah-command-trace-shim] Initializing macOS shim");
 
     let state = core::initialize_shim_state();
 
@@ -21,7 +22,7 @@ fn initialize_shim() {
         // Try to initialize client for handshake, but don't fail if connection fails
         // This allows the smoke test to verify that the shim can connect
         let _ = posix::initialize_client();
-        eprintln!("[ah-command-trace-shim] Shim initialization complete");
+        info!("[ah-command-trace-shim] Shim initialization complete");
     }
 }
 
