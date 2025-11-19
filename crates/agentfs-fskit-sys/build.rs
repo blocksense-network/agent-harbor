@@ -2,9 +2,58 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use std::env;
+use std::io::{self, Write};
 use std::path::Path;
 
+use tracing::info;
+use tracing_subscriber::{Layer, Registry, layer::SubscriberExt};
+
+// Minimal layer that prints only the formatted message field so Cargo
+// directives appear exactly as expected (e.g. `cargo:rerun-if-changed=...`).
+struct CargoLayer;
+
+impl<S> Layer<S> for CargoLayer
+where
+    S: tracing::Subscriber,
+{
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        struct MsgVisitor {
+            msg: Option<String>,
+        }
+        impl tracing::field::Visit for MsgVisitor {
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "message" {
+                    // Remove surrounding quotes from Debug output if present.
+                    let raw = format!("{value:?}");
+                    let cleaned = raw
+                        .strip_prefix('"')
+                        .and_then(|s| s.strip_suffix('"'))
+                        .unwrap_or(&raw)
+                        .to_string();
+                    self.msg = Some(cleaned);
+                }
+            }
+        }
+        let mut visitor = MsgVisitor { msg: None };
+        event.record(&mut visitor);
+        if let Some(m) = visitor.msg {
+            let mut stdout = io::stdout();
+            let _ = writeln!(stdout, "{}", m);
+        }
+    }
+}
+
+fn init_tracing() {
+    let subscriber = Registry::default().with(CargoLayer);
+    let _ = tracing::subscriber::set_global_default(subscriber);
+}
+
 fn main() {
+    init_tracing();
     // Generate C header file for Swift to import
     let out_dir = env::var("OUT_DIR").unwrap();
     let header_path = Path::new(&out_dir).join("agentfs_fskit.h");
@@ -107,5 +156,5 @@ size_t agentfs_get_error_message(char* buffer, size_t buffer_size);
 "#;
 
     std::fs::write(&header_path, header_content).expect("Failed to write header file");
-    println!("cargo:rerun-if-changed=build.rs");
+    info!("cargo:rerun-if-changed=build.rs");
 }
