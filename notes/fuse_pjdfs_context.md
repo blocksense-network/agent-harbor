@@ -1,15 +1,14 @@
-# FUSE Adapter Status – Nov 18 2025 (handoff)
+# FUSE Adapter Status – Nov 19 2025 (handoff)
 
 <!-- cSpell:ignore fdatasync conv ENOTCONN writeback Backoff perfdata memmove erms memfd siphash setid FOWNER noprof subtest subtests -->
 
-## Latest (Nov 18 2025)
+## Latest (Nov 19 2025)
 
-- Working branch still `feat/agentfs-fuse-f5`, but the near-term goal shifted back to **getting the full pjdfstest suite green** so AgentFS’s FUSE adapter can graduate from the permissive baseline.
-- Harness workflow (per AGENTS.md / user): fix failing pjdfstest cases one-by-one with single `prove` runs under `just mount-fuse`, only run `just test-pjdfstest-full /tmp/agentfs` after each targeted fix, commits allowed but no pushes.
-- Current blockers from `logs/pjdfstest-full-20251118-170534/summary.json`: `chown/05.t` subtests 8-9 return `EIO` instead of `EACCES`, `open/06.t` and `open/07.t` allow opens without execute/search access when the full harness runs (they pass individually), and `symlink/06.t` still misreports `EACCES/0`. `chmod/12.t` remains quarantined for the privileged pass because Linux blocks truncation of SUID files before we can clear bits.
-- Recent fixes: metadata operations now serialize behind `metadata_lock`; `FsCore::set_owner` logs parent mode checks; adapter assigns synthetic PIDs (base `0x4000_0000`) whenever FUSE delivers `pid=0` so permission checks don’t borrow the previous process’ identity; lookup/tombstone tracking was reintroduced so rename/unlink suites stay green.
-- Debug data: `/tmp/agentfs-chown05-host.log` shows `setattr_chmod` hitting `0o40644`, but subsequent `chown_parent_exec_check` still reads parent mode `0o755`, so `ensure_search_permission` never denies and `FsCore::set_owner` proceeds until some later layer returns `EIO`. Need to trace `FsCore::set_mode`/`resolve_path` on the parent to confirm we’re mutating the same branch/node that `check_path_access` later inspects.
-- Synthetic PID logging confirmed `pid=0` cases now register as unique pseudo PIDs tied to `(uid,gid)`, which fixed intermittent permission leaks in targeted `prove` runs, but the full suite still regresses under heavy parallelism—likely due to stale inode caches or permission checks happening before tombstones propagate. All permission traces live under `/tmp/agentfs-*.log` per test.
+- Working branch remains `feat/agentfs-fuse-f5`; pjdfstest compliance is effectively complete with the current harness reporting only the upstream `chown/00.t` TODO lines and the kernel-imposed `chmod/12.t` nosuid mismatch.
+- Harness workflow (per AGENTS.md / user): continue fixing any future pjdfstest regressions one-by-one via single `prove` runs while mounted with `AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse /tmp/agentfs`, and only rerun `AGENTFS_FUSE_ALLOW_OTHER=1 just test-pjdfstest-full /tmp/agentfs` after each targeted fix (commits allowed, pushes still blocked).
+- Latest logs: `logs/pjdfstest-full-20251119-023733/summary.json` (manual full-suite recheck) and `logs/pjdfstest-full-20251119-023930/summary.json` (regression harness) match the refreshed `specs/Public/AgentFS/pjdfstest.baseline.json` verbatim.
+- Known exception: `chmod/12.t` continues to fail because Linux refuses writes on nosuid FUSE mounts before AgentFS can clear SUID bits. Capturing runs in `notes` + `specs` remains critical until we have a privileged helper or alternate mitigation.
+- Permission tracing stays available under `/tmp/agentfs-*.log` for any targeted reproduction; synthetic PID logging is still enabled so `pid=0` events map to unique pseudo-PIDs per `(uid,gid)` pair.
 
 ## Current Scope
 
