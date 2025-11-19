@@ -18,12 +18,12 @@ use agentfs_proto::{
     SnapshotListResponse,
 };
 use anyhow::{Context, Result, anyhow};
-use libc;
 use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
+use tracing::debug;
 
 /// Configuration describing how a client should identify itself to the daemon.
 #[derive(Clone, Debug)]
@@ -291,10 +291,10 @@ impl AgentFsClient {
 
         let debug = std::env::var("AGENTFS_CLIENT_DEBUG").is_ok();
         if debug {
-            println!(
-                "AgentFsClient: sending request tag={:?} bytes={}",
-                request,
-                request_bytes.len()
+            debug!(
+                ?request,
+                bytes = request_bytes.len(),
+                "AgentFsClient: sending request"
             );
         }
 
@@ -304,7 +304,7 @@ impl AgentFsClient {
             .context("failed to send AgentFS request")?;
 
         if debug {
-            println!("AgentFsClient: request dispatched, waiting for response len");
+            debug!("AgentFsClient: request dispatched, waiting for response len");
         }
 
         let mut len_buf = [0u8; 4];
@@ -312,9 +312,9 @@ impl AgentFsClient {
             .read_exact(&mut len_buf)
             .context("failed to read AgentFS response length")?;
         if debug {
-            println!(
-                "AgentFsClient: response length header ok, len={}",
-                u32::from_le_bytes(len_buf)
+            debug!(
+                len = u32::from_le_bytes(len_buf),
+                "AgentFsClient: response length header ok"
             );
         }
         let response_len = u32::from_le_bytes(len_buf) as usize;
@@ -323,10 +323,7 @@ impl AgentFsClient {
             .read_exact(&mut response_buf)
             .context("failed to read AgentFS response payload")?;
         if debug {
-            println!(
-                "AgentFsClient: response payload read ({} bytes)",
-                response_len
-            );
+            debug!(bytes = response_len, "AgentFsClient: response payload read");
         }
 
         decode_ssz_message(&response_buf)
@@ -542,7 +539,7 @@ fn build_handshake(config: &ClientConfig) -> Result<HandshakeMessage> {
                 .clone()
                 .map(|entries| entries.into_iter().map(|entry| entry.into_bytes()).collect()),
         })
-        .unwrap_or_else(AllowlistInfo::default);
+        .unwrap_or_default();
 
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
