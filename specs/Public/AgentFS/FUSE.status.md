@@ -1,4 +1,4 @@
-<!-- cSpell:ignore erms subtests -->
+<!-- cSpell:ignore erms subtests SGID -->
 
 ### Overview
 
@@ -233,6 +233,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] Full-suite harness – `scripts/test-pjdfstest-full.sh` (`just test-pjdfstest-full`) sets up pjdfstest, mounts AgentFS with `--allow-other`, streams `prove -vr` output to `logs/pjdfstest-full-<ts>/pjdfstest.log`, and persists a machine-readable `summary.json`. The current baseline of known failures lives in `specs/Public/AgentFS/pjdfstest.baseline.json`; the harness compares every run against it (latest log: `logs/pjdfstest-full-20251115-135821/`).
   - [x] CI gating – GitHub Actions now runs the pjdfstest job after the FUSE harness; it executes `SKIP_FUSE_BUILD=1 just test-pjdfstest-full`, compares results to `specs/Public/AgentFS/pjdfstest.baseline.json`, and uploads the log directory so regressions fail automatically.
   - [ ] Current compliance status – `logs/pjdfstest-full-20251118-025512/summary.json` documents the present failures: `open/00` (subtests 42–45), the FIFO permission matrix in `open/06`, `chown/05`, `truncate/05`, `ftruncate/05`, `symlink/06`, and the privileged `chmod/12` SUID cases the kernel rejects before AgentFS can clear setuid bits. Historical commits that claimed “all green” (e.g., `e1ff0de`) were re-run and still fail the full suite, so the remaining work is to drive the outstanding tests to green rather than chase a regression that never existed.
+  - [ ] Kernel limitation snapshot – `chmod/12.t` is an expected failure for the unprivileged mount because Linux treats FUSE mounts as `nosuid`/`nodev` unless the filesystem is mounted by root. The kernel refuses `O_TRUNC` and other writes on SUID/SGID files before forwarding the request to AgentFS, so the server cannot clear the bits in time. The privileged follow-up harness validates the intended behavior, while the main run keeps this test in the known-failure list (see `man mount.fuse(8)` for the underlying restriction).
 
 **F6. Performance Benchmarking Suite** (3–4d) 🔄 IN PROGRESS
 
