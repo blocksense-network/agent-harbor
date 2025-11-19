@@ -95,7 +95,7 @@ impl KittyMultiplexer {
 
         // Execute the kitty @ command
         let output = Command::new("timeout")
-            .args(&["30", "kitty"]) // 30 second timeout (longer for actual operations)
+            .args(["30", "kitty"]) // 30 second timeout (longer for actual operations)
             .args(&str_args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -562,9 +562,7 @@ impl Multiplexer for KittyMultiplexer {
         // The percent parameter is ignored for kitty
         if cfg!(debug_assertions) && percent.is_some() {
             warn!("kitty does not support custom split sizes, ignoring percent parameter");
-            eprintln!(
-                "DEBUG: kitty does not support custom split sizes, ignoring percent parameter"
-            );
+            debug!("kitty does not support custom split sizes, ignoring percent parameter");
         }
 
         // Target the specific pane/window if specified, otherwise operate on current window
@@ -611,7 +609,7 @@ impl Multiplexer for KittyMultiplexer {
     }
 
     fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
-        eprintln!("DEBUG run_command: pane={:?}, cmd={:?}", pane, cmd);
+        debug!(?pane, ?cmd, "run_command invoked");
 
         // For other panes, send the command text normally
         // Build the full command with working directory if specified
@@ -652,20 +650,14 @@ impl Multiplexer for KittyMultiplexer {
         // First try using kitty's get-focused-window-id command
         match self.get_focused_window_id() {
             Ok(window_id) if !window_id.is_empty() => {
-                eprintln!(
-                    "DEBUG current_window: got from get_focused_window_id: {:?}",
-                    window_id
-                );
+                debug!(?window_id, "current_window: got from get_focused_window_id");
                 return Ok(Some(window_id));
             }
             Err(e) => {
-                eprintln!(
-                    "DEBUG current_window: get_focused_window_id failed: {:?}",
-                    e
-                );
+                debug!(?e, "current_window: get_focused_window_id failed");
             }
             _ => {
-                eprintln!("DEBUG current_window: get_focused_window_id returned empty");
+                debug!("current_window: get_focused_window_id returned empty");
             }
         }
 
@@ -673,15 +665,12 @@ impl Multiplexer for KittyMultiplexer {
         // This is set by kitty for all processes running inside it
         if let Ok(window_id) = std::env::var("KITTY_WINDOW_ID") {
             if !window_id.is_empty() {
-                eprintln!(
-                    "DEBUG current_window: got from KITTY_WINDOW_ID env: {:?}",
-                    window_id
-                );
+                debug!(?window_id, "current_window: got from KITTY_WINDOW_ID env");
                 return Ok(Some(window_id));
             }
         }
 
-        eprintln!("DEBUG current_window: no window found");
+        debug!("current_window: no window found");
         Ok(None)
     }
 
@@ -825,12 +814,9 @@ mod tests {
         )?;
 
         // Try to start Kitty in hidden mode with custom config directory
-        eprintln!(
-            "DEBUG: Attempting to start Kitty with socket: {} and config: {}",
-            socket_path, config_file
-        );
+        tracing::debug!(socket=?socket_path, config=?config_file, "Attempting to start Kitty");
         let mut child = match std::process::Command::new("kitty")
-            .args(&[
+            .args([
                 "--listen-on",
                 &format!("unix:{}", socket_path),
                 "--start-as=hidden",
@@ -841,14 +827,11 @@ mod tests {
             .spawn()
         {
             Ok(child) => {
-                eprintln!(
-                    "DEBUG: Kitty spawned successfully with PID: {:?}",
-                    child.id()
-                );
+                tracing::debug!(pid=?child.id(), "Kitty spawned successfully");
                 child
             }
             Err(e) => {
-                eprintln!("DEBUG: Failed to spawn Kitty: {}", e);
+                tracing::error!(error=%e, "Failed to spawn Kitty");
                 return Err(format!("Failed to spawn Kitty: {}", e).into());
             }
         };
@@ -859,23 +842,23 @@ mod tests {
         // Check if Kitty is still running (it should be running indefinitely)
         match child.try_wait() {
             Ok(Some(status)) => {
-                eprintln!("DEBUG: Kitty exited with status: {}", status);
+                tracing::error!(status=?status, "Kitty exited unexpectedly");
                 return Err(format!("Kitty exited immediately with status: {}", status).into());
             }
             Ok(None) => {
-                eprintln!("DEBUG: Kitty is still running after 2 seconds, checking for socket...");
+                tracing::debug!("Kitty still running after initial wait; checking socket");
                 // Kitty is still running, check if socket was created
                 if !std::path::Path::new(socket_path).exists() {
-                    eprintln!("DEBUG: Socket not found at {}", socket_path);
+                    tracing::debug!(socket=?socket_path, "Socket not found yet");
                     // Wait a bit more and check again
                     std::thread::sleep(Duration::from_secs(3));
                     if !std::path::Path::new(socket_path).exists() {
-                        eprintln!("DEBUG: Socket still not found after additional wait");
+                        tracing::error!(socket=?socket_path, "Socket not created after extended wait");
                         let _ = child.kill();
                         return Err("Kitty started but failed to create socket".into());
                     }
                 }
-                eprintln!("DEBUG: Socket found, Kitty setup successful");
+                tracing::debug!(socket=?socket_path, "Socket found; Kitty setup successful");
             }
             Err(e) => {
                 let _ = child.kill();
@@ -912,10 +895,10 @@ mod tests {
 
     #[test]
     fn test_start_kitty_instance() {
-        eprintln!("DEBUG: Testing start_test_kitty function");
+        tracing::debug!("Testing start_test_kitty function");
         match start_test_kitty() {
-            Ok(()) => eprintln!("DEBUG: start_test_kitty succeeded"),
-            Err(e) => eprintln!("DEBUG: start_test_kitty failed: {}", e),
+            Ok(()) => tracing::debug!("start_test_kitty succeeded"),
+            Err(e) => tracing::error!(error=%e, "start_test_kitty failed"),
         }
     }
 
@@ -930,7 +913,7 @@ mod tests {
     fn test_kitty_availability() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::info!("Skipping kitty test in CI environment");
             return;
         }
 
@@ -970,16 +953,13 @@ mod tests {
     fn test_open_window_with_title_and_cwd() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::info!("Skipping kitty test in CI environment");
             return;
         }
 
         // Try to start a test Kitty instance
         if let Err(e) = start_test_kitty() {
-            eprintln!(
-                "Skipping Kitty test: Cannot start Kitty instance in this environment: {}",
-                e
-            );
+            tracing::info!(error = %e, "Skipping Kitty test: Cannot start Kitty instance in this environment");
             return; // Skip test if Kitty can't be started
         }
 
@@ -988,7 +968,7 @@ mod tests {
 
         // Skip test if Kitty is not available
         if !kitty.is_available() {
-            eprintln!("Skipping Kitty test: Kitty instance not available for remote control");
+            tracing::info!("Skipping Kitty test: Kitty instance not available for remote control");
             return;
         }
 
@@ -1032,7 +1012,7 @@ mod tests {
     fn test_open_window_focus() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::info!("Skipping kitty test in CI environment");
             return;
         }
 
@@ -1072,7 +1052,7 @@ mod tests {
     fn test_split_pane_horizontal() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::info!("Skipping kitty test in CI environment");
             return;
         }
 
@@ -1150,7 +1130,7 @@ mod tests {
     fn test_split_pane_vertical() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::info!("Skipping kitty test in CI environment");
             return;
         }
 
@@ -1222,7 +1202,7 @@ mod tests {
     fn test_split_pane_with_initial_command() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::info!("Skipping kitty test in CI environment");
             return;
         }
 
@@ -1275,7 +1255,7 @@ mod tests {
     fn test_run_command_and_send_text() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::info!("Skipping kitty test in CI environment");
             return;
         }
 

@@ -406,7 +406,7 @@ mod tests {
     fn test_session_ensure_creates_session() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -435,7 +435,7 @@ mod tests {
     fn test_session_ensure_idempotent() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -463,7 +463,7 @@ mod tests {
     fn test_open_window_with_title_and_cwd() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -496,7 +496,7 @@ mod tests {
     fn test_open_window_focus() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -529,7 +529,7 @@ mod tests {
     fn test_split_pane_horizontal() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -621,7 +621,7 @@ mod tests {
     fn test_split_pane_vertical() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -668,7 +668,7 @@ mod tests {
     fn test_split_pane_with_initial_command() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -716,7 +716,7 @@ mod tests {
     fn test_run_command_and_send_text() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -779,7 +779,7 @@ mod tests {
     fn test_focus_window_and_pane() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -844,7 +844,7 @@ mod tests {
     fn test_list_windows_filtering() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -916,7 +916,7 @@ mod tests {
     fn test_error_handling_invalid_pane() {
         // Skip tmux tests in CI environments where tmux is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping tmux test in CI environment");
+            tracing::info!("Skipping tmux test in CI environment");
             return;
         }
 
@@ -1332,7 +1332,10 @@ set-environment -g ZDOTDIR ""
             insta::assert_snapshot!(name, snapshot);
         } else {
             // When snapshots are disabled, just log that we would have taken one
-            eprintln!("SNAPSHOT_TESTS not set, skipping snapshot for {}", name);
+            tracing::debug!(
+                snapshot_name = name,
+                "SNAPSHOT_TESTS not set, skipping snapshot"
+            );
         }
     }
 }
