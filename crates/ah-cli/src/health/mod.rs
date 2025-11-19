@@ -5,8 +5,8 @@
 //! Health check commands
 mod types;
 
-use ah_mux::TmuxMultiplexer;
 use ah_mux::detection::detect_terminal_environments;
+use ah_mux::{ScreenMultiplexer, TmuxMultiplexer};
 use ah_mux_core::Multiplexer;
 use clap::Args;
 use std::collections::HashMap;
@@ -141,14 +141,8 @@ impl HealthArgs {
         multiplexers.insert("zellij".to_string(), zellij_status.to_string());
 
         // Check screen
-        let screen_status = if which::which("screen").is_ok() {
-            debug!("screen is available");
-            "available"
-        } else {
-            debug!("screen is not available");
-            "not_available"
-        };
-        multiplexers.insert("screen".to_string(), screen_status.to_string());
+        let screen_status = self.get_screen_health_status();
+        multiplexers.insert("screen".to_string(), screen_status);
 
         debug!(multiplexers = ?multiplexers, "Multiplexer status check completed");
         multiplexers
@@ -237,6 +231,27 @@ impl HealthArgs {
             "Agent health collection completed"
         );
         agent_statuses
+    }
+
+    /// Get GNU Screen health status using the Screen multiplexer implementation
+    fn get_screen_health_status(&self) -> String {
+        debug!("Checking GNU Screen multiplexer availability");
+
+        match ScreenMultiplexer::new() {
+            Ok(mux) => {
+                if mux.is_available() {
+                    debug!("GNU Screen is available");
+                    "available".to_string()
+                } else {
+                    debug!("GNU Screen is not available");
+                    "not_available".to_string()
+                }
+            }
+            Err(e) => {
+                debug!(error = %e, "Failed to initialize GNU Screen multiplexer");
+                "failed_to_initialize".to_string()
+            }
+        }
     }
 
     /// Determine which agents to check based on configuration and flags
