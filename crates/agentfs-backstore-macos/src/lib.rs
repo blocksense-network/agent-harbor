@@ -1049,13 +1049,13 @@ mod tests {
 
         // Skip test if not on APFS
         if !backstore.supports_native_reflink() {
-            eprintln!(
-                "Skipping clonefile test: filesystem {} does not support native reflink",
-                match backstore.fs_type() {
+            tracing::warn!(
+                fs_type = match backstore.fs_type() {
                     FsType::Apfs => "APFS",
                     FsType::Hfs => "HFS",
                     FsType::Other => "Other",
-                }
+                },
+                "Skipping clonefile test: filesystem does not support native reflink"
             );
             return;
         }
@@ -1264,7 +1264,7 @@ mod tests {
             // Root path should match
             assert_eq!(backstore.root_path(), test_path);
         } else {
-            eprintln!("Test APFS filesystem not available, skipping test");
+            tracing::warn!("Test APFS filesystem not available, skipping test");
         }
     }
 
@@ -1344,14 +1344,14 @@ mod tests {
                 Err(agentfs_core::error::FsError::Unsupported)
             ));
 
-            println!(
-                "ℹ️  APFS snapshot creation correctly returns Unsupported - this is expected behavior"
+            tracing::info!(
+                "APFS snapshot creation correctly returns Unsupported - expected behavior"
             );
-            println!(
-                "   macOS does not provide public APIs for creating snapshots on arbitrary APFS volumes"
+            tracing::info!(
+                "macOS lacks public APIs for creating snapshots on arbitrary APFS volumes"
             );
         } else {
-            eprintln!("Test APFS filesystem not available, skipping snapshot test");
+            tracing::warn!("Test APFS filesystem not available, skipping snapshot test");
         }
     }
 
@@ -1511,7 +1511,7 @@ mod tests {
 
         // Skip this test unless explicitly enabled (requires root or special setup)
         if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
-            eprintln!(
+            tracing::warn!(
                 "Skipping ramdisk test - set AGENTFS_TEST_RAMDISK=1 to enable (requires root/sudo)"
             );
             return;
@@ -1523,7 +1523,7 @@ mod tests {
         let mount_point_result = create_apfs_ramdisk(size_mb);
         match mount_point_result {
             Ok(mount_point) => {
-                eprintln!("Created RAM disk at: {}", mount_point.display());
+                tracing::info!(mount = %mount_point.display(), "Created RAM disk");
 
                 // Verify the mount point exists and is a directory
                 assert!(mount_point.exists(), "Mount point should exist");
@@ -1549,10 +1549,7 @@ mod tests {
                 // but the function should not panic
             }
             Err(e) => {
-                eprintln!(
-                    "RAM disk creation failed (expected on CI without privileges): {}",
-                    e
-                );
+                tracing::warn!(error = %e, "RAM disk creation failed (expected on CI without privileges)");
                 // This is expected to fail on CI without proper privileges
                 assert!(matches!(
                     e,
@@ -1620,16 +1617,16 @@ mod tests {
         let result = create_backstore(&config);
         match result {
             Ok(_) => {
-                eprintln!("Successfully created ramdisk backstore");
+                tracing::info!("Successfully created ramdisk backstore");
                 // If this succeeds, the ramdisk was created and wrapped properly
             }
             Err(agentfs_core::error::FsError::Unsupported) => {
-                eprintln!(
+                tracing::warn!(
                     "RamDisk mode returned Unsupported (expected on non-macOS or when feature not enabled)"
                 );
             }
             Err(e) => {
-                eprintln!("Unexpected error creating ramdisk backstore: {}", e);
+                tracing::error!(error = %e, "Unexpected error creating ramdisk backstore");
                 // Could be permission issues, which are acceptable in test environment
             }
         }
@@ -1713,9 +1710,10 @@ mod tests {
                 Err(agentfs_core::error::FsError::Unsupported)
             ));
 
-            println!("ℹ️  APFS snapshot creation correctly returns Unsupported");
-            println!("   This is expected as macOS doesn't provide public APIs for creating");
-            println!("   snapshots on user-managed APFS volumes");
+            tracing::info!("APFS snapshot creation correctly returns Unsupported");
+            tracing::info!(
+                "macOS doesn't provide public APIs for creating snapshots on user-managed APFS volumes"
+            );
 
             // In the future, if snapshot creation becomes available, this test would:
             // 1. Create a snapshot successfully
@@ -1725,7 +1723,7 @@ mod tests {
             // 5. Unmount the snapshot
             // 6. Delete the snapshot
         } else {
-            eprintln!("Test APFS filesystem not available, skipping integration test");
+            tracing::warn!("Test APFS filesystem not available, skipping integration test");
         }
     }
 }
@@ -1803,7 +1801,7 @@ mod proptests {
 fn m7_overlay_copy_up_on_write_then_snapshot() -> Result<(), Box<dyn std::error::Error>> {
     // Skip test if ramdisk testing is not enabled
     if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
-        eprintln!(
+        tracing::info!(
             "Skipping M7 overlay test - set AGENTFS_TEST_RAMDISK=1 to enable (requires root/sudo)"
         );
         return Ok(());
@@ -1811,7 +1809,7 @@ fn m7_overlay_copy_up_on_write_then_snapshot() -> Result<(), Box<dyn std::error:
 
     // Skip test if not running as root
     if !is_root() {
-        eprintln!("Skipping M7 overlay test - requires root privileges");
+        tracing::info!("Skipping M7 overlay test - requires root privileges");
         return Ok(());
     }
 
@@ -1831,7 +1829,7 @@ fn m7_overlay_copy_up_on_write_then_snapshot() -> Result<(), Box<dyn std::error:
     let ramdisk_backstore = match create_apfs_ramdisk_backstore(128) {
         Ok(bs) => bs,
         Err(e) => {
-            eprintln!("Failed to create ramdisk backstore: {}", e);
+            tracing::error!(error = %e, "Failed to create ramdisk backstore");
             return Err(e.into());
         }
     };
@@ -1932,7 +1930,7 @@ fn m7_overlay_copy_up_on_write_then_snapshot() -> Result<(), Box<dyn std::error:
 fn m7_branch_from_snapshot_clones_only_metadata() -> Result<(), Box<dyn std::error::Error>> {
     // Skip test if ramdisk testing is not enabled
     if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
-        eprintln!(
+        tracing::info!(
             "Skipping M7 branch test - set AGENTFS_TEST_RAMDISK=1 to enable (requires root/sudo)"
         );
         return Ok(());
@@ -1940,7 +1938,7 @@ fn m7_branch_from_snapshot_clones_only_metadata() -> Result<(), Box<dyn std::err
 
     // Skip test if not running as root
     if !is_root() {
-        eprintln!("Skipping M7 branch test - requires root privileges");
+        tracing::info!("Skipping M7 branch test - requires root privileges");
         return Ok(());
     }
 
@@ -2020,7 +2018,7 @@ fn m7_branch_from_snapshot_clones_only_metadata() -> Result<(), Box<dyn std::err
 fn m7_interpose_fd_open_reflink_1gb_file() -> Result<(), Box<dyn std::error::Error>> {
     // Skip test if ramdisk testing is not enabled
     if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
-        eprintln!(
+        tracing::info!(
             "Skipping M7 interpose test - set AGENTFS_TEST_RAMDISK=1 to enable (requires root/sudo)"
         );
         return Ok(());
@@ -2028,7 +2026,7 @@ fn m7_interpose_fd_open_reflink_1gb_file() -> Result<(), Box<dyn std::error::Err
 
     // Skip test if not running as root
     if !is_root() {
-        eprintln!("Skipping M7 interpose test - requires root privileges");
+        tracing::info!("Skipping M7 interpose test - requires root privileges");
         return Ok(());
     }
 
@@ -2106,7 +2104,7 @@ fn m7_interpose_fd_open_reflink_1gb_file() -> Result<(), Box<dyn std::error::Err
         }
         Err(e) => {
             // If fd_open is not implemented, that's acceptable for now
-            eprintln!("fd_open not yet implemented: {:?}", e);
+            tracing::debug!(error = ?e, "fd_open not yet implemented");
         }
     }
 
@@ -2122,7 +2120,7 @@ fn m7_interpose_fd_open_reflink_1gb_file() -> Result<(), Box<dyn std::error::Err
 fn m7_concurrent_writers_snapshot_read() -> Result<(), Box<dyn std::error::Error>> {
     // Skip test if ramdisk testing is not enabled
     if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
-        eprintln!(
+        tracing::info!(
             "Skipping M7 concurrent test - set AGENTFS_TEST_RAMDISK=1 to enable (requires root/sudo)"
         );
         return Ok(());
@@ -2130,7 +2128,7 @@ fn m7_concurrent_writers_snapshot_read() -> Result<(), Box<dyn std::error::Error
 
     // Skip test if not running as root
     if !is_root() {
-        eprintln!("Skipping M7 concurrent test - requires root privileges");
+        tracing::info!("Skipping M7 concurrent test - requires root privileges");
         return Ok(());
     }
 
@@ -2308,7 +2306,7 @@ mod benches {
     fn test_clonefile_snapshot_materialization() -> Result<(), Box<dyn std::error::Error>> {
         // Skip test if ramdisk testing is not enabled
         if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
-            eprintln!(
+            tracing::info!(
                 "Skipping clonefile snapshot test - set AGENTFS_TEST_RAMDISK=1 to enable (requires root/sudo)"
             );
             return Ok(());
@@ -2316,7 +2314,7 @@ mod benches {
 
         // Skip test if not running as root
         if !is_root() {
-            eprintln!("Skipping clonefile snapshot test - requires root privileges");
+            tracing::info!("Skipping clonefile snapshot test - requires root privileges");
             return Ok(());
         }
 
@@ -2332,7 +2330,7 @@ mod benches {
         let ramdisk_backstore = match create_apfs_ramdisk_backstore(128) {
             Ok(bs) => bs,
             Err(e) => {
-                eprintln!("Failed to create ramdisk backstore: {}", e);
+                tracing::error!(error = %e, "Failed to create ramdisk backstore");
                 return Err(e.into());
             }
         };
@@ -2389,17 +2387,14 @@ mod benches {
 
         // Check if the upper file exists in the backstore
         let expected_upper_path = ramdisk_backstore.root_path().join("file.txt");
-        eprintln!(
-            "DEBUG: Expected upper file path: {}",
-            expected_upper_path.display()
-        );
-        eprintln!("DEBUG: Upper file exists: {}", expected_upper_path.exists());
+        tracing::debug!(path = %expected_upper_path.display(), "Expected upper file path");
+        tracing::debug!(exists = expected_upper_path.exists(), "Upper file exists");
 
         // List all files in the ramdisk to see what's there
         if let Ok(entries) = std::fs::read_dir(ramdisk_backstore.root_path()) {
-            eprintln!("DEBUG: Files in ramdisk:");
+            tracing::debug!("Files in ramdisk:");
             for entry in entries.flatten() {
-                eprintln!("DEBUG:   {}", entry.path().display());
+                tracing::debug!(path = %entry.path().display(), "Ramdisk entry");
             }
         }
 
@@ -2449,7 +2444,7 @@ mod benches {
     fn test_empty_snapshot_materialization() -> Result<(), Box<dyn std::error::Error>> {
         // Skip test if ramdisk testing is not enabled
         if std::env::var("AGENTFS_TEST_RAMDISK").is_err() {
-            eprintln!(
+            tracing::info!(
                 "Skipping empty snapshot test - set AGENTFS_TEST_RAMDISK=1 to enable (requires root/sudo)"
             );
             return Ok(());
@@ -2457,7 +2452,7 @@ mod benches {
 
         // Skip test if not running as root
         if !is_root() {
-            eprintln!("Skipping empty snapshot test - requires root privileges");
+            tracing::info!("Skipping empty snapshot test - requires root privileges");
             return Ok(());
         }
 
@@ -2473,7 +2468,7 @@ mod benches {
         let ramdisk_backstore = match create_apfs_ramdisk_backstore(128) {
             Ok(bs) => bs,
             Err(e) => {
-                eprintln!("Failed to create ramdisk backstore: {}", e);
+                tracing::error!(error = %e, "Failed to create ramdisk backstore");
                 return Err(e.into());
             }
         };
