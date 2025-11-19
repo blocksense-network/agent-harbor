@@ -64,18 +64,15 @@ fn main() -> anyhow::Result<()> {
     }
 
     if !socket_found {
-        info!("✓ No Docker socket found - access is inherently prohibited");
-        println!("SUCCESS: No Docker socket accessible");
+        info!("No Docker socket found - access is inherently prohibited");
         std::process::exit(0);
     }
 
     if socket_accessible {
-        error!("✗ Docker socket is accessible - this violates security policy");
-        println!("FAIL: Docker socket is accessible");
+        error!("Docker socket is accessible - violates security policy");
         std::process::exit(1);
     } else {
-        info!("✓ Docker socket access properly prohibited");
-        println!("SUCCESS: Docker socket access prohibited");
+        info!("Docker socket access properly prohibited");
         std::process::exit(0);
     }
 }

@@ -8,7 +8,7 @@
 
 use std::process::Command;
 use std::time::Instant;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Check if we're running in an environment where cgroup limits can be enforced
 fn check_privileged_environment() -> bool {
@@ -30,9 +30,8 @@ fn main() -> anyhow::Result<()> {
     // Check if we're running in a privileged environment where cgroup limits can be enforced
     let can_enforce_limits = check_privileged_environment();
     if !can_enforce_limits {
-        info!("⚠️  Running in unprivileged environment - cgroup limits cannot be enforced");
-        info!(
-            "⚠️  This is expected behavior for security. Container resource limits will be tested but may not fail containers."
+        warn!(
+            "Running in unprivileged environment - cgroup limits cannot be enforced; limits tests may not fail containers"
         );
     }
 
@@ -56,21 +55,15 @@ fn main() -> anyhow::Result<()> {
             if !result.status.success() {
                 info!("✓ Container memory limit enforced correctly");
             } else if can_enforce_limits {
-                error!("✗ Container memory limit not enforced - container should have failed");
-                println!("FAIL: Container memory limit not enforced");
+                error!("Container memory limit not enforced - container should have failed");
                 std::process::exit(1);
             } else {
-                info!(
-                    "⚠️  Container memory limit not enforced (expected in unprivileged environment)"
-                );
-                info!(
-                    "✓ Memory limit test completed (limit not enforced due to unprivileged mode)"
-                );
+                warn!("Container memory limit not enforced (expected in unprivileged environment)");
+                info!("Memory limit test completed (limit not enforced due to unprivileged mode)");
             }
         }
         Err(e) => {
-            error!("✗ Failed to run memory test: {}", e);
-            println!("FAIL: Memory test execution failed: {}", e);
+            error!(error = %e, "Failed to run memory test");
             std::process::exit(1);
         }
     }
@@ -95,19 +88,15 @@ fn main() -> anyhow::Result<()> {
             if !result.status.success() {
                 info!("✓ Container PID limit enforced correctly");
             } else if can_enforce_limits {
-                error!("✗ Container PID limit not enforced - container should have failed");
-                println!("FAIL: Container PID limit not enforced");
+                error!("Container PID limit not enforced - container should have failed");
                 std::process::exit(1);
             } else {
-                info!(
-                    "⚠️  Container PID limit not enforced (expected in unprivileged environment)"
-                );
-                info!("✓ PID limit test completed (limit not enforced due to unprivileged mode)");
+                warn!("Container PID limit not enforced (expected in unprivileged environment)");
+                info!("PID limit test completed (limit not enforced due to unprivileged mode)");
             }
         }
         Err(e) => {
-            error!("✗ Failed to run PID test: {}", e);
-            println!("FAIL: PID test execution failed: {}", e);
+            error!(error = %e, "Failed to run PID test");
             std::process::exit(1);
         }
     }
@@ -138,25 +127,21 @@ fn main() -> anyhow::Result<()> {
                 // we just verify the container ran successfully
                 info!("✓ Container CPU limit test completed (took {:?})", elapsed);
             } else {
-                error!("✗ Container CPU test failed");
-                println!("FAIL: Container CPU test failed");
+                error!("Container CPU test failed");
                 std::process::exit(1);
             }
         }
         Err(e) => {
-            error!("✗ Failed to run CPU test: {}", e);
-            println!("FAIL: CPU test execution failed: {}", e);
+            error!(error = %e, "Failed to run CPU test");
             std::process::exit(1);
         }
     }
 
-    info!("✓ All container resource limit tests completed");
+    info!("All container resource limit tests completed");
     if can_enforce_limits {
-        println!("SUCCESS: All resource limit tests passed (privileged environment)");
+        info!("All resource limit tests passed (privileged environment)");
     } else {
-        println!(
-            "SUCCESS: All resource limit tests passed (unprivileged environment - limits not enforced)"
-        );
+        info!("All resource limit tests passed (unprivileged environment - limits not enforced)");
     }
     std::process::exit(0);
 }
