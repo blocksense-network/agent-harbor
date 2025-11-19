@@ -7,12 +7,14 @@
 //! command trace server and provides a convenient API for other components
 //! (such as the interpose shim) to establish a handshake and issue requests.
 
+pub mod io_trait;
+
 use ah_command_trace_proto::{
-    CommandStart, HandshakeMessage, Request, Response, decode_ssz, encode_ssz,
+    CommandChunk, CommandStart, HandshakeMessage, Request, Response, decode_ssz, encode_ssz,
 };
 use anyhow::{Context, Result, anyhow};
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
+use io_trait::UnixSocketIO;
+use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::time::Duration;
 
@@ -183,25 +185,25 @@ impl ProcessConfig {
 }
 
 /// Handshake connection to the command trace server.
-pub struct CommandTraceClient {
-    stream: UnixStream,
+pub struct CommandTraceClient<IO: UnixSocketIO> {
+    fd: RawFd,
+    io: IO,
 }
 
-impl CommandTraceClient {
+impl<IO: UnixSocketIO> CommandTraceClient<IO> {
     /// Establish a handshake and return a ready-to-use client.
-    pub fn connect(socket_path: &Path, config: &ClientConfig) -> Result<Self> {
+    pub fn connect(socket_path: &Path, config: &ClientConfig, io: IO) -> Result<Self> {
         let socket_display = socket_path.display();
-        let mut stream = UnixStream::connect(socket_path)
+        let fd = io
+            .connect(socket_path)
             .with_context(|| format!("failed to connect to {}", socket_display))?;
 
         if let Some(timeout) = config.read_timeout {
-            stream
-                .set_read_timeout(Some(timeout))
+            io.set_read_timeout(fd, timeout)
                 .with_context(|| format!("failed to set read timeout on {}", socket_display))?;
         }
         if let Some(timeout) = config.write_timeout {
-            stream
-                .set_write_timeout(Some(timeout))
+            io.set_write_timeout(fd, timeout)
                 .with_context(|| format!("failed to set write timeout on {}", socket_display))?;
         }
 
@@ -210,14 +212,13 @@ impl CommandTraceClient {
 
         // Send length-prefixed message
         let handshake_len = handshake_bytes.len() as u32;
-        stream
-            .write_all(&handshake_len.to_le_bytes())
-            .and_then(|_| stream.write_all(&handshake_bytes))
+        io.write_all(fd, &handshake_len.to_le_bytes())
+            .and_then(|_| io.write_all(fd, &handshake_bytes))
             .with_context(|| format!("failed to send handshake to {}", socket_display))?;
 
         // Read response (length + SSZ message)
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).with_context(|| {
+        io.read_exact(fd, &mut len_buf).with_context(|| {
             format!(
                 "failed to read handshake acknowledgement from {}",
                 socket_display
@@ -226,7 +227,7 @@ impl CommandTraceClient {
         let response_len = u32::from_le_bytes(len_buf) as usize;
 
         let mut response_buf = vec![0u8; response_len];
-        stream.read_exact(&mut response_buf).with_context(|| {
+        io.read_exact(fd, &mut response_buf).with_context(|| {
             format!(
                 "failed to read handshake response payload from {}",
                 socket_display
@@ -245,12 +246,7 @@ impl CommandTraceClient {
             }
         }
 
-        Ok(Self { stream })
-    }
-
-    /// Raw access to the underlying socket (consumes the client).
-    pub fn into_stream(self) -> UnixStream {
-        self.stream
+        Ok(Self { fd, io })
     }
 
     /// Send a raw request and expect no response (one-way message).
@@ -258,9 +254,9 @@ impl CommandTraceClient {
         let request_bytes = encode_ssz(&request);
         let request_len = request_bytes.len() as u32;
 
-        self.stream
-            .write_all(&request_len.to_le_bytes())
-            .and_then(|_| self.stream.write_all(&request_bytes))
+        self.io
+            .write_all(self.fd, &request_len.to_le_bytes())
+            .and_then(|_| self.io.write_all(self.fd, &request_bytes))
             .context("failed to send command trace request")?;
 
         Ok(())
@@ -270,7 +266,21 @@ impl CommandTraceClient {
     pub fn send_command_start(&mut self, command_start: CommandStart) -> Result<()> {
         self.send_request(Request::CommandStart(command_start))
     }
+
+    /// Send a CommandChunk notification.
+    pub fn send_command_chunk(&mut self, command_chunk: CommandChunk) -> Result<()> {
+        self.send_request(Request::CommandChunk(command_chunk))
+    }
 }
+
+impl<IO: UnixSocketIO> Drop for CommandTraceClient<IO> {
+    fn drop(&mut self) {
+        let _ = self.io.close(self.fd);
+    }
+}
+
+/// Type alias for standard client using normal I/O
+pub type StandardClient = CommandTraceClient<io_trait::StandardIO>;
 
 fn build_handshake(config: &ClientConfig) -> Result<Request> {
     Ok(Request::Handshake(HandshakeMessage {

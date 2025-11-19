@@ -29,7 +29,7 @@ use agentfs_daemon::macos::interposition::create_remote_port;
 // Import specific types that need explicit qualification
 use agentfs_proto::messages::{
     DaemonStateFilesystemRequest, DaemonStateProcessesRequest, DaemonStateResponse,
-    DaemonStateStatsRequest,
+    DaemonStateStatsRequest, FstatRequest, FstatatRequest, LstatRequest, StatRequest,
 };
 
 use agentfs_core::{BranchId, PID, SnapshotId};
@@ -948,6 +948,85 @@ fn handle_client_after_handshake(
 
                         let response = Response::watch_unregister_kqueue();
                         send_response(&mut stream, &response);
+                    }
+                    // Metadata operations
+                    Request::Stat((_version, stat_req)) => {
+                        let path = String::from_utf8_lossy(&stat_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .core()
+                            .lock()
+                            .unwrap()
+                            .stat(&pid, path.as_ref())
+                        {
+                            Ok(stat_data) => {
+                                let response = Response::stat(stat_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("stat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Lstat((_version, lstat_req)) => {
+                        let path = String::from_utf8_lossy(&lstat_req.path).to_string();
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .core()
+                            .lock()
+                            .unwrap()
+                            .lstat(&pid, path.as_ref())
+                        {
+                            Ok(stat_data) => {
+                                let response = Response::lstat(stat_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("lstat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fstat((_version, fstat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let handle_id = agentfs_core::HandleId(fstat_req.fd as u64);
+                        match daemon.lock().unwrap().core().lock().unwrap().fstat(&pid, handle_id) {
+                            Ok(stat_data) => {
+                                let response = Response::fstat(stat_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fstat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
+                    }
+                    Request::Fstatat((_version, fstatat_req)) => {
+                        let pid = get_client_pid_helper(&daemon, client_pid);
+                        let path = String::from_utf8_lossy(&fstatat_req.path).to_string();
+                        match daemon.lock().unwrap().core().lock().unwrap().fstatat(
+                            &pid,
+                            path.as_ref(),
+                            fstatat_req.flags,
+                        ) {
+                            Ok(stat_data) => {
+                                let response = Response::fstatat(stat_data);
+                                send_response(&mut stream, &response);
+                            }
+                            Err(e) => {
+                                let response =
+                                    Response::error(format!("fstatat failed: {}", e), Some(2));
+                                send_response(&mut stream, &response);
+                            }
+                        }
                     }
                     // All other request types would be handled here...
                     _ => {

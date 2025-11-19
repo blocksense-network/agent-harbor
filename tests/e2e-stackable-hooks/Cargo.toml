@@ -1,0 +1,20 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "e2e-stackable-hooks"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stackable-interpose = { path = "../../crates/stackable-interpose" }
+libc = "0.2"
+ctor = "0.2"
+
+[[bin]]
+name = "test-program"
+path = "src/bin/test_program.rs"
+
+[[bin]]
+name = "call_real_demo"
+path = "src/bin/call_real_demo.rs"

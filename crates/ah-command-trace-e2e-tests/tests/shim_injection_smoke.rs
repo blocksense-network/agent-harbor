@@ -418,6 +418,7 @@ async fn shim_records_spawn_tree() {
                             String::from_utf8_lossy(&cmd_start.executable)
                         );
                     }
+                    _ => {}
                 }
             }
 
@@ -516,6 +517,7 @@ async fn shim_stress_test_burst_subprocesses() {
                     ah_command_trace_proto::Request::CommandStart(cmd_start) => {
                         command_starts.push(cmd_start.clone());
                     }
+                    _ => {}
                 }
             }
 
@@ -618,6 +620,7 @@ async fn shim_shell_and_interpreter_coverage() {
                                 .collect::<Vec<_>>()
                         );
                     }
+                    _ => {}
                 }
             }
 

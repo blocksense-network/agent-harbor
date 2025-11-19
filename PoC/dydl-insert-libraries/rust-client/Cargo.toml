@@ -15,7 +15,7 @@ crate-type = ["cdylib"]
 libc = "0.2"
 lazy_static = "1.4"
 ctor = "0.2"
-redhook = "2.0"
+stackable-interpose = { path = "../../../crates/stackable-interpose" }
 agentfs-core = { path = "../../../crates/agentfs-core" }
 agentfs-proto = { path = "../../../crates/agentfs-proto" }
 ethereum_ssz = "0.8"

@@ -26,12 +26,17 @@ mod unsupported;
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub use unsupported::*;
 
+/// Hook-safe I/O implementation
+#[cfg(target_os = "macos")]
+pub mod hook_safe_io;
+
 /// Shared POSIX functionality
 pub mod posix;
 
 /// Core types and logic shared across platforms
 pub mod core {
     use once_cell::sync::OnceCell;
+    use std::collections::HashMap;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tracing::{debug, error, info, warn};
@@ -43,6 +48,13 @@ pub mod core {
     pub const ENV_ENABLED: &str = "AH_CMDTRACE_ENABLED";
     pub const ENV_SOCKET: &str = "AH_CMDTRACE_SOCKET";
     pub const ENV_LOG: &str = "AH_CMDTRACE_LOG";
+
+    /// Stream type for captured output
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum StreamType {
+        Stdout = 0,
+        Stderr = 1,
+    }
 
     /// Global state for the shim
     pub static SHIM_STATE: OnceCell<Mutex<ShimState>> = OnceCell::new();
@@ -57,11 +69,23 @@ pub mod core {
         Ready {
             socket_path: String,
             log_enabled: bool,
+            fd_table: HashMap<i32, StreamType>,
         },
         /// Shim encountered an error during initialization
         Error(String),
     }
 
+    impl Default for ShimState {
+        fn default() -> Self {
+            ShimState::Disabled
+        }
+    }
+
+    /// Get or initialize the shim state (thread-safe lazy initialization)
+    pub fn get_or_initialize_shim_state() -> Option<&'static Mutex<ShimState>> {
+        // Use get_or_init for thread-safe lazy initialization
+        Some(SHIM_STATE.get_or_init(|| Mutex::new(initialize_shim_state())))
+    }
     /// Initialize the shim state from environment variables
     pub fn initialize_shim_state() -> ShimState {
         // Initialize tracing subscriber once (stderr writer, env filter optional)
@@ -107,9 +131,14 @@ pub mod core {
         info!(log_enabled, "Shim logging configuration resolved");
         info!("Shim Ready state established");
 
+        let mut fd_table = HashMap::new();
+        fd_table.insert(1, StreamType::Stdout);
+        fd_table.insert(2, StreamType::Stderr);
+
         ShimState::Ready {
             socket_path,
             log_enabled,
+            fd_table,
         }
     }
 
