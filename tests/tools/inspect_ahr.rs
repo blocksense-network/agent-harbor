@@ -5,6 +5,7 @@ use ah_recorder::AhrEvent;
 use ah_recorder::reader::AhrReader;
 use serde::{Deserialize, Serialize};
 use std::env;
+use tracing::{error, info};
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -32,9 +33,10 @@ enum EventJson {
 }
 
 fn main() -> std::io::Result<()> {
+    tracing_subscriber::fmt::init();
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
-        eprintln!("Usage: {} <ahr_file>", args[0]);
+        error!(usage = %format!("{} <ahr_file>", args[0]), "invalid arguments");
         std::process::exit(1);
     }
 
@@ -71,7 +73,10 @@ fn main() -> std::io::Result<()> {
         };
 
         // Output each event as a separate JSON line
-        println!("{}", serde_json::to_string(&json_event)?);
+        info!(
+            event = serde_json::to_string(&json_event)?,
+            "ahr event json"
+        );
     }
 
     Ok(())

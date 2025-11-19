@@ -21,7 +21,7 @@ use strum::IntoEnumIterator;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting MVVM TUI application...");
+    tracing::info!("starting MVVM TUI application");
 
     // Initialize tracing for key logging (disabled by default, enable with RUST_LOG=trace)
     // Output goes to tui-mvvm-trace.log file
