@@ -66,6 +66,19 @@ just pjdfs-file symlink/06.t
 just pjdfs-cat symlink
 ```
 
+### Privileged Subset (chmod/12.t)
+
+Linux automatically applies `nosuid`/`nodev` to any FUSE mount created by an unprivileged user, so `chmod/12.t` will always fail with `EPERM` before AgentFS can clear SUID bits. The full harness documents this in two phases:
+
+1. The main run mounts AgentFS normally and skips the SUID-sensitive tests.
+2. `scripts/test-pjdfstest-full.sh` then **remounts via `sudo`** (passwordless sudo required) and runs only the files listed in `PJDFSTEST_SUDO_TESTS` (defaults to `chmod/12.t`). The kernel still rejects those operations, but the privileged log captures the expected behavior.
+
+If you need to trace the privileged pass, open `logs/pjdfstest-full-<ts>/fuse-host-priv.log` or rerun just the SUID files with:
+
+```bash
+PJDFSTEST_SUDO_TESTS="chmod/12.t" just test-pjdfstest-full
+```
+
 ## Available Commands
 
 ### Primary Workflows
