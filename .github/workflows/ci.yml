@@ -23,6 +23,10 @@ on:
   pull_request:
     branches: [main, linux-sandbox]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CHECK_MERMAID: ${{ vars.CHECK_MERMAID }}
 
