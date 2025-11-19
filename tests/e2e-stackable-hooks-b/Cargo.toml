@@ -1,0 +1,17 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "e2e-stackable-hooks-b"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "shim_library_b"
+crate-type = ["cdylib"]
+
+[dependencies]
+stackable-hooks = { path = "../../crates/stackable-hooks" }
+libc = "0.2"
+ctor = "0.2"
+tracing = { workspace = true }

@@ -1044,8 +1044,13 @@ fn test_kevent_hook_injectable_queue(args: &[String]) {
 }
 
 fn test_fsevents_interposition(args: &[String]) {
+    println!(
+        "DEBUG: test_fsevents_interposition called with {} args",
+        args.len()
+    );
     #[cfg(target_os = "macos")]
     {
+        println!("DEBUG: Running macOS FSEvents test implementation");
         macos::tests::test_fsevents_interposition(args);
     }
     #[cfg(not(target_os = "macos"))]

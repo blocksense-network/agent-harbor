@@ -2481,7 +2481,7 @@ mod tests {
         use std::process::{Command, Stdio};
         use std::sync::mpsc;
         use std::thread;
-        use std::time::Duration;
+        use std::time::{Duration, Instant};
 
         info!("Starting Milestone 6 FSEvents CFMessagePort interposition test...");
 
@@ -2528,8 +2528,28 @@ mod tests {
             .spawn()
             .expect("Failed to start daemon");
 
+        // Read daemon stdout/stderr to see if it starts properly
+        let daemon_stdout = daemon_cmd.stdout.take().unwrap();
+        let daemon_stderr = daemon_cmd.stderr.take().unwrap();
+
+        thread::spawn(move || {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(daemon_stdout);
+            for line in reader.lines().map_while(Result::ok) {
+                tracing::info!("DAEMON STDOUT: {}", line);
+            }
+        });
+
+        thread::spawn(move || {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(daemon_stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                tracing::info!("DAEMON STDERR: {}", line);
+            }
+        });
+
         // Give daemon time to start up
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(1000));
 
         // Create channels to communicate between test threads
         let (tx_main, rx_main) = mpsc::channel();
@@ -2539,6 +2559,7 @@ mod tests {
         let test_helper_path_clone = test_helper_path.clone();
         let test_helper_handle = thread::spawn(move || {
             info!("Thread 1: Starting test helper process with FSEvents test...");
+            let _ = tx_thread1.send("THREAD_STARTED".to_string());
 
             // Create the test helper with FSEvents test command
             // Pass the overlay upper directory as an argument so the test operates on the monitored filesystem
@@ -2551,7 +2572,7 @@ mod tests {
                     "DYLD_INSERT_LIBRARIES",
                     find_shim_library_path().to_string_lossy().to_string(),
                 )
-                .env("AGENTFS_INTERPOSE_SOCKET", "/tmp/agentfs-test.sock")
+                .env("AGENTFS_INTERPOSE_SOCKET", socket_path)
                 .env("AGENTFS_INTERPOSE_ENABLED", "1")
                 .env(
                     "AGENTFS_INTERPOSE_ALLOWLIST",
@@ -2566,9 +2587,11 @@ mod tests {
 
             let tx_stdout = tx_thread1.clone();
             thread::spawn(move || {
+                tracing::debug!("DEBUG: Starting stdout reader thread");
                 use std::io::BufRead;
                 let reader = std::io::BufReader::new(stdout);
                 for line in reader.lines().map_while(Result::ok) {
+                    tracing::info!("TEST HELPER STDOUT: {}", line);
                     debug!(%line, "TEST HELPER STDOUT");
                     if line.contains("FSEvents callback: received") {
                         let _ = tx_stdout.send(format!("EVENT: {}", line));
@@ -2578,8 +2601,12 @@ mod tests {
                         let _ = tx_stdout.send("TEST_COMPLETED".to_string());
                     } else if line == "SUCCESS_MESSAGE" || line.contains("🎉 FSEvents interposition is working correctly!") {
                         let _ = tx_stdout.send("SUCCESS_MESSAGE".to_string());
+                    } else if line.starts_with("DEBUG:") {
+                        // Forward debug messages
+                        let _ = tx_stdout.send(format!("DEBUG: {}", line));
                     }
                 }
+                tracing::debug!("DEBUG: Stdout reader thread finished");
             });
 
             thread::spawn(move || {
@@ -2590,10 +2617,86 @@ mod tests {
                 }
             });
 
-            // Wait for the test helper to complete
-            let status = test_cmd.wait().expect("Test helper failed");
-            info!(%status, "Test helper exited");
-            let _ = tx_thread1.send(format!("EXIT_STATUS: {}", status));
+            // Wait for the test helper to complete with timeout
+            let timeout_duration = Duration::from_secs(45); // Shorter than test timeout to allow cleanup stack trace
+            let start_wait = Instant::now();
+            let (status_tx, status_rx) = mpsc::channel();
+            let child_pid = test_cmd.id();
+
+            // Use a separate thread for waiting - this will block until the process exits
+            let status_handle = thread::spawn(move || {
+                let result = test_cmd.wait();
+                let _ = status_tx.send(result);
+            });
+
+            // Poll for completion with concurrent timeout checking
+            let mut timed_out = false;
+            loop {
+                // Check if process has completed
+                if let Ok(result) = status_rx.try_recv() {
+                    let status_val = result.expect("Test helper failed");
+                    info!(%status_val, "Test helper exited normally");
+                    let _ = tx_thread1.send(format!("EXIT_STATUS: {}", status_val));
+                    break;
+                }
+
+                // Check if we've timed out
+                if start_wait.elapsed() >= timeout_duration {
+                    timed_out = true;
+
+                    // Try to get a stack trace before killing
+                    let stack_trace = get_process_stack_trace(child_pid);
+                    if !stack_trace.is_empty() {
+                        // Save full stack trace to a file for inspection
+                        let trace_file = format!("/tmp/test_helper_stack_trace_{}.txt", child_pid);
+                        if let Err(e) = std::fs::write(&trace_file, &stack_trace) {
+                            tracing::error!(
+                                "❌ FAILED to save stack trace to {}: {}",
+                                trace_file,
+                                e
+                            );
+                        } else {
+                            tracing::info!("📄 Test helper stack trace saved to: {}", trace_file);
+                            tracing::info!(
+                                "   Full stack trace available at: file://{}",
+                                trace_file
+                            );
+                        }
+
+                        // Show just the first few lines in the output
+                        let lines: Vec<&str> = stack_trace.lines().take(10).collect();
+                        tracing::info!("🔍 Test helper stack trace (first 10 lines):");
+                        for line in lines {
+                            tracing::info!("   {}", line);
+                        }
+                    }
+
+                    tracing::warn!(
+                        "Test helper timed out after {}s, killing process (PID: {})",
+                        timeout_duration.as_secs(),
+                        child_pid
+                    );
+
+                    // Kill the process using its PID
+                    #[cfg(unix)]
+                    {
+                        use std::process::Command;
+                        let _ = Command::new("kill").arg("-9").arg(child_pid.to_string()).status();
+                    }
+
+                    let _ = tx_thread1.send("TEST_TIMEOUT".to_string());
+                    break;
+                }
+
+                // Sleep briefly before checking again
+                thread::sleep(Duration::from_millis(100));
+            }
+
+            // Don't wait for the status thread if we timed out - it may be blocked on wait()
+            // The killed process should cause wait() to return eventually
+            if !timed_out {
+                let _ = status_handle.join();
+            }
         });
 
         // For this test, we don't need an event generator thread
@@ -2609,11 +2712,16 @@ mod tests {
         let mut stream_ready = false;
         let mut success_message = false;
         let mut events_received = false;
+        let mut test_timeout = false;
 
         // Wait for the test to complete (give more time for filesystem operations)
         let start_time = std::time::Instant::now();
-        while start_time.elapsed() < Duration::from_secs(30) && !test_completed {
+        let mut iterations = 0;
+        while start_time.elapsed() < Duration::from_secs(50) && !test_completed {
+            let mut received_any_msg = false;
             while let Ok(msg) = rx_main.try_recv() {
+                received_any_msg = true;
+                debug!(%msg, "Main: Received message from test helper");
                 if msg == "STREAM_READY" {
                     stream_ready = true;
                     info!("Main: FSEvents stream is ready - interposition working!");
@@ -2630,8 +2738,29 @@ mod tests {
                     exit_status = Some(msg.clone());
                     info!(%msg, "Main: Test helper exit");
                     test_completed = true;
+                } else if msg == "TEST_TIMEOUT" {
+                    tracing::warn!("Main: Test helper process timed out!");
+                    test_timeout = true;
+                    test_completed = true;
+                } else if msg == "THREAD_STARTED" {
+                    info!("Main: Test helper thread started successfully");
+                } else if let Some(stripped) = msg.strip_prefix("DEBUG: ") {
+                    tracing::debug!("MAIN DEBUG: {}", stripped);
+                } else {
+                    debug!(%msg, "Main: Received unknown message");
                 }
             }
+
+            if iterations % 50 == 0 {
+                // Log every 5 seconds
+                info!(
+                    "Main: Still waiting for test completion... (elapsed: {:.1}s, received_msg: {})",
+                    start_time.elapsed().as_secs_f32(),
+                    received_any_msg
+                );
+            }
+
+            iterations += 1;
             thread::sleep(Duration::from_millis(100));
         }
 
@@ -2652,6 +2781,16 @@ mod tests {
         info!(success_message, "  Success message received");
         info!(events_received, "  Events received");
 
+        // Check if we got a timeout - if so, fail immediately with diagnostic info
+        if test_timeout {
+            panic!(
+                "Test helper process timed out! This indicates the test helper is hanging. \
+                 Check the logs above for any diagnostic information. \
+                 Stream ready: {}, Test completed: {}, Success message: {}, Events received: {}",
+                stream_ready, test_completed, success_message, events_received
+            );
+        }
+
         // The test passes if the FSEvents interposition infrastructure is working
         assert!(
             stream_ready,
@@ -2662,13 +2801,15 @@ mod tests {
         // Note: Events may not be received if the daemon/shim communication has issues,
         // but the infrastructure setup (stream creation, registration) should work
 
-        // Verify exit status indicates success
+        // Verify exit status indicates success (only if we have an exit status and no timeout)
         if let Some(status) = exit_status {
-            assert!(
-                status.contains("exit code: 0") || status.contains("exit status: 0"),
-                "Test helper should have exited successfully, got: {}",
-                status
-            );
+            if !test_timeout {
+                assert!(
+                    status.contains("exit code: 0") || status.contains("exit status: 0"),
+                    "Test helper should have exited successfully, got: {}",
+                    status
+                );
+            }
         }
 
         info!("Milestone 6 FSEvents CFMessagePort interposition test passed!");
@@ -3520,5 +3661,80 @@ mod tests {
         panic!(
             "agentfs_interpose_shim library not found. Make sure to build the agentfs-interpose-shim crate."
         );
+    }
+
+    fn get_process_stack_trace(pid: u32) -> String {
+        tracing::info!("🔍 Getting stack trace for PID {}", pid);
+
+        // Try to get a stack trace using the macOS `sample` command
+        match Command::new("sample")
+            .arg(pid.to_string())
+            .arg("1") // Sample once
+            .arg("-wait") // Wait for sample to complete
+            .output()
+        {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::info!(
+                    "✅ Sample command completed (exit code: {}, stdout: {} bytes)",
+                    output.status,
+                    stdout.len()
+                );
+
+                if output.status.success() {
+                    format!("Sample output:\n{}", stdout)
+                } else {
+                    format!(
+                        "Failed to sample process (exit code: {}): stdout='{}' stderr='{}'",
+                        output.status,
+                        stdout.trim(),
+                        stderr.trim()
+                    )
+                }
+            }
+            Err(e) => {
+                tracing::error!("❌ Sample command failed: {}", e);
+                // If sample fails, try using lldb for a backtrace
+                match Command::new("lldb")
+                    .arg("--batch")
+                    .arg("-p")
+                    .arg(pid.to_string())
+                    .arg("-o")
+                    .arg("bt")
+                    .arg("-o")
+                    .arg("quit")
+                    .output()
+                {
+                    Ok(output) => {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        tracing::info!(
+                            "✅ LLDB command completed (exit code: {}, stdout: {} bytes)",
+                            output.status,
+                            stdout.len()
+                        );
+
+                        if output.status.success() {
+                            format!("LLDB backtrace:\n{}", stdout)
+                        } else {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            format!(
+                                "Failed to get lldb backtrace (exit code: {}): stdout='{}' stderr='{}'",
+                                output.status,
+                                stdout.trim(),
+                                stderr.trim()
+                            )
+                        }
+                    }
+                    Err(e2) => {
+                        tracing::error!("❌ Both sample and lldb failed");
+                        format!(
+                            "Failed to get stack trace - sample error: {}, lldb error: {}",
+                            e, e2
+                        )
+                    }
+                }
+            }
+        }
     }
 }

@@ -1,0 +1,26 @@
+{
+  "result": "FAIL",
+  "files": 1,
+  "tests": 14,
+  "failed_programs": [
+    {
+      "program": "resources/pjdfstest/tests/chown/00.t          (Wstat: 0 Tests: 1280 Failed: 0)",
+      "details": [
+        "TODO passed:   650, 654, 665-666, 671-672, 686, 690, 1054",
+        "1058, 1064, 1069, 1073, 1079, 1084, 1088",
+        "1094, 1099, 1103, 1109, 1114, 1118, 1124",
+        "1129, 1133, 1139, 1144"
+      ]
+    },
+    {
+      "program": "resources/pjdfstest/tests/chmod/12.t (Wstat: 0 Tests: 14 Failed: 6)",
+      "details": [
+        "Failed tests:  3-4, 7-8, 11-12"
+      ]
+    }
+  ],
+  "skipped_programs": [],
+  "failed_program_count": 2,
+  "failed_subtests": null,
+  "log_file": "logs/pjdfstest-full-20251125-004054/pjdfstest.log"
+}
