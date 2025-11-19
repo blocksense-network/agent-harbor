@@ -12,8 +12,7 @@ use ah_domain_types::{
     AgentSoftwareBuild, ExperimentalFeature,
 };
 use std::str::FromStr;
-use std::sync::Arc;
-use tokio::time::{Duration, timeout};
+use tokio::time::Duration;
 
 /// Test catalog merging functionality
 #[tokio::test]
@@ -232,7 +231,7 @@ async fn test_experimental_feature_gating() {
     // Get the catalog (this will internally check experimental features)
     let result = catalog_gemini_only.get_catalog().await;
     assert!(result.is_ok());
-    let catalog = result.unwrap();
+    let _catalog = result.unwrap();
 
     // In a real scenario, experimental agents would only appear if they're available
     // and enabled. For this test, we verify the structure works correctly.
