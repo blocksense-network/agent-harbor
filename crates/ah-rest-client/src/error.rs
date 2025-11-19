@@ -28,7 +28,8 @@ pub enum RestClientError {
     #[error("Server returned error status {status}: {details:?}")]
     ServerError {
         status: StatusCode,
-        details: ProblemDetails,
+        // Box the potentially large ProblemDetails to reduce enum size per clippy::result_large_err
+        details: Box<ProblemDetails>,
     },
 
     #[error("Unexpected response format: {0}")]
