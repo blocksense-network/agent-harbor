@@ -44,11 +44,10 @@ wait_for_mount_state() {
   return 1
 }
 
+CURRENT_MOUNT_PRIV="none"
+
 cleanup() {
-  if mountpoint -q "$MOUNTPOINT" 2>/dev/null; then
-    log "Unmounting $MOUNTPOINT"
-    just umount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1 || true
-  fi
+  unmount_agentfs "$CURRENT_MOUNT_PRIV"
 }
 trap cleanup EXIT
 
@@ -64,15 +63,39 @@ else
   log "SKIP_FUSE_BUILD set; skipping build"
 fi
 
+mount_agentfs() {
+  local privileged="$1"
+  local log_path="$2"
+  export AGENTFS_FUSE_LOG_FILE="$log_path"
+  export RUST_BACKTRACE="${RUST_BACKTRACE:-1}"
+  log "FUSE host log: $AGENTFS_FUSE_LOG_FILE"
+  if [[ "$privileged" == "sudo" ]]; then
+    sudo env AGENTFS_FUSE_ALLOW_OTHER=1 AGENTFS_FUSE_LOG_FILE="$AGENTFS_FUSE_LOG_FILE" \
+      AGENTFS_FUSE_PRIVILEGED=1 just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
+  else
+    AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
+  fi
+  if ! wait_for_mount_state "$MOUNTPOINT" "mounted"; then
+    log "Failed to verify mount at $MOUNTPOINT; aborting pjdfstest run."
+    exit 1
+  fi
+}
+
+unmount_agentfs() {
+  local privileged="$1"
+  if mountpoint -q "$MOUNTPOINT" 2>/dev/null; then
+    if [[ "$privileged" == "sudo" ]]; then
+      sudo just umount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1 || true
+    else
+      just umount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1 || true
+    fi
+    wait_for_mount_state "$MOUNTPOINT" "unmounted"
+  fi
+}
+
 log "Mounting AgentFS at $MOUNTPOINT"
-export AGENTFS_FUSE_LOG_FILE="$RUN_DIR/fuse-host.log"
-export RUST_BACKTRACE="${RUST_BACKTRACE:-1}"
-log "FUSE host log: $AGENTFS_FUSE_LOG_FILE"
-AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
-if ! wait_for_mount_state "$MOUNTPOINT" "mounted"; then
-  log "Failed to verify mount at $MOUNTPOINT; aborting pjdfstest run."
-  exit 1
-fi
+mount_agentfs "user" "$RUN_DIR/fuse-host.log"
+CURRENT_MOUNT_PRIV="user"
 
 log "Selecting pjdfstest subsets"
 SUDO_TEST_LIST="${PJDFSTEST_SUDO_TESTS:-chmod/12.t}"
@@ -139,8 +162,20 @@ if ! run_prove_suite "sudo pjdfstest subset (sans privileged list)" "sudo" "${NO
 fi
 
 SUDO_STATUS=0
-if ! run_prove_suite "sudo-only privileged subset" "sudo" "${SUDO_FILES[@]}"; then
-  SUDO_STATUS=$?
+if ((${#SUDO_FILES[@]} > 0)); then
+  log "Preparing privileged mount for sudo-only subset"
+  unmount_agentfs "$CURRENT_MOUNT_PRIV"
+  CURRENT_MOUNT_PRIV="none"
+  mount_agentfs "sudo" "$RUN_DIR/fuse-host-priv.log"
+  CURRENT_MOUNT_PRIV="sudo"
+  if ! run_prove_suite "sudo-only privileged subset" "sudo" "${SUDO_FILES[@]}"; then
+    SUDO_STATUS=$?
+  fi
+  log "Unmounting privileged mount"
+  unmount_agentfs "$CURRENT_MOUNT_PRIV"
+  CURRENT_MOUNT_PRIV="none"
+else
+  log "No privileged pjdfstest files configured; skipping privileged mount."
 fi
 
 PROVE_STATUS=0
