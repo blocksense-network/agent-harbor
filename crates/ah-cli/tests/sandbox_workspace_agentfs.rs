@@ -9,15 +9,27 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 use tempfile::NamedTempFile;
 
+// Use structured logging instead of println!/eprintln! which are disallowed by clippy.
+use tracing::{info, warn};
+
+// Initialize tracing subscriber once for the test module.
+fn init_tracing() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+    });
+}
+
 #[test]
 fn test_sandbox_workspace_git() {
+    init_tracing();
     if !cfg!(target_os = "macos") {
-        println!("⚠️  Skipping macOS sandbox test on non-macOS platform");
+        warn!("Skipping macOS sandbox test on non-macOS platform");
         return;
     }
 
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping macOS sandbox test in CI environment");
+        warn!("Skipping macOS sandbox test in CI environment");
         return;
     }
 
@@ -44,9 +56,9 @@ fn test_sandbox_workspace_git() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    println!("Git snapshot sandbox stdout: {}", stdout);
+    info!(stdout = %stdout, "Git snapshot sandbox command output");
     if !stderr.is_empty() {
-        println!("Git snapshot sandbox stderr: {}", stderr);
+        warn!(stderr = %stderr, "Git snapshot sandbox command emitted stderr");
     }
 
     assert!(
@@ -60,7 +72,7 @@ fn test_sandbox_workspace_git() {
         "Git snapshot sandbox run did not emit expected payload. stdout:\n{}",
         stdout
     );
-    println!("✅ Git snapshot sandbox command executed successfully");
+    info!("Git snapshot sandbox command executed successfully");
 
     // Test 2: Disable provider (should always work)
     let mut cmd_disable = Command::new(&binary_path);
@@ -80,9 +92,9 @@ fn test_sandbox_workspace_git() {
     let stdout_disable = String::from_utf8_lossy(&output_disable.stdout);
     let stderr_disable = String::from_utf8_lossy(&output_disable.stderr);
 
-    println!("Disable sandbox stdout: {}", stdout_disable);
+    info!(stdout = %stdout_disable, "Disable provider sandbox output");
     if !stderr_disable.is_empty() {
-        println!("Disable sandbox stderr: {}", stderr_disable);
+        warn!(stderr = %stderr_disable, "Disable provider sandbox emitted stderr");
     }
 
     assert!(
@@ -96,24 +108,22 @@ fn test_sandbox_workspace_git() {
         "Disable-provider sandbox run did not emit expected payload. stdout:\n{}",
         stdout_disable
     );
-    println!("✅ Disable provider sandbox executed successfully");
+    info!("Disable provider sandbox executed successfully");
 
-    println!("✅ Git snapshot sandbox CLI integration test completed");
-    println!("   This test verifies that:");
-    println!("   1. `--fs-snapshots git` flag is accepted");
-    println!("   2. `--fs-snapshots disable` flag works");
-    println!("   3. Provider selection logic routes correctly");
+    info!("Git snapshot sandbox CLI integration test completed");
+    info!("Validation points: 1. git flag accepted 2. disable works 3. provider routing correct");
 }
 
 #[test]
 fn test_sandbox_git_snapshot_isolation() {
+    init_tracing();
     if !cfg!(target_os = "macos") {
-        println!("⚠️  Skipping macOS git snapshot test on non-macOS platform");
+        warn!("Skipping macOS git snapshot test on non-macOS platform");
         return;
     }
 
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping macOS git snapshot test in CI environment");
+        warn!("Skipping macOS git snapshot test in CI environment");
         return;
     }
 
@@ -160,9 +170,9 @@ echo "GIT_SANDBOX_SCRIPT_EXECUTED"
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    println!("Git isolation sandbox stdout: {}", stdout);
+    info!(stdout = %stdout, "Git isolation sandbox output");
     if !stderr.is_empty() {
-        println!("Git isolation sandbox stderr: {}", stderr);
+        warn!(stderr = %stderr, "Git isolation sandbox stderr");
     }
 
     assert!(
@@ -185,19 +195,19 @@ echo "GIT_SANDBOX_SCRIPT_EXECUTED"
 
 #[test]
 fn test_macos_sandbox_integration() {
+    init_tracing();
     // Skip this test on non-macOS platforms
     if !cfg!(target_os = "macos") {
-        println!("⚠️  Skipping macOS sandbox integration test on non-macOS platform");
+        warn!("Skipping macOS sandbox integration test on non-macOS platform");
         return;
     }
 
     // Skip this test in CI environments where sandboxing may not be fully functional
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping macOS sandbox integration test in CI environment");
+        warn!("Skipping macOS sandbox integration test in CI environment");
         return;
     }
-
-    println!("🧪 Testing macOS sandbox integration with Seatbelt profiles...");
+    info!("Testing macOS sandbox integration with Seatbelt profiles");
 
     // Build path to the ah binary
     let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -208,7 +218,7 @@ fn test_macos_sandbox_integration() {
     };
 
     // Test 1: Basic sandbox execution with default settings
-    println!("🧪 Test 1: Basic sandbox execution");
+    info!("Test 1: Basic sandbox execution");
     let mut cmd = Command::new(&binary_path);
     cmd.args([
         "agent",
@@ -224,9 +234,9 @@ fn test_macos_sandbox_integration() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    println!("Basic sandbox stdout: {}", stdout);
+    info!(stdout = %stdout, "Basic sandbox output");
     if !stderr.is_empty() {
-        println!("Basic sandbox stderr: {}", stderr);
+        warn!(stderr = %stderr, "Basic sandbox stderr");
     }
 
     assert!(
@@ -240,10 +250,10 @@ fn test_macos_sandbox_integration() {
         "Expected 'macOS sandbox test' in stdout, got: {}",
         stdout
     );
-    println!("✅ Basic macOS sandbox command executed successfully");
+    info!("Basic macOS sandbox command executed successfully");
 
     // Test 2: Sandbox with network access enabled
-    println!("🧪 Test 2: Sandbox with network access enabled");
+    info!("Test 2: Sandbox with network access enabled");
     let mut cmd_network = Command::new(&binary_path);
     cmd_network.args([
         "agent",
@@ -261,9 +271,9 @@ fn test_macos_sandbox_integration() {
     let stdout_network = String::from_utf8_lossy(&output_network.stdout);
     let stderr_network = String::from_utf8_lossy(&output_network.stderr);
 
-    println!("Network-enabled sandbox stdout: {}", stdout_network);
+    info!(stdout = %stdout_network, "Network-enabled sandbox output");
     if !stderr_network.is_empty() {
-        println!("Network-enabled sandbox stderr: {}", stderr_network);
+        warn!(stderr = %stderr_network, "Network-enabled sandbox stderr");
     }
 
     assert!(
@@ -277,10 +287,10 @@ fn test_macos_sandbox_integration() {
         "Expected 'network enabled test' in stdout, got: {}",
         stdout_network
     );
-    println!("✅ Network-enabled macOS sandbox executed successfully");
+    info!("Network-enabled macOS sandbox executed successfully");
 
     // Test 3: Sandbox with custom filesystem allowances
-    println!("🧪 Test 3: Sandbox with custom filesystem allowances");
+    info!("Test 3: Sandbox with custom filesystem allowances");
     let mut cmd_fs = Command::new(&binary_path);
     cmd_fs.args([
         "agent",
@@ -298,9 +308,9 @@ fn test_macos_sandbox_integration() {
     let stdout_fs = String::from_utf8_lossy(&output_fs.stdout);
     let stderr_fs = String::from_utf8_lossy(&output_fs.stderr);
 
-    println!("Filesystem sandbox stdout: {}", stdout_fs);
+    info!(stdout = %stdout_fs, "Filesystem sandbox output");
     if !stderr_fs.is_empty() {
-        println!("Filesystem sandbox stderr: {}", stderr_fs);
+        warn!(stderr = %stderr_fs, "Filesystem sandbox stderr");
     }
 
     assert!(
@@ -314,10 +324,10 @@ fn test_macos_sandbox_integration() {
         "Expected 'filesystem test' in stdout, got: {}",
         stdout_fs
     );
-    println!("✅ Custom filesystem macOS sandbox executed successfully");
+    info!("Custom filesystem macOS sandbox executed successfully");
 
     // Test 4: Verify that sandbox enforces filesystem restrictions
-    println!("🧪 Test 4: Verify sandbox filesystem restrictions");
+    info!("Test 4: Verify sandbox filesystem restrictions");
     let test_script = r#"#!/bin/bash
 set -euo pipefail
 
@@ -366,9 +376,9 @@ echo "FILESYSTEM_RESTRICTION_TEST_PASSED"
     let stdout_restrict = String::from_utf8_lossy(&output_restrict.stdout);
     let stderr_restrict = String::from_utf8_lossy(&output_restrict.stderr);
 
-    println!("Filesystem restriction test stdout: {}", stdout_restrict);
+    info!(stdout = %stdout_restrict, "Filesystem restriction test output");
     if !stderr_restrict.is_empty() {
-        println!("Filesystem restriction test stderr: {}", stderr_restrict);
+        warn!(stderr = %stderr_restrict, "Filesystem restriction test stderr");
     }
 
     assert!(
@@ -392,39 +402,32 @@ echo "FILESYSTEM_RESTRICTION_TEST_PASSED"
         "Sandbox filesystem restriction test did not finish cleanly: {}",
         stdout_restrict
     );
-    println!("✅ Sandbox filesystem restriction test completed successfully");
+    info!("Sandbox filesystem restriction test completed successfully");
 
     // Clean up
     let _ = std::fs::remove_file(&temp_script_path);
 
-    println!("✅ macOS sandbox integration test completed");
-    println!("   This test verifies that:");
-    println!("   1. Basic sandbox execution works on macOS");
-    println!("   2. Network access can be enabled/disabled");
-    println!("   3. Custom filesystem allowances are accepted");
-    println!(
-        "   4. Sandbox enforces filesystem restrictions (allows working directory writes, denies /System/Library)"
-    );
-    println!(
-        "   Note: Full Seatbelt profile verification requires proper macOS entitlements and AgentFS mounts"
+    info!("macOS sandbox integration test completed");
+    info!(
+        "Validation points: 1 basic execution 2 network toggle 3 custom allowances 4 filesystem restrictions 5 entitlements note"
     );
 }
 
 #[test]
 fn test_ah_macos_launcher_binary_wrapper() {
+    init_tracing();
     // Skip this test on non-macOS platforms
     if !cfg!(target_os = "macos") {
-        println!("⚠️  Skipping ah-macos-launcher binary test on non-macOS platform");
+        warn!("Skipping ah-macos-launcher binary test on non-macOS platform");
         return;
     }
 
     // Skip this test in CI environments where the binary might not be available
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping ah-macos-launcher binary test in CI environment");
+        warn!("Skipping ah-macos-launcher binary test in CI environment");
         return;
     }
-
-    println!("🧪 Testing ah-macos-launcher binary wrapper functionality...");
+    info!("Testing ah-macos-launcher binary wrapper functionality");
 
     // Build path to the ah-macos-launcher binary
     let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -436,13 +439,7 @@ fn test_ah_macos_launcher_binary_wrapper() {
 
     // Check if binary exists
     if !binary_path.exists() {
-        println!(
-            "⚠️  ah-macos-launcher binary not found at: {}",
-            binary_path.display()
-        );
-        println!(
-            "   Skipping test - binary may need to be built with 'cargo build --bin ah-macos-launcher'"
-        );
+        warn!(path = %binary_path.display(), "ah-macos-launcher binary not found; skipping test (build with cargo build --bin ah-macos-launcher)");
         return;
     }
 
@@ -453,7 +450,7 @@ fn test_ah_macos_launcher_binary_wrapper() {
     }
 
     // Test 1: Basic binary execution
-    println!("🧪 Test 1: Basic ah-macos-launcher binary execution");
+    info!("Test 1: Basic ah-macos-launcher binary execution");
     let mut cmd = Command::new(&binary_path);
     let mut args = vec![
         "--allow-read",
@@ -473,9 +470,9 @@ fn test_ah_macos_launcher_binary_wrapper() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    println!("Launcher binary stdout: {}", stdout);
+    info!(stdout = %stdout, "Launcher binary output");
     if !stderr.is_empty() {
-        println!("Launcher binary stderr: {}", stderr);
+        warn!(stderr = %stderr, "Launcher binary stderr");
     }
 
     assert!(
@@ -489,10 +486,10 @@ fn test_ah_macos_launcher_binary_wrapper() {
         "Expected output not found: {}",
         stdout
     );
-    println!("✅ ah-macos-launcher binary executed successfully");
+    info!("ah-macos-launcher binary executed successfully");
 
     // Test 2: Binary with network access
-    println!("🧪 Test 2: ah-macos-launcher binary with network access");
+    info!("Test 2: ah-macos-launcher binary with network access");
     let mut cmd_network = Command::new(&binary_path);
     let mut args_network = vec![
         "--allow-read",
@@ -513,9 +510,9 @@ fn test_ah_macos_launcher_binary_wrapper() {
     let stdout_network = String::from_utf8_lossy(&output_network.stdout);
     let stderr_network = String::from_utf8_lossy(&output_network.stderr);
 
-    println!("Network launcher stdout: {}", stdout_network);
+    info!(stdout = %stdout_network, "Network launcher output");
     if !stderr_network.is_empty() {
-        println!("Network launcher stderr: {}", stderr_network);
+        warn!(stderr = %stderr_network, "Network launcher stderr");
     }
 
     assert!(
@@ -529,10 +526,10 @@ fn test_ah_macos_launcher_binary_wrapper() {
         "Expected output not found: {}",
         stdout_network
     );
-    println!("✅ ah-macos-launcher binary with network access executed successfully");
+    info!("ah-macos-launcher binary with network access executed successfully");
 
     // Test 3: Binary with working directory
-    println!("🧪 Test 3: ah-macos-launcher binary with working directory");
+    info!("Test 3: ah-macos-launcher binary with working directory");
     let mut cmd_wd = Command::new(&binary_path);
     let mut args_wd = vec![
         "--workdir",
@@ -554,9 +551,9 @@ fn test_ah_macos_launcher_binary_wrapper() {
     let stdout_wd = String::from_utf8_lossy(&output_wd.stdout);
     let stderr_wd = String::from_utf8_lossy(&output_wd.stderr);
 
-    println!("Working directory launcher stdout: {}", stdout_wd);
+    info!(stdout = %stdout_wd, "Working directory launcher output");
     if !stderr_wd.is_empty() {
-        println!("Working directory launcher stderr: {}", stderr_wd);
+        warn!(stderr = %stderr_wd, "Working directory launcher stderr");
     }
 
     assert!(
@@ -571,28 +568,26 @@ fn test_ah_macos_launcher_binary_wrapper() {
         "Working directory was not /tmp or /private/tmp (got '{}')",
         wd_trimmed
     );
-    println!("✅ ah-macos-launcher binary with working directory executed successfully");
+    info!("ah-macos-launcher binary with working directory executed successfully");
 
-    println!("✅ ah-macos-launcher binary wrapper test completed");
-    println!("   This test verifies that:");
-    println!("   1. The ah-macos-launcher binary can be executed directly");
-    println!("   2. Command-line arguments are parsed correctly");
-    println!("   3. Network access flags work");
-    println!("   4. Working directory settings are applied");
-    println!("   Note: Full functionality requires proper macOS sandbox entitlements");
+    info!("ah-macos-launcher binary wrapper test completed");
+    info!(
+        "Validation points: 1 direct execution 2 arg parsing 3 network flags 4 workdir applied 5 entitlements note"
+    );
 }
 
 #[test]
 fn test_sandbox_agentfs_daemon_reuse() {
+    init_tracing();
     // Skip this test in CI environments or when AgentFS is not available
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping AgentFS daemon reuse test in CI environment");
+        warn!("Skipping AgentFS daemon reuse test in CI environment");
         return;
     }
 
     // Check if agentfs feature is enabled
     if !cfg!(feature = "agentfs") {
-        println!("⚠️  Skipping AgentFS daemon reuse test (requires agentfs feature)");
+        warn!("Skipping AgentFS daemon reuse test (requires agentfs feature)");
         return;
     }
 
@@ -638,7 +633,7 @@ fn test_sandbox_agentfs_daemon_reuse() {
         use std::thread;
         use std::time::Duration;
 
-        println!("🧪 Testing AgentFS daemon reuse functionality...");
+        info!("Testing AgentFS daemon reuse functionality");
 
         // Build path to the ah binary
         let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -659,7 +654,7 @@ fn test_sandbox_agentfs_daemon_reuse() {
         }
 
         // Start AgentFS daemon manually
-        println!("🚀 Starting AgentFS daemon...");
+        info!("Starting AgentFS daemon");
         let daemon_binary = if cargo_manifest_dir.contains("/crates/") {
             std::path::Path::new(&cargo_manifest_dir).join("../../target/debug/agentfs-daemon")
         } else {
@@ -668,11 +663,7 @@ fn test_sandbox_agentfs_daemon_reuse() {
 
         // Only try to start daemon if binary exists
         if !daemon_binary.exists() {
-            println!(
-                "⚠️  AgentFS daemon binary not found at: {}",
-                daemon_binary.display()
-            );
-            println!("   Skipping daemon reuse test");
+            warn!(path = %daemon_binary.display(), "AgentFS daemon binary not found; skipping reuse test");
             let _ = std::fs::remove_dir_all(&temp_dir);
             return;
         }
@@ -691,15 +682,15 @@ fn test_sandbox_agentfs_daemon_reuse() {
                 // Check if daemon is still running
                 match child.try_wait() {
                     Ok(Some(status)) => {
-                        println!("❌ Daemon exited early with status: {}", status);
+                        error!(%status, "Daemon exited early");
                         let _ = std::fs::remove_dir_all(&temp_dir);
                         return;
                     }
                     Ok(None) => {
-                        println!("✅ Daemon is running");
+                        info!("Daemon is running");
                     }
                     Err(e) => {
-                        println!("❌ Failed to check daemon status: {}", e);
+                        error!(error = %e, "Failed to check daemon status");
                         let _ = child.kill();
                         let _ = std::fs::remove_dir_all(&temp_dir);
                         return;
@@ -707,14 +698,14 @@ fn test_sandbox_agentfs_daemon_reuse() {
                 }
 
                 // Capture directory contents BEFORE running any sandbox commands
-                println!("📸 Capturing directory contents before sandbox execution...");
+                info!("Capturing directory contents before sandbox execution");
                 let initial_contents = match capture_directory_contents(std::path::Path::new(".")) {
                     Ok(contents) => {
-                        println!("✅ Captured {} items in directory", contents.len());
+                        info!(count = contents.len(), "Captured directory items");
                         contents
                     }
                     Err(e) => {
-                        println!("❌ Failed to capture initial directory contents: {}", e);
+                        error!(error = %e, "Failed to capture initial directory contents");
                         let _ = child.kill();
                         let _ = std::fs::remove_dir_all(&temp_dir);
                         return;
@@ -729,10 +720,7 @@ fn test_sandbox_agentfs_daemon_reuse() {
                     .join("create-test-files.sh");
 
                 if !source_script.exists() {
-                    println!(
-                        "⚠️  Test fixture script not found at: {}",
-                        source_script.display()
-                    );
+                    warn!(path = %source_script.display(), "Test fixture script not found; skipping");
                     let _ = child.kill();
                     let _ = std::fs::remove_dir_all(&temp_dir);
                     return;
@@ -742,9 +730,7 @@ fn test_sandbox_agentfs_daemon_reuse() {
                     .expect("Failed to copy test script");
 
                 // Now test sandbox with the daemon socket
-                println!(
-                    "🧪 Testing sandbox with --agentfs-socket flag and filesystem operations..."
-                );
+                info!("Testing sandbox with --agentfs-socket flag and filesystem operations");
                 let mut sandbox_cmd = Command::new(&binary_path);
                 sandbox_cmd.args([
                     "agent",
@@ -763,19 +749,17 @@ fn test_sandbox_agentfs_daemon_reuse() {
                 let stdout = String::from_utf8_lossy(&sandbox_output.stdout);
                 let stderr = String::from_utf8_lossy(&sandbox_output.stderr);
 
-                println!("Sandbox stdout: {}", stdout);
+                info!(stdout = %stdout, "Sandbox output");
                 if !stderr.is_empty() {
-                    println!("Sandbox stderr: {}", stderr);
+                    warn!(stderr = %stderr, "Sandbox stderr");
                 }
 
                 if sandbox_output.status.success() {
                     if !stdout.contains("daemon reuse test successful") {
-                        println!("❌ FAIL: Sandbox script did not complete successfully");
-                        println!("📄 Script stdout:");
-                        println!("{}", stdout);
+                        error!("Sandbox script did not complete successfully");
+                        info!(stdout = %stdout, "Script stdout");
                         if !stderr.is_empty() {
-                            println!("📄 Script stderr:");
-                            println!("{}", stderr);
+                            warn!(stderr = %stderr, "Script stderr");
                         }
                         let _ = child.kill();
                         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -783,14 +767,14 @@ fn test_sandbox_agentfs_daemon_reuse() {
                     }
 
                     // Test filesystem isolation - verify directory contents are exactly the same
-                    println!("🔍 Testing filesystem isolation by comparing directory contents...");
+                    info!("Testing filesystem isolation by comparing directory contents");
 
                     // Capture directory contents AFTER sandbox execution
                     let final_contents = match capture_directory_contents(std::path::Path::new("."))
                     {
                         Ok(contents) => contents,
                         Err(e) => {
-                            println!("❌ Failed to capture final directory contents: {}", e);
+                            error!(error = %e, "Failed to capture final directory contents");
                             let _ = child.kill();
                             let _ = std::fs::remove_dir_all(&temp_dir);
                             return;
@@ -806,16 +790,14 @@ fn test_sandbox_agentfs_daemon_reuse() {
                     // Check for added files
                     let added: Vec<_> = final_keys.difference(&initial_keys).collect();
                     if !added.is_empty() {
-                        println!("❌ FAIL: Directory contents changed during sandbox execution!");
-                        println!("   Files/directories were added: {:?}", added);
+                        error!(?added, "Directory contents changed: files added");
                         isolation_passed = false;
                     }
 
                     // Check for removed files
                     let removed: Vec<_> = initial_keys.difference(&final_keys).collect();
                     if !removed.is_empty() {
-                        println!("❌ FAIL: Directory contents changed during sandbox execution!");
-                        println!("   Files/directories were removed: {:?}", removed);
+                        error!(?removed, "Directory contents changed: files removed");
                         isolation_passed = false;
                     }
 
@@ -823,24 +805,16 @@ fn test_sandbox_agentfs_daemon_reuse() {
                     for (path, initial_meta) in &initial_contents {
                         if let Some(final_meta) = final_contents.get(path) {
                             if initial_meta.len() != final_meta.len() {
-                                println!(
-                                    "❌ FAIL: Directory contents changed during sandbox execution!"
-                                );
-                                println!("   File modified (size changed): {:?}", path);
+                                error!(path = ?path, "Directory contents changed: file size modified");
                                 isolation_passed = false;
                             }
                         }
                     }
 
                     if isolation_passed {
-                        println!(
-                            "✅ PASS: Directory contents are identical before and after sandbox execution"
-                        );
-                        println!(
-                            "   This confirms AgentFS overlay provides perfect filesystem isolation"
-                        );
-                        println!(
-                            "   No side effects leaked from the overlay to the lower filesystem"
+                        info!("Directory contents identical before and after sandbox execution");
+                        info!(
+                            "AgentFS overlay provides filesystem isolation; no side effects leaked"
                         );
                     } else {
                         let _ = child.kill();
@@ -849,7 +823,7 @@ fn test_sandbox_agentfs_daemon_reuse() {
                     }
 
                     // Now run a second sandbox command to verify the files exist in the overlay
-                    println!("🔍 Testing that files exist within AgentFS overlay layer...");
+                    info!("Testing that files exist within AgentFS overlay layer");
                     let verify_script_path = temp_dir.join("verify-test-files.sh");
                     let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
                     let source_verify_script = std::path::Path::new(cargo_manifest_dir)
@@ -877,42 +851,32 @@ fn test_sandbox_agentfs_daemon_reuse() {
                     let verify_stdout = String::from_utf8_lossy(&verify_output.stdout);
                     let verify_stderr = String::from_utf8_lossy(&verify_output.stderr);
 
-                    println!("Verify stdout: {}", verify_stdout);
+                    info!(stdout = %verify_stdout, "Overlay verification stdout");
                     if !verify_stderr.is_empty() {
-                        println!("Verify stderr: {}", verify_stderr);
+                        warn!(stderr = %verify_stderr, "Overlay verification stderr");
                     }
 
                     if verify_output.status.success() {
                         if verify_stdout.contains("overlay verification successful") {
-                            println!(
-                                "✅ PASS: Files exist and are accessible within AgentFS overlay layer"
+                            info!(
+                                "Overlay verification passed: files accessible within overlay layer"
                             );
-                            println!(
-                                "   This confirms AgentFS provides proper overlay isolation and persistence"
-                            );
+                            info!("AgentFS provides overlay isolation and persistence");
                         } else {
-                            println!(
-                                "❌ FAIL: Overlay verification script ran but didn't confirm files exist"
-                            );
-                            println!("📄 Verification script stdout:");
-                            println!("{}", verify_stdout);
+                            error!("Overlay verification script did not confirm files exist");
+                            info!(stdout = %verify_stdout, "Verification script stdout");
                             if !verify_stderr.is_empty() {
-                                println!("📄 Verification script stderr:");
-                                println!("{}", verify_stderr);
+                                warn!(stderr = %verify_stderr, "Verification script stderr");
                             }
                             let _ = child.kill();
                             let _ = std::fs::remove_dir_all(&temp_dir);
                             panic!("Overlay verification failed - see output above for details");
                         }
                     } else {
-                        println!(
-                            "❌ FAIL: Second sandbox command failed - overlay may not persist between sessions"
-                        );
-                        println!("📄 Verification script stdout:");
-                        println!("{}", verify_stdout);
+                        error!("Second sandbox command failed - overlay may not persist");
+                        info!(stdout = %verify_stdout, "Verification script stdout");
                         if !verify_stderr.is_empty() {
-                            println!("📄 Verification script stderr:");
-                            println!("{}", verify_stderr);
+                            warn!(stderr = %verify_stderr, "Verification script stderr");
                         }
                         let _ = child.kill();
                         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -921,22 +885,15 @@ fn test_sandbox_agentfs_daemon_reuse() {
                         );
                     }
 
-                    println!("✅ AgentFS daemon reuse and isolation test passed!");
-                    println!("   This test verifies that:");
-                    println!("   1. AgentFS daemon can be started manually");
-                    println!("   2. `--agentfs-socket` flag is accepted");
-                    println!("   3. Sandbox can reuse existing daemon socket");
-                    println!("   4. Workspace preparation works with existing daemon");
-                    println!("   5. Filesystem operations are properly isolated to the overlay");
-                    println!("   6. Lower directory remains unaffected by overlay operations");
-                    println!(
-                        "   7. Files created in overlay are accessible in subsequent overlay sessions"
+                    info!("AgentFS daemon reuse and isolation test passed");
+                    info!(
+                        "Validation points: manual start, socket reuse, workspace prep, isolation, lower dir unaffected, persistence"
                     );
                 } else {
-                    println!("❌ FAIL: Sandbox command failed");
-                    println!("📄 stdout: {}", stdout);
+                    error!("Sandbox command failed");
+                    info!(stdout = %stdout, "Sandbox stdout");
                     if !stderr.is_empty() {
-                        println!("📄 stderr: {}", stderr);
+                        warn!(stderr = %stderr, "Sandbox stderr");
                     }
                     let _ = child.kill();
                     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -948,8 +905,7 @@ fn test_sandbox_agentfs_daemon_reuse() {
                 let _ = std::fs::remove_dir_all(&temp_dir);
             }
             Err(e) => {
-                println!("❌ Failed to start AgentFS daemon: {}", e);
-                println!("⚠️  Skipping daemon reuse test - daemon startup failed");
+                error!(error = %e, "Failed to start AgentFS daemon; skipping reuse test");
             }
         }
     }
@@ -957,18 +913,19 @@ fn test_sandbox_agentfs_daemon_reuse() {
 
 #[test]
 fn test_sandbox_workspace_agentfs_managed() {
+    init_tracing();
     if !cfg!(target_os = "macos") {
-        println!("⚠️  Skipping AgentFS managed sandbox test on non-macOS platform");
+        warn!("Skipping AgentFS managed sandbox test on non-macOS platform");
         return;
     }
 
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping AgentFS managed sandbox test in CI environment");
+        warn!("Skipping AgentFS managed sandbox test in CI environment");
         return;
     }
 
     if !cfg!(feature = "agentfs") {
-        println!("⚠️  Skipping AgentFS managed sandbox test (requires agentfs feature)");
+        warn!("Skipping AgentFS managed sandbox test (requires agentfs feature)");
         return;
     }
 
@@ -999,14 +956,14 @@ fn test_sandbox_workspace_agentfs_managed() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        println!("AgentFS managed sandbox stdout: {}", stdout);
+        info!(stdout = %stdout, "AgentFS managed sandbox output");
         if !stderr.is_empty() {
-            println!("AgentFS managed sandbox stderr: {}", stderr);
+            warn!(stderr = %stderr, "AgentFS managed sandbox stderr");
         }
 
         if !output.status.success() {
             // This test might fail if capabilities are not met (e.g. permissions), which is common
-            println!("⚠️  AgentFS managed sandbox failed (likely due to permissions/capabilities)");
+            warn!("AgentFS managed sandbox failed (likely due to permissions/capabilities)");
             // We don't assert success here because it depends on environmental factors
             // that might not be present even if the feature is compiled.
             // But we do check that it tried to use AgentFS.
@@ -1022,7 +979,7 @@ fn test_sandbox_workspace_agentfs_managed() {
                 "AgentFS managed sandbox run did not emit expected payload. stdout:\n{}",
                 stdout
             );
-            println!("✅ AgentFS managed sandbox executed successfully");
+            info!("AgentFS managed sandbox executed successfully");
         }
     }
 }

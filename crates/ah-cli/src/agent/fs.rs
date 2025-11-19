@@ -240,17 +240,17 @@ impl AgentFsCommands {
                     #[cfg(feature = "agentfs")]
                     agentfs: agentfs_status.clone(),
                 };
-                println!("{}", serde_json::to_string_pretty(&json)?);
+                tracing::info!(target: "ah-cli", "{}", serde_json::to_string_pretty(&json)?);
             } else {
-                println!("Filesystem detection for: {}", path.display());
-                println!("Filesystem type: {}", Self::detect_filesystem_type(&path));
+                tracing::info!(target: "ah-cli", "Filesystem detection for: {}", path.display());
+                tracing::info!(target: "ah-cli", "Filesystem type: {}", Self::detect_filesystem_type(&path));
                 if let Some(mount) = Self::detect_mount_point(&path) {
-                    println!("Mount point: {}", mount);
+                    tracing::info!(target: "ah-cli", "Mount point: {}", mount);
                 }
                 Self::print_provider_status("Selected provider", &selected_status, opts.verbose);
                 #[cfg(feature = "agentfs")]
                 if let Some(agentfs) = &agentfs_status {
-                    println!();
+                    tracing::info!(target: "ah-cli", "");
                     Self::print_provider_status("AgentFS provider (experimental)", agentfs, true);
                 }
             }
@@ -266,14 +266,14 @@ impl AgentFsCommands {
                 #[cfg(feature = "agentfs")]
                 agentfs: agentfs_status.clone(),
             };
-            println!("{}", serde_json::to_string_pretty(&json)?);
+            tracing::info!(target: "ah-cli", "{}", serde_json::to_string_pretty(&json)?);
             return Ok(());
         }
 
-        println!("Filesystem status for: {}", path.display());
-        println!("Filesystem type: {}", Self::detect_filesystem_type(&path));
+        tracing::info!(target: "ah-cli", "Filesystem status for: {}", path.display());
+        tracing::info!(target: "ah-cli", "Filesystem type: {}", Self::detect_filesystem_type(&path));
         if let Some(mount) = Self::detect_mount_point(&path) {
-            println!("Mount point: {}", mount);
+            tracing::info!(target: "ah-cli", "Mount point: {}", mount);
         }
 
         Self::print_provider_status("Selected provider", &selected_status, opts.verbose);
@@ -281,7 +281,7 @@ impl AgentFsCommands {
         #[cfg(feature = "agentfs")]
         if let Some(agentfs) = &agentfs_status {
             if !selected_is_agentfs {
-                println!();
+                tracing::info!(target: "ah-cli", "");
                 Self::print_provider_status("AgentFS provider (experimental)", agentfs, true);
             }
         }
@@ -290,21 +290,16 @@ impl AgentFsCommands {
     }
 
     fn print_provider_status(title: &str, provider: &ProviderStatusJson, verbose: bool) {
-        println!("{title}: {}", provider.name);
-        println!("Capability score: {}", provider.capabilities.score);
-        println!(
-            "Supports CoW overlay: {}",
-            if provider.capabilities.supports_cow_overlay {
-                "yes"
-            } else {
-                "no"
-            }
+        tracing::info!(target: "ah-cli", "{title}: {}", provider.name);
+        tracing::info!(target: "ah-cli", "Capability score: {}", provider.capabilities.score);
+        tracing::info!(target: "ah-cli", "Supports CoW overlay: {}",
+            if provider.capabilities.supports_cow_overlay { "yes" } else { "no" }
         );
 
         if (verbose || title.contains("AgentFS")) && !provider.detection_notes.is_empty() {
-            println!("Notes:");
+            tracing::info!(target: "ah-cli", "Notes:");
             for note in &provider.detection_notes {
-                println!("  - {}", note);
+                tracing::info!(target: "ah-cli", "  - {}", note);
             }
         }
     }
@@ -331,18 +326,15 @@ impl AgentFsCommands {
 
         let repo_path = opts.repo.unwrap_or_else(|| std::env::current_dir().unwrap());
 
-        println!(
-            "Initializing session snapshots for repository: {}",
-            repo_path.display()
-        );
+        tracing::info!(target: "ah-cli", "Initializing session snapshots for repository: {}", repo_path.display());
         if let Some(name) = &opts.name {
-            println!("Snapshot name: {}", name);
+            tracing::info!(target: "ah-cli", "Snapshot name: {}", name);
         }
         if let Some(workspace) = &opts.workspace {
-            println!("Workspace: {}", workspace);
+            tracing::info!(target: "ah-cli", "Workspace: {}", workspace);
         }
-        println!("Note: AgentFS and database persistence not yet implemented in this milestone");
-        println!("When implemented, this will create initial filesystem snapshots for time travel");
+        tracing::info!(target: "ah-cli", "Note: AgentFS and database persistence not yet implemented in this milestone");
+        tracing::info!(target: "ah-cli", "When implemented, this will create initial filesystem snapshots for time travel");
 
         Ok(())
     }
@@ -430,20 +422,17 @@ impl AgentFsCommands {
         // 2. Query fs_snapshots table to find snapshots for the session
         // 3. Display formatted list of snapshots with metadata
 
-        println!("Snapshots for session '{}':", opts.session_id);
-        println!("Note: Database persistence not yet implemented in this milestone");
-        println!("When implemented, this will show:");
-        println!("- Snapshot ID");
-        println!("- Timestamp");
-        println!("- Provider type");
-        println!("- Reference/path");
-        println!("- Optional labels and metadata");
+        tracing::info!(target: "ah-cli", "Snapshots for session '{}':", opts.session_id);
+        tracing::info!(target: "ah-cli", "Note: Database persistence not yet implemented in this milestone");
+        tracing::info!(target: "ah-cli", "When implemented, this will show:");
+        tracing::info!(target: "ah-cli", "- Snapshot ID");
+        tracing::info!(target: "ah-cli", "- Timestamp");
+        tracing::info!(target: "ah-cli", "- Provider type");
+        tracing::info!(target: "ah-cli", "- Reference/path");
+        tracing::info!(target: "ah-cli", "- Optional labels and metadata");
 
         // For now, show that the command structure is ready
-        println!(
-            "\nCommand parsing successful for session: {}",
-            opts.session_id
-        );
+        tracing::info!(target: "ah-cli", "Command parsing successful for session: {}", opts.session_id);
 
         Ok(())
     }
@@ -455,12 +444,12 @@ impl AgentFsCommands {
         // 3. Call provider.branch_from_snapshot() to create writable branch
         // 4. Record branch metadata in database
 
-        println!("Creating branch from snapshot '{}'", snapshot_id);
+        tracing::info!(target: "ah-cli", "Creating branch from snapshot '{}'", snapshot_id);
         if let Some(name) = &name {
-            println!("Branch name: {}", name);
+            tracing::info!(target: "ah-cli", "Branch name: {}", name);
         }
-        println!("Note: AgentFS integration not yet implemented in this milestone");
-        println!("When implemented, this will create a writable branch for time travel");
+        tracing::info!(target: "ah-cli", "Note: AgentFS integration not yet implemented in this milestone");
+        tracing::info!(target: "ah-cli", "When implemented, this will create a writable branch for time travel");
 
         Ok(())
     }
@@ -471,9 +460,9 @@ impl AgentFsCommands {
         // 2. Bind the current process to the branch view
         // 3. Set up the filesystem overlay for the process
 
-        println!("Binding to branch '{}'", branch_id);
-        println!("Note: AgentFS process binding not yet implemented in this milestone");
-        println!("When implemented, this will make the branch view available to child processes");
+        tracing::info!(target: "ah-cli", "Binding to branch '{}'", branch_id);
+        tracing::info!(target: "ah-cli", "Note: AgentFS process binding not yet implemented in this milestone");
+        tracing::info!(target: "ah-cli", "When implemented, this will make the branch view available to child processes");
 
         Ok(())
     }
@@ -484,10 +473,10 @@ impl AgentFsCommands {
         // 2. Execute the command in that branch context
         // 3. Return the command's exit status
 
-        println!("Executing command in branch '{}' context", branch_id);
-        println!("Command: {:?}", command);
-        println!("Note: AgentFS branch execution not yet implemented in this milestone");
-        println!("When implemented, this will run the command with the branch filesystem view");
+        tracing::info!(target: "ah-cli", "Executing command in branch '{}' context", branch_id);
+        tracing::info!(target: "ah-cli", "Command: {:?}", command);
+        tracing::info!(target: "ah-cli", "Note: AgentFS branch execution not yet implemented in this milestone");
+        tracing::info!(target: "ah-cli", "When implemented, this will run the command with the branch filesystem view");
 
         Ok(())
     }
@@ -503,7 +492,7 @@ impl AgentFsCommands {
         // Build and send get request for each configuration key
         let keys = ["enabled", "max_copy_bytes", "require_reflink"];
 
-        println!("Current interpose configuration:");
+        tracing::info!(target: "ah-cli", "Current interpose configuration:");
 
         for key in &keys {
             let request = build_interpose_get_request(key.to_string());
@@ -512,21 +501,17 @@ impl AgentFsCommands {
                     Response::InterposeSetGet(response) => {
                         let value = String::from_utf8(response.value)
                             .map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))?;
-                        println!("- {}: {}", key, value);
+                        tracing::info!(target: "ah-cli", "- {}: {}", key, value);
                     }
                     Response::Error(error_response) => {
-                        println!(
-                            "- {}: Error {}",
-                            key,
-                            String::from_utf8_lossy(&error_response.error)
-                        );
+                        tracing::info!(target: "ah-cli", "- {}: Error {}", key, String::from_utf8_lossy(&error_response.error));
                     }
                     _ => {
-                        println!("- {}: Unexpected response type", key);
+                        tracing::info!(target: "ah-cli", "- {}: Unexpected response type", key);
                     }
                 },
                 Err(e) => {
-                    println!("- {}: Failed to query ({})", key, e);
+                    tracing::info!(target: "ah-cli", "- {}: Failed to query ({})", key, e);
                 }
             }
         }
@@ -547,7 +532,7 @@ impl AgentFsCommands {
         // Create control transport
         let transport = ControlTransport::new(mount_point)?;
 
-        println!("Setting interpose configuration:");
+        tracing::info!(target: "ah-cli", "Setting interpose configuration:");
 
         // Send set requests for each provided option
         if let Some(enabled) = enabled {
@@ -558,20 +543,17 @@ impl AgentFsCommands {
                     Response::InterposeSetGet(response) => {
                         let updated_value = String::from_utf8(response.value)
                             .map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))?;
-                        println!("- enabled: {} (confirmed: {})", value, updated_value);
+                        tracing::info!(target: "ah-cli", "- enabled: {} (confirmed: {})", value, updated_value);
                     }
                     Response::Error(error_response) => {
-                        println!(
-                            "- enabled: Failed to set - {}",
-                            String::from_utf8_lossy(&error_response.error)
-                        );
+                        tracing::info!(target: "ah-cli", "- enabled: Failed to set - {}", String::from_utf8_lossy(&error_response.error));
                     }
                     _ => {
-                        println!("- enabled: Unexpected response type");
+                        tracing::info!(target: "ah-cli", "- enabled: Unexpected response type");
                     }
                 },
                 Err(e) => {
-                    println!("- enabled: Failed to set ({})", e);
+                    tracing::info!(target: "ah-cli", "- enabled: Failed to set ({})", e);
                 }
             }
         }
@@ -584,20 +566,17 @@ impl AgentFsCommands {
                     Response::InterposeSetGet(response) => {
                         let updated_value = String::from_utf8(response.value)
                             .map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))?;
-                        println!("- max_copy_bytes: {} (confirmed: {})", value, updated_value);
+                        tracing::info!(target: "ah-cli", "- max_copy_bytes: {} (confirmed: {})", value, updated_value);
                     }
                     Response::Error(error_response) => {
-                        println!(
-                            "- max_copy_bytes: Failed to set - {}",
-                            String::from_utf8_lossy(&error_response.error)
-                        );
+                        tracing::info!(target: "ah-cli", "- max_copy_bytes: Failed to set - {}", String::from_utf8_lossy(&error_response.error));
                     }
                     _ => {
-                        println!("- max_copy_bytes: Unexpected response type");
+                        tracing::info!(target: "ah-cli", "- max_copy_bytes: Unexpected response type");
                     }
                 },
                 Err(e) => {
-                    println!("- max_copy_bytes: Failed to set ({})", e);
+                    tracing::info!(target: "ah-cli", "- max_copy_bytes: Failed to set ({})", e);
                 }
             }
         }
@@ -610,29 +589,23 @@ impl AgentFsCommands {
                     Response::InterposeSetGet(response) => {
                         let updated_value = String::from_utf8(response.value)
                             .map_err(|e| anyhow!("Invalid UTF-8 in response: {}", e))?;
-                        println!(
-                            "- require_reflink: {} (confirmed: {})",
-                            value, updated_value
-                        );
+                        tracing::info!(target: "ah-cli", "- require_reflink: {} (confirmed: {})", value, updated_value);
                     }
                     Response::Error(error_response) => {
-                        println!(
-                            "- require_reflink: Failed to set - {}",
-                            String::from_utf8_lossy(&error_response.error)
-                        );
+                        tracing::info!(target: "ah-cli", "- require_reflink: Failed to set - {}", String::from_utf8_lossy(&error_response.error));
                     }
                     _ => {
-                        println!("- require_reflink: Unexpected response type");
+                        tracing::info!(target: "ah-cli", "- require_reflink: Unexpected response type");
                     }
                 },
                 Err(e) => {
-                    println!("- require_reflink: Failed to set ({})", e);
+                    tracing::info!(target: "ah-cli", "- require_reflink: Failed to set ({})", e);
                 }
             }
         }
 
         if enabled.is_none() && max_copy_bytes.is_none() && require_reflink.is_none() {
-            println!("No configuration options specified to set");
+            tracing::info!(target: "ah-cli", "No configuration options specified to set");
         }
 
         Ok(())

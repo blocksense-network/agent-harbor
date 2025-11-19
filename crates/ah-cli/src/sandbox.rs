@@ -660,7 +660,79 @@ pub async fn prepare_workspace_with_fallback(
 
 /// Create a sandbox instance configured from CLI parameters
 #[cfg(target_os = "linux")]
-#[allow(clippy::too_many_arguments)]
+#[derive(Debug, Clone)]
+pub struct SandboxArgs<'a> {
+    pub allow_network: bool,
+    pub allow_containers: bool,
+    pub allow_kvm: bool,
+    pub seccomp: bool,
+    pub seccomp_debug: bool,
+    pub mount_rw: &'a [PathBuf],
+    pub overlay: &'a [PathBuf],
+    pub working_dir: Option<&'a Path>,
+}
+
+// New API with single config struct to reduce argument count
+#[cfg(target_os = "linux")]
+pub fn create_sandbox(args: SandboxArgs) -> Result<sandbox_core::Sandbox> {
+    let mut sandbox = sandbox_core::Sandbox::new();
+
+    #[cfg(not(feature = "seccomp"))]
+    let _ = (args.seccomp, args.seccomp_debug);
+
+    sandbox = sandbox.with_default_cgroups();
+
+    if args.allow_network {
+        sandbox = sandbox.with_default_network();
+    }
+
+    #[cfg(feature = "seccomp")]
+    if args.seccomp {
+        let root_dir = working_dir
+            .map(|dir| dir.to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
+
+        let seccomp_config = sandbox_seccomp::SeccompConfig {
+            debug_mode: args.seccomp_debug,
+            supervisor_tx: None,
+            root_dir,
+        };
+        sandbox = sandbox.with_seccomp(seccomp_config);
+    }
+
+    if args.allow_containers || args.allow_kvm {
+        if args.allow_containers && args.allow_kvm {
+            sandbox = sandbox.with_container_and_vm_devices();
+        } else if args.allow_containers {
+            sandbox = sandbox.with_container_devices();
+        } else if args.allow_kvm {
+            sandbox = sandbox.with_vm_devices();
+        }
+    }
+
+    let mut fs_config = sandbox_core::FilesystemConfig::default();
+
+    if let Some(dir) = args.working_dir {
+        fs_config.working_dir = Some(dir.to_string_lossy().to_string());
+    }
+
+    for path in args.mount_rw {
+        let path_str = path.to_string_lossy().to_string();
+        fs_config.bind_mounts.push((path_str.clone(), path_str.clone()));
+    }
+
+    for path in args.overlay {
+        fs_config.overlay_paths.push(path.to_string_lossy().to_string());
+    }
+
+    sandbox = sandbox.with_filesystem(fs_config);
+
+    Ok(sandbox)
+}
+
+// Backward-compatible wrapper retained temporarily for callers; marked deprecated to encourage migration.
+#[cfg(target_os = "linux")]
+#[deprecated(since = "0.1.0", note = "Use create_sandbox(SandboxArgs) instead")]
 pub fn create_sandbox_from_args(
     allow_network: bool,
     allow_containers: bool,
@@ -671,73 +743,29 @@ pub fn create_sandbox_from_args(
     overlay: &[PathBuf],
     working_dir: Option<&Path>,
 ) -> Result<sandbox_core::Sandbox> {
-    let mut sandbox = sandbox_core::Sandbox::new();
-
-    #[cfg(not(feature = "seccomp"))]
-    let _ = (seccomp, seccomp_debug);
-
-    sandbox = sandbox.with_default_cgroups();
-
-    if allow_network {
-        sandbox = sandbox.with_default_network();
-    }
-
-    #[cfg(feature = "seccomp")]
-    if seccomp {
-        let root_dir = working_dir
-            .map(|dir| dir.to_path_buf())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
-
-        let seccomp_config = sandbox_seccomp::SeccompConfig {
-            debug_mode: seccomp_debug,
-            supervisor_tx: None,
-            root_dir,
-        };
-        sandbox = sandbox.with_seccomp(seccomp_config);
-    }
-
-    if allow_containers || allow_kvm {
-        if allow_containers && allow_kvm {
-            sandbox = sandbox.with_container_and_vm_devices();
-        } else if allow_containers {
-            sandbox = sandbox.with_container_devices();
-        } else if allow_kvm {
-            sandbox = sandbox.with_vm_devices();
-        }
-    }
-
-    let mut fs_config = sandbox_core::FilesystemConfig::default();
-
-    if let Some(dir) = working_dir {
-        fs_config.working_dir = Some(dir.to_string_lossy().to_string());
-    }
-
-    for path in mount_rw {
-        let path_str = path.to_string_lossy().to_string();
-        fs_config.bind_mounts.push((path_str.clone(), path_str.clone()));
-    }
-
-    for path in overlay {
-        fs_config.overlay_paths.push(path.to_string_lossy().to_string());
-    }
-
-    sandbox = sandbox.with_filesystem(fs_config);
-
-    Ok(sandbox)
+    create_sandbox(SandboxArgs {
+        allow_network,
+        allow_containers,
+        allow_kvm,
+        seccomp,
+        seccomp_debug,
+        mount_rw,
+        overlay,
+        working_dir,
+    })
 }
 
 /// Create a macOS sandbox configuration (returns launcher arguments)
 #[cfg(target_os = "macos")]
-pub fn create_sandbox_from_args(
-    allow_network: bool,
-    _allow_containers: bool,
-    _allow_kvm: bool,
-    _seccomp: bool,
-    _seccomp_debug: bool,
-    mount_rw: &[PathBuf],
-    _overlay: &[PathBuf],
-    working_dir: Option<&Path>,
-) -> Result<MacosSandboxConfig> {
+#[derive(Debug, Clone)]
+pub struct MacosSandboxArgs<'a> {
+    pub allow_network: bool,
+    pub mount_rw: &'a [PathBuf],
+    pub working_dir: Option<&'a Path>,
+}
+
+#[cfg(target_os = "macos")]
+pub fn create_macos_sandbox(args: MacosSandboxArgs) -> Result<MacosSandboxConfig> {
     // Build SBPL profile with default deny and explicit allowances
     let mut builder = SbplBuilder::new()
         .allow_read_subpath("/") // Allow reading everything (read-only baseline)
@@ -750,27 +778,51 @@ pub fn create_sandbox_from_args(
         .allow_process_fork(); // Allow spawning child processes inside sandbox
 
     // Add explicit write allowances
-    for path in mount_rw {
+    for path in args.mount_rw {
         if let Some(path_str) = path.to_str() {
             builder = builder.allow_write_subpath(path_str);
         }
     }
 
     // Add working directory write allowance if specified
-    if let Some(wd) = working_dir {
+    if let Some(wd) = args.working_dir {
         if let Some(wd_str) = wd.to_str() {
             builder = builder.allow_write_subpath(wd_str);
         }
     }
 
     // Allow network if requested
-    if allow_network {
+    if args.allow_network {
         builder = builder.allow_network();
     }
 
     Ok(MacosSandboxConfig {
         sbpl_builder: builder,
-        working_dir: working_dir.map(|p| p.to_path_buf()),
+        working_dir: args.working_dir.map(|p| p.to_path_buf()),
+    })
+}
+
+// Backward-compatible wrapper (deprecated) to ease migration.
+#[cfg(target_os = "macos")]
+#[deprecated(
+    since = "0.1.0",
+    note = "Use create_macos_sandbox(MacosSandboxArgs) instead"
+)]
+#[allow(clippy::too_many_arguments)]
+pub fn create_sandbox_from_args(
+    allow_network: bool,
+    _allow_containers: bool,
+    _allow_kvm: bool,
+    _seccomp: bool,
+    _seccomp_debug: bool,
+    mount_rw: &[PathBuf],
+    _overlay: &[PathBuf],
+    working_dir: Option<&Path>,
+) -> Result<MacosSandboxConfig> {
+    create_macos_sandbox(MacosSandboxArgs {
+        allow_network,
+        mount_rw,
+        working_dir,
     })
 }
 
@@ -837,6 +889,7 @@ pub struct MacosSandboxConfig {
 
 /// Create a sandbox instance configured from CLI parameters (non-Linux stub)
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[allow(clippy::too_many_arguments)]
 pub fn create_sandbox_from_args(
     _allow_network: bool,
     _allow_containers: bool,
