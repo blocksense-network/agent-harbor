@@ -91,8 +91,8 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
         let mut panes = HashMap::new();
 
-        // The window_id is session:window, the initial pane is session:window.0
-        let editor_pane = format!("{}", window_id);
+        // The window_id is session:window; initial pane id is derived directly
+        let editor_pane = window_id.to_string();
         let editor_cmd = config.editor_cmd.unwrap_or("bash");
         self.mux.run_command(
             &editor_pane,
