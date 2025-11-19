@@ -3,8 +3,60 @@
 
 use std::env;
 use std::path::Path;
+use tracing::info;
+use tracing_subscriber::{Registry, layer::SubscriberExt};
+
+fn init_tracing() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        // Custom layer that writes only the `message` field verbatim to stdout.
+        struct CargoLayer;
+        impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CargoLayer {
+            fn on_event(
+                &self,
+                event: &tracing::Event<'_>,
+                _ctx: tracing_subscriber::layer::Context<'_, S>,
+            ) {
+                use std::io::Write;
+                struct Visitor<'a> {
+                    msg: &'a mut Option<String>,
+                }
+                impl<'a> tracing::field::Visit for Visitor<'a> {
+                    fn record_debug(
+                        &mut self,
+                        field: &tracing::field::Field,
+                        value: &dyn std::fmt::Debug,
+                    ) {
+                        if field.name() == "message" {
+                            // Strip surrounding quotes from Debug fmt of &str
+                            let raw = format!("{value:?}");
+                            let trimmed = raw
+                                .strip_prefix('"')
+                                .and_then(|s| s.strip_suffix('"'))
+                                .unwrap_or(&raw)
+                                .to_string();
+                            *self.msg = Some(trimmed);
+                        }
+                    }
+                }
+                let mut msg: Option<String> = None;
+                let mut visitor = Visitor { msg: &mut msg };
+                event.record(&mut visitor);
+                if let Some(line) = msg {
+                    if line.starts_with("cargo:") {
+                        let _ = std::io::stdout().write_all(line.as_bytes());
+                        let _ = std::io::stdout().write_all(b"\n");
+                    }
+                }
+            }
+        }
+        let subscriber = Registry::default().with(CargoLayer);
+        let _ = tracing::subscriber::set_global_default(subscriber);
+    });
+}
 
 fn main() {
+    init_tracing();
     // Only link against sys crate when feature is enabled
     if std::env::var("CARGO_FEATURE_LINK_SYS").is_ok() {
         // Build and link the sys crate as a static library
@@ -14,14 +66,14 @@ fn main() {
             .join("agentfs-fskit-sys");
 
         // Tell cargo to link against the sys crate
-        println!("cargo:rustc-link-lib=static=agentfs_fskit_sys");
-        println!(
-            "cargo:rustc-link-search=native={}",
-            sys_path
-                .join("target")
-                .join(env::var("PROFILE").unwrap_or_else(|_| "debug".to_string()))
-                .display()
-        );
+        // Emit cargo directives using tracing; ensure they appear exactly as required.
+        info!("cargo:rustc-link-lib=static=agentfs_fskit_sys");
+        let search_path = sys_path
+            .join("target")
+            .join(env::var("PROFILE").unwrap_or_else(|_| "debug".to_string()))
+            .display()
+            .to_string();
+        info!("cargo:rustc-link-search=native={search_path}");
     }
 
     // Generate Swift header for the bridge
@@ -62,5 +114,5 @@ size_t agentfs_bridge_get_error_message(char* buffer, size_t buffer_size);
 
     std::fs::write(&header_path, header_content).expect("Failed to write header file");
 
-    println!("cargo:rerun-if-changed=build.rs");
+    info!("cargo:rerun-if-changed=build.rs");
 }
