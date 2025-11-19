@@ -23,8 +23,9 @@ fn main() {
         }
         "shell_and_interpreter" => test_shell_and_interpreter(test_args),
         _ => {
-            eprintln!("Unknown command: {}", command);
-            eprintln!(
+            let _ = writeln!(io::stderr(), "Unknown command: {}", command);
+            let _ = writeln!(
+                io::stderr(),
                 "Available commands: print_pid, write_stdout, write_stderr, dummy, shell_and_interpreter"
             );
             std::process::exit(1);
@@ -61,7 +62,10 @@ fn test_write_stderr(args: &[String]) {
 fn test_shell_and_interpreter(_args: &[String]) {
     use std::process::Command;
 
-    println!("Testing shell and interpreter subprocess execution");
+    let _ = writeln!(
+        io::stdout(),
+        "Testing shell and interpreter subprocess execution"
+    );
 
     // Test 1: Execute a shell script that launches subprocesses
     // This tests that the shim can capture processes launched by bash/sh
@@ -91,13 +95,17 @@ fn test_shell_and_interpreter(_args: &[String]) {
         .status()
     {
         Ok(status) if status.success() => {
-            println!("Shell subprocess execution successful");
+            let _ = writeln!(io::stdout(), "Shell subprocess execution successful");
         }
         Ok(status) => {
-            eprintln!("Shell subprocess execution failed with status: {}", status);
+            let _ = writeln!(
+                io::stderr(),
+                "Shell subprocess execution failed with status: {}",
+                status
+            );
         }
         Err(e) => {
-            eprintln!("Failed to execute shell subprocess: {}", e);
+            let _ = writeln!(io::stderr(), "Failed to execute shell subprocess: {}", e);
         }
     }
 
@@ -128,13 +136,17 @@ os.system('echo subprocess launched by python os.system > /dev/null 2>&1')
         .status()
     {
         Ok(status) if status.success() => {
-            println!("Python subprocess execution successful");
+            let _ = writeln!(io::stdout(), "Python subprocess execution successful");
         }
         Ok(status) => {
-            eprintln!("Python subprocess execution failed with status: {}", status);
+            let _ = writeln!(
+                io::stderr(),
+                "Python subprocess execution failed with status: {}",
+                status
+            );
         }
         Err(e) => {
-            eprintln!("Failed to execute python subprocess: {}", e);
+            let _ = writeln!(io::stderr(), "Failed to execute python subprocess: {}", e);
         }
     }
 
@@ -155,18 +167,26 @@ os.system('echo subprocess launched by python os.system > /dev/null 2>&1')
         .status()
     {
         Ok(status) if status.success() => {
-            println!("Piped shell subprocess execution successful");
+            let _ = writeln!(io::stdout(), "Piped shell subprocess execution successful");
         }
         Ok(status) => {
-            eprintln!(
+            let _ = writeln!(
+                io::stderr(),
                 "Piped shell subprocess execution failed with status: {}",
                 status
             );
         }
         Err(e) => {
-            eprintln!("Failed to execute piped shell subprocess: {}", e);
+            let _ = writeln!(
+                io::stderr(),
+                "Failed to execute piped shell subprocess: {}",
+                e
+            );
         }
     }
 
-    println!("Shell and interpreter subprocess test complete");
+    let _ = writeln!(
+        io::stdout(),
+        "Shell and interpreter subprocess test complete"
+    );
 }
