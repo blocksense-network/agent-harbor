@@ -285,31 +285,30 @@ _(To be filled after implementation)_
 
 ## M4. Zellij (Linux, macOS, BSD)
 
-**Status:** Partially complete — implementation exists but limited pane splitting support, spec is good.
+**Status:** Mostly complete — spec and implementation updated for KDL layouts, `zellij run`‑based pane creation, and session discovery; tests and cleanup logic still missing.
 
 **Context:**
 
-- Zellij uses KDL layout files for defining complex layouts, not direct CLI commands for splitting.
-- The current implementation (`zellij.rs`) has limitations (noted in integration tests as "limited pane splitting support").
-- The spec file (`Zellij.md`) documents the layout file approach but implementation doesn't fully leverage this.
-- Integration tests are currently skipped for Zellij.
+- Zellij uses KDL layout files for defining complex layouts and a CLI oriented around sessions and actions (`zellij run`, `zellij action write-chars`, `list-sessions`, `attach`) rather than low-level split commands.
+- The current implementation (`zellij.rs`) now leverages KDL layouts when a `cwd` is provided, uses `zellij run` with `--direction` / `--cwd` for splits and per-pane commands, and maps `ZELLIJ_SESSION_NAME` / `ZELLIJ_PANE_ID` for session and pane discovery.
+- Zellij's CLI still lacks stable pane identifiers and direct pane focusing/listing; these operations intentionally return `MuxError::NotAvailable("zellij")` in the implementation.
+- Integration tests are currently skipped for Zellij; only lightweight unit tests cover helpers and basic behavior.
 
 **Deliverables:**
 
-- [ ] Review and update `specs/Public/Terminal-Multiplexers/Zellij.md`:
-  - Expand documentation on KDL layout file generation
-  - Document workarounds for missing direct CLI commands
-  - Add examples of Agent Harbor task layouts in KDL format
-  - Document known limitations (e.g., no stable send-keys API)
-  - Add troubleshooting section
-- [ ] Enhance `crates/ah-mux/src/zellij.rs`:
-  - Implement dynamic KDL layout generation for task layouts
-  - Use `zellij run` for command execution where direct splits aren't available
-  - Implement session management (`zellij list-sessions`, `attach`, `kill-session`)
-  - Add proper error handling for Zellij-specific failure modes
-  - Implement cleanup logic for test sessions
+- [x] Review and update `specs/Public/Terminal-Multiplexers/Zellij.md`:
+  - Expanded documentation on KDL layout file generation and task layouts.
+  - Documented workarounds for missing direct split commands using `zellij run`, `--direction`, and layout-based splits.
+  - Added examples of Agent Harbor task layouts in KDL format plus an end-to-end `ah tui --follow <TASK_ID>` flow.
+  - Documented known limitations (no stable pane IDs, limited programmatic focus) and added troubleshooting / compatibility notes.
+- [x] Enhance `crates/ah-mux/src/zellij.rs` to align with the spec:
+  - Implement minimal KDL layout generation for new sessions when `cwd` is provided, falling back to the user's default layout otherwise.
+  - Use `zellij run` (with `--direction` and `--cwd`) for pane creation and per-pane command execution, including support for full shell command lines via `sh -lc`.
+  - Implement session discovery/attachment via `zellij list-sessions` and `zellij attach`, with environment-based discovery for the current pane/window via `ZELLIJ_PANE_ID` / `ZELLIJ_SESSION_NAME`.
+  - Improve error handling by mapping missing binaries to `MuxError::NotAvailable("zellij")` and process failures to `MuxError::Io` / `MuxError::CommandFailed`.
+- [ ] Add explicit session lifecycle helpers in `crates/ah-mux/src/zellij.rs` for cleanup (`kill-session` / `delete-session`) suitable for automated tests and task teardown.
 - [ ] Add automated tests:
-  - Unit tests for KDL layout generation
+  - Unit tests for KDL layout generation (beyond string escaping) and session / pane helpers.
   - Integration test creating sessions with generated layouts
   - Test for `zellij run` command execution
   - Test for session attachment and focusing
@@ -338,10 +337,10 @@ _(To be filled after implementation)_
 
 **Outstanding Tasks:**
 
-- KDL layout generation
-- Pane splitting workarounds
-- Enable integration tests
-- Document limitations
+- Implement explicit Zellij session cleanup helpers and wire them into automated tests.
+- Enable and stabilize Zellij integration tests (including layout-based sessions and `zellij run` flows).
+- Extend unit tests to cover KDL layout generation and session parsing.
+- Add Zellij to the TUI scenario test suite with appropriate expectations.
 
 ---
 
