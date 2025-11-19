@@ -14,18 +14,13 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 pub use tracing::Level;
 
 /// Output format for log messages
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum LogFormat {
     /// Human-readable plaintext format
+    #[default]
     Plaintext,
     /// Structured JSON format
     Json,
-}
-
-impl Default for LogFormat {
-    fn default() -> Self {
-        LogFormat::Plaintext
-    }
 }
 
 /// Get the standard log file path for the current OS
