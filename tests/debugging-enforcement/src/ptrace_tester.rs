@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
             info!("Successfully attached to process {}", target_pid);
 
             // Try to read some data to verify we can actually use ptrace
-            match ptrace::read(target_pid, 0 as *mut _) {
+            match ptrace::read(target_pid, std::ptr::null_mut()) {
                 Ok(_) => info!("Successfully read from target process"),
                 Err(e) => {
                     error!("Failed to read from target process: {}", e);
