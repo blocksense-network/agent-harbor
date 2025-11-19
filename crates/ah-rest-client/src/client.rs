@@ -375,7 +375,7 @@ impl RestClient {
             match serde_json::from_str::<ProblemDetails>(&text) {
                 Ok(problem) => Err(RestClientError::ServerError {
                     status,
-                    details: problem,
+                    details: Box::new(problem),
                 }),
                 Err(_) => Err(RestClientError::UnexpectedResponse(text)),
             }
