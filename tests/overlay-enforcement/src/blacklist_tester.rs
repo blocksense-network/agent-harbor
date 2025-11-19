@@ -6,9 +6,11 @@
 
 use std::fs;
 use std::process;
+use tracing::{error, info, warn};
 
 fn main() {
-    println!("🧪 Blacklist tester starting...");
+    tracing_subscriber::fmt::init();
+    info!("Blacklist tester starting");
 
     // Try to access a blacklisted path (this should fail in static mode)
     let test_paths = vec![
@@ -18,27 +20,25 @@ fn main() {
     ];
 
     for path in test_paths {
-        println!("Attempting to access blacklisted path: {}", path);
+        info!(path, "Attempting to access blacklisted path");
         match fs::File::create(path) {
             Ok(_) => {
-                println!(
-                    "❌ ERROR: Successfully created file at blacklisted path: {}",
-                    path
+                error!(
+                    path,
+                    "Successfully created file at blacklisted path - enforcement failed"
                 );
-                println!("   This indicates blacklist enforcement failed!");
                 process::exit(1);
             }
             Err(e) => {
-                println!("✅ Expected failure accessing {}: {}", path, e);
+                info!(path, error = %e, "Expected failure accessing path");
                 // Check if it's the expected permission error
                 if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    println!("   Permission denied - blacklist working correctly");
+                    info!(path, "Permission denied - blacklist working correctly");
                 } else {
-                    println!("   Different error: {:?}", e.kind());
+                    warn!(path, kind = ?e.kind(), "Different error kind when accessing path");
                 }
             }
         }
     }
-
-    println!("✅ Blacklist tester completed successfully - all accesses properly blocked");
+    info!("Blacklist tester completed successfully - all accesses properly blocked");
 }
