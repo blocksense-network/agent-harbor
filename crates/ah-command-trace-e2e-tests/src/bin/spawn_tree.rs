@@ -125,7 +125,7 @@ fn test_direct_libc_calls() {
                 arg2.as_ptr(),
                 std::ptr::null::<libc::c_char>(),
             ];
-            let env = [std::ptr::null::<libc::c_char>()];
+            let _env = [std::ptr::null::<libc::c_char>()];
 
             unsafe {
                 libc::execvp(path.as_ptr(), args.as_ptr());

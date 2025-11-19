@@ -15,31 +15,76 @@ pub mod platform;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub use platform::*;
 
+use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::process::Command;
+use std::sync::Once;
 
-/// Find the path to the built shim library
-pub fn find_shim_path() -> PathBuf {
-    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
+/// Ensure the shim cdylib has been built before we try to load it.
+fn ensure_shim_built() {
+    static BUILD_ONCE: Once = Once::new();
+    BUILD_ONCE.call_once(|| {
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+        let status = Command::new(cargo)
+            .args(["build", "-p", "ah-command-trace-shim"])
+            .status()
+            .expect("failed to invoke cargo build for ah-command-trace-shim");
+        if !status.success() {
+            panic!("failed to build ah-command-trace-shim");
+        }
+    });
+}
+
+fn locate_shim_artifact(profile: &str) -> PathBuf {
+    ensure_shim_built();
+
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join("target")
-        .join(&profile);
+        .join(profile)
+        .join("deps");
 
     #[cfg(target_os = "macos")]
-    let shim_name = "libah_command_trace_shim.dylib";
-
+    const DYLIB_EXT: &str = "dylib";
     #[cfg(target_os = "linux")]
-    let shim_name = "libah_command_trace_shim.so";
+    const DYLIB_EXT: &str = "so";
 
-    let shim_path = root.join(shim_name);
-    assert!(
-        shim_path.exists(),
-        "Shim library not found at {}. Make sure to build the ah-command-trace-shim crate.",
-        shim_path.display()
+    #[cfg(target_os = "macos")]
+    const SHIM_PREFIX: &str = "libah_command_trace_shim";
+    #[cfg(target_os = "linux")]
+    const SHIM_PREFIX: &str = "libah_command_trace_shim";
+
+    let read_dir = std::fs::read_dir(&root)
+        .unwrap_or_else(|e| panic!("failed to read shim directory {:?}: {e}", root));
+
+    let mut candidates: Vec<PathBuf> = read_dir
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(OsStr::to_str)
+                .map(|name| name.starts_with(SHIM_PREFIX) && name.ends_with(DYLIB_EXT))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    candidates.sort();
+
+    if let Some(path) = candidates.into_iter().find(|p| p.is_file()) {
+        return path;
+    }
+
+    panic!(
+        "unable to locate ah-command-trace shim artifact in {:?}",
+        root
     );
+}
 
-    shim_path
+/// Find the path to the built shim library
+pub fn find_shim_path() -> PathBuf {
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
+    locate_shim_artifact(&profile)
 }
 
 /// Execute a test scenario using the helper binary with shim injection

@@ -1,7 +1,9 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use std::fs::OpenOptions;
 use std::io::{self, Write};
+use std::path::PathBuf;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -61,7 +63,17 @@ fn test_write_stderr(args: &[String]) {
 fn test_shell_and_interpreter(_args: &[String]) {
     use std::process::Command;
 
+    fn log_step(step: &str) {
+        if let Some(path) = std::env::var_os("AH_SHELL_TEST_LOG") {
+            let path_buf = PathBuf::from(path);
+            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path_buf) {
+                let _ = writeln!(file, "[pid {}] {}", std::process::id(), step);
+            }
+        }
+    }
+
     println!("Testing shell and interpreter subprocess execution");
+    log_step("start shell_and_interpreter");
 
     // Test 1: Execute a shell script that launches subprocesses
     // This tests that the shim can capture processes launched by bash/sh
@@ -100,6 +112,7 @@ fn test_shell_and_interpreter(_args: &[String]) {
             eprintln!("Failed to execute shell subprocess: {}", e);
         }
     }
+    log_step("after first shell script");
 
     // Test 2: Execute a Python script that launches subprocesses
     // This tests that the shim can capture processes launched by python
@@ -137,6 +150,7 @@ os.system('echo subprocess launched by python os.system > /dev/null 2>&1')
             eprintln!("Failed to execute python subprocess: {}", e);
         }
     }
+    log_step("after python script");
 
     // Test 3: Execute a shell script that launches another direct subprocess
     // Note: Pipeline commands may not be captured at M1 as shells optimize them
@@ -169,4 +183,5 @@ os.system('echo subprocess launched by python os.system > /dev/null 2>&1')
     }
 
     println!("Shell and interpreter subprocess test complete");
+    log_step("completed shell_and_interpreter");
 }

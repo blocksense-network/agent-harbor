@@ -252,6 +252,10 @@ pub mod test_utils {
                             // CommandStart is a notification, no response needed
                             None
                         }
+                        Request::CommandChunk(_) => {
+                            // CommandChunk is a notification, no response needed
+                            None
+                        }
                     }
                 }
             };

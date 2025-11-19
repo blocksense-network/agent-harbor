@@ -248,6 +248,7 @@
     "doctest",
     "doctested",
     "doctests",
+    "dogpile",
     "dogtail",
     "dpkg",
     "drah",

@@ -33,12 +33,20 @@ pub mod posix;
 /// Core types and logic shared across platforms
 pub mod core {
     use once_cell::sync::OnceCell;
+    use std::collections::HashMap;
     use std::sync::Mutex;
 
     /// Environment variable names for configuration
     pub const ENV_ENABLED: &str = "AH_CMDTRACE_ENABLED";
     pub const ENV_SOCKET: &str = "AH_CMDTRACE_SOCKET";
     pub const ENV_LOG: &str = "AH_CMDTRACE_LOG";
+
+    /// Stream type for captured output
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum StreamType {
+        Stdout = 0,
+        Stderr = 1,
+    }
 
     /// Global state for the shim
     pub static SHIM_STATE: OnceCell<Mutex<ShimState>> = OnceCell::new();
@@ -52,6 +60,7 @@ pub mod core {
         Ready {
             socket_path: String,
             log_enabled: bool,
+            fd_table: HashMap<i32, StreamType>,
         },
         /// Shim encountered an error during initialization
         Error(String),
@@ -112,9 +121,14 @@ pub mod core {
         eprintln!("[ah-command-trace-shim] Log enabled: {}", log_enabled);
         eprintln!("[ah-command-trace-shim] Returning Ready state");
 
+        let mut fd_table = HashMap::new();
+        fd_table.insert(1, StreamType::Stdout);
+        fd_table.insert(2, StreamType::Stderr);
+
         ShimState::Ready {
             socket_path,
             log_enabled,
+            fd_table,
         }
     }
 
