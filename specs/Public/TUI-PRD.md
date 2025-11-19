@@ -44,7 +44,7 @@ The dashboard screen has the following elements:
   - Displays image logo when terminal supports modern image protocols (e.g., Kitty, iTerm2)
   - Falls back to ASCII art logo for terminals without image support
   - **Settings Button**: Located in upper-right corner, accessible via Up arrow from the top draft card
-  - Settings dialog provides configuration options (number of activity lines in active cards, theme selection, etc.)
+  - Settings dialog provides configuration options
 
 - **Tasks**: Chronological list of recent tasks (completed/merged, active, draft) displayed as bordered cards, with draft tasks always visible at the top, sorted newest first.
   - Uses 1 character of padding between screen edges and cards for clean visual spacing.
@@ -209,6 +209,146 @@ When a user selects multiple agents with instance counts in the draft task card,
 - **Remote Mode**: Multiple sessions are created via the REST API, with each session corresponding to one agent instance
 - **Session ID Generation**: Uses global instance indexing to ensure unique IDs across all launched agent instances
 - **Persistence**: Draft tasks store the complete `SelectedModel` vector with counts, allowing restoration of multi-agent selections across sessions
+
+### Settings Dialog
+
+The settings dialog provides comprehensive configuration management through a tabbed interface, allowing users to modify all Agent Harbor preferences. Changes are written to the user-home configuration file and take effect immediately.
+
+#### Settings Dialog Activation
+
+- **Access**: Click settings button in header (upper-right corner) or press Up arrow from top draft card
+- **Modal Layout**: Full-screen overlay with tabbed interface
+- **Footer Scope Selection**: Bottom footer allows choosing configuration scope (user, project, global/system)
+- **Persistence**: Changes written to the selected scope's configuration file
+- **Real-time Updates**: Changes take effect immediately in the current session
+
+#### Tabbed Interface Structure
+
+The settings dialog uses tabs to organize configuration options:
+
+##### 1. General Options Tab
+
+**Purpose**: Customize terminal user interface appearance and behavior
+
+- **UI Mode**: Default interface (tui/webui)
+- **Logging**: Log level, output format
+- **Remote Server Aliases**: Default server configuration
+- **TUI Appearance**:
+  - Theme selection (Catppuccin variants, Nord, Dracula, etc.)
+  - Font style (unicode/nerdfont/ascii)
+  - High contrast mode toggle
+  - Activity lines count per card
+  - Card height preferences
+  - Selection dialog style (modal/inline)
+  - Word wrap settings
+  - Native vs normalized output mode
+- **TUI Settings**:
+  - Autocomplete behavior
+  - Scroll behavior
+  - Mouse interaction preferences
+  - Default multiplexer selection (tmux/zellij/screen/auto)
+
+##### 2. Keyboard Shortcuts Tab
+
+**Purpose**: Customize keyboard bindings for TUI interactions
+
+- **Key Binding Categories**: Organized by functional groups with human-friendly display names:
+  - **Cursor Movement**: Arrow keys, Home/End, word navigation ("Move to Beginning of Line", "Move Forward One Character", etc.)
+  - **Editing & Deletion**: Backspace, Delete, kill operations ("Delete Character Forward", "Delete Word Backward", etc.)
+  - **Text Selection**: Mark, region, word/line selection ("Select All", "Select Word Under Cursor", etc.)
+  - **Application Actions**: Task management, navigation ("Create New Draft Task", "Show Launch Options", etc.)
+  - **Search & Replace**: Find operations ("Find Next", "Incremental Search Forward", etc.)
+  - **Code Editing**: Comment, duplicate, formatting ("Toggle Comment", "Indent Region", etc.)
+  - **Formatting**: Text styling ("Bold", "Italic", "Underline")
+  - **Mark & Region**: Selection management ("Set Mark", "Transpose Characters", etc.)
+
+- **Key Binding Input Method**: Settings grab keyboard input directly from the user
+  - **Replace Current Key**: Press ENTER on a keyboard operation row to replace the current binding
+  - **Add Additional Key**: Press SHIFT+ENTER to add an extra shortcut without removing existing ones
+  - **Mouse Alternatives**: Left click to replace, SHIFT+left click to add additional shortcut
+  - **Visual Feedback**: Clear indication when key grabbing is active ("Press key combination...")
+
+- **Key Binding Display**: Shows current bindings with human-readable operation names
+- **Validation**: Prevent conflicting bindings, warn about overrides
+- **Reset Options**: Restore defaults, restore factory defaults
+- **Key Binding Examples**:
+  ```
+  Move to Beginning of Line: Ctrl+A, Home
+  Move to End of Line: Ctrl+E, End
+  Delete Character Forward: Delete, Ctrl+D
+  Activate Current Item: Enter
+  Create New Draft Task: Ctrl+N
+  ```
+
+##### 2. Agent Settings Tab
+
+**Purpose**: Configure agent execution environment and MCP tools
+
+- **Sandbox Environment** (from `ah agent start` options):
+  - **Sandbox Profile**: Default isolation level (local/devcontainer/vm/disabled)
+  - **Working Copy Mode**: Filesystem isolation strategy (auto/cow-overlay/worktree/in-place)
+  - **FS Snapshots Provider**: Snapshot backend selection (auto/zfs/btrfs/agentfs/git/disable)
+  - **Network Permissions**: Allow egress, container nesting, VM access
+  - **Resource Limits**: Timeout, memory/CPU constraints
+
+- **Execution Options**:
+  - **Output Format**: Text vs normalized output modes
+  - **Recording**: Persist session recordings toggle
+  - **LLM Provider Configuration**: Enabled providers and API keys
+  - **Provider Mappings**: Mapping editor for adding tuples (in agent software X, map model X to provider Y's model Z)
+
+- **MCP Tools List**: Available Model Context Protocol tools for agents
+  - **Filesystem Access**: File reading, writing, directory operations
+  - **Git Operations**: Repository management, commit history
+  - **Terminal Commands**: Safe command execution with restrictions
+  - **Web Access**: HTTP requests, API calls (when permitted)
+  - **Database Access**: SQL query execution for supported databases
+  - **Tool Enable/Disable**: Toggle individual MCP tools on/off
+
+##### 3. Active Agents Tab
+
+**Purpose**: Select active agent/model pairs available in task creation
+
+- **Agent/Model Selection**: Multi-select interface for available agent types and models
+  - **Core Agents**: Claude, Codex, OpenHands, Cursor, Windsurf, Zed, Copilot
+  - **Experimental Agents**: Checkbox toggles for experimental features
+    - "Enable Gemini (experimental)" - Google Gemini agent
+    - "Enable Goose (experimental)" - Block's Goose agent
+    - "Enable Jules (experimental)" - Google Jules agent
+    - Other experimental agents as they become available
+
+- **Model Availability**: For each agent type, select available models
+  - **Claude**: sonnet, haiku, opus (with version selection)
+  - **Codex**: gpt-5.1, gpt-5.1-codex, etc
+
+#### Settings Dialog Footer - Configuration Scope Selection
+
+- **Scope Options**: Dropdown or button row at bottom of dialog for scope selection
+  - **User**: `~/.config/agent-harbor/config.toml` (personal preferences)
+  - **Project**: `<repo>/.agents/config.toml` (project-specific settings)
+  - **Repo-User**: `<repo>/.agents/config.user.toml` (project user overrides, VCS-ignored)
+  - **Global/System**: `/etc/agent-harbor/config.toml` (admin-enforced, read-only for users)
+- **Scope Inheritance**: Changes in higher scopes override lower scopes
+- **Visual Indicators**: Current scope highlighted, read-only scopes clearly marked
+- **Scope Warnings**: Clear warnings when modifying shared configurations
+
+#### Settings Dialog Navigation
+
+- **Tab Navigation**: Left/Right arrows or mouse clicks to switch tabs
+- **Within Tab**: Up/Down arrows navigate options, Left/Right modify values
+- **Modal Controls**: ESC to cancel changes, Enter to save, Tab to cycle focus
+- **Search**: Global search across all settings (Ctrl+F)
+- **Reset**: Per-setting or tab-wide reset to defaults
+- **Help**: Context-sensitive help for each setting
+
+#### Settings Persistence
+
+- **File Location**: Follows standard configuration hierarchy (user scope)
+- **Atomic Writes**: Changes written atomically to prevent corruption
+- **Backup**: Automatic backup of previous configuration before changes
+- **Validation**: Schema validation before writing to disk
+- **Error Handling**: Clear error messages for invalid configurations
+- **Reload**: Automatic reload of configuration without restart
 
 ### Configuration
 
@@ -442,20 +582,111 @@ Right click is left for the native terminal UI to handle in order to preserve it
 - **Backspace**: Delete characters
 - **Auto-complete menu**: When certain characters like / or @ are entered in the text area, show auto-completion menu with dynamically populated choices (@ for citing files, / for selecting workflows, etc)
 
-#### Advanced Launch Options Menu
+#### Advanced Task Launch Options Modal
 
-The advanced launch options menu provides alternative ways to launch tasks beyond the standard "Go" button.
+The advanced task launch options modal provides comprehensive control over task execution parameters, exposing the full range of options available in the `ah task` and `ah agent start` commands. These options affect only the currently launched task and are not persisted globally.
 
-- **Menu Activation**: Click gear button (⚙️) or press Ctrl+Enter when in draft textarea
-- **Menu Options**:
-  - **Launch in background** - Type `b` when menu is visible (launches task without creating multiplexer window)
-  - **Launch in split view** - Type `s` when menu is visible (auto-detects vertical/horizontal split based on longer edge)
-  - **Launch in horizontal split** - Type `h` when menu is visible (creates horizontal split pane)
-  - **Launch in vertical split** - Type `v` when menu is visible (creates vertical split pane)
-  - **Focus variants**: Capital letters `B`, `S`, `H`, `V` launch and automatically focus the new task window/pane
-- **Navigation**: Arrow keys to navigate menu items, Enter to select, or type the displayed shortcut letter, or mouse click to choose
-- **Menu shortcuts**: Single letters (b/s/h/v) or capitals (B/S/H/V) can be typed directly to select when menu is visible (these are not configurable keyboard operations)
-- **Menu dismissal**: ESC to close without launching, or selecting an option to launch and close
+- **Modal Activation**: Click gear button (⚙️) or press Ctrl+Enter when in draft textarea
+- **Modal Layout**: Two-column layout with options on the left and launch shortcuts/menu on the right
+
+##### Left Column: Task Options
+
+The left column contains grouped configuration options organized by category and is **scrollable** to accommodate all available options:
+
+###### Sandbox & Environment
+
+- **Sandbox Profile**: `local` (default), `devcontainer`, `vm`, `disabled` - Controls isolation level
+- **Working Copy Mode**: `auto` (default), `cow-overlay`, `worktree`, `in-place` - Filesystem isolation strategy
+- **FS Snapshots**: `auto` (default), `zfs`, `btrfs`, `agentfs`, `git`, `disable` - Snapshot provider selection
+- **Devcontainer Path/Tag**: Path to devcontainer configuration or image tag
+- **Allow Egress**: `yes`/`no` - Permit network access from sandbox (default: `no`)
+- **Allow Containers**: `yes`/`no` - Permit nested container execution (default: `no`)
+- **Allow VMs**: `yes`/`no` - Permit nested virtualization (default: `no`)
+- **Allow Web Search**: Enable web search capabilities for supported agents
+
+###### Agent Configuration
+
+- **Interactive Mode**: `yes`/`no` - Launch agent in interactive mode (default: `no`)
+- **Output Format**: `text`, `text-normalized` - Control output formatting
+- **Record Output**: `yes`/`no` - Enable session recording (default: `yes`)
+- **Timeout**: Duration limit for agent execution
+- **LLM Provider**: A pre-configured LLM provider to use for this session (e.g. OpenRouter)
+- **Environment Variables**: Key-value pairs for agent environment
+
+###### Task Management
+
+- **Delivery Method**: `pr`, `branch`, `patch` - How results should be delivered
+- **Target Branch**: Branch where results should be delivered
+- **Create Task Files**: `yes`/`no` - Control local task file creation (default: `yes`)
+- **Create Metadata Commits**: `yes`/`no` - Control metadata-only commits (default: `yes`)
+- **Notifications**: `yes`/`no` - Enable OS notifications on completion (default: `yes`)
+- **Labels**: Key-value labels for task organization
+- **Push to Remote**: `true`/`false` - Automatically push created branches (default: `false`) (PLANNED - DON'T IMPLEMENT YET)
+- **Fleet**: Named fleet configuration for multi-OS execution
+
+###### Browser Automation (Cloud Agents) (PLANNED - DON'T IMPLEMENT YET)
+
+- **Browser Automation**: `true`/`false` - Enable/disable browser automation (default: `true`)
+- **Browser Profile**: Named browser profile for automation
+- **ChatGPT Username**: Username for ChatGPT profile discovery
+- **Codex Workspace**: Cloud workspace identifier for Codex
+- **Workspace**: Generic workspace identifier for cloud agents
+
+**Option Navigation**: Left/Right arrow keys move between left and right columns. Up/Down arrows navigate within each column. Tab cycles through all controls in left-to-right, top-to-bottom order.
+
+##### Right Column: Launch Shortcuts & Menu
+
+The right column provides launch action selection with keyboard shortcuts:
+
+- **Go** (Enter) - Launch with current configuration
+- **Background** (b/B) - Launch task without creating multiplexer window
+- **Split View** (s/S) - Auto-detect vertical/horizontal split based on terminal dimensions
+- **Horizontal Split** (h/H) - Create horizontal split pane
+- **Vertical Split** (v/V) - Create vertical split pane
+- **Focus variants**: Capital letters (B, S, H, V) launch and automatically focus the new window/pane
+
+**Launch Menu Navigation**: Arrow keys navigate between launch options. Enter selects the highlighted option. Single letters (b/s/h/v) or capitals (B/S/H/V) can be typed directly to select when modal is visible.
+
+- **Modal dismissal**: ESC closes without launching
+- **Default focus**: Left column options when modal opens
+- **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed
+
+##### Configuration Policies as Top-Level Options
+
+To determine its defaults, the advanced launch options modal respects the following configuration policies that can be set as top-level configuration options:
+
+```toml
+# Sandbox defaults (CLI.md section reference)
+sandbox = "local"
+working-copy = "auto"
+fs-snapshots = "auto"
+allow-egress = false
+allow-containers = false
+allow-vms = false
+
+# Agent defaults
+non-interactive = false
+record-output = true
+notifications = true
+browser-automation = true
+
+# Task management defaults
+create-task-files = true
+create-metadata-commits = true
+delivery = "pr"
+push-to-remote = false
+
+# Browser automation defaults
+browser-profile = "default"
+chatgpt-username = ""
+codex-workspace = ""
+workspace = ""
+
+# Fleet defaults
+fleet = "default"
+```
+
+These policies serve as defaults in the advanced launch options modal but can be overridden per-task. They are stored in the standard Agent Harbor configuration hierarchy (user/system/repo/repo-user scopes).
 
 #### Modal Navigation (Telescope-style)
 
@@ -463,6 +694,18 @@ The advanced launch options menu provides alternative ways to launch tasks beyon
 - **Enter**: Select current item
 - **Esc**: Close modal
 - **Left/Right** or **Shift+= / -**: Adjust model instance counts in model selection
+
+#### Advanced Launch Options Modal Navigation
+
+The advanced launch options modal uses a two-column navigation system:
+
+- **Left/Right Arrows**: Move between left column (options) and right column (launch menu)
+- **Up/Down Arrows**: Navigate within the current column
+- **Tab**: Cycle through all controls in left-to-right, top-to-bottom order
+- **Enter**: Activate selected option or launch with selected method
+- **Esc**: Close modal without launching
+- **Shortcut Keys**: Single letters (b/s/h/v) or capitals (B/S/H/V) directly select launch options
+- **Focus Behavior**: Modal opens with focus in left column; maintains focus position when switching columns
 
 ### Real-Time Behavior
 
