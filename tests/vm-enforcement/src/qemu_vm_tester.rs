@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
     // We use a minimal test that should fail quickly if KVM is not accessible
     // but succeed if KVM is available (even though it will fail for other reasons)
     let output = Command::new("qemu-system-x86_64")
-        .args(&[
+        .args([
             "-enable-kvm", // Use KVM acceleration
             "-version",    // Just print version and exit - tests KVM access without full VM startup
         ])
@@ -48,11 +48,11 @@ fn main() -> anyhow::Result<()> {
                 // Check if QEMU version info was printed (indicates QEMU started successfully)
                 if stdout.contains("QEMU") && stdout.contains("version") {
                     info!("✓ QEMU started successfully with KVM enabled");
-                    println!("SUCCESS: QEMU can access KVM and start properly");
+                    info!("QEMU can access KVM and start properly");
                     std::process::exit(0);
                 } else {
                     error!("✗ QEMU started but didn't print version info");
-                    println!("FAIL: QEMU started but unexpected output");
+                    error!("QEMU started but unexpected output");
                     std::process::exit(1);
                 }
             } else {
@@ -66,18 +66,18 @@ fn main() -> anyhow::Result<()> {
                     info!(
                         "✓ QEMU correctly reports KVM unavailability (expected in some test environments)"
                     );
-                    println!("SUCCESS: KVM access properly managed (unavailable as expected)");
+                    info!("KVM access properly managed (unavailable as expected)");
                     std::process::exit(0);
                 } else {
                     error!("✗ QEMU command failed: stderr: {}", stderr);
-                    println!("FAIL: QEMU failed unexpectedly: {}", stderr);
+                    error!("QEMU failed unexpectedly: {}", stderr);
                     std::process::exit(1);
                 }
             }
         }
         Err(e) => {
             error!("✗ Failed to execute QEMU command: {}", e);
-            println!("FAIL: Could not execute QEMU: {}", e);
+            error!("Could not execute QEMU: {}", e);
             std::process::exit(1);
         }
     }

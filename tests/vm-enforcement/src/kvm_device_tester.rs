@@ -20,8 +20,8 @@ fn main() -> anyhow::Result<()> {
     let kvm_device = "/dev/kvm";
 
     if !Path::new(kvm_device).exists() {
-        info!("✓ KVM device does not exist - KVM not available in this environment");
-        println!("SUCCESS: KVM device not present (expected in some environments)");
+        info!("kvm device not present - kvm not available in this environment");
+        info!("test success: kvm device not present (expected)");
         std::process::exit(0);
     }
 
@@ -36,21 +36,21 @@ fn main() -> anyhow::Result<()> {
             // Check if the device is accessible (readable/writable by user)
             if mode & 0o200 != 0 {
                 // writable by owner/user
-                info!("✓ KVM device is accessible for VM operations");
-                println!("SUCCESS: KVM device accessible");
+                info!("kvm device accessible for vm operations");
+                info!("test success: kvm device accessible");
                 std::process::exit(0);
             } else {
                 info!(
-                    "✓ KVM device exists but is not accessible (permissions: {:o})",
-                    mode
+                    permissions = format!("{:o}", mode),
+                    "kvm device exists but not accessible"
                 );
-                println!("SUCCESS: KVM device access properly restricted");
+                info!("test success: kvm device access properly restricted");
                 std::process::exit(0);
             }
         }
         Err(e) => {
-            error!("✗ Failed to check KVM device metadata: {}", e);
-            println!("FAIL: Could not check KVM device: {}", e);
+            error!(error = %e, "failed to check kvm device metadata");
+            error!("test failure: could not check kvm device");
             std::process::exit(1);
         }
     }
