@@ -11,7 +11,6 @@
 ///
 /// The shim maintains an internal FD table to track file descriptors across
 /// dup/fork operations and captures stdout/stderr writes from child processes.
-
 #[cfg(target_os = "macos")]
 pub mod platform;
 
@@ -34,6 +33,11 @@ pub mod posix;
 pub mod core {
     use once_cell::sync::OnceCell;
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tracing::{debug, error, info, warn};
+
+    // One-time tracing subscriber initialization guard
+    static TRACING_INIT: AtomicBool = AtomicBool::new(false);
 
     /// Environment variable names for configuration
     pub const ENV_ENABLED: &str = "AH_CMDTRACE_ENABLED";
@@ -44,9 +48,10 @@ pub mod core {
     pub static SHIM_STATE: OnceCell<Mutex<ShimState>> = OnceCell::new();
 
     /// Current state of the shim
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Default)]
     pub enum ShimState {
         /// Shim is disabled or not initialized
+        #[default]
         Disabled,
         /// Shim is initialized and ready
         Ready {
@@ -57,50 +62,40 @@ pub mod core {
         Error(String),
     }
 
-    impl Default for ShimState {
-        fn default() -> Self {
-            ShimState::Disabled
-        }
-    }
-
     /// Initialize the shim state from environment variables
     pub fn initialize_shim_state() -> ShimState {
-        eprintln!("[ah-command-trace-shim] Initializing shim state...");
-        eprintln!("[ah-command-trace-shim] Environment variables:");
-        eprintln!(
-            "[ah-command-trace-shim]   {}={:?}",
-            ENV_ENABLED,
-            std::env::var(ENV_ENABLED)
-        );
-        eprintln!(
-            "[ah-command-trace-shim]   {}={:?}",
-            ENV_SOCKET,
-            std::env::var(ENV_SOCKET)
-        );
-        eprintln!(
-            "[ah-command-trace-shim]   {}={:?}",
-            ENV_LOG,
-            std::env::var(ENV_LOG)
+        // Initialize tracing subscriber once (stderr writer, env filter optional)
+        if !TRACING_INIT.load(Ordering::Relaxed)
+            && tracing_subscriber::fmt().with_writer(std::io::stderr).try_init().is_ok()
+        {
+            TRACING_INIT.store(true, Ordering::Relaxed);
+        }
+        debug!("Initializing shim state");
+        debug!(
+            enabled = ?std::env::var(ENV_ENABLED),
+            socket = ?std::env::var(ENV_SOCKET),
+            log = ?std::env::var(ENV_LOG),
+            "Environment variables"
         );
 
         let enabled = std::env::var(ENV_ENABLED)
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(true); // Default to enabled
 
-        eprintln!("[ah-command-trace-shim] Enabled: {}", enabled);
+        debug!(enabled, "Shim enabled setting evaluated");
 
         if !enabled {
-            eprintln!("[ah-command-trace-shim] Shim disabled");
+            warn!("Shim disabled via environment");
             return ShimState::Disabled;
         }
 
         let socket_path = match std::env::var(ENV_SOCKET) {
             Ok(path) if !path.is_empty() => {
-                eprintln!("[ah-command-trace-shim] Socket path: {}", path);
+                info!(socket_path = %path, "Socket path configured");
                 path
             }
             _ => {
-                eprintln!("[ah-command-trace-shim] Socket path not set or empty");
+                error!("Socket path not set or empty");
                 return ShimState::Error("AH_CMDTRACE_SOCKET not set or empty".into());
             }
         };
@@ -109,8 +104,8 @@ pub mod core {
             .map(|v| v != "0" && v.to_lowercase() != "false")
             .unwrap_or(true); // Default to logging enabled
 
-        eprintln!("[ah-command-trace-shim] Log enabled: {}", log_enabled);
-        eprintln!("[ah-command-trace-shim] Returning Ready state");
+        info!(log_enabled, "Shim logging configuration resolved");
+        info!("Shim Ready state established");
 
         ShimState::Ready {
             socket_path,
@@ -124,7 +119,7 @@ pub mod core {
             log_enabled: true, ..
         } = state
         {
-            eprintln!("[ah-command-trace-shim] {}", message);
+            info!(message, "shim log message");
         }
     }
 }
