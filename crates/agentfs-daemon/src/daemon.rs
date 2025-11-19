@@ -220,6 +220,7 @@ impl AgentFsDaemon {
                     enabled: true,
                     lower_root: Some(lower),
                     copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
+                    visible_subdir: None,
                 },
                 ..Default::default()
             }
@@ -306,6 +307,7 @@ impl AgentFsDaemon {
                     enabled: true,
                     lower_root: Some(lower),
                     copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
+                    visible_subdir: None,
                 },
                 backstore: backstore_mode,
                 ..Default::default()
