@@ -125,13 +125,13 @@ fn test_direct_libc_calls() {
                 arg2.as_ptr(),
                 std::ptr::null::<libc::c_char>(),
             ];
-            let env = [std::ptr::null::<libc::c_char>()];
+            let _env = [std::ptr::null::<libc::c_char>()];
 
             unsafe {
                 libc::execvp(path.as_ptr(), args.as_ptr());
             }
 
-            eprintln!("[spawn_tree] execvp failed");
+            let _ = writeln!(io::stderr(), "[spawn_tree] execvp failed");
             unsafe {
                 libc::_exit(1);
             }

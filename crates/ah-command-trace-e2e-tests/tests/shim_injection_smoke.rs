@@ -452,7 +452,10 @@ async fn shim_records_spawn_tree() {
 async fn shim_stress_test_burst_subprocesses() {
     // Skip this test in CI environments where shim injection may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping shim stress test in CI environment");
+        let _ = writeln!(
+            io::stdout(),
+            "⚠️  Skipping shim stress test in CI environment"
+        );
         return;
     }
 
@@ -519,7 +522,11 @@ async fn shim_stress_test_burst_subprocesses() {
             // Verify we received a reasonable number of CommandStart messages
             // The stress test creates 200 subprocesses in a burst, plus the parent process
             // We expect at least 150 to account for timing and possible duplicates
-            eprintln!("Received {} CommandStart messages", command_starts.len());
+            let _ = writeln!(
+                io::stderr(),
+                "Received {} CommandStart messages",
+                command_starts.len()
+            );
             assert!(
                 command_starts.len() >= 20,
                 "Expected at least 150 CommandStart messages, got {}",
@@ -536,7 +543,10 @@ async fn shim_stress_test_burst_subprocesses() {
 async fn shim_shell_and_interpreter_coverage() {
     // Skip this test in CI environments where shim injection may not work properly
     if std::env::var("CI").is_ok() {
-        println!("⚠️  Skipping shim shell and interpreter coverage test in CI environment");
+        let _ = writeln!(
+            io::stdout(),
+            "⚠️  Skipping shim shell and interpreter coverage test in CI environment"
+        );
         return;
     }
 
@@ -596,7 +606,8 @@ async fn shim_shell_and_interpreter_coverage() {
                     }
                     ah_command_trace_proto::Request::CommandStart(cmd_start) => {
                         command_starts.push(cmd_start.clone());
-                        eprintln!(
+                        let _ = writeln!(
+                            io::stderr(),
                             "Received CommandStart: pid={}, executable={:?}, args={:?}",
                             cmd_start.pid,
                             String::from_utf8_lossy(&cmd_start.executable),
@@ -631,7 +642,12 @@ async fn shim_shell_and_interpreter_coverage() {
                 // Check for Python interpreter processes (this is what we can capture at M1)
                 if executable.contains("python") {
                     found_python_interpreter = true;
-                    eprintln!("Found python interpreter: {} {:?}", executable, args);
+                    let _ = writeln!(
+                        io::stderr(),
+                        "Found python interpreter: {} {:?}",
+                        executable,
+                        args
+                    );
                 }
 
                 // Check for shell processes without assuming a specific absolute path.
@@ -641,7 +657,12 @@ async fn shim_shell_and_interpreter_coverage() {
                 // to a binary named `sh`, regardless of the directory prefix.
                 if is_shell_process(&executable, &args) {
                     found_shell_processes = true;
-                    eprintln!("Found shell process: {} {:?}", executable, args);
+                    let _ = writeln!(
+                        io::stderr(),
+                        "Found shell process: {} {:?}",
+                        executable,
+                        args
+                    );
                 }
             }
 
@@ -655,12 +676,15 @@ async fn shim_shell_and_interpreter_coverage() {
             );
             assert!(found_shell_processes, "Expected to find shell processes");
 
-            eprintln!(
+            let _ = writeln!(
+                io::stderr(),
                 "⚠️  Note: Shell-launched subprocesses (like 'echo' commands) are not captured at M1 due to shell optimization/built-in commands"
             );
-            eprintln!(
+            let _ = writeln!(
+                io::stderr(),
                 "Shell and interpreter coverage test passed: found python_interpreter={}, shell_processes={}",
-                found_python_interpreter, found_shell_processes
+                found_python_interpreter,
+                found_shell_processes
             );
         }
         Err(_) => panic!("Test timed out"),
