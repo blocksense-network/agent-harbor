@@ -231,7 +231,7 @@ impl TaskExecutionViewModel {
                         LogLevel::Info => AgentActivityRow::AgentThought {
                             thought: message.clone(),
                         },
-                        LogLevel::Debug => AgentActivityRow::AgentThought {
+                        LogLevel::Debug | LogLevel::Trace => AgentActivityRow::AgentThought {
                             thought: format!("Debug: {}", message),
                         },
                     };

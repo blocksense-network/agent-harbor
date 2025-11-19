@@ -5,7 +5,7 @@
 
 use ah_agents::{AgentExecutor, AgentLaunchConfig};
 use ah_core::agent_executor::ah_full_path;
-use ah_core::agent_types::AgentType;
+use ah_domain_types::AgentSoftware as AgentType;
 use anyhow::Context;
 use clap::{Args, ValueEnum};
 use reqwest::Client;
@@ -17,94 +17,15 @@ use uuid;
 
 // Import snapshot types from parent and traits
 use crate::tui::FsSnapshotsType;
+use ah_domain_types::{AgentSoftware, MultiplexerType, OutputFormat};
 use ah_fs_snapshots::WorkingCopyMode;
-
-/// CLI-specific agent type enum that derives clap::ValueEnum
-#[derive(Clone, Debug, PartialEq, ValueEnum)]
-pub enum CliAgentType {
-    /// Mock agent for testing
-    Mock,
-    /// OpenAI Codex CLI agent
-    Codex,
-    /// Anthropic Claude Code agent
-    Claude,
-    /// GitHub Copilot CLI agent
-    Copilot,
-    /// Google Gemini CLI agent
-    Gemini,
-    /// OpenCode agent
-    Opencode,
-    /// Qwen Code agent
-    Qwen,
-    /// Cursor CLI agent
-    CursorCli,
-    /// Goose agent
-    Goose,
-}
-
-impl From<CliAgentType> for AgentType {
-    fn from(cli: CliAgentType) -> Self {
-        match cli {
-            CliAgentType::Mock => AgentType::Mock,
-            CliAgentType::Codex => AgentType::Codex,
-            CliAgentType::Claude => AgentType::Claude,
-            CliAgentType::Copilot => AgentType::Copilot,
-            CliAgentType::Gemini => AgentType::Gemini,
-            CliAgentType::Opencode => AgentType::Opencode,
-            CliAgentType::Qwen => AgentType::Qwen,
-            CliAgentType::CursorCli => AgentType::CursorCli,
-            CliAgentType::Goose => AgentType::Goose,
-        }
-    }
-}
-
-/// CLI-specific working copy mode enum that derives clap::ValueEnum
-#[derive(Clone, Debug, PartialEq, ValueEnum)]
-pub enum CliWorkingCopyMode {
-    /// Select working copy mode automatically based on provider capabilities
-    Auto,
-    /// Copy-on-write overlay preserving original repo paths
-    #[clap(name = "cow-overlay")]
-    CowOverlay,
-    /// Isolated directory with bind mounts for path preservation
-    Worktree,
-    /// Execute agent directly in the current working directory
-    #[clap(name = "in-place")]
-    InPlace,
-}
-
-impl From<CliWorkingCopyMode> for WorkingCopyMode {
-    fn from(cli: CliWorkingCopyMode) -> Self {
-        match cli {
-            CliWorkingCopyMode::Auto => WorkingCopyMode::Auto,
-            CliWorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
-            CliWorkingCopyMode::Worktree => WorkingCopyMode::Worktree,
-            CliWorkingCopyMode::InPlace => WorkingCopyMode::InPlace,
-        }
-    }
-}
-
-/// Output format for agent execution
-#[derive(Clone, Debug, PartialEq, ValueEnum)]
-pub enum OutputFormat {
-    /// Display agent output unmodified (default)
-    Text,
-    /// Display textual output with consistent structure regardless of agent type
-    #[clap(name = "text-normalized")]
-    TextNormalized,
-    /// Display JSON output if available (e.g., codex --json)
-    Json,
-    /// Map JSON to agent-harbor defined schema consistent across agent types
-    #[clap(name = "json-normalized")]
-    JsonNormalized,
-}
 
 /// Agent start command arguments
 #[derive(Args, Clone)]
 pub struct AgentStartArgs {
     /// Agent type to start
     #[arg(long, default_value = "mock")]
-    pub agent: CliAgentType,
+    pub agent: AgentSoftware,
 
     /// Enable non-interactive mode (e.g., codex exec)
     #[arg(long)]
@@ -128,7 +49,7 @@ pub struct AgentStartArgs {
 
     /// Working copy mode
     #[arg(long, value_enum, default_value = "auto")]
-    pub working_copy: CliWorkingCopyMode,
+    pub working_copy: WorkingCopyMode,
 
     /// Filesystem snapshot provider to use
     #[arg(long, value_enum, default_value = "auto")]
@@ -258,11 +179,6 @@ impl AgentStartArgs {
         // Validate command-line arguments
         self.validate_args()?;
 
-        // Handle mock agent separately (doesn't use abstraction layer)
-        if matches!(agent_type, AgentType::Mock) {
-            return self.run_mock_agent().await;
-        }
-
         // Get the agent executor from the abstraction layer
         let agent: Box<dyn AgentExecutor> = match agent_type {
             AgentType::Claude => Box::new(ah_agents::claude()),
@@ -274,7 +190,6 @@ impl AgentStartArgs {
             AgentType::Opencode | AgentType::Qwen | AgentType::Goose => {
                 return self.run_legacy_agent(agent_type).await;
             }
-            AgentType::Mock => unreachable!(), // handled above
         };
 
         // Handle LLM API proxy configuration
@@ -670,316 +585,10 @@ impl AgentStartArgs {
     /// Run legacy agent implementations (not yet migrated to ah-agents)
     async fn run_legacy_agent(&self, agent_type: AgentType) -> anyhow::Result<()> {
         match agent_type {
-            AgentType::Opencode => self.run_mock_agent().await,
-            AgentType::Qwen => self.run_mock_agent().await,
-            AgentType::Goose => self.run_mock_agent().await,
+            AgentType::Opencode => anyhow::bail!("OpenCode agent is not yet implemented"),
+            AgentType::Qwen => anyhow::bail!("Qwen agent is not yet implemented"),
+            AgentType::Goose => anyhow::bail!("Goose agent is not yet implemented"),
             _ => Ok(()),
-        }
-    }
-
-    /// Run the mock agent for testing purposes
-    async fn run_mock_agent(&self) -> anyhow::Result<()> {
-        use tokio::process::Command;
-
-        // Determine the working directory
-        let cwd = if let Some(cwd) = &self.cwd {
-            cwd.clone()
-        } else {
-            std::env::current_dir()?
-        };
-
-        // Handle workspace preparation based on working copy mode and snapshot settings
-        let actual_cwd = match self.working_copy.clone().into() {
-            WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay | WorkingCopyMode::Worktree => {
-                // For these modes, we need to prepare a workspace if snapshots are enabled
-                if matches!(self.fs_snapshots, FsSnapshotsType::Disable) {
-                    cwd.clone()
-                } else {
-                    // Prepare a snapshot-based workspace
-                    match crate::sandbox::prepare_workspace_with_fallback(
-                        &cwd,
-                        self.fs_snapshots.clone(),
-                        None,
-                    )
-                    .await
-                    {
-                        Ok(prepared_workspace) => prepared_workspace.exec_path,
-                        Err(e) => {
-                            return Err(e);
-                        }
-                    }
-                }
-            }
-            WorkingCopyMode::InPlace => {
-                // In-place mode runs directly in the original directory
-                cwd.clone()
-            }
-        };
-
-        // Handle sandbox mode
-        if self.sandbox {
-            return self.run_mock_agent_in_sandbox(actual_cwd).await;
-        }
-
-        // Build the command to run the mock agent
-        let python = Self::resolve_python_interpreter()?;
-        let mut cmd = Command::new(python);
-        cmd.arg("-m")
-            .arg("src.cli")
-            .current_dir(&actual_cwd)
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
-
-        // Parse agent flags
-        let agent_flags: Vec<&str> = self
-            .agent_flags
-            .as_ref()
-            .map(|s| s.split_whitespace().collect())
-            .unwrap_or_default();
-
-        // Check if this is a scenario run or demo run
-        let is_scenario_run = agent_flags.iter().any(|flag| flag.contains("--scenario"));
-
-        if is_scenario_run {
-            cmd.arg("run");
-            // Add all the agent flags
-            for flag in &agent_flags {
-                cmd.arg(flag);
-            }
-        } else {
-            // Run in demo mode
-            cmd.arg("demo").arg("--workspace").arg(&cwd);
-            // Add any additional flags (like --tui-testing-uri)
-            for flag in &agent_flags {
-                cmd.arg(flag);
-            }
-        }
-
-        // Add output format flags based on the configured output mode
-        // Note: The mock agent implementation should respect these flags
-        match self.output {
-            OutputFormat::Json | OutputFormat::JsonNormalized => {
-                cmd.arg("--json");
-            }
-            OutputFormat::Text | OutputFormat::TextNormalized => {
-                // Text is the default, no flag needed
-            }
-        }
-
-        // Note: TUI_TESTING_URI should only be passed when explicitly requested
-        // We don't automatically pass it from environment to avoid test interference
-
-        // Note: PYTHONPATH and PATH are set by test helper functions, not in production code
-        // to avoid assuming we're running within the workspace
-
-        // Always pass the TUI_TESTING_URI environment variable to the mock agent
-        if let Ok(tui_testing_uri) = std::env::var("TUI_TESTING_URI") {
-            cmd.env("TUI_TESTING_URI", &tui_testing_uri);
-        }
-
-        // Execute the mock agent
-        let status = cmd.status().await?;
-
-        if status.success() {
-            Ok(())
-        } else {
-            anyhow::bail!("Mock agent exited with status: {}", status);
-        }
-    }
-
-    /// Run the mock agent inside a sandbox environment
-    async fn run_mock_agent_in_sandbox(
-        &self,
-        actual_cwd: std::path::PathBuf,
-    ) -> anyhow::Result<()> {
-        #[cfg(target_os = "linux")]
-        {
-            use sandbox_core::ProcessConfig;
-
-            // Validate sandbox type
-            if self.sandbox_type != "local" {
-                return Err(anyhow::anyhow!(
-                    "Only 'local' sandbox type is currently supported, got '{}'",
-                    self.sandbox_type
-                ));
-            }
-
-            // Create sandbox configuration from CLI parameters
-            let mut sandbox = crate::sandbox::create_sandbox_from_args(
-                self.allow_network.unwrap_or(false),
-                self.allow_containers.unwrap_or(false),
-                self.allow_kvm.unwrap_or(false),
-                self.seccomp.unwrap_or(false),
-                self.seccomp_debug.unwrap_or(false),
-                &self.mount_rw,
-                &self.overlay,
-                Some(actual_cwd.as_path()),
-            )?;
-
-            // Configure the process to run the mock agent
-            let mut agent_cmd = vec![
-                Self::resolve_python_interpreter()?,
-                "-m".to_string(),
-                "src.cli".to_string(),
-            ];
-
-            // Parse agent flags
-            let agent_flags: Vec<String> = self
-                .agent_flags
-                .as_ref()
-                .map(|s| s.split_whitespace().map(|s| s.to_string()).collect())
-                .unwrap_or_default();
-
-            // Check if this is a scenario run or demo run
-            let is_scenario_run = agent_flags.iter().any(|flag| flag.contains("--scenario"));
-
-            if is_scenario_run {
-                agent_cmd.push("run".to_string());
-                // Add all the agent flags
-                for flag in &agent_flags {
-                    agent_cmd.push(flag.clone());
-                }
-            } else {
-                // Run in demo mode
-                agent_cmd.push("demo".to_string());
-                agent_cmd.push("--workspace".to_string());
-                agent_cmd.push(actual_cwd.to_string_lossy().to_string());
-                // Add any additional flags (like --tui-testing-uri)
-                for flag in &agent_flags {
-                    agent_cmd.push(flag.clone());
-                }
-            }
-
-            // Add output format flags based on the configured output mode
-            // Note: The mock agent implementation should respect these flags
-            match self.output {
-                OutputFormat::Json | OutputFormat::JsonNormalized => {
-                    agent_cmd.push("--json".to_string());
-                }
-                OutputFormat::Text | OutputFormat::TextNormalized => {
-                    // Text is the default, no flag needed
-                }
-            }
-
-            // Create process configuration
-            let config = self.build_agent_config(AgentType::from(self.agent.clone()))?;
-            let process_config = ProcessConfig {
-                command: agent_cmd,
-                working_dir: Some(actual_cwd.to_string_lossy().to_string()),
-                env: config.env_vars,
-            };
-
-            sandbox = sandbox.with_process_config(process_config);
-
-            let exec_result = sandbox.exec_process().await;
-
-            if let Err(err) = sandbox.stop() {
-                tracing::warn!(error = %err, "Sandbox stop cleanup encountered an error");
-            }
-
-            if let Err(err) = sandbox.cleanup().await {
-                tracing::warn!(error = %err, "Sandbox filesystem cleanup encountered an error");
-            }
-
-            exec_result.context("Failed to execute mock agent in sandbox")?;
-
-            Ok(())
-        }
-        #[cfg(target_os = "macos")]
-        {
-            use ah_macos_launcher::{LauncherConfig, launch_in_sandbox};
-
-            // Validate sandbox type
-            if self.sandbox_type != "local" {
-                return Err(anyhow::anyhow!(
-                    "Only 'local' sandbox type is currently supported on macOS, got '{}'",
-                    self.sandbox_type
-                ));
-            }
-
-            // Build the command for the mock agent
-            let mut agent_cmd = vec![
-                Self::resolve_python_interpreter()?,
-                "-m".to_string(),
-                "src.cli".to_string(),
-            ];
-
-            // Parse agent flags
-            let agent_flags: Vec<String> = self
-                .agent_flags
-                .as_ref()
-                .map(|s| s.split_whitespace().map(|s| s.to_string()).collect())
-                .unwrap_or_default();
-
-            // Check if this is a scenario run or demo run
-            let is_scenario_run = agent_flags.iter().any(|flag| flag.contains("--scenario"));
-
-            if is_scenario_run {
-                agent_cmd.push("run".to_string());
-                // Add all the agent flags
-                for flag in &agent_flags {
-                    agent_cmd.push(flag.clone());
-                }
-            } else {
-                // Run in demo mode
-                agent_cmd.push("demo".to_string());
-                agent_cmd.push("--workspace".to_string());
-                agent_cmd.push(actual_cwd.to_string_lossy().to_string());
-                // Add any additional flags (like --tui-testing-uri)
-                for flag in &agent_flags {
-                    agent_cmd.push(flag.clone());
-                }
-            }
-
-            // Add output format flags based on the configured output mode
-            match self.output {
-                OutputFormat::Json | OutputFormat::JsonNormalized => {
-                    agent_cmd.push("--json".to_string());
-                }
-                OutputFormat::Text | OutputFormat::TextNormalized => {
-                    // Text is the default, no flag needed
-                }
-            }
-
-            // Build launcher configuration
-            let mut launcher_config = LauncherConfig::new(agent_cmd)
-                .workdir(actual_cwd.to_string_lossy().to_string())
-                .allow_network(self.allow_network.unwrap_or(false))
-                .harden_process(true); // Always harden process for security
-
-            // Add basic read/write/exec allowances
-            launcher_config = launcher_config
-                .allow_read("/")
-                .allow_write("/tmp")
-                .allow_exec("/bin")
-                .allow_exec("/usr/bin")
-                .allow_exec("/usr/local/bin");
-
-            // Add Python and related paths
-            if let Ok(python_path) = Self::resolve_python_interpreter() {
-                if let Some(parent) = std::path::Path::new(&python_path).parent() {
-                    if let Some(parent_str) = parent.to_str() {
-                        launcher_config = launcher_config.allow_exec(parent_str);
-                    }
-                }
-            }
-
-            // Always pass the TUI_TESTING_URI environment variable to the mock agent
-            if let Ok(tui_testing_uri) = std::env::var("TUI_TESTING_URI") {
-                std::env::set_var("TUI_TESTING_URI", &tui_testing_uri);
-            }
-
-            // Launch the process in sandbox (this replaces the current process)
-            launch_in_sandbox(launcher_config)
-        }
-
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        {
-            let _ = &actual_cwd;
-            Err(anyhow::anyhow!(
-                "Sandbox functionality is only available on Linux and macOS"
-            ))
         }
     }
 }

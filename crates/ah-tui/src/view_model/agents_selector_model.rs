@@ -299,14 +299,14 @@ impl ViewModel {
 
     /// Map a model name to its corresponding agent type
     #[allow(dead_code)] // Mapping retained for future multi-agent model classification UI.
-    fn get_agent_type_for_model(model_name: &str) -> ah_core::agent_types::AgentType {
+    fn get_agent_type_for_model(model_name: &str) -> ah_domain_types::AgentSoftware {
         if model_name.starts_with("Claude") {
-            ah_core::agent_types::AgentType::Claude
+            AgentSoftware::Claude
         } else if model_name.starts_with("GPT-5") {
-            ah_core::agent_types::AgentType::Codex
+            AgentSoftware::Codex
         } else {
             // Default fallback - this shouldn't happen with our current models
-            ah_core::agent_types::AgentType::Codex
+            AgentSoftware::Codex
         }
     }
 
@@ -1315,16 +1315,7 @@ impl ViewModel {
 
             // Determine agent type and model name
             let selected_agent = card.selected_agents.first().unwrap(); // We validated it's not empty
-            let agent_type = match selected_agent.agent.software {
-                AgentSoftware::Claude => ah_core::agent_types::AgentType::Claude,
-                AgentSoftware::Codex => ah_core::agent_types::AgentType::Codex,
-                AgentSoftware::Copilot => ah_core::agent_types::AgentType::Copilot,
-                AgentSoftware::Gemini => ah_core::agent_types::AgentType::Gemini,
-                AgentSoftware::Opencode => ah_core::agent_types::AgentType::Opencode,
-                AgentSoftware::Qwen => ah_core::agent_types::AgentType::Qwen,
-                AgentSoftware::CursorCli => ah_core::agent_types::AgentType::CursorCli,
-                AgentSoftware::Goose => ah_core::agent_types::AgentType::Goose,
-            };
+            let agent_type = selected_agent.agent.software.clone();
             let _model_name = selected_agent.model.clone(); // retained for future telemetry; currently unused
 
             // Extract card data before removing it

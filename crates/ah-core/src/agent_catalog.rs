@@ -281,11 +281,11 @@ impl RemoteAgentCatalog {
     ) -> Option<ah_domain_types::AgentMetadata> {
         // Map agent_type to AgentSoftware
         let software = match capability.agent_type.as_str() {
-            "claude-code" => ah_domain_types::AgentSoftware::Claude,
-            "copilot" => ah_domain_types::AgentSoftware::Copilot,
-            "gemini" => ah_domain_types::AgentSoftware::Gemini,
-            "cursor-cli" => ah_domain_types::AgentSoftware::CursorCli,
-            "goose" => ah_domain_types::AgentSoftware::Goose,
+            "claude-code" => AgentSoftware::Claude,
+            "copilot" => AgentSoftware::Copilot,
+            "gemini" => AgentSoftware::Gemini,
+            "cursor-cli" => AgentSoftware::CursorCli,
+            "goose" => AgentSoftware::Goose,
             _ => return None,
         };
 
@@ -317,7 +317,7 @@ impl RemoteAgentCatalog {
         let agents = vec![
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
-                    software: ah_domain_types::AgentSoftware::Claude,
+                    software: AgentSoftware::Claude,
                     version: "latest".to_string(),
                 },
                 display_name: "Claude Code".to_string(),
@@ -342,7 +342,7 @@ impl RemoteAgentCatalog {
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
-                    software: ah_domain_types::AgentSoftware::Codex,
+                    software: AgentSoftware::Codex,
                     version: "latest".to_string(),
                 },
                 display_name: "GitHub Copilot".to_string(),
@@ -364,7 +364,7 @@ impl RemoteAgentCatalog {
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
-                    software: ah_domain_types::AgentSoftware::Copilot,
+                    software: AgentSoftware::Copilot,
                     version: "latest".to_string(),
                 },
                 display_name: "GitHub Copilot".to_string(),
@@ -386,7 +386,7 @@ impl RemoteAgentCatalog {
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
-                    software: ah_domain_types::AgentSoftware::Gemini,
+                    software: AgentSoftware::Gemini,
                     version: "latest".to_string(),
                 },
                 display_name: "Google Gemini".to_string(),
@@ -409,7 +409,7 @@ impl RemoteAgentCatalog {
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
-                    software: ah_domain_types::AgentSoftware::CursorCli,
+                    software: AgentSoftware::CursorCli,
                     version: "latest".to_string(),
                 },
                 display_name: "Cursor CLI".to_string(),
@@ -431,7 +431,7 @@ impl RemoteAgentCatalog {
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
-                    software: ah_domain_types::AgentSoftware::Goose,
+                    software: AgentSoftware::Goose,
                     version: "latest".to_string(),
                 },
                 display_name: "Goose".to_string(),
@@ -726,20 +726,6 @@ impl LocalAgentCatalog {
         }
     }
 
-    /// Convert AgentSoftware to AgentType for AgentBinary creation
-    fn agent_software_to_type(software: &AgentSoftware) -> crate::agent_types::AgentType {
-        match software {
-            AgentSoftware::Codex => crate::agent_types::AgentType::Codex,
-            AgentSoftware::Claude => crate::agent_types::AgentType::Claude,
-            AgentSoftware::Copilot => crate::agent_types::AgentType::Copilot,
-            AgentSoftware::Gemini => crate::agent_types::AgentType::Gemini,
-            AgentSoftware::Opencode => crate::agent_types::AgentType::Opencode,
-            AgentSoftware::Qwen => crate::agent_types::AgentType::Qwen,
-            AgentSoftware::CursorCli => crate::agent_types::AgentType::CursorCli,
-            AgentSoftware::Goose => crate::agent_types::AgentType::Goose,
-        }
-    }
-
     /// Check if an agent software is available locally and return AgentBinary if found
     async fn check_agent_availability(
         &self,
@@ -768,8 +754,7 @@ impl LocalAgentCatalog {
         }
 
         // Try to create an AgentBinary for this software
-        let agent_type = Self::agent_software_to_type(software);
-        if let Some(binary) = crate::agent_binary::AgentBinary::from_agent_type(agent_type) {
+        if let Some(binary) = crate::agent_binary::AgentBinary::from_agent_type(software) {
             // Store the discovered binary to avoid future path searches
             let mut binaries = self.discovered_binaries.write().await;
             binaries.insert(software.clone(), binary.clone());

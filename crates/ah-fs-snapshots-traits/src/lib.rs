@@ -36,6 +36,7 @@ pub enum SnapshotProviderKind {
 
 /// Working copy modes for prepared workspaces.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum WorkingCopyMode {
     /// Auto-detect the best working copy mode.
     Auto,

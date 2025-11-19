@@ -21,10 +21,9 @@ pub use agent::{
     AgentCapabilities, AgentCapability, AgentCatalog, AgentChoice, AgentMetadata, AgentSoftware,
     AgentSoftwareBuild,
 };
-pub use cli::*;
 pub use experimental_features::ExperimentalFeature;
 pub use repository::*;
 pub use task::*;
 
 // Re-export shared enums
-pub use task::{LogLevel, TaskState, ToolStatus};
+pub use task::{MultiplexerType, OutputFormat, TaskState, TaskStatus, ToolStatus};

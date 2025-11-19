@@ -3,6 +3,7 @@
 
 //! Task lifecycle management and orchestration.
 
+pub use ah_domain_types::TaskStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,21 +12,6 @@ use tokio::sync::RwLock;
 /// Unique identifier for a task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TaskId(pub u64);
-
-/// Status of a task in its lifecycle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TaskStatus {
-    /// Task has been created but not yet started.
-    Pending,
-    /// Task is currently running.
-    Running,
-    /// Task completed successfully.
-    Completed,
-    /// Task failed with an error.
-    Failed,
-    /// Task was cancelled.
-    Cancelled,
-}
 
 /// Represents a task in the AH system.
 #[derive(Debug, Clone, Serialize, Deserialize)]

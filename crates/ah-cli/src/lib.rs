@@ -16,10 +16,7 @@ pub mod tui;
 pub use clap::{Parser, Subcommand, ValueEnum};
 
 // Re-export domain types
-pub use ah_domain_types::{CliLogLevel, ExperimentalFeature};
-
-// Re-export agent types for backward compatibility
-pub use agent::start::CliAgentType as AgentType;
+pub use ah_domain_types::{AgentSoftware, ExperimentalFeature, LogLevel};
 pub use tui::FsSnapshotsType;
 
 // Re-export TUI types for record/replay functionality
@@ -38,7 +35,7 @@ pub struct Cli {
     /// Set the log level
     #[arg(long, help = "Set the log level")]
     #[arg(default_value = if cfg!(debug_assertions) { "debug" } else { "info" })]
-    pub log_level: CliLogLevel,
+    pub log_level: LogLevel,
 
     /// Target repository (filesystem path in local runs; git URL may be used by some servers). If omitted, AH auto-detects a VCS root by walking parent directories and checking all supported VCS.
     #[arg(long)]

@@ -5,12 +5,15 @@
 //!
 //! Types related to AI agents, models, and their configurations.
 
+#[cfg(feature = "clap")]
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 use crate::experimental_features::ExperimentalFeature;
 
 /// Supported agent software types
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum AgentSoftware {
     /// OpenAI Codex CLI agent
     Codex,

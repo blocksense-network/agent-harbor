@@ -20,6 +20,7 @@ use crate::view_model::session_viewer_model::{
     SessionViewerMsg, SessionViewerViewModel,
 };
 use ah_core::TaskManager;
+use ah_domain_types::AgentSoftware;
 use ah_recorder::TerminalState;
 use ah_repo;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, MouseButton, MouseEvent};
@@ -188,7 +189,7 @@ pub(crate) async fn launch_task_from_instruction(
             .working_copy_mode(ah_core::WorkingCopyMode::Snapshots)
             .description(instruction)
             .agents(selected_agents.to_vec())
-            .agent_type(ah_core::agent_types::AgentType::Codex) // Default agent type
+            .agent_type(AgentSoftware::Codex) // Default agent type
             .task_id(task_id)
             .build()
         {

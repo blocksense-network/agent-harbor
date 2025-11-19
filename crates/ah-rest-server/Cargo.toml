@@ -54,7 +54,7 @@ rusqlite = { workspace = true }
 
 # API contracts
 ah-rest-api-contract = { path = "../ah-rest-api-contract" }
-ah-domain-types = { path = "../ah-domain-types" }
+ah-domain-types = { path = "../ah-domain-types", features = ["clap"] }
 
 # Core functionality
 ah-core = { path = "../ah-core" }

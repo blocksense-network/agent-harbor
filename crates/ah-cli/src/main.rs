@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ah_cli::{AgentCommands, Cli, Commands, Parser};
-use ah_domain_types::CliLogLevel;
+use ah_domain_types::LogLevel;
 use ah_logging::{Level, LogFormat, init_to_standard_file};
 use ah_tui::view::TuiDependencies;
 use anyhow::Result;
@@ -13,11 +13,11 @@ async fn main() -> Result<()> {
 
     // Set up centralized logging to file with platform-specific path
     let default_level = match cli.log_level {
-        CliLogLevel::Error => Level::ERROR,
-        CliLogLevel::Warn => Level::WARN,
-        CliLogLevel::Info => Level::INFO,
-        CliLogLevel::Debug => Level::DEBUG,
-        CliLogLevel::Trace => Level::TRACE,
+        LogLevel::Error => Level::ERROR,
+        LogLevel::Warn => Level::WARN,
+        LogLevel::Info => Level::INFO,
+        LogLevel::Debug => Level::DEBUG,
+        LogLevel::Trace => Level::TRACE,
     };
     init_to_standard_file("ah-cli", default_level, LogFormat::Plaintext)?;
 

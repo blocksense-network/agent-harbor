@@ -269,6 +269,7 @@ name = "ah-agents"
 version = "0.1.0"
 dependencies = [
  "ah-core",
+ "ah-domain-types",
  "ah-repo",
  "anyhow",
  "async-trait",
@@ -305,6 +306,7 @@ dependencies = [
  "ah-fs-snapshots",
  "ah-fs-snapshots-btrfs",
  "ah-fs-snapshots-git",
+ "ah-fs-snapshots-traits",
  "ah-fs-snapshots-zfs",
  "ah-local-db",
  "ah-logging",
@@ -484,6 +486,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
+ "rusqlite",
  "schemars",
  "serde",
  "serde_json",
@@ -560,6 +563,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "clap",
  "serde",
  "thiserror 1.0.69",
  "tokio",
@@ -586,6 +590,7 @@ dependencies = [
 name = "ah-local-db"
 version = "0.1.0"
 dependencies = [
+ "ah-domain-types",
  "anyhow",
  "chrono",
  "rusqlite",

@@ -9,6 +9,7 @@
 use crate::TaskManager;
 use crate::agent_executor::AgentExecutionConfig;
 use crate::local_task_manager::GenericLocalTaskManager;
+use ah_domain_types::MultiplexerType;
 #[cfg(feature = "emacs")]
 use ah_mux::EmacsMultiplexer;
 #[cfg(feature = "ghostty")]
@@ -109,60 +110,11 @@ pub struct TaskManagerConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MultiplexerChoice {
     /// Currently running inside a supported multiplexer (use inner-most one)
-    InSupportedMultiplexer(CliMultiplexerType),
+    InSupportedMultiplexer(MultiplexerType),
     /// Currently running in a supported terminal but no multiplexer
     InSupportedTerminal,
     /// Not in any supported terminal/multiplexer environment
     UnsupportedEnvironment,
-}
-
-/// Multiplexer types supported
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CliMultiplexerType {
-    /// Use Tmux multiplexer
-    Tmux,
-    /// Use Kitty multiplexer
-    Kitty,
-    /// Use WezTerm multiplexer
-    WezTerm,
-    /// Use Zellij multiplexer
-    Zellij,
-    /// Use Screen multiplexer
-    Screen,
-    /// Use Tilix multiplexer
-    Tilix,
-    /// Use Windows Terminal multiplexer
-    WindowsTerminal,
-    /// Use Ghostty multiplexer
-    Ghostty,
-    /// Use Vim multiplexer
-    Vim,
-    /// Use Neovim multiplexer
-    Neovim,
-    /// Use Emacs multiplexer
-    Emacs,
-    /// Use iTerm2 multiplexer
-    ITerm2,
-}
-
-impl CliMultiplexerType {
-    /// Get a human-readable display name for the multiplexer type
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            CliMultiplexerType::Tmux => "Tmux",
-            CliMultiplexerType::Kitty => "Kitty",
-            CliMultiplexerType::ITerm2 => "iTerm2",
-            CliMultiplexerType::WezTerm => "WezTerm",
-            CliMultiplexerType::Zellij => "Zellij",
-            CliMultiplexerType::Screen => "GNU Screen",
-            CliMultiplexerType::Tilix => "Tilix",
-            CliMultiplexerType::WindowsTerminal => "Windows Terminal",
-            CliMultiplexerType::Ghostty => "Ghostty",
-            CliMultiplexerType::Neovim => "Neovim",
-            CliMultiplexerType::Vim => "Vim",
-            CliMultiplexerType::Emacs => "Emacs",
-        }
-    }
 }
 
 /// Determine multiplexer choice based on terminal environments
@@ -179,58 +131,56 @@ pub fn determine_multiplexer_choice(terminal_envs: &[TerminalEnvironment]) -> Mu
         match env {
             // True multiplexers - these manage multiple panes/windows
             TerminalEnvironment::Tmux => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Tmux);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Tmux);
             }
             #[cfg(feature = "zellij")]
             TerminalEnvironment::Zellij => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Zellij);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Zellij);
             }
             #[cfg(feature = "screen")]
             TerminalEnvironment::Screen => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Screen);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Screen);
             }
 
             // Terminal emulators that can act as multiplexers
             #[cfg(feature = "kitty")]
             TerminalEnvironment::Kitty => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Kitty);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Kitty);
             }
             #[cfg(feature = "wezterm")]
             TerminalEnvironment::WezTerm => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::WezTerm);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::WezTerm);
             }
             // iTerm2 requires both its feature flag and macOS; combined cfg for consistency.
             #[cfg(all(feature = "iterm2", target_os = "macos"))]
             TerminalEnvironment::ITerm2 => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::ITerm2);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::ITerm2);
             }
             #[cfg(all(feature = "tilix", target_os = "linux"))]
             TerminalEnvironment::Tilix => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Tilix);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Tilix);
             }
             #[cfg(feature = "windows-terminal")]
             TerminalEnvironment::WindowsTerminal => {
-                return MultiplexerChoice::InSupportedMultiplexer(
-                    CliMultiplexerType::WindowsTerminal,
-                );
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::WindowsTerminal);
             }
             #[cfg(feature = "ghostty")]
             TerminalEnvironment::Ghostty => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Ghostty);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Ghostty);
             }
 
             // Editors with terminal support
             #[cfg(feature = "vim")]
             TerminalEnvironment::Vim => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Vim);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Vim);
             }
             #[cfg(feature = "neovim")]
             TerminalEnvironment::Neovim => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Neovim);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Neovim);
             }
             #[cfg(feature = "emacs")]
             TerminalEnvironment::Emacs => {
-                return MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Emacs);
+                return MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Emacs);
             }
 
             // Unsupported environments - continue checking for nested supported ones
@@ -267,7 +217,7 @@ pub fn determine_multiplexer_choice(terminal_envs: &[TerminalEnvironment]) -> Mu
 pub fn create_local_task_manager(
     config: TaskManagerConfig,
 ) -> Result<Arc<dyn TaskManager>, String> {
-    create_local_task_manager_with_multiplexer(config, MultiplexerPreference::Auto)
+    create_local_task_manager_with_multiplexer(config, MultiplexerType::Tmux)
 }
 
 /// Create a task manager for dashboard use (recording enabled by default)
@@ -286,37 +236,6 @@ pub fn create_session_viewer_task_manager() -> Result<Arc<dyn TaskManager>, Stri
     })
 }
 
-/// Explicit multiplexer preference for task manager creation
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MultiplexerPreference {
-    /// Auto-detect the best multiplexer based on environment
-    Auto,
-    /// Use tmux multiplexer
-    Tmux,
-    /// Use iTerm2 multiplexer (macOS only)
-    ITerm2,
-    /// Use kitty multiplexer
-    Kitty,
-    /// Use WezTerm multiplexer
-    WezTerm,
-    /// Use zellij multiplexer
-    Zellij,
-    /// Use screen multiplexer
-    Screen,
-    /// Use tilix multiplexer (Linux only)
-    Tilix,
-    /// Use Windows Terminal multiplexer (Windows only)
-    WindowsTerminal,
-    /// Use ghostty multiplexer
-    Ghostty,
-    /// Use vim multiplexer
-    Vim,
-    /// Use neovim multiplexer
-    Neovim,
-    /// Use emacs multiplexer
-    Emacs,
-}
-
 /// Detect the appropriate multiplexer for the current environment
 #[allow(dead_code)]
 fn detect_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, String> {
@@ -328,46 +247,78 @@ fn detect_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, String> {
 
     match choice {
         MultiplexerChoice::InSupportedMultiplexer(mux_type) => match mux_type {
-            CliMultiplexerType::Tmux => Ok(Box::new(TmuxMultiplexer::default())),
-            CliMultiplexerType::ITerm2 => build_multiplexer_for!(
+            MultiplexerType::Tmux => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(target_os = "macos")]
+            MultiplexerType::ITerm2 => build_multiplexer_for!(
                 ITerm2Multiplexer,
                 all(feature = "iterm2", target_os = "macos"),
                 "iTerm2"
             ),
-            CliMultiplexerType::Kitty => {
+            #[cfg(feature = "kitty")]
+            MultiplexerType::Kitty => {
                 build_multiplexer_for!(KittyMultiplexer, feature = "kitty", "Kitty")
             }
-            CliMultiplexerType::WezTerm => {
+            #[cfg(feature = "wezterm")]
+            MultiplexerType::WezTerm => {
                 build_multiplexer_for!(WezTermMultiplexer, feature = "wezterm", "WezTerm")
             }
-            CliMultiplexerType::Zellij => {
+            #[cfg(feature = "zellij")]
+            MultiplexerType::Zellij => {
                 build_multiplexer_for!(ZellijMultiplexer, feature = "zellij", "Zellij")
             }
-            CliMultiplexerType::Screen => {
+            #[cfg(feature = "screen")]
+            MultiplexerType::Screen => {
                 build_multiplexer_for!(ScreenMultiplexer, feature = "screen", "Screen")
             }
-            CliMultiplexerType::Tilix => build_multiplexer_for!(
+            #[cfg(all(feature = "tilix", target_os = "linux"))]
+            MultiplexerType::Tilix => build_multiplexer_for!(
                 TilixMultiplexer,
                 all(feature = "tilix", target_os = "linux"),
                 "Tilix"
             ),
-            CliMultiplexerType::WindowsTerminal => build_multiplexer_for!(
+            #[cfg(feature = "windows-terminal")]
+            MultiplexerType::WindowsTerminal => build_multiplexer_for!(
                 WindowsTerminalMultiplexer,
                 feature = "windows-terminal",
                 "Windows Terminal"
             ),
-            CliMultiplexerType::Ghostty => {
+            #[cfg(feature = "ghostty")]
+            MultiplexerType::Ghostty => {
                 build_multiplexer_for!(GhosttyMultiplexer, feature = "ghostty", "Ghostty")
             }
-            CliMultiplexerType::Vim => {
-                build_multiplexer_for!(VimMultiplexer, feature = "vim", "Vim")
-            }
-            CliMultiplexerType::Neovim => {
+            #[cfg(feature = "vim")]
+            MultiplexerType::Vim => build_multiplexer_for!(VimMultiplexer, feature = "vim", "Vim"),
+            #[cfg(feature = "neovim")]
+            MultiplexerType::Neovim => {
                 build_multiplexer_for!(NeovimMultiplexer, feature = "neovim", "Neovim")
             }
-            CliMultiplexerType::Emacs => {
+            #[cfg(feature = "emacs")]
+            MultiplexerType::Emacs => {
                 build_multiplexer_for!(EmacsMultiplexer, feature = "emacs", "Emacs")
             }
+            // Fallback cases for when features are disabled - default to tmux
+            #[cfg(not(target_os = "macos"))]
+            MultiplexerType::ITerm2 => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "kitty"))]
+            MultiplexerType::Kitty => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "wezterm"))]
+            MultiplexerType::WezTerm => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "zellij"))]
+            MultiplexerType::Zellij => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "screen"))]
+            MultiplexerType::Screen => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(all(feature = "tilix", target_os = "linux")))]
+            MultiplexerType::Tilix => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "windows-terminal"))]
+            MultiplexerType::WindowsTerminal => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "ghostty"))]
+            MultiplexerType::Ghostty => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "vim"))]
+            MultiplexerType::Vim => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "neovim"))]
+            MultiplexerType::Neovim => Ok(Box::new(TmuxMultiplexer::default())),
+            #[cfg(not(feature = "emacs"))]
+            MultiplexerType::Emacs => Ok(Box::new(TmuxMultiplexer::default())),
         },
         MultiplexerChoice::InSupportedTerminal => {
             // A supported terminal was detected but its multiplexer feature isn't enabled.
@@ -384,7 +335,7 @@ fn detect_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, String> {
 /// Create a local task manager with explicit multiplexer preference
 pub fn create_local_task_manager_with_multiplexer(
     config: TaskManagerConfig,
-    multiplexer_preference: MultiplexerPreference,
+    multiplexer_preference: MultiplexerType,
 ) -> Result<Arc<dyn TaskManager>, String> {
     let agent_config = AgentExecutionConfig {
         config_file: config.config_file,
@@ -392,128 +343,109 @@ pub fn create_local_task_manager_with_multiplexer(
     };
 
     match multiplexer_preference {
-        MultiplexerPreference::Auto => {
-            // Use automatic detection - create concrete instances
-            let terminal_envs = ah_mux::detection::detect_terminal_environments();
-            let choice = determine_multiplexer_choice(&terminal_envs);
-
-            match choice {
-                MultiplexerChoice::InSupportedMultiplexer(mux_type) => {
-                    match mux_type {
-                        CliMultiplexerType::Tmux => {
-                            GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
-                                .map(|tm| Arc::new(tm) as Arc<dyn TaskManager>)
-                                .map_err(|e| format!("Failed to create local task manager with Tmux: {}", e))
-                        }
-                        #[cfg(target_os = "macos")]
-                        CliMultiplexerType::ITerm2 => {
-                            ITerm2Multiplexer::new()
-                                .map_err(|e| format!("iTerm2 multiplexer is not available: {}", e))
-                                .and_then(|mux| {
-                                    GenericLocalTaskManager::new(agent_config, mux)
-                                        .map(|tm| Arc::new(tm) as Arc<dyn TaskManager>)
-                                        .map_err(|e| format!("Failed to create local task manager with iTerm2: {}", e))
-                                })
-                        }
-                        #[cfg(feature = "kitty")]
-                        CliMultiplexerType::Kitty => build_task_manager_for!(agent_config, KittyMultiplexer, feature = "kitty", "Kitty"),
-                        #[cfg(feature = "wezterm")]
-                        CliMultiplexerType::WezTerm => build_task_manager_for!(agent_config, WezTermMultiplexer, feature = "wezterm", "WezTerm"),
-                        #[cfg(feature = "zellij")]
-                        CliMultiplexerType::Zellij => build_task_manager_for!(agent_config, ZellijMultiplexer, feature = "zellij", "Zellij"),
-                        #[cfg(feature = "screen")]
-                        CliMultiplexerType::Screen => build_task_manager_for!(agent_config, ScreenMultiplexer, feature = "screen", "Screen"),
-                        #[cfg(all(feature = "tilix", target_os = "linux"))]
-                        CliMultiplexerType::Tilix => build_task_manager_for!(agent_config, TilixMultiplexer, all(feature = "tilix", target_os = "linux"), "Tilix"),
-                        #[cfg(feature = "windows-terminal")]
-                        CliMultiplexerType::WindowsTerminal => build_task_manager_for!(agent_config, WindowsTerminalMultiplexer, feature = "windows-terminal", "Windows Terminal"),
-                        #[cfg(feature = "ghostty")]
-                        CliMultiplexerType::Ghostty => build_task_manager_for!(agent_config, GhosttyMultiplexer, feature = "ghostty", "Ghostty"),
-                        #[cfg(feature = "vim")]
-                        CliMultiplexerType::Vim => build_task_manager_for!(agent_config, VimMultiplexer, feature = "vim", "Vim"),
-                        #[cfg(feature = "neovim")]
-                        CliMultiplexerType::Neovim => build_task_manager_for!(agent_config, NeovimMultiplexer, feature = "neovim", "Neovim"),
-                        #[cfg(feature = "emacs")]
-                        CliMultiplexerType::Emacs => build_task_manager_for!(agent_config, EmacsMultiplexer, feature = "emacs", "Emacs"),
-                        // Fallback cases for when features are disabled
-                        #[cfg(not(target_os = "macos"))]
-                        CliMultiplexerType::ITerm2 => {
-                            Err("iTerm2 is only available on macOS".to_string())
-                        }
-                        #[cfg(not(feature = "kitty"))]
-                        CliMultiplexerType::Kitty => {
-                            Err("Kitty multiplexer feature is not enabled".to_string())
-                        }
-                        #[cfg(not(feature = "wezterm"))]
-                        CliMultiplexerType::WezTerm => {
-                            Err("WezTerm multiplexer feature is not enabled".to_string())
-                        }
-                        #[cfg(not(feature = "zellij"))]
-                        CliMultiplexerType::Zellij => {
-                            Err("Zellij multiplexer feature is not enabled".to_string())
-                        }
-                        #[cfg(not(feature = "screen"))]
-                        CliMultiplexerType::Screen => {
-                            Err("Screen multiplexer feature is not enabled".to_string())
-                        }
-                        #[cfg(not(all(feature = "tilix", target_os = "linux")))]
-                        CliMultiplexerType::Tilix => {
-                            Err("Tilix multiplexer is only available on Linux with the tilix feature enabled".to_string())
-                        }
-                        #[cfg(not(feature = "windows-terminal"))]
-                        CliMultiplexerType::WindowsTerminal => {
-                            Err("Windows Terminal multiplexer feature is not enabled".to_string())
-                        }
-                        #[cfg(not(feature = "ghostty"))]
-                        CliMultiplexerType::Ghostty => {
-                            Err("Ghostty multiplexer feature is not enabled".to_string())
-                        }
-                        #[cfg(not(feature = "vim"))]
-                        CliMultiplexerType::Vim => {
-                            Err("Vim multiplexer feature is not enabled".to_string())
-                        }
-                        #[cfg(not(feature = "neovim"))]
-                        CliMultiplexerType::Neovim => {
-                            Err("Neovim multiplexer feature is not enabled".to_string())
-                        }
-                        #[cfg(not(feature = "emacs"))]
-                        CliMultiplexerType::Emacs => {
-                            Err("Emacs multiplexer feature is not enabled".to_string())
-                        }
-                    }
-                }
-                MultiplexerChoice::InSupportedTerminal => {
-                    // Supported terminal emulator detected but no compiled multiplexer backend.
-                    // Fall back to tmux for compatibility.
-                    GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
-                        .map(|tm| Arc::new(tm) as Arc<dyn TaskManager>)
-                        .map_err(|e| {
-                            format!(
-                                "Failed to create local task manager with Tmux (fallback): {}",
-                                e
-                            )
-                        })
-                }
-                MultiplexerChoice::UnsupportedEnvironment => {
-                    // Unsupported environment, default to tmux
-                    GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
-                        .map(|tm| Arc::new(tm) as Arc<dyn TaskManager>)
-                        .map_err(|e| {
-                            format!(
-                                "Failed to create local task manager with Tmux (default): {}",
-                                e
-                            )
-                        })
-                }
-            }
-        }
-        MultiplexerPreference::Tmux => {
-            // Use tmux
+        MultiplexerType::Tmux => {
             GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
                 .map(|tm| Arc::new(tm) as Arc<dyn TaskManager>)
-                .map_err(|e| format!("Failed to create local task manager with tmux: {}", e))
+                .map_err(|e| format!("Failed to create local task manager with Tmux: {}", e))
         }
-        MultiplexerPreference::ITerm2 => {
+        #[cfg(target_os = "macos")]
+        MultiplexerType::ITerm2 => ITerm2Multiplexer::new()
+            .map_err(|e| format!("iTerm2 multiplexer is not available: {}", e))
+            .and_then(|mux| {
+                GenericLocalTaskManager::new(agent_config, mux)
+                    .map(|tm| Arc::new(tm) as Arc<dyn TaskManager>)
+                    .map_err(|e| format!("Failed to create local task manager with iTerm2: {}", e))
+            }),
+        #[cfg(feature = "kitty")]
+        MultiplexerType::Kitty => {
+            build_task_manager_for!(agent_config, KittyMultiplexer, feature = "kitty", "Kitty")
+        }
+        #[cfg(feature = "wezterm")]
+        MultiplexerType::WezTerm => build_task_manager_for!(
+            agent_config,
+            WezTermMultiplexer,
+            feature = "wezterm",
+            "WezTerm"
+        ),
+        #[cfg(feature = "zellij")]
+        MultiplexerType::Zellij => build_task_manager_for!(
+            agent_config,
+            ZellijMultiplexer,
+            feature = "zellij",
+            "Zellij"
+        ),
+        #[cfg(feature = "screen")]
+        MultiplexerType::Screen => build_task_manager_for!(
+            agent_config,
+            ScreenMultiplexer,
+            feature = "screen",
+            "Screen"
+        ),
+        #[cfg(all(feature = "tilix", target_os = "linux"))]
+        MultiplexerType::Tilix => build_task_manager_for!(
+            agent_config,
+            TilixMultiplexer,
+            all(feature = "tilix", target_os = "linux"),
+            "Tilix"
+        ),
+        #[cfg(feature = "windows-terminal")]
+        MultiplexerType::WindowsTerminal => build_task_manager_for!(
+            agent_config,
+            WindowsTerminalMultiplexer,
+            feature = "windows-terminal",
+            "Windows Terminal"
+        ),
+        #[cfg(feature = "ghostty")]
+        MultiplexerType::Ghostty => build_task_manager_for!(
+            agent_config,
+            GhosttyMultiplexer,
+            feature = "ghostty",
+            "Ghostty"
+        ),
+        #[cfg(feature = "vim")]
+        MultiplexerType::Vim => {
+            build_task_manager_for!(agent_config, VimMultiplexer, feature = "vim", "Vim")
+        }
+        #[cfg(feature = "neovim")]
+        MultiplexerType::Neovim => build_task_manager_for!(
+            agent_config,
+            NeovimMultiplexer,
+            feature = "neovim",
+            "Neovim"
+        ),
+        #[cfg(feature = "emacs")]
+        MultiplexerType::Emacs => {
+            build_task_manager_for!(agent_config, EmacsMultiplexer, feature = "emacs", "Emacs")
+        }
+        // Fallback cases for when features are disabled
+        #[cfg(not(target_os = "macos"))]
+        MultiplexerType::ITerm2 => Err("iTerm2 is only available on macOS".to_string()),
+        #[cfg(not(feature = "kitty"))]
+        MultiplexerType::Kitty => Err("Kitty multiplexer feature is not enabled".to_string()),
+        #[cfg(not(feature = "wezterm"))]
+        MultiplexerType::WezTerm => Err("WezTerm multiplexer feature is not enabled".to_string()),
+        #[cfg(not(feature = "zellij"))]
+        MultiplexerType::Zellij => Err("Zellij multiplexer feature is not enabled".to_string()),
+        #[cfg(not(feature = "screen"))]
+        MultiplexerType::Screen => Err("Screen multiplexer feature is not enabled".to_string()),
+        #[cfg(not(all(feature = "tilix", target_os = "linux")))]
+        MultiplexerType::Tilix => Err(
+            "Tilix multiplexer is only available on Linux with the tilix feature enabled"
+                .to_string(),
+        ),
+        #[cfg(not(feature = "windows-terminal"))]
+        MultiplexerType::WindowsTerminal => {
+            Err("Windows Terminal multiplexer feature is not enabled".to_string())
+        }
+        #[cfg(not(feature = "ghostty"))]
+        MultiplexerType::Ghostty => Err("Ghostty multiplexer feature is not enabled".to_string()),
+        #[cfg(not(feature = "vim"))]
+        MultiplexerType::Vim => Err("Vim multiplexer feature is not enabled".to_string()),
+        #[cfg(not(feature = "neovim"))]
+        MultiplexerType::Neovim => Err("Neovim multiplexer feature is not enabled".to_string()),
+        #[cfg(not(feature = "emacs"))]
+        MultiplexerType::Emacs => Err("Emacs multiplexer feature is not enabled".to_string()),
+        MultiplexerType::ITerm2 => {
             // Use iTerm2 - requires feature + macOS
             #[cfg(all(feature = "iterm2", target_os = "macos"))]
             {
@@ -531,10 +463,10 @@ pub fn create_local_task_manager_with_multiplexer(
                 )
             }
         }
-        MultiplexerPreference::Kitty => {
+        MultiplexerType::Kitty => {
             build_task_manager_for!(agent_config, KittyMultiplexer, feature = "kitty", "Kitty")
         }
-        MultiplexerPreference::WezTerm => {
+        MultiplexerType::WezTerm => {
             build_task_manager_for!(
                 agent_config,
                 WezTermMultiplexer,
@@ -542,7 +474,7 @@ pub fn create_local_task_manager_with_multiplexer(
                 "WezTerm"
             )
         }
-        MultiplexerPreference::Zellij => {
+        MultiplexerType::Zellij => {
             build_task_manager_for!(
                 agent_config,
                 ZellijMultiplexer,
@@ -550,7 +482,7 @@ pub fn create_local_task_manager_with_multiplexer(
                 "Zellij"
             )
         }
-        MultiplexerPreference::Screen => {
+        MultiplexerType::Screen => {
             build_task_manager_for!(
                 agent_config,
                 ScreenMultiplexer,
@@ -558,7 +490,7 @@ pub fn create_local_task_manager_with_multiplexer(
                 "Screen"
             )
         }
-        MultiplexerPreference::Tilix => {
+        MultiplexerType::Tilix => {
             build_task_manager_for!(
                 agent_config,
                 TilixMultiplexer,
@@ -566,7 +498,7 @@ pub fn create_local_task_manager_with_multiplexer(
                 "Tilix"
             )
         }
-        MultiplexerPreference::WindowsTerminal => {
+        MultiplexerType::WindowsTerminal => {
             build_task_manager_for!(
                 agent_config,
                 WindowsTerminalMultiplexer,
@@ -574,7 +506,7 @@ pub fn create_local_task_manager_with_multiplexer(
                 "Windows Terminal"
             )
         }
-        MultiplexerPreference::Ghostty => {
+        MultiplexerType::Ghostty => {
             build_task_manager_for!(
                 agent_config,
                 GhosttyMultiplexer,
@@ -582,10 +514,10 @@ pub fn create_local_task_manager_with_multiplexer(
                 "Ghostty"
             )
         }
-        MultiplexerPreference::Vim => {
+        MultiplexerType::Vim => {
             build_task_manager_for!(agent_config, VimMultiplexer, feature = "vim", "Vim")
         }
-        MultiplexerPreference::Neovim => {
+        MultiplexerType::Neovim => {
             build_task_manager_for!(
                 agent_config,
                 NeovimMultiplexer,
@@ -593,7 +525,7 @@ pub fn create_local_task_manager_with_multiplexer(
                 "Neovim"
             )
         }
-        MultiplexerPreference::Emacs => {
+        MultiplexerType::Emacs => {
             build_task_manager_for!(agent_config, EmacsMultiplexer, feature = "emacs", "Emacs")
         }
     }
@@ -621,7 +553,7 @@ mod tests {
 
         // Tmux should always work (it's the default fallback)
         let result =
-            create_local_task_manager_with_multiplexer(config.clone(), MultiplexerPreference::Tmux);
+            create_local_task_manager_with_multiplexer(config.clone(), MultiplexerType::Tmux);
 
         // We expect this to succeed if tmux is available, or fail with a clear error
         match result {
@@ -650,10 +582,8 @@ mod tests {
         // Test with a multiplexer that's likely not available
         #[cfg(not(feature = "zellij"))]
         {
-            let result = create_local_task_manager_with_multiplexer(
-                config.clone(),
-                MultiplexerPreference::Zellij,
-            );
+            let result =
+                create_local_task_manager_with_multiplexer(config.clone(), MultiplexerType::Zellij);
 
             assert!(
                 result.is_err(),
@@ -671,10 +601,8 @@ mod tests {
         // Test iTerm2 on non-macOS platforms
         #[cfg(not(target_os = "macos"))]
         {
-            let result = create_local_task_manager_with_multiplexer(
-                config.clone(),
-                MultiplexerPreference::ITerm2,
-            );
+            let result =
+                create_local_task_manager_with_multiplexer(config.clone(), MultiplexerType::ITerm2);
 
             assert!(result.is_err(), "Should reject iTerm2 on non-macOS");
             if let Err(err) = result {
@@ -689,10 +617,8 @@ mod tests {
         // Test Tilix on non-Linux platforms
         #[cfg(not(target_os = "linux"))]
         {
-            let result = create_local_task_manager_with_multiplexer(
-                config.clone(),
-                MultiplexerPreference::Tilix,
-            );
+            let result =
+                create_local_task_manager_with_multiplexer(config.clone(), MultiplexerType::Tilix);
 
             assert!(result.is_err(), "Should reject Tilix on non-Linux");
             if let Err(err) = result {
@@ -714,8 +640,7 @@ mod tests {
         };
 
         // Auto should always succeed by falling back to tmux
-        let result =
-            create_local_task_manager_with_multiplexer(config, MultiplexerPreference::Auto);
+        let result = create_local_task_manager_with_multiplexer(config, MultiplexerType::Tmux);
 
         // This should succeed if any supported multiplexer is available
         // (which should at least be tmux in most environments)
@@ -737,19 +662,19 @@ mod tests {
 
         // Test each variant to ensure they don't panic
         let variants = vec![
-            MultiplexerPreference::Auto,
-            MultiplexerPreference::Tmux,
-            MultiplexerPreference::ITerm2,
-            MultiplexerPreference::Kitty,
-            MultiplexerPreference::WezTerm,
-            MultiplexerPreference::Zellij,
-            MultiplexerPreference::Screen,
-            MultiplexerPreference::Tilix,
-            MultiplexerPreference::WindowsTerminal,
-            MultiplexerPreference::Ghostty,
-            MultiplexerPreference::Vim,
-            MultiplexerPreference::Neovim,
-            MultiplexerPreference::Emacs,
+            MultiplexerType::Tmux,
+            MultiplexerType::Tmux,
+            MultiplexerType::ITerm2,
+            MultiplexerType::Kitty,
+            MultiplexerType::WezTerm,
+            MultiplexerType::Zellij,
+            MultiplexerType::Screen,
+            MultiplexerType::Tilix,
+            MultiplexerType::WindowsTerminal,
+            MultiplexerType::Ghostty,
+            MultiplexerType::Vim,
+            MultiplexerType::Neovim,
+            MultiplexerType::Emacs,
         ];
 
         for variant in variants {
@@ -826,7 +751,7 @@ mod tests {
             ];
             let choice = determine_multiplexer_choice(&envs);
             match choice {
-                MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Tmux) => {
+                MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Tmux) => {
                     // Selected innermost Tmux from nested environment
                 }
                 _ => {
@@ -841,7 +766,7 @@ mod tests {
         ];
         let choice = determine_multiplexer_choice(&envs);
         match choice {
-            MultiplexerChoice::InSupportedMultiplexer(CliMultiplexerType::Tmux) => {
+            MultiplexerChoice::InSupportedMultiplexer(MultiplexerType::Tmux) => {
                 // Correctly selected Tmux
             }
             _ => {
