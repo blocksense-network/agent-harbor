@@ -175,20 +175,20 @@ impl FsKitAdapter {
     pub fn mount(&self) -> Result<(), Box<dyn std::error::Error>> {
         // In a real macOS implementation, this would register with FSKit
         // For now, this is a placeholder
-        println!("Mounting AgentFS via FSKit at {}", self.config.mount_point);
+        tracing::info!(mount_point = %self.config.mount_point, "Mounting AgentFS via FSKit");
         Ok(())
     }
 
     /// Unmount the filesystem
     pub fn unmount(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Unmounting AgentFS via FSKit");
+        tracing::info!("Unmounting AgentFS via FSKit");
         Ok(())
     }
 
     /// Start XPC control service
     pub fn start_xpc_service(&self) -> Result<(), Box<dyn std::error::Error>> {
         // XPC implementation would go here on macOS
-        println!("Starting XPC control service");
+        tracing::info!("Starting XPC control service");
         Ok(())
     }
 }
