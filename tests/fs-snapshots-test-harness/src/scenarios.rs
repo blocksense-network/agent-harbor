@@ -633,7 +633,7 @@ fn filesystem_used_bytes(path: &Path) -> Result<u64> {
         let block_size = stat.f_bsize as u128;
         let used_blocks = (stat.f_blocks - stat.f_bfree) as u128;
         let bytes_used = block_size * used_blocks;
-        return Ok(bytes_used as u64);
+        Ok(bytes_used as u64)
     }
 
     #[cfg(not(unix))]
@@ -675,7 +675,7 @@ fn run_btrfs_quota_test(repo_path: &Path, mode: WorkingCopyMode) -> Result<()> {
     let large_file = workspace.exec_path.join("quota_stress.bin");
     let payload = vec![0u8; 15 * 1024 * 1024];
     let write_result = fs::write(&large_file, payload);
-    let quota_enforced = matches!(&write_result, Err(err) if matches!(err.raw_os_error(), Some(code) if code == ENOSPC as i32 || code == EDQUOT as i32));
+    let quota_enforced = matches!(&write_result, Err(err) if matches!(err.raw_os_error(), Some(code) if code == ENOSPC || code == EDQUOT));
 
     let _ = fs::remove_file(&large_file);
     let _ = Command::new("btrfs")
@@ -724,7 +724,7 @@ fn run_zfs_quota_test(repo_path: &Path, mode: WorkingCopyMode) -> Result<()> {
     let large_file = workspace.exec_path.join("quota_stress.bin");
     let payload = vec![0u8; 15 * 1024 * 1024];
     let write_result = fs::write(&large_file, payload);
-    let quota_enforced = matches!(&write_result, Err(err) if matches!(err.raw_os_error(), Some(code) if code == ENOSPC as i32 || code == EDQUOT as i32));
+    let quota_enforced = matches!(&write_result, Err(err) if matches!(err.raw_os_error(), Some(code) if code == ENOSPC || code == EDQUOT));
 
     let _ = fs::remove_file(&large_file);
     let _ = Command::new("zfs").args(["set", "quota=none", &dataset]).status();
