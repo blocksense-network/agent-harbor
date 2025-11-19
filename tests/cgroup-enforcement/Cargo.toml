@@ -6,6 +6,10 @@ name = "cgroup-enforcement-tests"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
 [[bin]]
 name = "fork_bomb"
 path = "src/fork_bomb.rs"
