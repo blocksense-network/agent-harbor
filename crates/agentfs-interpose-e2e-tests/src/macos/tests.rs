@@ -3598,6 +3598,11 @@ pub fn test_fsevents_interposition(args: &[String]) {
         }
 
         println!("📊 Main thread: loop finished, checking for any remaining completion signals...");
+        println!(
+            "DEBUG: Before final check - completed_operations.len()={}, total_operations={}",
+            completed_operations.len(),
+            operations.len()
+        );
         let mut final_received = 0;
         while let Ok(op_index) = rx.try_recv() {
             completed_operations.insert(op_index);
@@ -3667,6 +3672,10 @@ pub fn test_fsevents_interposition(args: &[String]) {
         let events_match = verify_events(&expected_events, &actual_events, &test_dir);
 
         let total_operations = operations.len();
+        println!(
+            "DEBUG: Checking completion - operations_completed={}, total_operations={}",
+            operations_completed, total_operations
+        );
         if operations_completed == total_operations {
             println!(
                 "✅ Test successful: All {} operations performed!",

@@ -241,10 +241,10 @@ dependencies = [
  "hex",
  "libc",
  "once_cell",
- "redhook",
  "scopeguard",
  "serde",
  "serde_json",
+ "stackable-hooks",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -445,10 +445,10 @@ dependencies = [
  "libc",
  "nix 0.29.0",
  "once_cell",
- "redhook",
  "scopeguard",
  "serde",
  "serde_json",
+ "stackable-hooks",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -3120,6 +3120,52 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
+name = "e2e-call-real-shim"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "libc",
+ "stackable-hooks",
+]
+
+[[package]]
+name = "e2e-shim-a"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "libc",
+ "stackable-hooks",
+]
+
+[[package]]
+name = "e2e-shim-b"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "libc",
+ "stackable-hooks",
+]
+
+[[package]]
+name = "e2e-stackable-hooks"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "libc",
+ "stackable-hooks",
+]
+
+[[package]]
+name = "e2e-stackable-hooks-b"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "libc",
+ "stackable-hooks",
+ "tracing",
+]
 
 [[package]]
 name = "ecdsa"
@@ -6886,15 +6932,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3edd4d5d42c92f0a659926464d4cce56b562761267ecf0f469d85b7de384175"
 
 [[package]]
-name = "redhook"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6e109b8469dbbe6d7cbe18e5ebd65d4a134e2f4b91304ad9213984cad1d70a6"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8157,6 +8194,15 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "stackable-hooks"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "libc",
+ "paste",
+]
 
 [[package]]
 name = "static_assertions"

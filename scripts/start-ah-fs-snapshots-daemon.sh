@@ -45,7 +45,13 @@ if [ ! -e "$SOCKET_PATH" ]; then
   exit 1
 fi
 
-AUTOMOUNT="${AGENTFS_FUSE_AUTOMOUNT:-1}"
+# Platform detection - FUSE mounting is Linux-only
+if [ "$(uname -s)" = "Linux" ]; then
+  AUTOMOUNT="${AGENTFS_FUSE_AUTOMOUNT:-1}"
+else
+  AUTOMOUNT="${AGENTFS_FUSE_AUTOMOUNT:-0}"
+fi
+
 MOUNT_POINT="${AGENTFS_FUSE_MOUNT_POINT:-/tmp/agentfs}"
 ALLOW_OTHER="${AGENTFS_FUSE_ALLOW_OTHER:-1}"
 ALLOW_ROOT="${AGENTFS_FUSE_ALLOW_ROOT:-0}"
@@ -83,4 +89,8 @@ if [ "$AUTOMOUNT" = "1" ]; then
   sudo chown -R "$USER":"$(id -gn)" "$MOUNT_POINT" || true
 fi
 
-echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage FUSE mounts as needed."
+if [ "$(uname -s)" = "Linux" ]; then
+  echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage FUSE mounts as needed."
+else
+  echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage interpose mounts as needed."
+fi

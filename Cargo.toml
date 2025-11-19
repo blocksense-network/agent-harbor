@@ -77,6 +77,11 @@ members = [
   "tests/agentfs-daemon-backstore-integration",
   "tests/tools/mock-tui-dashboard",
   "tests/fs-snapshots-test-harness",
+  "tests/e2e-stackable-hooks",
+  "tests/e2e-stackable-hooks-b",
+  "tests/e2e-shim-a",
+  "tests/e2e-shim-b",
+  "tests/e2e-call-real-shim",
   "crates/agentfs-interpose-shim",
   "crates/agentfs-interpose-e2e-tests",
   "crates/agentfs-daemon",
@@ -86,6 +91,7 @@ members = [
   "crates/ah-command-trace-shim",
   "crates/ah-command-trace-client",
   "crates/ah-command-trace-e2e-tests",
+  "crates/stackable-hooks",
 ]
 exclude = ["vendor", "PoC", "tests/agentfs-daemon-backstore-integration"]
 resolver = "2"
@@ -100,7 +106,7 @@ serde_json = "1.0"
 toml = "0.8"
 
 # Command trace shim dependencies
-redhook = "2.0"
+stackable-hooks = { path = "crates/stackable-hooks" }
 ctor = "0.2"
 scopeguard = "1.2"
 

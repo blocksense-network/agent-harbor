@@ -146,7 +146,7 @@ Loopback addresses (127.0.0.1, 127.0.0.2, etc.) are **aliases of the same interf
 - **AgentFS Server**: Dual-protocol server using `tokio::select!` to handle both JSON and SSZ sockets simultaneously, maintains shared AgentFS core instance, converts between legacy JSON and SSZ types
 - **Filesystem Interposition**: Two protocol-specific implementations:
   - **C Implementation**: Uses JSON protocol on `.json` socket with `DYLD_INTERPOSE` macros
-  - **Rust Implementation**: Uses SSZ protocol on `.ssz` socket with `redhook` for safe function hooking
+  - **Rust Implementation**: Uses SSZ protocol on `.ssz` socket with the in-tree `stackable_hooks` macros (redhook-derived) for safe function hooking
 - **RPC Protocols**:
   - JSON socket: Length-prefixed JSON messages for backward compatibility
   - SSZ socket: Length-prefixed SSZ messages for efficient binary serialization
@@ -162,7 +162,7 @@ Loopback addresses (127.0.0.1, 127.0.0.2, etc.) are **aliases of the same interf
 - `lib/fs-interpose.c` - C implementation connecting to .json socket with JSON protocol
 - `lib/build-fs-lib.sh` - Build script for C interposition library
 - `rust-client/src/lib.rs` - Rust implementation connecting to .ssz socket with SSZ protocol
-- `rust-client/Cargo.toml` - Rust client dependencies (SSZ, redhook, AgentFS)
+- `rust-client/Cargo.toml` - Rust client dependencies (SSZ, stackable-hooks, AgentFS)
 - `rust-client/build.sh` - Build script for Rust interposition library
 - `harness/agentfs-integration.sh` - End-to-end integration test harness
 - `harness/fs-redirection.sh` - Filesystem redirection tests

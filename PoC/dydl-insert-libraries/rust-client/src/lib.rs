@@ -200,9 +200,9 @@ fn remove_handle_mapping(local_fd: i32) {
     });
 }
 
-// Interposed functions using redhook
-redhook::hook! {
-    unsafe fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_open {
+// Interposed functions using stackable-hooks
+stackable_hooks::hook! {
+    unsafe fn open(stackable_self, path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_open {
         if let Some(path_str) = path.as_ref().and_then(|p| CStr::from_ptr(p).to_str().ok()) {
             if should_intercept(path_str) {
                 if let Some(client) = get_client() {
@@ -229,12 +229,12 @@ redhook::hook! {
         }
 
         // Call original function
-        redhook::real!(open)(path, flags, mode)
+        stackable_hooks::call_next!(stackable_self, open, path, flags, mode)
     }
 }
 
-redhook::hook! {
-    unsafe fn close(fd: c_int) -> c_int => my_close {
+stackable_hooks::hook! {
+    unsafe fn close(stackable_self, fd: c_int) -> c_int => my_close {
         if let Some(agentfs_handle) = get_agentfs_handle(fd) {
             if let Some(client) = get_client() {
                 eprintln!("[RUST-FS-INTERPOSE] Intercepting close: {}", fd);
@@ -253,12 +253,12 @@ redhook::hook! {
         }
 
         // Call original function
-        redhook::real!(close)(fd)
+        stackable_hooks::call_next!(stackable_self, close, fd)
     }
 }
 
-redhook::hook! {
-    unsafe fn read(fd: c_int, buf: *mut c_void, count: size_t) -> ssize_t => my_read {
+stackable_hooks::hook! {
+    unsafe fn read(stackable_self, fd: c_int, buf: *mut c_void, count: size_t) -> ssize_t => my_read {
         if let Some(agentfs_handle) = get_agentfs_handle(fd) {
             if let Some(client) = get_client() {
                 eprintln!("[RUST-FS-INTERPOSE] Intercepting read: {}", fd);
@@ -280,12 +280,12 @@ redhook::hook! {
         }
 
         // Call original function
-        redhook::real!(read)(fd, buf, count)
+        stackable_hooks::call_next!(stackable_self, read, fd, buf, count)
     }
 }
 
-redhook::hook! {
-    unsafe fn write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t => my_write {
+stackable_hooks::hook! {
+    unsafe fn write(stackable_self, fd: c_int, buf: *const c_void, count: size_t) -> ssize_t => my_write {
         if let Some(agentfs_handle) = get_agentfs_handle(fd) {
             if let Some(client) = get_client() {
                 eprintln!("[RUST-FS-INTERPOSE] Intercepting write: {}", fd);
@@ -302,7 +302,7 @@ redhook::hook! {
         }
 
         // Call original function
-        redhook::real!(write)(fd, buf, count)
+        stackable_hooks::call_next!(stackable_self, write, fd, buf, count)
     }
 }
 

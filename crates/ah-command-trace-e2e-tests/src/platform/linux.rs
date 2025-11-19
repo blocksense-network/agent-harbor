@@ -16,14 +16,18 @@ pub async fn inject_shim_and_run(
     let shim_path_str = shim_path.to_string_lossy();
 
     // Set all environment variables directly on the command
-    let output = tokio::process::Command::new(command)
-        .args(args)
+    let mut cmd = tokio::process::Command::new(command);
+    cmd.args(args)
         .env("LD_PRELOAD", shim_path_str.as_ref())
         .env("AH_CMDTRACE_ENABLED", "1")
         .env("AH_CMDTRACE_SOCKET", socket_path)
-        .env("AH_CMDTRACE_LOG", "1")
-        .output()
-        .await?;
+        .env("AH_CMDTRACE_LOG", "1");
+
+    if let Ok(progress_log) = std::env::var("AH_SHELL_TEST_LOG") {
+        cmd.env("AH_SHELL_TEST_LOG", progress_log);
+    }
+
+    let output = cmd.output().await?;
 
     Ok(output)
 }
