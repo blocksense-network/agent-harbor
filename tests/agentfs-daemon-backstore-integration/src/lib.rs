@@ -6,12 +6,14 @@
 //! This test suite verifies that the AgentFS daemon can start with different
 //! backstore configurations and provides correct backstore status information.
 
-use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::process::{Child, Command, ExitStatus};
+use std::process::{Child, Command};
+// Only needed in test builds; avoid dead_code warnings in non-test builds
+#[cfg(test)]
 use std::thread;
+#[cfg(test)]
 use std::time::Duration;
 
 use agentfs_core::config::BackstoreMode;
@@ -20,14 +22,15 @@ use agentfs_daemon::handshake::{
 };
 #[cfg(target_os = "macos")]
 use agentfs_interpose_e2e_tests::{decode_ssz_message, encode_ssz_message};
-use agentfs_proto::messages::DaemonStateProcessesRequest;
 use agentfs_proto::{
     BackstoreStatus, DaemonStateBackstoreRequest, DaemonStateResponse, DaemonStateResponseWrapper,
     Request, Response,
 };
 use anyhow::Result;
 use tempfile::tempdir;
-use tokio::time;
+use tracing::debug;
+#[cfg(test)]
+use tracing::info;
 
 #[cfg(not(target_os = "macos"))]
 mod ssz_helpers {
@@ -75,6 +78,12 @@ pub struct DaemonTestConfig {
 /// Simple test runner for backstore integration tests
 pub struct BackstoreTestRunner {
     pub configs: Vec<DaemonTestConfig>,
+}
+
+impl Default for BackstoreTestRunner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BackstoreTestRunner {
@@ -132,10 +141,10 @@ impl BackstoreTestRunner {
 
     /// Query backstore status from a running daemon
     pub fn query_backstore_status(socket_path: &PathBuf) -> Result<BackstoreStatus, String> {
-        eprintln!("DEBUG: Connecting to socket: {:?}", socket_path);
+        debug!(path = %socket_path.display(), "Connecting to daemon socket");
         let mut stream = UnixStream::connect(socket_path)
             .map_err(|e| format!("Failed to connect to socket: {}", e))?;
-        eprintln!("DEBUG: Connected successfully");
+        debug!("Connected successfully to daemon socket");
 
         // Perform handshake
         let handshake = HandshakeMessage::Handshake(HandshakeData {
@@ -171,10 +180,7 @@ impl BackstoreTestRunner {
         stream
             .read_exact(&mut ack_buf)
             .map_err(|e| format!("Failed to read ack: {}", e))?;
-        eprintln!(
-            "DEBUG: Received handshake ack: {:?}",
-            String::from_utf8_lossy(&ack_buf)
-        );
+        debug!(ack = %String::from_utf8_lossy(&ack_buf), "Received handshake acknowledgment");
         assert_eq!(&ack_buf, b"OK\n");
 
         // Query backstore status
@@ -219,6 +225,7 @@ impl BackstoreTestRunner {
 }
 
 /// Execute a test scenario using the test_helper binary
+#[cfg(test)]
 fn execute_test_scenario(
     socket_path: &std::path::Path,
     scenario: &str,
@@ -236,12 +243,13 @@ fn execute_test_scenario(
         .env("AGENTFS_INTERPOSE_LOG", "1")
         .env("AGENTFS_INTERPOSE_FAIL_FAST", "1");
 
-    println!("Running test scenario: {}", scenario);
+    info!(scenario, "Running test scenario");
     let output = cmd.output().expect("Failed to execute test scenario");
     output.status
 }
 
 /// Find the path to the interposition dylib
+#[cfg(test)]
 fn find_dylib_path() -> std::path::PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -262,6 +270,7 @@ fn find_dylib_path() -> std::path::PathBuf {
 }
 
 /// Find the path to the agentfs-interpose-test-helper binary
+#[cfg(test)]
 fn find_test_helper_path() -> std::path::PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -280,74 +289,7 @@ fn find_test_helper_path() -> std::path::PathBuf {
     test_helper_path
 }
 
-/// Query daemon state using structured request
-fn query_daemon_state_structured(
-    socket_path: &std::path::Path,
-    request: Request,
-) -> Result<Response, String> {
-    let mut stream = UnixStream::connect(socket_path)
-        .map_err(|e| format!("Failed to connect to daemon: {}", e))?;
-
-    // Perform handshake
-    let handshake = HandshakeMessage::Handshake(HandshakeData {
-        version: b"1".to_vec(),
-        shim: ShimInfo {
-            name: b"test-client".to_vec(),
-            crate_version: b"1.0.0".to_vec(),
-            features: vec![b"query".to_vec()],
-        },
-        process: ProcessInfo {
-            pid: 12345,
-            ppid: 0,
-            uid: 0,
-            gid: 0,
-            exe_path: b"/test".to_vec(),
-            exe_name: b"test".to_vec(),
-        },
-        allowlist: AllowlistInfo {
-            matched_entry: None,
-            configured_entries: None,
-        },
-        timestamp: b"1234567890".to_vec(),
-    });
-
-    let message_data = encode_ssz_message(&handshake);
-    stream
-        .write_all(&message_data)
-        .map_err(|e| format!("Failed to send handshake: {}", e))?;
-    stream.flush().map_err(|e| format!("Failed to flush handshake: {}", e))?;
-
-    // Read acknowledgment
-    let mut ack_buf = [0u8; 3];
-    stream
-        .read_exact(&mut ack_buf)
-        .map_err(|e| format!("Failed to read ack: {}", e))?;
-
-    // Send request
-    let request_data = encode_ssz_message(&request);
-    let len_bytes = (request_data.len() as u32).to_le_bytes();
-    stream
-        .write_all(&len_bytes)
-        .map_err(|e| format!("Failed to send length: {}", e))?;
-    stream
-        .write_all(&request_data)
-        .map_err(|e| format!("Failed to send request: {}", e))?;
-    stream.flush().map_err(|e| format!("Failed to flush request: {}", e))?;
-
-    // Read response
-    let mut len_buf = [0u8; 4];
-    stream
-        .read_exact(&mut len_buf)
-        .map_err(|e| format!("Failed to read response length: {}", e))?;
-    let response_len = u32::from_le_bytes(len_buf) as usize;
-
-    let mut response_buf = vec![0u8; response_len];
-    stream
-        .read_exact(&mut response_buf)
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-
-    decode_ssz_message(&response_buf).map_err(|e| format!("Failed to decode response: {:?}", e))
-}
+// Removed unused helper function `query_daemon_state_structured` (was never invoked)
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
@@ -372,7 +314,7 @@ mod tests {
 
         // Try to connect to the daemon socket
         let stream = UnixStream::connect(&socket_path)?;
-        println!("Successfully connected to daemon socket");
+        info!("Successfully connected to daemon socket");
 
         // Close the connection
         drop(stream);
@@ -383,7 +325,7 @@ mod tests {
         // Check if daemon is still running
         match daemon.try_wait()? {
             Some(exit_status) => {
-                println!("Daemon exited with status: {:?}", exit_status);
+                info!(status = ?exit_status, "Daemon exited");
                 assert!(
                     exit_status.success(),
                     "Daemon exited with error: {:?}",
@@ -391,9 +333,7 @@ mod tests {
                 );
             }
             None => {
-                println!(
-                    "Daemon is still running after client disconnect, this is expected for a server"
-                );
+                info!("Daemon still running after client disconnect (expected for server)");
                 // Kill it for cleanup
                 daemon.kill()?;
                 let _ = daemon.wait()?;
@@ -417,7 +357,7 @@ mod tests {
 
         // TEMPORARY: Skip daemon query for now due to client handling issues
         // TODO: Fix daemon client connection handling and re-enable this test
-        eprintln!("DEBUG: Skipping daemon query for now - client handling needs to be fixed");
+        debug!("Skipping daemon query for now - client handling needs to be fixed");
 
         // For now, just verify the daemon started successfully by checking the process is running
         assert!(
@@ -449,7 +389,7 @@ mod tests {
 
         // TEMPORARY: Skip daemon query for now due to client handling issues
         // TODO: Fix daemon client connection handling and re-enable this test
-        eprintln!("DEBUG: Skipping daemon query for now - client handling needs to be fixed");
+        debug!("Skipping daemon query for now - client handling needs to be fixed");
 
         // For now, just verify the daemon started successfully by checking the process is running
         assert!(
@@ -479,22 +419,17 @@ mod tests {
 
                 // TEMPORARY: Skip daemon query for now due to client handling issues
                 // TODO: Fix daemon client connection handling and re-enable this test
-                eprintln!(
-                    "DEBUG: Skipping daemon query for now - client handling needs to be fixed"
-                );
+                debug!("Skipping daemon query for now - client handling needs to be fixed");
 
                 // For now, just verify the daemon started successfully by checking the process is running
                 // Note: RamDisk may fail to create but daemon still starts, so we'll accept either case
                 match daemon.try_wait().unwrap() {
                     Some(exit_code) => {
-                        eprintln!(
-                            "DEBUG: Daemon exited with code: {:?} (this may be expected for RamDisk on non-macOS)",
-                            exit_code
-                        );
+                        debug!(code = ?exit_code, "Daemon exited (RamDisk may not be supported)");
                         // This is acceptable - daemon started but failed due to RamDisk not being supported
                     }
                     None => {
-                        eprintln!("DEBUG: Daemon is still running, which is good");
+                        debug!("Daemon is still running (RamDisk)");
                     }
                 }
 
@@ -503,7 +438,7 @@ mod tests {
             }
             Err(e) => {
                 // RamDisk may not be supported on this system
-                eprintln!("DEBUG: RamDisk daemon startup failed as expected: {}", e);
+                debug!(error = %e, "RamDisk daemon startup failed (expected on unsupported systems)");
                 // This is acceptable - RamDisk requires macOS with proper privileges
             }
         }
@@ -530,17 +465,11 @@ mod tests {
         // This should either fail to start or start but have issues
         match result {
             Ok(status) => {
-                println!(
-                    "Daemon with invalid HostFs path exited with status: {:?}",
-                    status
-                );
+                info!(status = ?status, "Daemon with invalid HostFs path exited (acceptable)");
                 // This is acceptable - daemon may start but fail during operation
             }
             Err(e) => {
-                println!(
-                    "Daemon failed to start with invalid HostFs path (expected): {}",
-                    e
-                );
+                info!(error = %e, "Daemon failed to start with invalid HostFs path (expected)");
                 // This is also acceptable
             }
         }
@@ -567,11 +496,11 @@ mod tests {
         // This might succeed or fail depending on system, but shouldn't crash
         match result {
             Ok(status) => {
-                println!("RamDisk with small size exited with status: {:?}", status);
+                info!(status = ?status, "RamDisk with small size exited (acceptable)");
                 // This is acceptable - RamDisk might work or fail gracefully
             }
             Err(e) => {
-                println!("RamDisk with small size failed to start (expected): {}", e);
+                info!(error = %e, "RamDisk with small size failed to start (expected)");
                 // This is also acceptable
             }
         }
@@ -600,12 +529,12 @@ mod tests {
         // Create a test file first
         let test_file = dir.path().join("test_file.txt");
         std::fs::write(&test_file, "test content")?;
-        println!("Created test file: {}", test_file.display());
+        info!(file = %test_file.display(), "Created test file");
 
         // Test file operations
         let status =
             execute_test_scenario(&socket_path, "basic-open", &[test_file.to_str().unwrap()]);
-        println!("Test scenario status: {:?}", status);
+        info!(status = ?status, "Test scenario completed");
         assert!(
             status.success() || status.code() == Some(1),
             "File operations test should complete"
@@ -666,7 +595,7 @@ mod tests {
 
         // Try to access the file - should fail because InMemory backstore lost the data
         let test_file2 = dir.path().join("test_file2.txt");
-        let status2 =
+        let _status2 =
             execute_test_scenario(&socket_path, "basic-open", &[test_file2.to_str().unwrap()]);
         // This should succeed because we're creating a new file, not accessing the old one
 
@@ -726,6 +655,11 @@ mod tests {
         let test_file2 = dir.path().join("test_file2.txt");
         let status2 =
             execute_test_scenario(&socket_path, "basic-open", &[test_file2.to_str().unwrap()]);
+        // Initialize tracing once (safe to call multiple times)
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            let _ = tracing_subscriber::fmt::try_init();
+        });
         assert!(
             status2.success() || status2.code() == Some(1),
             "File operations should complete"
