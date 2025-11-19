@@ -88,13 +88,8 @@ use ah_domain_types::{
     AgentSoftwareBuild, ExperimentalFeature,
 };
 use async_trait::async_trait;
-use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-
-#[cfg(test)]
-use mockall::automock;
 
 /// Result type for agent catalog operations
 pub type AgentCatalogResult<T> = Result<T, AgentCatalogError>;
@@ -166,7 +161,7 @@ pub struct RemoteAgentCatalogConfig {
 #[derive(Debug)]
 pub struct RemoteAgentCatalog {
     config: RemoteAgentCatalogConfig,
-    rest_client: ah_rest_client::RestClient,
+    _rest_client: ah_rest_client::RestClient,
     cache: RwLock<Option<CachedCatalog>>,
 }
 
@@ -195,7 +190,7 @@ impl RemoteAgentCatalog {
 
         Self {
             config,
-            rest_client,
+            _rest_client: rest_client,
             cache: RwLock::new(None),
         }
     }
@@ -253,7 +248,7 @@ impl RemoteAgentCatalog {
             }
         }
 
-        Err(last_error.unwrap().into())
+        Err(last_error.unwrap())
     }
 
     /// Fetch catalog from remote REST API
@@ -266,6 +261,7 @@ impl RemoteAgentCatalog {
     }
 
     /// Convert REST API capabilities to catalog
+    #[allow(dead_code)]
     fn capabilities_to_catalog(
         &self,
         _capabilities: Vec<ah_rest_api_contract::AgentCapability>,
@@ -276,6 +272,7 @@ impl RemoteAgentCatalog {
     }
 
     /// Convert REST API capability to agent metadata
+    #[allow(dead_code)]
     fn capability_to_metadata(
         capability: ah_rest_api_contract::AgentCapability,
     ) -> Option<ah_domain_types::AgentMetadata> {
@@ -505,7 +502,7 @@ impl AgentCatalogProvider for RemoteAgentCatalog {
 }
 
 /// Convert REST API capabilities to domain catalog
-fn capabilities_to_catalog(
+fn _capabilities_to_catalog(
     _capabilities: Vec<ah_rest_api_contract::AgentCapability>,
 ) -> ah_domain_types::AgentCatalog {
     // Placeholder implementation - in practice, this would convert REST API capabilities
@@ -514,7 +511,7 @@ fn capabilities_to_catalog(
 }
 
 /// Get the default built-in catalog
-fn default_catalog() -> AgentCatalog {
+fn _default_catalog() -> AgentCatalog {
     let mut agents = Vec::new();
 
     // Claude models
