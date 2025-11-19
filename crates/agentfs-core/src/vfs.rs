@@ -5482,6 +5482,10 @@ mod tests {
     use std::path::Path;
 
     fn create_test_fs() -> FsCore {
+        create_test_fs_with_security(crate::config::SecurityPolicy::default())
+    }
+
+    fn create_test_fs_with_security(security: crate::config::SecurityPolicy) -> FsCore {
         // Use the same config as the main lib.rs tests
         let config = crate::FsConfig {
             case_sensitivity: crate::CaseSensitivity::Sensitive,
@@ -5505,7 +5509,7 @@ mod tests {
             enable_xattrs: true,
             enable_ads: false,
             track_events: true,
-            security: crate::config::SecurityPolicy::default(),
+            security,
             backstore: crate::config::BackstoreMode::InMemory,
             overlay: crate::config::OverlayConfig::default(),
             interpose: crate::config::InterposeConfig::default(),
@@ -5860,7 +5864,11 @@ mod tests {
 
     #[test]
     fn test_set_owner_requires_parent_search_permission() {
-        let fs = create_test_fs();
+        let fs = create_test_fs_with_security(crate::config::SecurityPolicy {
+            enforce_posix_permissions: true,
+            root_bypass_permissions: false,
+            ..Default::default()
+        });
         let root = fs.register_process(2000, 2000, 0, 0);
         let unpriv = fs.register_process(4242, 4242, 65534, 65534);
 
