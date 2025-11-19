@@ -9,6 +9,13 @@
     ".obsidian/**"
   ],
   "words": [
+    "fiemap",
+    "getfattr",
+    "listfattr",
+    "mkfifo",
+    "posix",
+    "rdev",
+    "setfattr",
     "abuf",
     "ACCES",
     "achristmascarl",
