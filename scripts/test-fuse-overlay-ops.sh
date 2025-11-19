@@ -14,7 +14,7 @@ LOWER_DIR="$RUN_DIR/lower"
 UPPER_DIR="$RUN_DIR/upper"
 WORK_SUBDIR="workspace"
 LOWER_WORK="$LOWER_DIR/$WORK_SUBDIR"
-TARGET_DIR="$MOUNTPOINT/$WORK_SUBDIR"
+TARGET_DIR="$MOUNTPOINT"
 USER_ID="$(id -u)"
 GROUP_ID="$(id -g)"
 CONFIG_PATH="$RUN_DIR/fuse-config.json"
@@ -83,7 +83,7 @@ cat >"$CONFIG_PATH" <<JSON
   },
   "overlay": {
     "enabled": true,
-    "lower_root": "$LOWER_DIR",
+    "lower_root": "$LOWER_WORK",
     "copyup_mode": "Lazy"
   },
   "interpose": {
@@ -124,7 +124,7 @@ run_root "chmod meta-only file" "chmod 600 $TARGET_DIR/meta_only.txt"
 run_user "verify mode visible via mount" "[[ \$(stat -c %a $TARGET_DIR/meta_only.txt) == 600 ]]"
 run_user "lower mode unchanged" "[[ \$(stat -c %a $LOWER_WORK/meta_only.txt) == 644 ]]"
 log "== Whiteout validation =="
-run_user "remove lower file" "rm $TARGET_DIR/remove_me.txt"
+run_root "remove lower file" "rm $TARGET_DIR/remove_me.txt"
 run_user "mount hides removed file" "! ls $TARGET_DIR | grep -q remove_me.txt"
 run_user "lower file preserved" "[[ -f $LOWER_WORK/remove_me.txt ]]"
 log "== Merged directory listing =="

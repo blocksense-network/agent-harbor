@@ -146,7 +146,7 @@ impl Default for BackstoreMode {
 }
 
 /// Overlay configuration
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OverlayConfig {
     /// Enable overlay mode (default: false)
     pub enabled: bool,
@@ -154,6 +154,19 @@ pub struct OverlayConfig {
     pub lower_root: Option<PathBuf>,
     /// Copy-up policy for metadata-only changes
     pub copyup_mode: CopyUpMode,
+    /// Optional subdirectory within the lower filesystem exposed to clients (defaults to root)
+    pub visible_subdir: Option<PathBuf>,
+}
+
+impl Default for OverlayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            lower_root: None,
+            copyup_mode: CopyUpMode::Lazy,
+            visible_subdir: None,
+        }
+    }
 }
 
 /// Copy-up mode for overlay operations

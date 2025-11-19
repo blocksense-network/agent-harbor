@@ -32,7 +32,7 @@ use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions as StdOpenOptions};
 use std::io::Read;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use std::os::unix::fs::{FileExt, PermissionsExt};
+use std::os::unix::fs::{FileExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, Condvar, Mutex, Weak,
@@ -59,6 +59,9 @@ const NAME_MAX: usize = 255;
 
 /// File-handle space reserved for lower pass-through handles
 const LOWER_HANDLE_BASE: u64 = 1u64 << 60;
+
+/// Base inode number reserved for lower-only entries that have not been materialized
+const LOWER_INODE_BASE: u64 = 1u64 << 58;
 
 /// Synthetic PID assignments for requests that arrive without a valid client PID.
 const PSEUDO_PID_BASE: u32 = 0x4000_0000;
@@ -411,6 +414,10 @@ pub struct AgentFsFuse {
     lower_handles: HashMap<u64, LowerHandle>,
     /// Next pass-through handle id
     next_lower_fh: u64,
+    /// Tracks inodes representing lower-only entries (not yet materialized in AgentFS)
+    lower_only_inodes: HashSet<u64>,
+    /// Next synthetic inode id for lower-only entries
+    next_lower_inode: u64,
     /// Explicit whiteouts for lower-only entries
     whiteouts: HashSet<Vec<u8>>,
     /// Whether to emit per-write latency tracing
@@ -441,12 +448,37 @@ impl AgentFsFuse {
         config.security.enforce_posix_permissions = true;
         // pjdfstest expects uid 0 to bypass sticky/exec bits so cleanup steps succeed.
         config.security.root_bypass_permissions = true;
+        info!(
+            target = "agentfs::fuse",
+            default_uid = config.security.default_uid,
+            default_gid = config.security.default_gid,
+            "mount default owner"
+        );
         let force_direct_io = std::env::var("AGENTFS_FUSE_DIRECT_IO")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
         let core = Arc::new(FsCore::new(config.clone())?);
         let host_pid = std::process::id();
         let internal_pid = core.register_process_with_groups(host_pid, host_pid, 0, 0, &[0]);
+        if let Err(err) = core.set_owner(
+            &internal_pid,
+            Path::new("/"),
+            config.security.default_uid,
+            config.security.default_gid,
+        ) {
+            warn!(
+                target: "agentfs::fuse",
+                ?err,
+                "failed to set root directory owner"
+            );
+        } else if let Ok(attrs) = core.getattr(&internal_pid, Path::new("/")) {
+            info!(
+                target = "agentfs::fuse",
+                root_uid = attrs.uid,
+                root_gid = attrs.gid,
+                "root owner after init"
+            );
+        }
         let mut inodes = HashMap::new();
         let mut paths = HashMap::new();
 
@@ -493,6 +525,8 @@ impl AgentFsFuse {
             passthrough_metrics: PassthroughMetrics::default(),
             lower_handles: HashMap::new(),
             next_lower_fh: LOWER_HANDLE_BASE,
+            lower_only_inodes: HashSet::new(),
+            next_lower_inode: LOWER_INODE_BASE,
             whiteouts: HashSet::new(),
             trace_writes,
             inflight_writes,
@@ -760,6 +794,9 @@ impl AgentFsFuse {
     }
 
     fn node_id_from_inode(&self, ino: u64) -> Option<u64> {
+        if self.lower_only_inodes.contains(&ino) {
+            return None;
+        }
         if ino >= FIRST_DYNAMIC_INO {
             Some(ino - FIRST_DYNAMIC_INO)
         } else {
@@ -776,17 +813,41 @@ impl AgentFsFuse {
         if let Some(&inode) = self.paths.get(canonical_path) {
             return Ok(inode);
         }
-        let (node_id, _) = self.core.resolve_path_public(pid, logical_path)?;
-        Ok(self.record_path_for_node(canonical_path.to_vec(), node_id))
+        match self.core.resolve_path_public(pid, logical_path) {
+            Ok((node_id, _)) => Ok(self.record_path_for_node(canonical_path.to_vec(), node_id)),
+            Err(FsError::NotFound) => {
+                if self.overlay_enabled() && self.lower_entry_exists(logical_path) {
+                    Ok(self.record_lower_inode(canonical_path.to_vec()))
+                } else {
+                    Err(FsError::NotFound)
+                }
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// Associate a path with a node, preserving canonical mapping.
     fn record_path_for_node(&mut self, path: Vec<u8>, node_id: u64) -> u64 {
         let inode = self.fuse_ino_from_node(node_id);
         self.whiteouts.remove(&path);
+        if let Some(old) = self.paths.insert(path.clone(), inode) {
+            if self.lower_only_inodes.remove(&old) {
+                self.inodes.remove(&old);
+            }
+        }
+        self.inodes.insert(inode, path);
+        self.lower_only_inodes.remove(&inode);
+        self.clear_tombstone(inode);
+        inode
+    }
+
+    fn record_lower_inode(&mut self, path: Vec<u8>) -> u64 {
+        let inode = self.next_lower_inode;
+        self.next_lower_inode = self.next_lower_inode.wrapping_add(1);
+        self.whiteouts.remove(&path);
         self.paths.insert(path.clone(), inode);
         self.inodes.insert(inode, path);
-        self.clear_tombstone(inode);
+        self.lower_only_inodes.insert(inode);
         inode
     }
 
@@ -960,6 +1021,7 @@ impl AgentFsFuse {
         {
             let mode = metadata.permissions().mode();
             let _ = self.core.set_mode(pid, path, mode);
+            let _ = self.core.set_owner(pid, path, metadata.uid() as u32, metadata.gid() as u32);
         }
 
         self.clear_whiteout(canonical);
@@ -972,6 +1034,10 @@ impl AgentFsFuse {
     /// Remove a single path mapping and update canonical bookkeeping.
     fn remove_path_mapping(&mut self, path: &[u8]) -> Option<RemovalOutcome> {
         let inode = self.paths.remove(path)?;
+        if self.lower_only_inodes.remove(&inode) {
+            self.inodes.remove(&inode);
+            return None;
+        }
         let node_id = match self.node_id_from_inode(inode) {
             Some(id) => id,
             None => {
@@ -1103,6 +1169,12 @@ impl AgentFsFuse {
 
         self.lookup_refcounts.remove(&inode);
         self.tombstoned_inodes.remove(&inode);
+
+        if self.lower_only_inodes.remove(&inode) {
+            self.inodes.remove(&inode);
+            self.paths.retain(|_, &mut ino| ino != inode);
+            return;
+        }
 
         if let Some(handles) = self.inode_handles.remove(&inode) {
             for fh in handles {

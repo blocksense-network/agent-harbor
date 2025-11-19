@@ -248,6 +248,7 @@ pub struct FsCore {
     storage: Arc<dyn StorageBackend>,
     backstore: Option<Box<dyn Backstore>>, // Backstore for overlay operations
     lower_fs: Option<Box<dyn LowerFs>>,    // Lower filesystem provider for overlay
+    overlay_visible_subdir: Option<PathBuf>,
     nodes: Mutex<HashMap<NodeId, Node>>,
     pub(crate) snapshots: Mutex<HashMap<SnapshotId, Snapshot>>,
     pub(crate) branches: Mutex<HashMap<BranchId, Branch>>,
@@ -296,14 +297,15 @@ impl FsCore {
         };
 
         // Initialize lower filesystem if overlay is enabled
-        let lower_fs = if config.overlay.enabled {
+        let (lower_fs, overlay_visible_subdir) = if config.overlay.enabled {
             if let Some(lower_root) = &config.overlay.lower_root {
-                Some(crate::overlay::create_lower_fs(lower_root)?)
+                let lower_fs = Some(crate::overlay::create_lower_fs(lower_root)?);
+                (lower_fs, config.overlay.visible_subdir.clone())
             } else {
                 return Err(FsError::InvalidArgument);
             }
         } else {
-            None
+            (None, None)
         };
 
         let mut core = Self {
@@ -332,6 +334,7 @@ impl FsCore {
             permissions_tracing_enabled: std::env::var("AGENTFS_TRACE_PERMISSIONS")
                 .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
+            overlay_visible_subdir,
         };
 
         // Create root directory
@@ -1740,6 +1743,16 @@ impl FsCore {
             NodeKind::Directory { children } => {
                 fs::create_dir_all(destination)?;
 
+                let lower_base_path = self.overlay_visible_subdir.as_ref().map(|subdir| {
+                    if absolute_path == Path::new("/") {
+                        PathBuf::from("/").join(subdir)
+                    } else {
+                        Path::new("/")
+                            .join(subdir)
+                            .join(absolute_path.strip_prefix("/").unwrap_or(absolute_path))
+                    }
+                });
+
                 let mut entry_map: HashMap<String, Option<NodeId>> =
                     HashMap::with_capacity(children.len());
                 for (name, child_id) in children.iter() {
@@ -1747,7 +1760,8 @@ impl FsCore {
                 }
 
                 if let Some(lower_fs) = self.lower_fs.as_ref() {
-                    match lower_fs.readdir(absolute_path) {
+                    let lower_view_path = lower_base_path.as_deref().unwrap_or(absolute_path);
+                    match lower_fs.readdir(lower_view_path) {
                         Ok(lower_entries) => {
                             for entry in lower_entries {
                                 entry_map.entry(entry.name.clone()).or_insert(None);
@@ -1836,7 +1850,17 @@ impl FsCore {
         absolute_path: &Path,
         destination: &Path,
     ) -> FsResult<()> {
-        let attrs = match lower_fs.stat(absolute_path) {
+        let view_path = self.overlay_visible_subdir.as_ref().map(|base| {
+            if absolute_path == Path::new("/") {
+                PathBuf::from("/").join(base)
+            } else {
+                Path::new("/")
+                    .join(base)
+                    .join(absolute_path.strip_prefix("/").unwrap_or(absolute_path))
+            }
+        });
+
+        let attrs = match lower_fs.stat(view_path.as_deref().unwrap_or(absolute_path)) {
             Ok(attrs) => attrs,
             Err(FsError::NotFound) => return Ok(()),
             Err(err) => return Err(err),
@@ -1844,14 +1868,11 @@ impl FsCore {
 
         if attrs.is_dir {
             fs::create_dir_all(destination)?;
-            match lower_fs.readdir(absolute_path) {
+            match lower_fs.readdir(view_path.as_deref().unwrap_or(absolute_path)) {
                 Ok(entries) => {
                     for entry in entries {
-                        let child_path = if absolute_path == Path::new("/") {
-                            PathBuf::from("/").join(&entry.name)
-                        } else {
-                            absolute_path.join(&entry.name)
-                        };
+                        let child_path =
+                            view_path.as_deref().unwrap_or(absolute_path).join(&entry.name);
                         let child_destination = destination.join(&entry.name);
                         self.export_lower_entry(lower_fs, &child_path, &child_destination)?;
                     }
@@ -1868,7 +1889,7 @@ impl FsCore {
             }
             #[cfg(unix)]
             {
-                let target = lower_fs.readlink(absolute_path)?;
+                let target = lower_fs.readlink(view_path.as_deref().unwrap_or(absolute_path))?;
                 std::os::unix::fs::symlink(target, destination)?;
                 return Ok(());
             }
