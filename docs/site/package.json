@@ -22,6 +22,9 @@
     "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
-    "pagefind": "^1.4.0"
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.6",
+    "pagefind": "^1.4.0",
+    "typescript": "5.9.3"
   }
 }
