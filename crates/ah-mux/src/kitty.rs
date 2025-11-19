@@ -1105,9 +1105,9 @@ mod tests {
                             // Verify we now have more windows
                             let final_windows = kitty.list_windows_detailed().unwrap_or_default();
                             assert!(
-                                final_windows.len() >= initial_count + 1,
-                                "Should have at least {} windows after split, got {}",
-                                initial_count + 1,
+                                final_windows.len() > initial_count,
+                                "Should have more than {} windows after split, got {}",
+                                initial_count,
                                 final_windows.len()
                             );
                         }
@@ -1177,9 +1177,9 @@ mod tests {
                             // Verify window count increased
                             let final_windows = kitty.list_windows_detailed().unwrap_or_default();
                             assert!(
-                                final_windows.len() >= initial_count + 1,
-                                "Should have at least {} windows after vertical split, got {}",
-                                initial_count + 1,
+                                final_windows.len() > initial_count,
+                                "Should have more than {} windows after vertical split, got {}",
+                                initial_count,
                                 final_windows.len()
                             );
                         }
@@ -1327,7 +1327,7 @@ mod tests {
     fn test_focus_window_and_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::warn!("skipping kitty test in CI environment");
             return;
         }
 
@@ -1419,7 +1419,7 @@ mod tests {
     fn test_list_windows_filtering() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::warn!("skipping kitty test in CI environment");
             return;
         }
 
@@ -1535,7 +1535,7 @@ mod tests {
     fn test_error_handling_invalid_window() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::warn!("skipping kitty test in CI environment");
             return;
         }
 
@@ -1562,7 +1562,7 @@ mod tests {
     fn test_error_handling_invalid_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::warn!("skipping kitty test in CI environment");
             return;
         }
 
@@ -1600,7 +1600,7 @@ mod tests {
     fn test_complex_layout_creation() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
-            println!("⚠️  Skipping kitty test in CI environment");
+            tracing::warn!("skipping kitty test in CI environment");
             return;
         }
 
@@ -1760,10 +1760,7 @@ mod tests {
                     config, test_config,
                     "Config content should match what was written"
                 );
-                eprintln!(
-                    "DEBUG: Successfully read kitty config ({} bytes)",
-                    config.len()
-                );
+                tracing::debug!(bytes = config.len(), "successfully read kitty config");
             }
             Err(e) => {
                 panic!("Failed to read config file: {:?}", e);
@@ -1790,7 +1787,7 @@ mod tests {
                     "Error message should mention kitty.conf: {}",
                     msg
                 );
-                eprintln!("DEBUG: Got expected error for missing config: {}", msg);
+                tracing::debug!(error = msg, "expected error for missing config");
             }
             Err(e) => {
                 panic!("Unexpected error type: {:?}", e);
@@ -1814,7 +1811,7 @@ mod tests {
                 result.unwrap(),
                 "Should detect 'allow_remote_control yes' in config"
             );
-            eprintln!("DEBUG: Test case 1 passed - remote control enabled detected");
+            tracing::debug!("remote control enabled detected");
         }
 
         // Test case 2: Config without remote control enabled (commented out)
@@ -1830,7 +1827,7 @@ mod tests {
                 !result.unwrap(),
                 "Should not detect remote control when commented out"
             );
-            eprintln!("DEBUG: Test case 2 passed - remote control disabled detected");
+            tracing::debug!("remote control disabled detected");
         }
 
         // Test case 3: Config with 'allow_remote_control no'
@@ -1846,7 +1843,7 @@ mod tests {
                 !result.unwrap(),
                 "Should not detect remote control when set to 'no'"
             );
-            eprintln!("DEBUG: Test case 3 passed - 'allow_remote_control no' handled correctly");
+            tracing::debug!("'allow_remote_control no' handled correctly");
         }
     }
 
@@ -1867,7 +1864,7 @@ mod tests {
                 result.unwrap(),
                 "Should detect 'enabled_layouts splits' in config"
             );
-            eprintln!("DEBUG: Test case 1 passed - layout split enabled detected");
+            tracing::debug!("layout split enabled detected");
         }
 
         // Test case 2: Config without layout split setting
@@ -1883,7 +1880,7 @@ mod tests {
                 !result.unwrap(),
                 "Should not detect layout split when not present"
             );
-            eprintln!("DEBUG: Test case 2 passed - missing layout split setting handled");
+            tracing::debug!("missing layout split setting handled");
         }
 
         // Test case 3: Config with layout split commented out
@@ -1900,7 +1897,7 @@ mod tests {
                 !result.unwrap(),
                 "Should not detect layout split when commented out"
             );
-            eprintln!("DEBUG: Test case 3 passed - commented layout split handled");
+            tracing::debug!("commented layout split handled");
         }
 
         // Test case 4: Both settings enabled
@@ -1921,7 +1918,7 @@ mod tests {
                 remote_result.unwrap() && layout_result.unwrap(),
                 "Should detect both settings when enabled"
             );
-            eprintln!("DEBUG: Test case 4 passed - both settings detected correctly");
+            tracing::debug!("both settings detected correctly");
         }
     }
 
@@ -1954,9 +1951,9 @@ mod tests {
                     "Error should mention config file: {}",
                     msg
                 );
-                eprintln!(
-                    "DEBUG: Got expected error for missing config (remote_control): {}",
-                    msg
+                tracing::debug!(
+                    error = msg,
+                    "expected error for missing config (remote_control)"
                 );
             }
             _ => panic!("Expected MuxError::CommandFailed"),
@@ -1969,9 +1966,9 @@ mod tests {
                     "Error should mention config file: {}",
                     msg
                 );
-                eprintln!(
-                    "DEBUG: Got expected error for missing config (layout_split): {}",
-                    msg
+                tracing::debug!(
+                    error = msg,
+                    "expected error for missing config (layout_split)"
                 );
             }
             _ => panic!("Expected MuxError::CommandFailed"),

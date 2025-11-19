@@ -12,6 +12,8 @@ use agentfs_proto::*;
 use ah_fs_snapshots::{AgentFsProvider, FsSnapshotProvider};
 use ah_fs_snapshots::{ProviderCapabilities, provider_for};
 use anyhow::Result;
+#[cfg(feature = "agentfs")]
+use anyhow::anyhow; // Needed for anyhow! macro used in interpose operations
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

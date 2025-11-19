@@ -238,7 +238,7 @@ mod tests {
             panic!("No multiplexers available for testing");
         }
 
-        println!("Found {} available multiplexers", multiplexers.len());
+        tracing::info!(count = multiplexers.len(), "found available multiplexers");
 
         for (name, mut mux) in multiplexers {
             test_multiplexer_basic_operations(&name, &mut mux);
@@ -295,7 +295,7 @@ mod tests {
                 continue; // Skip zellij for now
             }
 
-            println!("Testing pane sizing for {}", name);
+            tracing::info!(multiplexer = name, "testing pane sizing concept");
 
             // 1. Create window and get baseline size
             let _baseline = common::measure_terminal_size().unwrap();
@@ -320,7 +320,7 @@ mod tests {
 
             // For now, just verify the window was created
             let windows = mux.list_windows(None).unwrap();
-            assert!(windows.len() > 0, "No windows found after creation");
+            assert!(!windows.is_empty(), "No windows found after creation");
         }
     }
 }

@@ -235,18 +235,39 @@ where
 ///
 /// Returns a writer that can be used to capture log output for assertions.
 #[cfg(feature = "tokio")]
-pub fn init_for_test(component: &str, default_level: Level) -> (impl io::Write, Vec<u8>) {
-    let buffer = Vec::new();
-    let writer = std::io::Cursor::new(buffer);
+pub fn init_for_test(
+    component: &str,
+    default_level: Level,
+) -> std::sync::Arc<std::sync::Mutex<Vec<u8>>> {
+    use std::io::Write;
+    use std::sync::{Arc, Mutex, MutexGuard};
+    use tracing_subscriber::fmt::MakeWriter;
 
-    // Clone the buffer reference for returning
-    let buffer_ref = writer.get_ref().clone();
-    let writer_clone = writer;
+    struct BufferWriter(Arc<Mutex<Vec<u8>>>);
+    struct BufferGuard<'a>(MutexGuard<'a, Vec<u8>>);
 
-    init_with_writer(component, default_level, LogFormat::Plaintext, writer_clone)
+    impl<'a> Write for BufferGuard<'a> {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for BufferWriter {
+        type Writer = BufferGuard<'a>;
+        fn make_writer(&'a self) -> Self::Writer {
+            BufferGuard(self.0.lock().unwrap())
+        }
+    }
+
+    let shared = Arc::new(Mutex::new(Vec::new()));
+    let writer = BufferWriter(shared.clone());
+    init_with_writer(component, default_level, LogFormat::Plaintext, writer)
         .expect("Failed to init test logging");
-
-    (writer_clone, buffer_ref)
+    shared
 }
 
 /// Redact sensitive information from log output
@@ -361,7 +382,7 @@ mod tests {
     #[cfg(feature = "tokio")]
     #[tokio::test]
     async fn test_init_for_test() {
-        let (_writer, _buffer) = init_for_test("test-component", Level::INFO);
+        let _buffer = init_for_test("test-component", Level::INFO);
         info!("Test message");
         // In a real test, we'd check the buffer contents
     }

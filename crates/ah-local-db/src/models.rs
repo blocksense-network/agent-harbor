@@ -23,30 +23,6 @@ pub struct Task {
     pub metadata: std::collections::HashMap<String, serde_json::Value>,
 }
 
-impl Task {
-    /// Convert to an ah-core Task if available.
-    #[cfg(feature = "ah-core-integration")]
-    pub fn to_ah_core_task(&self) -> crate::Result<ah_core::Task> {
-        let metadata = self.metadata.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-
-        Ok(ah_core::Task {
-            id: ah_core::TaskId(self.id.0),
-            name: self.name.clone(),
-            description: self.description.clone(),
-            status: match self.status {
-                TaskStatus::Pending => ah_core::TaskStatus::Pending,
-                TaskStatus::Running => ah_core::TaskStatus::Running,
-                TaskStatus::Completed => ah_core::TaskStatus::Completed,
-                TaskStatus::Failed => ah_core::TaskStatus::Failed,
-                TaskStatus::Cancelled => ah_core::TaskStatus::Cancelled,
-            },
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-            metadata,
-        })
-    }
-}
-
 /// Database model for repositories.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoRecord {

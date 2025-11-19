@@ -627,7 +627,7 @@ mod tests {
 
         // Initialize a git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -656,17 +656,17 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
         std::process::Command::new("git")
-            .args(&["config", "user.email", "test@example.com"])
+            .args(["config", "user.email", "test@example.com"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
         std::process::Command::new("git")
-            .args(&["config", "user.name", "Test User"])
+            .args(["config", "user.name", "Test User"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -729,7 +729,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -774,7 +774,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -805,7 +805,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -847,7 +847,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -888,7 +888,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -972,7 +972,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -1007,7 +1007,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -1067,7 +1067,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();
@@ -1136,7 +1136,7 @@ mod tests {
 
         // Initialize git repo
         std::process::Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(&repo_dir)
             .output()
             .unwrap();

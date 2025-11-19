@@ -195,9 +195,9 @@ async fn test_claude_with_mock_server() {
             let stdout_str = String::from_utf8_lossy(&stdout_data);
             let stderr_str = String::from_utf8_lossy(&stderr_data);
 
-            println!("Agent exited with status: {}", status);
-            println!("Stdout: {}", stdout_str);
-            println!("Stderr: {}", stderr_str);
+            tracing::info!(status = %status, "agent exited");
+            tracing::debug!(stdout = %stdout_str, "agent stdout");
+            tracing::debug!(stderr = %stderr_str, "agent stderr");
 
             // Verify the agent launched successfully and connected to mock server
             // The scenario should create a test.txt file
@@ -288,7 +288,7 @@ async fn test_codex_with_mock_server() {
                 let mut stderr = stderr;
                 let mut buf = Vec::new();
                 if stderr.read_to_end(&mut buf).is_ok() && !buf.is_empty() {
-                    eprintln!("Server startup output: {}", String::from_utf8_lossy(&buf));
+                    tracing::debug!(output = %String::from_utf8_lossy(&buf), "server startup output");
                 }
             });
         }
@@ -318,7 +318,7 @@ async fn test_codex_with_mock_server() {
         let std_cmd = cmd.as_std_mut();
         let program = std_cmd.get_program().to_owned();
         let args: Vec<OsString> = std_cmd.get_args().map(|a| a.to_os_string()).collect();
-        println!("Launching Codex: {:?} {:?}", program, args);
+        tracing::info!(?program, ?args, "launching codex agent");
 
         // `prepare_launch` sets stdin/stdout/stderr to piped already; no extra work needed here.
 
@@ -356,9 +356,9 @@ async fn test_codex_with_mock_server() {
                 let stdout_str = String::from_utf8_lossy(&stdout_data);
                 let stderr_str = String::from_utf8_lossy(&stderr_data);
 
-                println!("Agent exited with status: {}", status);
-                println!("Stdout: {}", stdout_str);
-                println!("Stderr: {}", stderr_str);
+                tracing::info!(status = %status, "agent exited");
+                tracing::debug!(stdout = %stdout_str, "agent stdout");
+                tracing::debug!(stderr = %stderr_str, "agent stderr");
 
                 // Verify the agent launched successfully and connected to mock server
                 // The scenario should create a test.txt file

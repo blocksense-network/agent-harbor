@@ -34,36 +34,36 @@ fn setup_git_repo() -> Result<(TempDir, TempDir), Box<dyn std::error::Error>> {
 
     // Initialize bare remote repository
     std::process::Command::new("git")
-        .args(&["init", "--bare"])
+        .args(["init", "--bare"])
         .current_dir(&remote_dir)
         .output()?;
 
     // Initialize local repository
     std::process::Command::new("git")
-        .args(&["init", "-b", "main"])
+        .args(["init", "-b", "main"])
         .current_dir(&repo_dir)
         .output()?;
 
     // Configure git
     std::process::Command::new("git")
-        .args(&["config", "user.email", "test@example.com"])
+        .args(["config", "user.email", "test@example.com"])
         .current_dir(&repo_dir)
         .output()?;
 
     std::process::Command::new("git")
-        .args(&["config", "user.name", "Test User"])
+        .args(["config", "user.name", "Test User"])
         .current_dir(&repo_dir)
         .output()?;
 
     // Create initial file and commit
     fs::write(repo_dir.path().join("README.md"), "Initial content")?;
     std::process::Command::new("git")
-        .args(&["add", "README.md"])
+        .args(["add", "README.md"])
         .current_dir(&repo_dir)
         .output()?;
 
     std::process::Command::new("git")
-        .args(&["commit", "-m", "Initial commit"])
+        .args(["commit", "-m", "Initial commit"])
         .current_dir(&repo_dir)
         .output()?;
 
@@ -75,7 +75,7 @@ fn setup_git_repo() -> Result<(TempDir, TempDir), Box<dyn std::error::Error>> {
 #[test]
 fn test_repository_detection() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -94,7 +94,7 @@ fn test_repository_detection() {
 #[test]
 fn test_current_branch() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -122,7 +122,7 @@ fn test_branch_validation() {
 #[test]
 fn test_protected_branches() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -139,7 +139,7 @@ fn test_protected_branches() {
 #[test]
 fn test_start_branch() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -161,7 +161,7 @@ fn test_start_branch() {
 #[test]
 fn test_commit_file() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -185,7 +185,7 @@ fn test_commit_file() {
 #[test]
 fn test_branches() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -206,7 +206,7 @@ fn test_branches() {
 #[test]
 fn test_default_remote_http_url() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -215,7 +215,7 @@ fn test_default_remote_http_url() {
 
     // Test HTTPS URL - add remote first
     std::process::Command::new("git")
-        .args(&[
+        .args([
             "remote",
             "add",
             "origin",
@@ -230,7 +230,7 @@ fn test_default_remote_http_url() {
 
     // Test SSH URL conversion
     std::process::Command::new("git")
-        .args(&[
+        .args([
             "remote",
             "set-url",
             "origin",
@@ -254,7 +254,7 @@ fn test_repository_not_found() {
 #[test]
 fn test_invalid_branch_name() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -268,7 +268,7 @@ fn test_invalid_branch_name() {
 #[tokio::test]
 async fn test_stream_tracked_files_basic() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -290,12 +290,12 @@ edition = "2021""#,
 
     // Add and commit the files
     std::process::Command::new("git")
-        .args(&["add", "."])
+        .args(["add", "."])
         .current_dir(repo.path())
         .output()
         .unwrap();
     std::process::Command::new("git")
-        .args(&["commit", "-m", "Add source files"])
+        .args(["commit", "-m", "Add source files"])
         .current_dir(repo.path())
         .output()
         .unwrap();
@@ -311,7 +311,7 @@ edition = "2021""#,
     assert!(files.len() >= 3);
 
     // Check that all files are present (order may vary)
-    let file_names: Vec<_> = files.into_iter().map(|f| f).collect();
+    let file_names: Vec<_> = files;
     let has_readme = file_names.iter().any(|f| f == "README.md");
     let has_lib = file_names.iter().any(|f| f == "src/lib.rs");
     let has_main = file_names.iter().any(|f| f == "src/main.rs");
@@ -326,7 +326,7 @@ edition = "2021""#,
 #[tokio::test]
 async fn test_stream_tracked_files_empty_repo() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -348,7 +348,7 @@ async fn test_stream_tracked_files_empty_repo() {
 #[tokio::test]
 async fn test_stream_tracked_files_partial_collection() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -361,12 +361,12 @@ async fn test_stream_tracked_files_partial_collection() {
     fs::write(repo.path().join("file3.txt"), "content3").unwrap();
 
     std::process::Command::new("git")
-        .args(&["add", "."])
+        .args(["add", "."])
         .current_dir(repo.path())
         .output()
         .unwrap();
     std::process::Command::new("git")
-        .args(&["commit", "-m", "Add test files"])
+        .args(["commit", "-m", "Add test files"])
         .current_dir(repo.path())
         .output()
         .unwrap();
@@ -390,7 +390,7 @@ async fn test_stream_tracked_files_partial_collection() {
 #[tokio::test]
 async fn test_stream_tracked_files_with_nested_dirs() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -405,12 +405,12 @@ async fn test_stream_tracked_files_with_nested_dirs() {
     fs::write(repo.path().join("tests/integration_test.rs"), "test").unwrap();
 
     std::process::Command::new("git")
-        .args(&["add", "."])
+        .args(["add", "."])
         .current_dir(repo.path())
         .output()
         .unwrap();
     std::process::Command::new("git")
-        .args(&["commit", "-m", "Add nested files"])
+        .args(["commit", "-m", "Add nested files"])
         .current_dir(repo.path())
         .output()
         .unwrap();
@@ -455,7 +455,7 @@ async fn test_stream_tracked_files_non_git_repo() {
 #[tokio::test]
 async fn test_stream_tracked_files_error_handling() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -484,7 +484,7 @@ async fn test_stream_tracked_files_error_handling() {
 #[tokio::test]
 async fn test_stream_tracked_files_large_repo() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -501,12 +501,12 @@ async fn test_stream_tracked_files_large_repo() {
     }
 
     std::process::Command::new("git")
-        .args(&["add", "."])
+        .args(["add", "."])
         .current_dir(repo.path())
         .output()
         .unwrap();
     std::process::Command::new("git")
-        .args(&["commit", "-m", "Add many files"])
+        .args(["commit", "-m", "Add many files"])
         .current_dir(repo.path())
         .output()
         .unwrap();
@@ -527,7 +527,7 @@ async fn test_stream_tracked_files_large_repo() {
 #[tokio::test]
 async fn test_stream_tracked_files_concurrent_access() {
     if !check_git_available() {
-        eprintln!("Git not available, skipping test");
+        tracing::warn!("git not available - skipping test");
         return;
     }
 
@@ -539,12 +539,12 @@ async fn test_stream_tracked_files_concurrent_access() {
     fs::write(repo.path().join("file2.txt"), "content2").unwrap();
 
     std::process::Command::new("git")
-        .args(&["add", "."])
+        .args(["add", "."])
         .current_dir(repo.path())
         .output()
         .unwrap();
     std::process::Command::new("git")
-        .args(&["commit", "-m", "Add files"])
+        .args(["commit", "-m", "Add files"])
         .current_dir(repo.path())
         .output()
         .unwrap();
