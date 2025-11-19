@@ -11,3 +11,4 @@ anyhow.workspace = true
 libc.workspace = true
 agentfs-daemon = { path = "../agentfs-daemon" }
 agentfs-proto = { path = "../agentfs-proto" }
+tracing.workspace = true

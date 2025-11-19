@@ -43,3 +43,9 @@ scopeguard = "1.2"
 [dev-dependencies]
 agentfs-client = { path = "../agentfs-client" }
 agentfs-interpose-e2e-tests = { path = "../agentfs-interpose-e2e-tests" }
+
+[build-dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+  "fmt",
+] }
