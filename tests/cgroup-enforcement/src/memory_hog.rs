@@ -10,23 +10,30 @@
 
 use std::alloc::{Layout, alloc};
 use std::ptr;
+use tracing::{debug, info, warn};
 
 const SANDBOX_TEST_ENV: &str = "SANDBOX_TEST_MODE";
 
 fn main() {
+    // Initialize tracing
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let _ = tracing_subscriber::fmt::try_init();
+    });
+
     // Safety check: only run the attack if we're in a sandboxed test environment
     if std::env::var(SANDBOX_TEST_ENV).is_err() {
-        println!("❌ Safety: memory_hog should only be run inside the sandbox for testing.");
-        println!(
-            "   Set {} environment variable to enable the attack.",
-            SANDBOX_TEST_ENV
+        warn!("safety: memory_hog should only be run inside the sandbox for testing");
+        warn!(
+            env = SANDBOX_TEST_ENV,
+            "set environment variable to enable the attack"
         );
-        println!("   This prevents accidental system memory exhaustion during development.");
+        warn!("this prevents accidental system memory exhaustion during development");
         std::process::exit(1);
     }
 
-    println!("✅ Running in sandbox test mode - proceeding with memory hog attack");
-    println!("Starting memory hog - attempting to allocate unlimited memory...");
+    info!("running in sandbox test mode - proceeding with memory hog attack");
+    info!("starting memory hog - attempting to allocate unlimited memory");
 
     let mut allocations = Vec::new();
     let mut total_allocated = 0u64;
@@ -41,7 +48,7 @@ fn main() {
                 // Allocation failed - try smaller chunks
                 allocation_size /= 2;
                 if allocation_size < 1024 {
-                    println!("Unable to allocate even 1KB - likely at memory limit");
+                    info!("unable to allocate even 1KB - likely at memory limit");
                     break;
                 }
                 continue;
@@ -54,19 +61,19 @@ fn main() {
             total_allocated += allocation_size as u64;
 
             if allocations.len() % 10 == 0 {
-                println!(
-                    "Allocated {} chunks, total: {} MB",
-                    allocations.len(),
-                    total_allocated / (1024 * 1024)
+                debug!(
+                    chunks = allocations.len(),
+                    total_mb = total_allocated / (1024 * 1024),
+                    "allocation progress"
                 );
             }
         }
     }
 
-    println!(
-        "Memory hog completed. Allocated {} MB in {} chunks.",
-        total_allocated / (1024 * 1024),
-        allocations.len()
+    info!(
+        total_mb = total_allocated / (1024 * 1024),
+        chunks = allocations.len(),
+        "memory hog completed"
     );
 
     // Clean up allocations

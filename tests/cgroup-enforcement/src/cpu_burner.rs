@@ -9,23 +9,25 @@
 //! the sandbox with the SANDBOX_TEST_MODE environment variable set.
 
 use std::time::Instant;
+use tracing::{info, warn};
 
 const SANDBOX_TEST_ENV: &str = "SANDBOX_TEST_MODE";
 
 fn main() {
     // Safety check: only run the attack if we're in a sandboxed test environment
     if std::env::var(SANDBOX_TEST_ENV).is_err() {
-        println!("❌ Safety: cpu_burner should only be run inside the sandbox for testing.");
-        println!(
-            "   Set {} environment variable to enable the attack.",
+        warn!("Safety: cpu_burner should only be run inside the sandbox for testing.");
+        warn!(
+            "Set {} environment variable to enable the attack.",
             SANDBOX_TEST_ENV
         );
-        println!("   This prevents accidental CPU exhaustion during development.");
+        warn!("This prevents accidental CPU exhaustion during development.");
         std::process::exit(1);
     }
 
-    println!("✅ Running in sandbox test mode - proceeding with CPU burn attack");
-    println!("Starting CPU burner - performing intensive computations...");
+    tracing_subscriber::fmt::init();
+    info!("Running in sandbox test mode - proceeding with CPU burn attack");
+    info!("Starting CPU burner - performing intensive computations...");
 
     let start_time = Instant::now();
     let mut iterations = 0u64;
@@ -42,9 +44,9 @@ fn main() {
         iterations += 1;
 
         // Report progress every 100 iterations
-        if iterations % 100 == 0 {
+        if iterations.is_multiple_of(100) {
             let elapsed = start_time.elapsed();
-            println!(
+            info!(
                 "Completed {} iterations in {:.2}s (avg: {:.0} iter/s)",
                 iterations,
                 elapsed.as_secs_f64(),
