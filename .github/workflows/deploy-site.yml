@@ -1,0 +1,78 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Deploy site
+
+on:
+  workflow_call:
+    inputs:
+      label:
+        type: string
+        required: true
+      cf_project:
+        type: string
+        required: true
+      build_command:
+        type: string
+        required: true
+      dist_path:
+        type: string
+        required: true
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+      CACHIX_AUTH_TOKEN:
+        required: true
+
+jobs:
+  deploy-site:
+    runs-on: [self-hosted, nixos, x86-64-v3]
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Nix
+        uses: metacraft-labs/nixos-modules/.github/install-nix@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachix-cache: ${{ vars.CACHIX_CACHE }}
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+
+      - name: Build & activate the Nix Dev Shell
+        run: |
+          direnv allow .
+          direnv export gha > "$GITHUB_ENV"
+
+      - name: Install JS deps
+        run: yarn install
+
+      - name: Build ${{ inputs.label }}
+        run: ${{ inputs.build_command }}
+
+      - name: Deploy ${{ inputs.label }} to Cloudflare Pages
+        id: deploy-site
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ${{ inputs.dist_path }} --project-name=${{ inputs.cf_project }} --branch=${{ github.head_ref || github.ref_name }} --commit-hash=${{ github.sha }}
+
+      - name: Comment deployment link on the PR
+        if: github.event.pull_request.number
+        uses: marocchino/sticky-pull-request-comment@v2.9.4
+        with:
+          header: '🚀 Agent Harbor - ${{ inputs.label }}'
+          recreate: true
+          number: ${{ github.event.pull_request.number }}
+          message: |
+            ### 🚀 Deployment link for Agent Harbor - ${{ inputs.label }}
+
+            | Website | Latest Update | Commit |
+            |---------|---------------|--------|
+            | [${{ inputs.label }}](${{ steps.deploy-site.outputs.deployment-url }}) | ${{ github.event.pull_request.updated_at }} | `${{ github.sha }}` |
