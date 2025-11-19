@@ -8,6 +8,7 @@
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug)]
 enum TestType {
@@ -46,9 +47,12 @@ fn run_enforcement_test(
     test_type: TestType,
     sbx_helper_path: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🧪 Running {} test", test_type.description());
-    println!("   Binary: {}", test_type.binary_name());
-    println!("   Timeout: {:.1}s", test_type.timeout().as_secs_f64());
+    info!(
+        test = test_type.description(),
+        binary = test_type.binary_name(),
+        timeout_secs = test_type.timeout().as_secs_f64(),
+        "starting enforcement test"
+    );
 
     let start_time = Instant::now();
 
@@ -62,11 +66,11 @@ fn run_enforcement_test(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    println!("   Command: {:?}", cmd);
+    debug!(?cmd, "constructed sandbox command");
 
     match cmd.spawn() {
         Ok(mut child) => {
-            println!("✅ Sandbox process started (PID: {})", child.id());
+            info!(pid = child.id(), "sandbox process started");
 
             // Monitor the process
             let timeout = test_type.timeout();
@@ -77,17 +81,17 @@ fn run_enforcement_test(
                 match child.try_wait() {
                     Ok(Some(status)) => {
                         let elapsed = start_time.elapsed();
-                        println!(
-                            "✅ Process completed in {:.2}s with exit code: {}",
-                            elapsed.as_secs_f64(),
-                            status.code().unwrap_or(-1)
+                        info!(
+                            elapsed_secs = elapsed.as_secs_f64(),
+                            exit_code = status.code().unwrap_or(-1),
+                            "process completed"
                         );
 
                         if status.success() {
-                            println!("✅ Test PASSED - process completed normally");
+                            info!("test passed - process completed normally");
                         } else {
-                            println!(
-                                "⚠️  Test UNCLEAR - process exited with error (may indicate limits enforced)"
+                            warn!(
+                                "test unclear - process exited with error (may indicate limits enforced)"
                             );
                         }
                         return Ok(());
@@ -95,22 +99,20 @@ fn run_enforcement_test(
                     Ok(None) => {
                         // Process still running, check timeout
                         if start_time.elapsed() > timeout {
-                            println!(
-                                "⏰ Process timed out after {:.2}s - terminating",
-                                timeout.as_secs_f64()
+                            warn!(
+                                timeout_secs = timeout.as_secs_f64(),
+                                "process timeout reached - terminating"
                             );
                             let _ = child.kill();
-                            println!(
-                                "✅ Test PASSED - process was contained (didn't run indefinitely)"
-                            );
+                            info!("test passed - process was contained (did not run indefinitely)");
                             return Ok(());
                         }
 
                         // Periodic monitoring
                         if last_check.elapsed() > Duration::from_secs(1) {
-                            println!(
-                                "   Process still running... ({:.1}s elapsed)",
-                                start_time.elapsed().as_secs_f64()
+                            debug!(
+                                elapsed_secs = start_time.elapsed().as_secs_f64(),
+                                "process still running"
                             );
                             last_check = Instant::now();
                         }
@@ -118,22 +120,27 @@ fn run_enforcement_test(
                         thread::sleep(Duration::from_millis(100));
                     }
                     Err(e) => {
-                        println!("❌ Error checking process status: {}", e);
+                        error!(error = %e, "error checking process status");
                         return Err(e.into());
                     }
                 }
             }
         }
         Err(e) => {
-            println!("❌ Failed to start sandbox process: {}", e);
+            error!(error = %e, "failed to start sandbox process");
             Err(e.into())
         }
     }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 Cgroup Enforcement Test Orchestrator");
-    println!("=====================================");
+    // Initialize tracing once; ignore re-init errors silently.
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let _ = tracing_subscriber::fmt::try_init();
+    });
+
+    info!("cgroup enforcement test orchestrator starting");
 
     // Get the directory where this executable is located
     let exe_path = std::env::current_exe()?;
@@ -147,13 +154,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check if sbx-helper exists
     if !sbx_helper_path.exists() {
-        println!("❌ sbx-helper binary not found at: {:?}", sbx_helper_path);
-        println!("   Please build it first:");
-        println!("   cargo build --bin sbx-helper");
+        error!(path = ?sbx_helper_path, "sbx-helper binary not found");
+        warn!("build it first with: cargo build --bin sbx-helper");
         std::process::exit(1);
     }
 
-    println!("✅ Found sbx-helper at: {:?}", sbx_helper_path);
+    info!(path = ?sbx_helper_path, "found sbx-helper binary");
 
     // Run tests
     let tests = vec![TestType::ForkBomb, TestType::MemoryHog, TestType::CpuBurner];
@@ -162,28 +168,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut failed = 0;
 
     for test in tests {
-        println!();
         match run_enforcement_test(test, &sbx_helper_path) {
             Ok(()) => {
                 passed += 1;
             }
             Err(e) => {
-                println!("❌ Test failed: {}", e);
+                error!(error = %e, "test failed");
                 failed += 1;
             }
         }
     }
 
-    println!();
-    println!("📊 Test Results:");
-    println!("   Passed: {}", passed);
-    println!("   Failed: {}", failed);
+    info!(passed, failed, "test results summary");
 
     if failed == 0 {
-        println!("🎉 All tests passed!");
+        info!("all tests passed");
         std::process::exit(0);
     } else {
-        println!("💥 Some tests failed!");
+        error!("some tests failed");
         std::process::exit(1);
     }
 }

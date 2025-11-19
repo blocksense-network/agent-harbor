@@ -9,23 +9,30 @@
 //! the sandbox with the SANDBOX_TEST_MODE environment variable set.
 
 use std::process::{Command, Stdio};
+use tracing::{debug, info, warn};
 
 const SANDBOX_TEST_ENV: &str = "SANDBOX_TEST_MODE";
 
 fn main() {
+    // Initialize tracing
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let _ = tracing_subscriber::fmt::try_init();
+    });
+
     // Safety check: only run the attack if we're in a sandboxed test environment
     if std::env::var(SANDBOX_TEST_ENV).is_err() {
-        println!("❌ Safety: fork_bomb should only be run inside the sandbox for testing.");
-        println!(
-            "   Set {} environment variable to enable the attack.",
-            SANDBOX_TEST_ENV
+        warn!("safety: fork_bomb should only be run inside the sandbox for testing");
+        warn!(
+            env = SANDBOX_TEST_ENV,
+            "set environment variable to enable the attack"
         );
-        println!("   This prevents accidental system crashes during development.");
+        warn!("this prevents accidental system crashes during development");
         std::process::exit(1);
     }
 
-    println!("✅ Running in sandbox test mode - proceeding with fork bomb attack");
-    println!("Starting fork bomb - attempting to create unlimited child processes...");
+    info!("running in sandbox test mode - proceeding with fork bomb attack");
+    info!("starting fork bomb - attempting to create unlimited child processes");
 
     let mut child_count = 0;
     let mut failures = 0;
@@ -40,7 +47,7 @@ fn main() {
             Ok(_child) => {
                 child_count += 1;
                 if child_count % 10 == 0 {
-                    println!("Created {} child processes so far...", child_count);
+                    debug!(child_count, "created child processes so far");
                 }
 
                 // Don't wait for children to avoid zombie processes
@@ -50,16 +57,13 @@ fn main() {
             Err(e) => {
                 failures += 1;
                 if failures % 5 == 0 {
-                    eprintln!(
-                        "Failed to create child process ({} failures): {}",
-                        failures, e
-                    );
+                    warn!(failures, error = %e, "failed to create child process");
                 }
 
                 // If we get EAGAIN (resource temporarily unavailable) or other errors,
                 // it might indicate we're hitting limits
                 if failures > 10 {
-                    println!("Too many failures - likely hitting PID limits");
+                    info!("too many failures - likely hitting PID limits");
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
@@ -67,9 +71,6 @@ fn main() {
         }
     }
 
-    println!(
-        "Fork bomb completed. Created {} processes with {} failures.",
-        child_count, failures
-    );
+    info!(child_count, failures, "fork bomb completed");
     std::process::exit(0);
 }
