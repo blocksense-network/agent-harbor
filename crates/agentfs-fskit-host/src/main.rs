@@ -10,6 +10,7 @@ use agentfs_core::config::SecurityPolicy;
 use agentfs_fskit_host::{FsKitAdapter, FsKitConfig};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use tracing::info;
 
 #[derive(Parser)]
 #[command(name = "agentfs-fskit-host")]
@@ -54,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_memory,
             spill_dir,
         } => {
-            println!("Mounting AgentFS at {:?}", mount_point);
+            info!(?mount_point, "Mounting AgentFS");
 
             let config = FsKitConfig {
                 fs_config: agentfs_core::FsConfig {
@@ -96,17 +97,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Start XPC control service
             adapter.start_xpc_service()?;
 
-            println!("AgentFS mounted successfully. Press Ctrl+C to unmount.");
+            info!("AgentFS mounted successfully. Press Ctrl+C to unmount.");
 
             // Keep running until interrupted
             tokio::signal::ctrl_c().await?;
             adapter.unmount()?;
 
-            println!("AgentFS unmounted.");
+            info!("AgentFS unmounted.");
         }
 
         Commands::Test { test_dir } => {
-            println!("Running FSKit adapter smoke tests...");
+            info!("Running FSKit adapter smoke tests...");
 
             // Create test configuration
             let config = FsKitConfig {
@@ -142,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             run_smoke_tests(config).await?;
-            println!("Smoke tests completed successfully!");
+            info!("Smoke tests completed successfully!");
         }
     }
 
@@ -156,21 +157,21 @@ async fn run_smoke_tests(config: FsKitConfig) -> Result<(), Box<dyn std::error::
     let core = adapter.core();
 
     // Create a snapshot
-    println!("Creating snapshot...");
+    info!("Creating snapshot...");
     let snapshot_id = core.snapshot_create(Some("test-snapshot"))?;
-    println!("Created snapshot: {:?}", snapshot_id);
+    info!(?snapshot_id, "Created snapshot");
 
     // Create a branch from the snapshot
-    println!("Creating branch...");
+    info!("Creating branch...");
     let branch_id = core.branch_create_from_snapshot(snapshot_id, Some("test-branch"))?;
-    println!("Created branch: {:?}", branch_id);
+    info!(?branch_id, "Created branch");
 
     // Bind to the branch
-    println!("Binding to branch...");
+    info!("Binding to branch...");
     core.bind_process_to_branch(branch_id)?;
 
     // Test basic file operations
-    println!("Testing file operations...");
+    info!("Testing file operations...");
     core.mkdir(
         &agentfs_core::PID::new(0),
         std::path::Path::new("/testdir"),
@@ -207,15 +208,15 @@ async fn run_smoke_tests(config: FsKitConfig) -> Result<(), Box<dyn std::error::
     )?;
     assert_eq!(attrs.len, test_data.len() as u64);
 
-    println!("File operations test passed!");
+    info!("File operations test passed!");
 
     // Test XPC control plane (simulated)
-    println!("Testing XPC control plane...");
+    info!("Testing XPC control plane...");
 
     // In a real test, we would send XPC messages and verify responses
     // For now, just test that the adapter can be created
 
-    println!("XPC control plane test passed!");
+    info!("XPC control plane test passed!");
 
     Ok(())
 }

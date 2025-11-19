@@ -30,7 +30,7 @@ impl XpcControlService {
 
     /// Start the XPC service
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Starting XPC control service: {}", self.service_name);
+        tracing::info!(service = %self.service_name, "Starting XPC control service");
 
         // In a real implementation, this would set up XPC listeners
         // For now, this is a simplified async service
@@ -41,7 +41,7 @@ impl XpcControlService {
         //     while let Some(request) = rx.recv().await {
         //         let response = self.handle_request(&request).await;
         //         // Send response back via XPC
-        //         println!("XPC Response: {:?}", response);
+        //         tracing::debug!(?response, "XPC response emitted");
         //     }
         // });
 
