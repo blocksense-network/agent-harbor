@@ -22,6 +22,7 @@ libc = "0.2"
 # SSZ serialization (matching agentfs-proto)
 ethereum_ssz = "0.8"
 ethereum_ssz_derive = "0.8"
+tracing = "0.1"
 
 # macOS-specific dependencies (conditional compilation)
 [target.'cfg(target_os = "macos")'.dependencies]

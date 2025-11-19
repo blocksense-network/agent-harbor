@@ -13,6 +13,10 @@ libc = "0.2"
 ssz = { package = "ethereum_ssz", version = "0.8" }
 ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
 unicode-normalization = "0.1"
+tracing.workspace = true
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]

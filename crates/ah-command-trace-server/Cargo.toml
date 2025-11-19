@@ -20,3 +20,4 @@ ah-command-trace-proto = { path = "../ah-command-trace-proto" }
 tempfile = "3"
 # SSZ serialization (matching agentfs-proto)
 ethereum_ssz = "0.8"
+tracing = "0.1"

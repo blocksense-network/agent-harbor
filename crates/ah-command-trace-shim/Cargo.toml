@@ -34,6 +34,8 @@ tokio = { version = "1.0", features = [
 tempfile = "3"
 ah-command-trace-proto = { path = "../ah-command-trace-proto" }
 ah-command-trace-client = { path = "../ah-command-trace-client" }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]

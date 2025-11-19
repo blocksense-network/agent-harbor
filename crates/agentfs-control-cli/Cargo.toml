@@ -14,3 +14,4 @@ agentfs-proto = { path = "../agentfs-proto" }
 ssz = { package = "ethereum_ssz", version = "0.8" }
 nix = { workspace = true, features = ["fs"] }
 libc = { workspace = true }
+tracing = { workspace = true }
