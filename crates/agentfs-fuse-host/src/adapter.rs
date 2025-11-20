@@ -9,19 +9,16 @@
 compile_error!("This module requires the 'fuse' feature on Linux");
 
 use agentfs_core::{
-    Attributes, DirEntry, FileTimes, FsConfig, FsCore, FsError, HandleId, LockRange, OpenOptions,
-    ShareMode, error::FsResult, vfs::PID,
+    Attributes, FsConfig, FsCore, FsError, HandleId, OpenOptions, error::FsResult, vfs::PID,
 };
 use agentfs_proto::messages::{StatData, TimespecData};
-use agentfs_proto::*;
 use fuser::{
     FUSE_ROOT_ID, FileAttr, FileType, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
-    ReplyEmpty, ReplyEntry, ReplyLock, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request,
-    TimeOrNow,
+    ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request, TimeOrNow,
 };
 use libc::{
-    EACCES, EBADF, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS,
-    ENOTDIR, ENOTEMPTY, ENOTSUP, c_int,
+    EACCES, EBADF, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS, ENOTDIR,
+    ENOTEMPTY, ENOTSUP, c_int,
 };
 use ssz::{Decode, Encode};
 use std::collections::{HashMap, HashSet};
@@ -31,9 +28,8 @@ use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Special inode for the .agentfs directory
 const AGENTFS_DIR_INO: u64 = FUSE_ROOT_ID + 1;
@@ -52,7 +48,7 @@ const LOWER_HANDLE_BASE: u64 = 1u64 << 60;
 
 struct LowerHandle {
     file: File,
-    ino: u64,
+    _ino: u64,
 }
 
 /// AgentFS FUSE filesystem adapter
@@ -66,7 +62,7 @@ pub struct AgentFsFuse {
     /// TTL for directory entry cache responses
     entry_ttl: Duration,
     /// TTL for negative lookups (future use)
-    negative_ttl: Duration,
+    _negative_ttl: Duration,
     /// Cache of inode to path mappings for control operations
     inodes: HashMap<u64, Vec<u8>>, // inode -> canonical path
     /// Reverse mapping from path to inode
@@ -112,7 +108,7 @@ impl AgentFsFuse {
             config,
             attr_ttl,
             entry_ttl,
-            negative_ttl,
+            _negative_ttl: negative_ttl,
             inodes,
             paths,
             next_inode: CONTROL_FILE_INO + 1,
@@ -207,7 +203,7 @@ impl AgentFsFuse {
     fn alloc_lower_handle(&mut self, ino: u64, file: File) -> u64 {
         let fh = self.next_lower_fh;
         self.next_lower_fh = self.next_lower_fh.saturating_add(1);
-        self.lower_handles.insert(fh, LowerHandle { file, ino });
+        self.lower_handles.insert(fh, LowerHandle { file, _ino: ino });
         fh
     }
 
@@ -241,10 +237,12 @@ impl AgentFsFuse {
 
         self.ensure_upper_parent_dirs(pid, path)?;
 
-        let mut opts = OpenOptions::default();
-        opts.read = true;
-        opts.write = true;
-        opts.create = true;
+        let opts = OpenOptions {
+            read: true,
+            write: true,
+            create: true,
+            ..Default::default()
+        };
         let handle = self.core.create(pid, path, &opts)?;
 
         let mut lower_file = File::open(&lower_path)?;
@@ -355,7 +353,7 @@ impl AgentFsFuse {
         FileAttr {
             ino,
             size: attr.len,
-            blocks: (attr.len + 511) / 512, // 512-byte blocks
+            blocks: attr.len.div_ceil(512), // 512-byte blocks
             atime: SystemTime::UNIX_EPOCH + Duration::from_secs(attr.times.atime as u64),
             mtime: SystemTime::UNIX_EPOCH + Duration::from_secs(attr.times.mtime as u64),
             ctime: SystemTime::UNIX_EPOCH + Duration::from_secs(attr.times.ctime as u64),
@@ -372,13 +370,13 @@ impl AgentFsFuse {
     }
 
     fn stat_to_file_attr(&self, stat: &StatData, ino: u64) -> FileAttr {
-        let kind = match stat.st_mode & libc::S_IFMT as u32 {
-            m if m == libc::S_IFDIR as u32 => FileType::Directory,
-            m if m == libc::S_IFLNK as u32 => FileType::Symlink,
-            m if m == libc::S_IFCHR as u32 => FileType::CharDevice,
-            m if m == libc::S_IFBLK as u32 => FileType::BlockDevice,
-            m if m == libc::S_IFIFO as u32 => FileType::NamedPipe,
-            m if m == libc::S_IFSOCK as u32 => FileType::Socket,
+        let kind = match stat.st_mode & libc::S_IFMT {
+            m if m == libc::S_IFDIR => FileType::Directory,
+            m if m == libc::S_IFLNK => FileType::Symlink,
+            m if m == libc::S_IFCHR => FileType::CharDevice,
+            m if m == libc::S_IFBLK => FileType::BlockDevice,
+            m if m == libc::S_IFIFO => FileType::NamedPipe,
+            m if m == libc::S_IFSOCK => FileType::Socket,
             _ => FileType::RegularFile,
         };
 
@@ -407,7 +405,7 @@ impl AgentFsFuse {
 
     /// Convert FUSE flags to OpenOptions
     fn fuse_flags_to_options(&self, flags: i32) -> OpenOptions {
-        use libc::{O_APPEND, O_CREAT, O_EXCL, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY};
+        use libc::{O_APPEND, O_CREAT, O_RDWR, O_TRUNC, O_WRONLY};
 
         let mut options = OpenOptions::default();
 
@@ -441,9 +439,8 @@ impl AgentFsFuse {
     fn handle_control_ioctl(&self, data: &[u8]) -> Result<Vec<u8>, c_int> {
         use agentfs_proto::*;
 
-        let request_bytes = Self::extract_framed_payload(data).map_err(|code| {
+        let request_bytes = Self::extract_framed_payload(data).inspect_err(|code| {
             error!("Malformed control request payload (errno={})", code);
-            code
         })?;
 
         let request: Request = <Request as Decode>::from_ssz_bytes(request_bytes).map_err(|e| {
@@ -549,7 +546,7 @@ impl AgentFsFuse {
                 }
             }
             Request::BranchBind((_, req)) => {
-                let pid = req.pid.unwrap_or_else(|| std::process::id());
+                let pid = req.pid.unwrap_or_else(std::process::id);
                 let branch_str = String::from_utf8_lossy(&req.branch).to_string();
                 let branch_id = branch_str.parse().map_err(|_| EINVAL)?;
 
@@ -603,51 +600,6 @@ impl AgentFsFuse {
         framed.extend_from_slice(&(payload.len() as u32).to_le_bytes());
         framed.append(&mut payload);
         framed
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use agentfs_proto::{Request as ControlRequest, Response as ControlResponse};
-
-    #[test]
-    fn cache_ttls_follow_config() {
-        let mut config = FsConfig::default();
-        config.cache.attr_ttl_ms = 1500;
-        config.cache.entry_ttl_ms = 2500;
-        config.cache.negative_ttl_ms = 3500;
-
-        let fuse = AgentFsFuse::new(config).expect("fuse init");
-        assert_eq!(fuse.attr_ttl, Duration::from_millis(1500));
-        assert_eq!(fuse.entry_ttl, Duration::from_millis(2500));
-        assert_eq!(fuse.negative_ttl, Duration::from_millis(3500));
-    }
-
-    #[test]
-    fn control_ioctl_snapshot_roundtrip() {
-        let mut fuse = AgentFsFuse::new(FsConfig::default()).expect("fuse init");
-
-        let create_req = ControlRequest::snapshot_create(Some("snap-one".to_string()));
-        let create_resp = fuse
-            .handle_control_ioctl(&create_req.as_ssz_bytes())
-            .expect("snapshot create resp");
-        match ControlResponse::from_ssz_bytes(&create_resp).expect("decode response") {
-            ControlResponse::SnapshotCreate(info) => {
-                assert!(info.snapshot.name.is_some());
-            }
-            other => panic!("unexpected response: {:?}", other),
-        }
-
-        let list_req = ControlRequest::snapshot_list();
-        let list_resp =
-            fuse.handle_control_ioctl(&list_req.as_ssz_bytes()).expect("snapshot list resp");
-        match ControlResponse::from_ssz_bytes(&list_resp).expect("decode list") {
-            ControlResponse::SnapshotList(entries) => {
-                assert_eq!(entries.snapshots.len(), 1);
-            }
-            other => panic!("unexpected response: {:?}", other),
-        }
     }
 }
 
@@ -764,7 +716,7 @@ impl fuser::Filesystem for AgentFsFuse {
 
         let mut fh_candidate = fh.map(|fh_raw| (fh_raw, client_pid));
         if fh_candidate.is_none() {
-            fh_candidate = self.handle_for_inode(ino).map(|(fh_raw, pid)| (fh_raw, pid));
+            fh_candidate = self.handle_for_inode(ino);
         }
 
         if let Some((fh_raw, owner_pid)) = fh_candidate {
@@ -934,7 +886,7 @@ impl fuser::Filesystem for AgentFsFuse {
             if flags & O_NOFOLLOW != 0 {
                 if let Ok(stat) = self.core.lstat(&client_pid, path) {
                     let mode = stat.st_mode;
-                    if (mode & libc::S_IFMT as u32) == libc::S_IFLNK as u32 {
+                    if (mode & libc::S_IFMT) == libc::S_IFLNK {
                         reply.error(ELOOP);
                         return;
                     }
@@ -1044,7 +996,7 @@ impl fuser::Filesystem for AgentFsFuse {
         let path = self.path_from_bytes(&full_path);
         let perm_bits = mode & 0o7777;
         let masked_perm = perm_bits & (!umask & 0o7777);
-        let file_type = mode & libc::S_IFMT as u32;
+        let file_type = mode & libc::S_IFMT;
         let final_mode = file_type | masked_perm;
 
         let client_pid = self.get_client_pid(req);
@@ -1180,16 +1132,14 @@ impl fuser::Filesystem for AgentFsFuse {
         &mut self,
         req: &Request,
         ino: u64,
-        fh: u64,
+        _fh: u64,
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
         if ino == AGENTFS_DIR_INO {
             // List the .agentfs directory contents
-            if offset == 0 {
-                if reply.add(CONTROL_FILE_INO, 1, FileType::RegularFile, "control") {
-                    return;
-                }
+            if offset == 0 && reply.add(CONTROL_FILE_INO, 1, FileType::RegularFile, "control") {
+                return;
             }
             reply.ok();
             return;
@@ -1247,7 +1197,7 @@ impl fuser::Filesystem for AgentFsFuse {
         req: &Request,
         parent: u64,
         name: &OsStr,
-        mode: u32,
+        _mode: u32,
         _umask: u32,
         flags: i32,
         reply: ReplyCreate,
@@ -1289,8 +1239,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 Ok(attr) => {
                     let ino = self.get_or_alloc_inode(&full_path);
                     let fuse_attr = self.attr_to_fuse(&attr, ino);
-                    self.track_handle(ino, handle_id.0 as u64, &client_pid);
-                    reply.created(&self.entry_ttl, &fuse_attr, 0, handle_id.0 as u64, 0);
+                    self.track_handle(ino, handle_id.0, &client_pid);
+                    reply.created(&self.entry_ttl, &fuse_attr, 0, handle_id.0, 0);
                 }
                 Err(_) => reply.error(EIO),
             },
@@ -1609,8 +1559,8 @@ impl fuser::Filesystem for AgentFsFuse {
         &mut self,
         _req: &Request,
         ino: u64,
-        fh: u64,
-        flags: u32,
+        _fh: u64,
+        _flags: u32,
         cmd: u32,
         data: &[u8],
         out_size: u32,
@@ -1639,7 +1589,7 @@ impl fuser::Filesystem for AgentFsFuse {
         }
     }
 
-    fn fsync(&mut self, _req: &Request, ino: u64, fh: u64, datasync: bool, reply: ReplyEmpty) {
+    fn fsync(&mut self, _req: &Request, ino: u64, _fh: u64, _datasync: bool, reply: ReplyEmpty) {
         if ino == CONTROL_FILE_INO {
             reply.ok(); // No-op for control file
             return;
@@ -1649,7 +1599,7 @@ impl fuser::Filesystem for AgentFsFuse {
         reply.ok();
     }
 
-    fn flush(&mut self, _req: &Request, ino: u64, fh: u64, lock_owner: u64, reply: ReplyEmpty) {
+    fn flush(&mut self, _req: &Request, ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
         if ino == CONTROL_FILE_INO {
             reply.ok(); // No-op for control file
             return;
@@ -1699,7 +1649,7 @@ impl fuser::Filesystem for AgentFsFuse {
         name: &OsStr,
         value: &[u8],
         flags: i32,
-        position: u32,
+        _position: u32,
         reply: ReplyEmpty,
     ) {
         if ino == CONTROL_FILE_INO {
@@ -1720,8 +1670,8 @@ impl fuser::Filesystem for AgentFsFuse {
         let client_pid = self.get_client_pid(req);
 
         // Handle flags (XATTR_CREATE, XATTR_REPLACE) with proper check-then-act logic
-        let create = flags == libc::XATTR_CREATE as i32;
-        let replace = flags == libc::XATTR_REPLACE as i32;
+        let create = flags == libc::XATTR_CREATE;
+        let replace = flags == libc::XATTR_REPLACE;
 
         // Check-then-act logic
         if create || replace {
@@ -1812,10 +1762,10 @@ impl fuser::Filesystem for AgentFsFuse {
         &mut self,
         _req: &Request,
         ino: u64,
-        fh: u64,
-        offset: i64,
-        length: i64,
-        mode: i32,
+        _fh: u64,
+        _offset: i64,
+        _length: i64,
+        _mode: i32,
         reply: ReplyEmpty,
     ) {
         if ino == CONTROL_FILE_INO {
@@ -1831,13 +1781,13 @@ impl fuser::Filesystem for AgentFsFuse {
         &mut self,
         _req: &Request,
         ino_in: u64,
-        fh_in: u64,
-        offset_in: i64,
+        _fh_in: u64,
+        _offset_in: i64,
         ino_out: u64,
-        fh_out: u64,
-        offset_out: i64,
-        len: u64,
-        flags: u32,
+        _fh_out: u64,
+        _offset_out: i64,
+        _len: u64,
+        _flags: u32,
         reply: ReplyWrite,
     ) {
         if ino_in == CONTROL_FILE_INO || ino_out == CONTROL_FILE_INO {
@@ -1864,7 +1814,7 @@ impl fuser::Filesystem for AgentFsFuse {
         _crtime: Option<SystemTime>,
         _chgtime: Option<SystemTime>,
         _bkuptime: Option<SystemTime>,
-        flags: Option<u32>,
+        _flags: Option<u32>,
         reply: ReplyAttr,
     ) {
         // Resolve path for inode
@@ -1933,8 +1883,10 @@ impl fuser::Filesystem for AgentFsFuse {
                 }
             } else {
                 // Path-based truncate: open for write, then ftruncate
-                let mut opts = OpenOptions::default();
-                opts.write = true;
+                let opts = OpenOptions {
+                    write: true,
+                    ..Default::default()
+                };
                 match self.core.open(&client_pid, path, &opts) {
                     Ok(h) => {
                         if let Err(e) = self.core.ftruncate(&client_pid, h, new_size) {
@@ -2069,6 +2021,51 @@ impl fuser::Filesystem for AgentFsFuse {
             }
             Err(FsError::NotFound) => reply.error(ENOENT),
             Err(_) => reply.error(EIO),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agentfs_proto::{Request as ControlRequest, Response as ControlResponse};
+
+    #[test]
+    fn cache_ttls_follow_config() {
+        let mut config = FsConfig::default();
+        config.cache.attr_ttl_ms = 1500;
+        config.cache.entry_ttl_ms = 2500;
+        config.cache.negative_ttl_ms = 3500;
+
+        let fuse = AgentFsFuse::new(config).expect("fuse init");
+        assert_eq!(fuse.attr_ttl, Duration::from_millis(1500));
+        assert_eq!(fuse.entry_ttl, Duration::from_millis(2500));
+        assert_eq!(fuse._negative_ttl, Duration::from_millis(3500));
+    }
+
+    #[test]
+    fn control_ioctl_snapshot_roundtrip() {
+        let fuse = AgentFsFuse::new(FsConfig::default()).expect("fuse init");
+
+        let create_req = ControlRequest::snapshot_create(Some("snap-one".to_string()));
+        let create_resp = fuse
+            .handle_control_ioctl(&create_req.as_ssz_bytes())
+            .expect("snapshot create resp");
+        match ControlResponse::from_ssz_bytes(&create_resp).expect("decode response") {
+            ControlResponse::SnapshotCreate(info) => {
+                assert!(info.snapshot.name.is_some());
+            }
+            other => panic!("unexpected response: {:?}", other),
+        }
+
+        let list_req = ControlRequest::snapshot_list();
+        let list_resp =
+            fuse.handle_control_ioctl(&list_req.as_ssz_bytes()).expect("snapshot list resp");
+        match ControlResponse::from_ssz_bytes(&list_resp).expect("decode list") {
+            ControlResponse::SnapshotList(entries) => {
+                assert_eq!(entries.snapshots.len(), 1);
+            }
+            other => panic!("unexpected response: {:?}", other),
         }
     }
 }
