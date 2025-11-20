@@ -39,9 +39,12 @@ pub struct ClaudeAiOauth {
 
 impl ClaudeAgent {
     pub fn new() -> Self {
-        Self {
-            binary_path: "claude".to_string(),
-        }
+        let binary_path = which::which("claude")
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "claude".to_string());
+
+        Self { binary_path }
     }
 
     /// Retrieve Claude Code credentials from platform-specific sources

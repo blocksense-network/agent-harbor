@@ -16,9 +16,12 @@ pub struct GeminiAgent {
 
 impl GeminiAgent {
     pub fn new() -> Self {
-        Self {
-            binary_path: "gemini".to_string(),
-        }
+        let binary_path = which::which("gemini")
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "gemini".to_string());
+
+        Self { binary_path }
     }
 
     /// Parse version from `gemini --version` output
