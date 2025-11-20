@@ -151,6 +151,7 @@ fn execute_test_scenario(
 }
 
 #[cfg(not(target_os = "macos"))]
+#[allow(dead_code)]
 fn execute_test_scenario(
     socket_path: &std::path::Path,
     command: &str,
