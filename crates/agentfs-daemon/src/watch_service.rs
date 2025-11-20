@@ -402,14 +402,14 @@ impl Clone for FSEventsWatchRegistration {
 
 /// Event sink implementation for the watch service daemon
 pub struct WatchServiceEventSink {
-    watch_service: Arc<WatchService>,
+    _watch_service: Arc<WatchService>,
     daemon: std::sync::Weak<Mutex<AgentFsDaemon>>,
 }
 
 impl WatchServiceEventSink {
     pub fn new(watch_service: Arc<WatchService>, daemon: Arc<Mutex<AgentFsDaemon>>) -> Self {
         Self {
-            watch_service,
+            _watch_service: watch_service,
             daemon: Arc::downgrade(&daemon),
         }
     }
@@ -417,7 +417,7 @@ impl WatchServiceEventSink {
     #[cfg(test)]
     pub fn new_without_daemon(watch_service: Arc<WatchService>) -> Self {
         Self {
-            watch_service,
+            _watch_service: watch_service,
             daemon: std::sync::Weak::new(),
         }
     }
@@ -519,6 +519,7 @@ impl WatchServiceEventSink {
 
     /// Convert EventKind to kqueue vnode flags (no-op on non-macOS)
     #[cfg(not(target_os = "macos"))]
+    #[allow(dead_code)]
     fn event_to_vnode_flags(
         &self,
         evt: &EventKind,
