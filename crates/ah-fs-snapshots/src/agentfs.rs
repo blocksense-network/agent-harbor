@@ -10,8 +10,13 @@
 
 use ah_fs_snapshots_traits::{
     Error, FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotInfo,
-    SnapshotProviderKind, SnapshotRef, WorkingCopyMode, generate_unique_id,
+    SnapshotProviderKind, SnapshotRef, WorkingCopyMode,
 };
+
+// macOS-specific imports
+#[cfg(all(feature = "agentfs", target_os = "macos"))]
+use ah_fs_snapshots_traits::generate_unique_id;
+#[cfg(all(feature = "agentfs", target_os = "macos"))]
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -560,6 +565,9 @@ impl AgentFsProvider {
 
         #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
         {
+            let _ = repo;
+            let _ = mode;
+            let _ = socket_path;
             Err(Error::provider(
                 "AgentFS provider not available on this platform",
             ))
