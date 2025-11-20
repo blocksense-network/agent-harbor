@@ -14,6 +14,8 @@ use ah_domain_types::MultiplexerType;
 use ah_mux::EmacsMultiplexer;
 #[cfg(feature = "ghostty")]
 use ah_mux::GhosttyMultiplexer;
+#[cfg(all(feature = "iterm2", target_os = "macos"))]
+use ah_mux::ITerm2Multiplexer;
 #[cfg(feature = "kitty")]
 use ah_mux::KittyMultiplexer;
 #[cfg(feature = "neovim")]
@@ -30,7 +32,7 @@ use ah_mux::WezTermMultiplexer;
 use ah_mux::WindowsTerminalMultiplexer;
 #[cfg(feature = "zellij")]
 use ah_mux::ZellijMultiplexer;
-use ah_mux::{ITerm2Multiplexer, TmuxMultiplexer, detection::TerminalEnvironment};
+use ah_mux::{TmuxMultiplexer, detection::TerminalEnvironment};
 use ah_mux_core::Multiplexer;
 use std::sync::Arc;
 
@@ -342,6 +344,7 @@ pub fn create_local_task_manager_with_multiplexer(
         recording_disabled: config.recording_disabled,
     };
 
+    #[allow(unreachable_patterns)] // Feature-gated match arms may create unreachable patterns
     match multiplexer_preference {
         MultiplexerType::Tmux => {
             GenericLocalTaskManager::new(agent_config, TmuxMultiplexer::default())
