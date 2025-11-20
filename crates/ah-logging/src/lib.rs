@@ -315,6 +315,29 @@ impl TracingExt for tracing::Span {
     }
 }
 
+/// Test utilities for working with log output
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils {
+    /// Strip ANSI escape sequences from a string
+    ///
+    /// This is useful for testing log output that may contain ANSI color codes.
+    ///
+    /// # Example
+    /// ```rust
+    /// use ah_logging::test_utils::strip_ansi_codes;
+    ///
+    /// let colored_output = "\x1b[32mHello\x1b[0m World";
+    /// let plain_output = strip_ansi_codes(colored_output);
+    /// assert_eq!(plain_output, "Hello World");
+    /// ```
+    pub fn strip_ansi_codes(s: &str) -> String {
+        // More comprehensive regex to match ANSI escape sequences
+        // This matches \x1b[ followed by any number of digits and semicolons, ending with a letter
+        let ansi_regex = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap();
+        ansi_regex.replace_all(s, "").to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
