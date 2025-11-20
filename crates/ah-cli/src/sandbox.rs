@@ -193,6 +193,7 @@ impl SandboxRunArgs {
                 "Running command inside sandbox workspace"
             );
 
+            #[allow(deprecated)]
             let mut sandbox = create_sandbox_from_args(
                 allow_network,
                 allow_containers,
@@ -674,9 +675,11 @@ pub struct SandboxArgs<'a> {
 
 // New API with single config struct to reduce argument count
 #[cfg(target_os = "linux")]
+#[allow(unexpected_cfgs)] // seccomp feature may not be defined in all configurations  
 pub fn create_sandbox(args: SandboxArgs) -> Result<sandbox_core::Sandbox> {
     let mut sandbox = sandbox_core::Sandbox::new();
 
+    #[allow(unexpected_cfgs)]
     #[cfg(not(feature = "seccomp"))]
     let _ = (args.seccomp, args.seccomp_debug);
 
@@ -686,6 +689,7 @@ pub fn create_sandbox(args: SandboxArgs) -> Result<sandbox_core::Sandbox> {
         sandbox = sandbox.with_default_network();
     }
 
+    #[allow(unexpected_cfgs)]
     #[cfg(feature = "seccomp")]
     if args.seccomp {
         let root_dir = working_dir
@@ -733,6 +737,7 @@ pub fn create_sandbox(args: SandboxArgs) -> Result<sandbox_core::Sandbox> {
 // Backward-compatible wrapper retained temporarily for callers; marked deprecated to encourage migration.
 #[cfg(target_os = "linux")]
 #[deprecated(since = "0.1.0", note = "Use create_sandbox(SandboxArgs) instead")]
+#[allow(clippy::too_many_arguments)] // Deprecated function
 pub fn create_sandbox_from_args(
     allow_network: bool,
     allow_containers: bool,

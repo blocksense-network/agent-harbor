@@ -7,17 +7,16 @@ use ah_agents::{AgentExecutor, AgentLaunchConfig};
 use ah_core::agent_executor::ah_full_path;
 use ah_domain_types::AgentSoftware as AgentType;
 use anyhow::Context;
-use clap::{Args, ValueEnum};
+use clap::Args;
 use reqwest::Client;
 use serde_json::json;
 use std::path::PathBuf;
 use std::process as stdprocess;
-use std::process::Stdio;
 use uuid;
 
 // Import snapshot types from parent and traits
 use crate::tui::FsSnapshotsType;
-use ah_domain_types::{AgentSoftware, MultiplexerType, OutputFormat};
+use ah_domain_types::{AgentSoftware, OutputFormat};
 use ah_fs_snapshots::WorkingCopyMode;
 
 /// Agent start command arguments
@@ -147,6 +146,7 @@ fn parse_bool(s: &str) -> Result<bool, String> {
 impl AgentStartArgs {
     /// Resolve a usable Python interpreter name.
     /// Prefer `python`, fall back to `python3`. Honor `PYTHON` if set.
+    #[allow(dead_code)] // Reserved for future use
     fn resolve_python_interpreter() -> anyhow::Result<String> {
         if let Ok(py) = std::env::var("PYTHON") {
             if !py.trim().is_empty() {
@@ -174,7 +174,7 @@ impl AgentStartArgs {
     /// Run the agent start command
     pub async fn run(self) -> anyhow::Result<()> {
         // Convert CLI agent type to core agent type
-        let agent_type: AgentType = self.agent.clone().into();
+        let agent_type: AgentType = self.agent.clone();
 
         // Validate command-line arguments
         self.validate_args()?;
@@ -260,6 +260,7 @@ impl AgentStartArgs {
                 }
 
                 // Create sandbox configuration from CLI parameters
+                #[allow(deprecated)]
                 let mut sandbox = crate::sandbox::create_sandbox_from_args(
                     self.allow_network.unwrap_or(false),
                     self.allow_containers.unwrap_or(false),

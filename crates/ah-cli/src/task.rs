@@ -6,6 +6,9 @@ use ah_core::{
     AgentTasks, DatabaseManager, EditorError, PushHandler, PushOptions, devshell_names,
     edit_content_interactive, parse_push_to_remote_flag,
 };
+
+// Used in test modules
+#[cfg(test)]
 use ah_domain_types::AgentSoftware;
 use ah_fs_snapshots::PreparedWorkspace;
 use ah_local_db::{SessionRecord, TaskRecord};
