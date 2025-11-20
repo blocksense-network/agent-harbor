@@ -259,6 +259,8 @@ fn provider_matrix_git() -> Result<MatrixOutcome> {
         bail!("git command not available on PATH");
     }
 
+    ensure_git_identity_env();
+
     let temp_dir = tempfile::tempdir().context("failed to create matrix repository directory")?;
     populate_test_repo(temp_dir.path())?;
     initialize_git_repo(temp_dir.path())
@@ -797,6 +799,8 @@ pub fn git_snapshot_scenario() -> Result<()> {
         bail!("git command not available on PATH");
     }
 
+    ensure_git_identity_env();
+
     let temp_dir =
         tempfile::tempdir().context("failed to create temporary repository directory")?;
     populate_test_repo(temp_dir.path())?;
@@ -886,6 +890,25 @@ pub fn git_snapshot_scenario() -> Result<()> {
     bail!(
         "fs-snapshots-test-harness built without `git` feature; enable it to run git provider scenarios"
     )
+}
+
+#[cfg(feature = "git")]
+fn ensure_git_identity_env() {
+    const NAME: &str = "AgentFS Snapshot Harness";
+    const EMAIL: &str = "agentfs-snapshot@for.testing";
+    const VARS: [(&str, &str); 4] = [
+        ("GIT_AUTHOR_NAME", NAME),
+        ("GIT_AUTHOR_EMAIL", EMAIL),
+        ("GIT_COMMITTER_NAME", NAME),
+        ("GIT_COMMITTER_EMAIL", EMAIL),
+    ];
+    for (key, value) in VARS {
+        if std::env::var_os(key).is_none()
+            || std::env::var(key).map(|v| v.is_empty()).unwrap_or(true)
+        {
+            std::env::set_var(key, value);
+        }
+    }
 }
 
 #[cfg(feature = "btrfs")]
