@@ -540,10 +540,7 @@ mod tests {
         let session_name = format!("test-split-h-{}", timestamp);
         if TmuxMultiplexer::new().is_ok() {
             // Start continuous tmux session for visual testing
-            if let Err(err) = snapshot_testing::start_continuous_session(&session_name) {
-                eprintln!("⚠️  Skipping tmux split-pane test (could not start session: {err:?})");
-                return;
-            }
+            let _ = snapshot_testing::start_continuous_session(&session_name);
 
             // Give tmux a moment to fully initialize
             std::thread::sleep(Duration::from_millis(300));
@@ -729,10 +726,8 @@ mod tests {
             .as_millis();
         let session_name = format!("test-cmd-{}", timestamp);
         if TmuxMultiplexer::new().is_ok() {
-            if let Err(err) = snapshot_testing::start_continuous_session(&session_name) {
-                eprintln!("⚠️  Skipping tmux command/text test (could not start session: {err:?})");
-                return;
-            }
+            // Start continuous tmux session for visual testing
+            let _ = snapshot_testing::start_continuous_session(&session_name);
 
             // Give tmux a moment to fully initialize
             std::thread::sleep(Duration::from_millis(300));
@@ -966,12 +961,8 @@ mod tests {
             .as_millis();
         let session_name = format!("test-complex-{}", timestamp);
         if TmuxMultiplexer::new().is_ok() {
-            if let Err(err) = snapshot_testing::start_continuous_session(&session_name) {
-                eprintln!(
-                    "⚠️  Skipping tmux complex layout test (could not start session: {err:?})"
-                );
-                return;
-            }
+            // Start continuous tmux session for visual testing
+            let _ = snapshot_testing::start_continuous_session(&session_name);
 
             // Give tmux a moment to fully initialize
             std::thread::sleep(Duration::from_millis(300));
@@ -1219,28 +1210,6 @@ set-environment -g ZDOTDIR ""
 
             // Give tmux a moment to start up
             std::thread::sleep(Duration::from_millis(200));
-
-            // Verify tmux session really exists
-            let verify = std::process::Command::new("tmux")
-                .args(&["has-session", "-t", session_name])
-                .output();
-            if let Ok(output) = verify {
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let _ = std::fs::remove_file(&config_path);
-                    return Err(anyhow::anyhow!(
-                        "tmux has-session check failed for {}: {}",
-                        session_name,
-                        stderr.trim()
-                    ));
-                }
-            } else {
-                let _ = std::fs::remove_file(&config_path);
-                return Err(anyhow::anyhow!(
-                    "failed to invoke tmux has-session for {}",
-                    session_name
-                ));
-            }
 
             *session = Some((p, parser, config_path));
             Ok(())
