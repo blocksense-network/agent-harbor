@@ -5,7 +5,7 @@
   ];
 
   perSystem =
-    { pkgs, ... }:
+    { pkgs, self', ... }:
     {
       pre-commit = {
         settings = {
@@ -107,6 +107,10 @@
 
             # Rust formatting
             rustfmt = {
+              packageOverrides = {
+                rustfmt = self'.legacyPackages.rustToolchain;
+                cargo = self'.legacyPackages.rustToolchain;
+              };
               enable = true;
               name = "cargo fmt";
               entry = "cargo fmt --";
