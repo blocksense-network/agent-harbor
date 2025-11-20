@@ -409,7 +409,7 @@ where
         );
 
         // Extract working copy mode and snapshot from starting point
-        let (working_copy_mode, snapshot_id) = match params.starting_point() {
+        let (_working_copy_mode, snapshot_id) = match params.starting_point() {
             crate::task_manager::StartingPoint::RepositoryBranch { .. } => {
                 // For repository branches, use the specified working copy mode
                 (*params.working_copy_mode(), None)

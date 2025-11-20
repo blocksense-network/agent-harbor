@@ -103,6 +103,7 @@ struct RenderableOption<'a> {
     indent: u16,
 }
 
+#[allow(clippy::vec_init_then_push)]
 fn get_renderable_options<'a>(config: &AdvancedLaunchOptions) -> Vec<RenderableOption<'a>> {
     let mut options = Vec::new();
 
@@ -389,7 +390,7 @@ fn render_options_column(
             }
         }
 
-        if found && popup_y < area.y + area.height as u16 {
+        if found && popup_y < area.y + area.height {
             // Render the popup as a bordered box
             let popup_height = popup.options.len() as u16 + 2; // +2 for borders
             let popup_width = 20; // Fixed width for enum popup
@@ -398,7 +399,7 @@ fn render_options_column(
                 x: area.x + 30, // Position to the right of the options
                 y: popup_y,
                 width: popup_width,
-                height: popup_height.min(area.height as u16 - (popup_y - area.y)),
+                height: popup_height.min(area.height - (popup_y - area.y)),
             };
 
             // Clear the popup area to prevent elements behind it from polluting it
