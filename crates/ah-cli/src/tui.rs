@@ -599,6 +599,7 @@ impl TuiArgs {
                 }
             };
 
+            #[allow(clippy::disallowed_methods)]
             let task_manager = ah_core::create_local_task_manager_with_multiplexer(
                 ah_core::TaskManagerConfig {
                     recording_disabled,
@@ -606,7 +607,14 @@ impl TuiArgs {
                 },
                 multiplexer_preference,
             )
-            .expect("Failed to create local task manager");
+            .unwrap_or_else(|e| {
+                // Handle multi-line error messages properly by printing each line
+                eprintln!("Failed to create local task manager:");
+                for line in e.split('\n') {
+                    eprintln!("  {}", line);
+                }
+                std::process::exit(1);
+            });
 
             // Create local enumerators for local mode
             let repositories_enumerator: Arc<dyn ah_core::RepositoriesEnumerator> = Arc::new(
