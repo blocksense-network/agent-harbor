@@ -183,20 +183,41 @@ jobs:
           cargo build -p agentfs-fuse-host --features fuse
           cargo build -p agentfs-control-cli
 
-      - name: Run mount cycle harness
-        run: just test-fuse-mount-cycle
+      - name: Run FUSE verification suites (F1–F7)
         env:
           SKIP_FUSE_BUILD: 1
+        run: |
+          set -euo pipefail
+          MNT="/tmp/agentfs-ci-basic"
+          rm -rf "$MNT"
+          just mount-fuse "$MNT"
+          just test-fuse-basic "$MNT"
+          just umount-fuse "$MNT"
+          just test-fuse-basic-ops
+          just test-fuse-negative-ops
+          just test-fuse-control-plane
+          just test-fuse-overlay-ops
+          just test-fuse-mount-cycle
+          just test-fuse-mount-failures
+          just test-fuse-mount-concurrent
+          just test-fuse-stress
+          just test-pjdfstest-full
 
-      - name: Run mount failure harness
-        run: just test-fuse-mount-failures
+      - name: Run F8 harnesses (xattrs/mknod/mount options/advanced I/O)
         env:
           SKIP_FUSE_BUILD: 1
+        run: |
+          set -euo pipefail
+          just test-fuse-xattrs
+          just test-fuse-mknod
+          just test-fuse-mount-options
+          just test-fuse-advanced-io
 
-      - name: Run concurrent mount harness
-        run: just test-fuse-mount-concurrent
+      - name: Run FUSE performance harness
         env:
           SKIP_FUSE_BUILD: 1
+        run: just test-fuse-performance
+        continue-on-error: true
 
       - name: Run basic ops harness
         run: just test-fuse-basic-ops
