@@ -4,7 +4,7 @@
 
 use ah_logging::test_utils::strip_ansi_codes;
 use anyhow::Context;
-#[cfg(feature = "agentfs")]
+#[cfg(all(feature = "agentfs", target_os = "macos"))]
 use fs_snapshots_test_harness::assert_interpose_shim_exists;
 use fs_snapshots_test_harness::{assert_driver_exists, scenarios};
 #[cfg(feature = "btrfs")]

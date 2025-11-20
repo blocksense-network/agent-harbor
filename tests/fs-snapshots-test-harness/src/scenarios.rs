@@ -46,7 +46,7 @@ use crate::{BtrfsHarnessEnvironment, btrfs_available, btrfs_is_root};
 #[cfg(feature = "btrfs")]
 use ah_fs_snapshots_btrfs::BtrfsProvider;
 
-#[cfg(feature = "agentfs")]
+#[cfg(all(feature = "agentfs", target_os = "macos"))]
 use ah_fs_snapshots::AgentFsProvider;
 
 struct MatrixOutcome {
@@ -206,7 +206,7 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
             #[cfg(not(target_os = "macos"))]
             {
                 tracing::info!("AgentFS provider matrix is only supported on macOS");
-                return Ok(());
+                Ok(())
             }
 
             #[cfg(target_os = "macos")]
