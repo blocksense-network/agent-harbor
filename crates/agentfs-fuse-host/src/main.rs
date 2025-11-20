@@ -16,7 +16,7 @@ use anyhow::Result;
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
-use tracing::{info, warn};
+use tracing::info;
 
 #[derive(Parser)]
 struct Args {
@@ -102,6 +102,7 @@ fn main() -> Result<()> {
 
     #[cfg(not(all(feature = "fuse", target_os = "linux")))]
     {
+        use tracing::warn;
         warn!("FUSE support not compiled in. This binary is for testing only.");
         info!(
             "AgentFS core initialized successfully with config: {:?}",

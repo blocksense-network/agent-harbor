@@ -1,6 +1,8 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+#![allow(clippy::disallowed_methods)]
+
 #[cfg(target_os = "linux")]
 mod linux_tests {
     use std::path::PathBuf;
