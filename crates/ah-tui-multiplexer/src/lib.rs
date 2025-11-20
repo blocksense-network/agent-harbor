@@ -67,6 +67,16 @@ impl<M: Multiplexer> AwMultiplexer<M> {
     /// The split_mode determines how the view is split
     pub fn create_task_layout(&self, config: &LayoutConfig) -> Result<LayoutHandle, AwMuxError> {
         let title = format!("ah-task-{}", config.task_id);
+        let mux_id = self.mux.id();
+        let is_tilix = mux_id == "tilix";
+
+        // Tilix requires special handling because:
+        // 1. It doesn't support run_command() on existing panes
+        // 2. Commands must be specified at pane creation time via --command
+        // 3. The first window must be created with the initial command
+        if is_tilix {
+            return self.create_task_layout_tilix(config);
+        }
 
         let window_id = match config.split_mode {
             SplitMode::None => {
@@ -150,6 +160,106 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                 let _ = self.mux.focus_window(&window_id);
             }
         }
+
+        Ok(LayoutHandle { window_id, panes })
+    }
+
+    /// Create a task layout specifically for Tilix
+    ///
+    /// Tilix has special requirements:
+    /// - Cannot run commands in existing panes (no run_command support)
+    /// - Must specify commands at pane creation time via --command parameter
+    /// - Uses session-add-right and session-add-down actions for splitting
+    fn create_task_layout_tilix(&self, config: &LayoutConfig) -> Result<LayoutHandle, AwMuxError> {
+        let title = format!("ah-task-{}", config.task_id);
+        let editor_cmd = config.editor_cmd.unwrap_or("bash");
+
+        let mut panes = HashMap::new();
+
+        // Handle split mode
+        let window_id = match config.split_mode {
+            SplitMode::None => {
+                // Create a new window with the editor command
+                let window_opts = WindowOptions {
+                    title: Some(&title),
+                    cwd: Some(config.working_dir),
+                    profile: Some(editor_cmd), // Use profile field for the initial command
+                    focus: true,
+                };
+                let wid = self.mux.open_window(&window_opts)?;
+
+                // The first pane is the editor pane (window itself)
+                let editor_pane = wid.clone();
+                panes.insert(PaneRole::Editor, editor_pane);
+
+                wid
+            }
+            SplitMode::Auto | SplitMode::Horizontal | SplitMode::Vertical => {
+                // Determine split direction for editor pane
+                let split_direction = match config.split_mode {
+                    SplitMode::Horizontal => SplitDirection::Horizontal,
+                    SplitMode::Vertical => SplitDirection::Vertical,
+                    SplitMode::Auto => SplitDirection::Horizontal, // Default to horizontal
+                    SplitMode::None => unreachable!(),
+                };
+
+                // Create editor pane via split with the editor command
+                let editor_pane = self.mux.split_pane(
+                    None,
+                    None, // Split from the current active pane
+                    split_direction,
+                    None, // Tilix doesn't support percentage sizing via CLI
+                    &CommandOptions {
+                        cwd: Some(config.working_dir),
+                        env: None,
+                    },
+                    Some(editor_cmd), // Must provide command at split time for Tilix
+                )?;
+                panes.insert(PaneRole::Editor, editor_pane.clone());
+
+                editor_pane
+            }
+        };
+
+        // Determine split direction
+        let split_direction = match config.split_mode {
+            SplitMode::Horizontal => SplitDirection::Horizontal,
+            SplitMode::Vertical => SplitDirection::Vertical,
+            SplitMode::Auto | SplitMode::None => SplitDirection::Horizontal, // Default to horizontal
+        };
+
+        // Split for agent pane with the agent command
+        let agent_pane = self.mux.split_pane(
+            Some(&window_id),
+            None, // Split from the current active pane
+            split_direction,
+            None, // Tilix doesn't support percentage sizing via CLI
+            &CommandOptions {
+                cwd: Some(config.working_dir),
+                env: None,
+            },
+            Some(config.agent_cmd), // Must provide command at split time for Tilix
+        )?;
+        panes.insert(PaneRole::Agent, agent_pane);
+
+        // Optional log pane at bottom
+        if let Some(log_cmd) = config.log_cmd {
+            let log_pane = self.mux.split_pane(
+                Some(&window_id),
+                None, // Split from the current active pane (should be agent pane)
+                SplitDirection::Vertical, // Always vertical for logs (bottom)
+                None, // Tilix doesn't support percentage sizing via CLI
+                &CommandOptions {
+                    cwd: Some(config.working_dir),
+                    env: None,
+                },
+                Some(log_cmd), // Must provide command at split time for Tilix
+            )?;
+            panes.insert(PaneRole::Logs, log_pane);
+        }
+
+        // Note: Tilix doesn't support programmatic pane/window focusing via CLI
+        // Window manager handles focus, so we skip focus operations for Tilix
 
         Ok(LayoutHandle { window_id, panes })
     }
