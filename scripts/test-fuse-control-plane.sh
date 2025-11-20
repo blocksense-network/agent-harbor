@@ -50,7 +50,7 @@ trap cleanup EXIT
 
 run_control() {
   local output
-  output=$(sudo -E "$REPO_ROOT/target/debug/agentfs-control-cli" --mount "$MOUNTPOINT" "$@" 2>&1)
+  output=$(RUST_LOG=info sudo -E "$REPO_ROOT/target/debug/agentfs-control-cli" --mount "$MOUNTPOINT" "$@" 2>&1)
   local status=$?
   echo "[$(date +%H:%M:%S)] [control] $* (status=$status)" >>"$LOG_FILE"
   echo "$output" >>"$LOG_FILE"
