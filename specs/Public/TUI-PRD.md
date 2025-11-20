@@ -293,7 +293,7 @@ The settings dialog uses tabs to organize configuration options:
 
 - **Execution Options**:
   - **Output Format**: Text vs normalized output modes
-  - **Recording**: Persist session recordings toggle
+  - **Record Sessions**: Persist session recordings toggle
   - **LLM Provider Configuration**: Enabled providers and API keys
   - **Provider Mappings**: Mapping editor for adding tuples (in agent software X, map model X to provider Y's model Z)
 
@@ -608,7 +608,7 @@ The left column contains grouped configuration options organized by category and
 
 - **Interactive Mode**: `yes`/`no` - Launch agent in interactive mode (default: `no`)
 - **Output Format**: `text`, `text-normalized` - Control output formatting
-- **Record Output**: `yes`/`no` - Enable session recording (default: `yes`)
+- **Record Session**: `yes`/`no` - Enable session recording (default: `yes`)
 - **Timeout**: Duration limit for agent execution
 - **LLM Provider**: A pre-configured LLM provider to use for this session (e.g. OpenRouter)
 - **Environment Variables**: Key-value pairs for agent environment
