@@ -10,11 +10,6 @@ use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
-// Only needed in test builds; avoid dead_code warnings in non-test builds
-#[cfg(test)]
-use std::thread;
-#[cfg(test)]
-use std::time::Duration;
 
 use agentfs_core::config::BackstoreMode;
 use agentfs_daemon::handshake::{
@@ -226,6 +221,7 @@ impl BackstoreTestRunner {
 
 /// Execute a test scenario using the test_helper binary
 #[cfg(test)]
+#[allow(dead_code)]
 fn execute_test_scenario(
     socket_path: &std::path::Path,
     scenario: &str,
@@ -250,6 +246,7 @@ fn execute_test_scenario(
 
 /// Find the path to the interposition dylib
 #[cfg(test)]
+#[allow(dead_code)]
 fn find_dylib_path() -> std::path::PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -271,6 +268,7 @@ fn find_dylib_path() -> std::path::PathBuf {
 
 /// Find the path to the agentfs-interpose-test-helper binary
 #[cfg(test)]
+#[allow(dead_code)]
 fn find_test_helper_path() -> std::path::PathBuf {
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
