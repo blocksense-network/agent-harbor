@@ -777,9 +777,10 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         send_response(&mut stream, &response);
                     }
                     Request::WatchRegisterFSEventsPort((_version, port_reg_req)) => {
+                        #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
                         let port_name =
                             String::from_utf8_lossy(&port_reg_req.port_name).to_string();
-                        let mut daemon = daemon.lock().unwrap();
+                        let _daemon = daemon.lock().unwrap();
 
                         // Create CFMessagePort remote connection
                         #[cfg(target_os = "macos")]
