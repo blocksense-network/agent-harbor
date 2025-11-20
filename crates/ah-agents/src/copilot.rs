@@ -17,9 +17,12 @@ pub struct CopilotAgent {
 
 impl CopilotAgent {
     pub fn new() -> Self {
-        Self {
-            binary_path: "copilot".to_string(),
-        }
+        let binary_path = which::which("copilot")
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "copilot".to_string());
+
+        Self { binary_path }
     }
 
     /// Parse version from `copilot --version` output

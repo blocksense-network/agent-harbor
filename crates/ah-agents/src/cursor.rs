@@ -18,9 +18,12 @@ pub struct CursorAgent {
 
 impl CursorAgent {
     pub fn new() -> Self {
-        Self {
-            binary_path: "cursor-agent".to_string(),
-        }
+        let binary_path = which::which("cursor-agent")
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "cursor-agent".to_string());
+
+        Self { binary_path }
     }
 
     /// Parse version from `cursor-agent --version` output

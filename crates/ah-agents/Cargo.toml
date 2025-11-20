@@ -27,6 +27,7 @@ regex = "1.10"
 chrono = "0.4"
 rusqlite = { version = "0.37", features = ["bundled"] }
 ureq = "2.9"
+which = "6.0"
 reqwest = { workspace = true, features = ["json"] }
 tempfile = "3.8"
 
