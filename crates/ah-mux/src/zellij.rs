@@ -39,12 +39,17 @@ pub struct ZellijMultiplexer;
 impl ZellijMultiplexer {
     /// Create a new Zellij multiplexer instance by verifying that the `zellij`
     /// binary is available and responsive.
-    #[instrument]
+    #[instrument(fields(component = "ah-mux", operation = "zellij_new"))]
     pub fn new() -> Result<Self, MuxError> {
         debug!("Initializing Zellij multiplexer");
 
         let output = Command::new("zellij").arg("--version").output().map_err(|e| {
-            error!("Failed to run zellij --version: {}", e);
+            error!(
+                component = "ah-mux",
+                operation = "zellij_new",
+                error = %e,
+                "Failed to run zellij --version"
+            );
             MuxError::Other(format!("Failed to run zellij --version: {}", e))
         })?;
 
@@ -63,14 +68,33 @@ impl Multiplexer for ZellijMultiplexer {
         "zellij"
     }
 
+    #[instrument(
+        skip(self),
+        fields(component = "ah-mux", operation = "zellij_is_available")
+    )]
     fn is_available(&self) -> bool {
-        Command::new("zellij")
+        debug!("Checking if Zellij is available");
+
+        let available = Command::new("zellij")
             .arg("--version")
             .output()
             .map(|output| output.status.success())
-            .unwrap_or(false)
+            .unwrap_or(false);
+
+        debug!(available = %available, "Zellij availability check completed");
+        available
     }
 
+    #[instrument(
+        skip(self, opts),
+        fields(
+            component = "ah-mux",
+            operation = "zellij_open_window",
+            title = ?opts.title,
+            cwd = ?opts.cwd,
+            focus = %opts.focus
+        )
+    )]
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
         // Determine target session name:
         // 1. Use ZELLIJ_SESSION_NAME if set (we are inside Zellij).
@@ -162,9 +186,15 @@ impl Multiplexer for ZellijMultiplexer {
             cmd.arg("--cwd").arg(cwd);
         }
 
-        let output = cmd
-            .output()
-            .map_err(|e| MuxError::Other(format!("Failed to start zellij session: {}", e)))?;
+        let output = cmd.output().map_err(|e| {
+            error!(
+                component = "ah-mux",
+                operation = "zellij_open_window",
+                error = %e,
+                "Failed to start zellij session"
+            );
+            MuxError::Other(format!("Failed to start zellij session: {}", e))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -177,6 +207,19 @@ impl Multiplexer for ZellijMultiplexer {
         Ok(session_name.to_string())
     }
 
+    #[instrument(
+        skip(self, opts, initial_cmd),
+        fields(
+            component = "ah-mux",
+            operation = "zellij_split_pane",
+            window = ?window,
+            direction = ?dir,
+            percent = ?_percent,
+            has_initial_cmd = %initial_cmd.is_some(),
+            has_env = %opts.env.is_some(),
+            has_cwd = %opts.cwd.is_some()
+        )
+    )]
     fn split_pane(
         &self,
         window: Option<&WindowId>,
@@ -225,9 +268,15 @@ impl Multiplexer for ZellijMultiplexer {
             cmd.arg("--").arg("sh");
         }
 
-        let output = cmd
-            .output()
-            .map_err(|e| MuxError::Other(format!("Failed to run zellij command: {}", e)))?;
+        let output = cmd.output().map_err(|e| {
+            error!(
+                component = "ah-mux",
+                operation = "zellij_split_pane",
+                error = %e,
+                "Failed to run zellij command"
+            );
+            MuxError::Other(format!("Failed to run zellij command: {}", e))
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -243,6 +292,16 @@ impl Multiplexer for ZellijMultiplexer {
         Ok(format!("zellij-pane-{}", window_str))
     }
 
+    #[instrument(
+        skip(self, opts, cmd),
+        fields(
+            component = "ah-mux",
+            operation = "zellij_run_command",
+            pane = %pane,
+            has_env = %opts.env.is_some(),
+            has_cwd = %opts.cwd.is_some()
+        )
+    )]
     fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
         // Launch a new pane in the appropriate Zellij session:
         // - inside Zellij: use `ZELLIJ_SESSION_NAME`
@@ -269,6 +328,12 @@ impl Multiplexer for ZellijMultiplexer {
         zellij_cmd.arg("--").arg("sh").arg("-lc").arg(cmd);
 
         let output = zellij_cmd.output().map_err(|e| {
+            error!(
+                component = "ah-mux",
+                operation = "zellij_run_command",
+                error = %e,
+                "Failed to execute zellij run command"
+            );
             if e.kind() == std::io::ErrorKind::NotFound {
                 MuxError::NotAvailable("zellij")
             } else {
@@ -287,6 +352,10 @@ impl Multiplexer for ZellijMultiplexer {
         Ok(())
     }
 
+    #[instrument(
+        skip(self, text),
+        fields(component = "ah-mux", operation = "zellij_send_text", pane = %pane, text_len = %text.len())
+    )]
     fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
         // Send literal text to the focused pane via `zellij action write-chars`.
         // The pane identifier is used only to derive the target session.
@@ -302,6 +371,12 @@ impl Multiplexer for ZellijMultiplexer {
             .arg(text)
             .output()
             .map_err(|e| {
+                error!(
+                    component = "ah-mux",
+                    operation = "zellij_send_text",
+                    error = %e,
+                    "Failed to send text to zellij"
+                );
                 if e.kind() == std::io::ErrorKind::NotFound {
                     MuxError::NotAvailable("zellij")
                 } else {
@@ -320,9 +395,19 @@ impl Multiplexer for ZellijMultiplexer {
         Ok(())
     }
 
+    #[instrument(
+        skip(self),
+        fields(component = "ah-mux", operation = "zellij_focus_window", window = %window)
+    )]
     fn focus_window(&self, window: &WindowId) -> Result<(), MuxError> {
         // Attach to the given session and bring it to the foreground.
         let output = Command::new("zellij").arg("attach").arg(window).output().map_err(|e| {
+            error!(
+                component = "ah-mux",
+                operation = "zellij_focus_window",
+                error = %e,
+                "Failed to run zellij attach"
+            );
             if e.kind() == std::io::ErrorKind::NotFound {
                 MuxError::NotAvailable("zellij")
             } else {
@@ -341,14 +426,28 @@ impl Multiplexer for ZellijMultiplexer {
         Ok(())
     }
 
+    #[instrument(
+        skip(self),
+        fields(component = "ah-mux", operation = "zellij_focus_pane", pane = %_pane)
+    )]
     fn focus_pane(&self, _pane: &PaneId) -> Result<(), MuxError> {
         // Zellij doesn't expose direct pane focusing via CLI; rely on user or
         // layout-driven focus instead.
         Err(MuxError::NotAvailable("zellij"))
     }
 
+    #[instrument(
+        skip(self),
+        fields(component = "ah-mux", operation = "zellij_list_windows", title_substr = ?title_substr)
+    )]
     fn list_windows(&self, title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
         let output = Command::new("zellij").arg("list-sessions").output().map_err(|e| {
+            error!(
+                component = "ah-mux",
+                operation = "zellij_list_windows",
+                error = %e,
+                "Failed to run zellij list-sessions"
+            );
             if e.kind() == std::io::ErrorKind::NotFound {
                 MuxError::NotAvailable("zellij")
             } else {
@@ -384,13 +483,21 @@ impl Multiplexer for ZellijMultiplexer {
         Ok(sessions)
     }
 
-    fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
+    #[instrument(
+        skip(self),
+        fields(component = "ah-mux", operation = "zellij_list_panes", window = %window)
+    )]
+    fn list_panes(&self, window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
         // Zellij does not currently expose a stable pane-listing interface in
         // its CLI suitable for programmatic use. AH integrations are expected
         // to rely on known layouts instead of dynamically discovering panes.
         Err(MuxError::NotAvailable("zellij"))
     }
 
+    #[instrument(
+        skip(self),
+        fields(component = "ah-mux", operation = "zellij_current_pane")
+    )]
     fn current_pane(&self) -> Result<Option<PaneId>, MuxError> {
         // When running inside Zellij, each process receives `ZELLIJ_PANE_ID`
         // identifying the pane it was launched from. Outside Zellij, this
@@ -398,6 +505,10 @@ impl Multiplexer for ZellijMultiplexer {
         Ok(std::env::var("ZELLIJ_PANE_ID").ok())
     }
 
+    #[instrument(
+        skip(self),
+        fields(component = "ah-mux", operation = "zellij_current_window")
+    )]
     fn current_window(&self) -> Result<Option<WindowId>, MuxError> {
         // We treat the Zellij session name as our WindowId. When running
         // inside Zellij, `ZELLIJ_SESSION_NAME` is set; otherwise, we report
