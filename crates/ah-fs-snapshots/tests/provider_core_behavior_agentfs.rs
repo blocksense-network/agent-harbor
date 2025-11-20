@@ -6,7 +6,7 @@
 //! interpose shim is active by launching the harness driver in a child
 //! process.
 
-use ah_logging::test_utils::strip_ansi_codes;
+#[cfg(all(feature = "agentfs", target_os = "macos"))]
 use fs_snapshots_test_harness::assert_driver_exists;
 use std::io::{self, Write};
 
