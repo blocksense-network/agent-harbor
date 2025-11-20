@@ -3,9 +3,12 @@ dist
 dist-electron
 dist-renderer
 release
+.next
+build
 
 # Dependencies
 node_modules
+.yarn
 
 # Generated files
 *.d.ts
