@@ -12,7 +12,7 @@ pub mod error;
 
 use nix::mount::{MsFlags, mount};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tracing::{debug, info, warn};
 
 pub type Result<T> = std::result::Result<T, error::Error>;
@@ -140,10 +140,8 @@ impl DeviceConfig {
         }
 
         // Check container-specific allowances
-        if self.allow_containers {
-            if device_path == "/dev/fuse" {
-                return true;
-            }
+        if self.allow_containers && device_path == "/dev/fuse" {
+            return true;
         }
 
         // Check KVM-specific allowances
@@ -246,10 +244,10 @@ impl DeviceManager {
         let dev_path = Path::new("/dev");
         if !dev_path.exists() {
             tokio::fs::create_dir_all(dev_path).await.map_err(|e| {
-                error::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to create /dev directory: {}", e),
-                ))
+                error::Error::Io(std::io::Error::other(format!(
+                    "Failed to create /dev directory: {}",
+                    e
+                )))
             })?;
         }
         Ok(())
