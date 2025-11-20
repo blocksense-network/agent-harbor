@@ -20,6 +20,7 @@ pub use fskit::*;
 pub use xpc_control::*;
 
 #[cfg(not(target_os = "macos"))]
+#[allow(unused_imports)] // Provides impl blocks for FsKitAdapter
 pub use stub::*;
 
 use agentfs_core::{FsConfig, FsCore};

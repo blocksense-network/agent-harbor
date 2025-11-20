@@ -3,8 +3,7 @@
 
 //! Stub implementation for non-macOS platforms
 
-use super::{FsKitAdapter, FsKitConfig};
-use std::io;
+use super::FsKitAdapter;
 
 impl FsKitAdapter {
     /// Mount the filesystem (stub implementation)
