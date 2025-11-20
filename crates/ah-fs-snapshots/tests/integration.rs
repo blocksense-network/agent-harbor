@@ -6,7 +6,7 @@
 //! providers are validated through the same launch path the CLI will use.
 
 use fs_snapshots_test_harness::assert_driver_exists;
-#[cfg(feature = "agentfs")]
+#[cfg(all(feature = "agentfs", target_os = "macos"))]
 use fs_snapshots_test_harness::assert_interpose_shim_exists;
 use std::io::{self, Write};
 use std::process::Command as StdCommand;

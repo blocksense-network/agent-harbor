@@ -10,9 +10,8 @@
 
 use ah_fs_snapshots_traits::{
     Error, FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotInfo,
-    SnapshotProviderKind, SnapshotRef, WorkingCopyMode, generate_unique_id,
+    SnapshotProviderKind, SnapshotRef, WorkingCopyMode,
 };
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -35,21 +34,25 @@ impl PlatformSupport {
     }
 }
 
+#[allow(dead_code)] // Reserved for future use
 const META_SESSION_TOKEN: &str = "agentfs.session.token";
+#[allow(dead_code)] // Reserved for future use
 const META_BRANCH_ID: &str = "agentfs.branch.id";
+#[allow(dead_code)] // Reserved for future use
 const META_SOCKET_PATH: &str = "agentfs.socket.path";
+#[allow(dead_code)] // Reserved for future use
 const META_SNAPSHOT_ID: &str = "agentfs.snapshot.id";
 
 pub struct AgentFsProvider {
     platform: PlatformSupport,
-    state: Arc<Mutex<AgentFsState>>,
+    _state: Arc<Mutex<AgentFsState>>,
 }
 
 impl AgentFsProvider {
     pub fn new() -> Self {
         Self {
             platform: PlatformSupport::detect(),
-            state: Arc::new(Mutex::new(AgentFsState::default())),
+            _state: Arc::new(Mutex::new(AgentFsState::default())),
         }
     }
 
@@ -60,6 +63,7 @@ impl AgentFsProvider {
     }
 
     #[cfg(feature = "agentfs")]
+    #[allow(dead_code)] // Reserved for future use
     fn unsupported_mode(mode: WorkingCopyMode) -> Result<PreparedWorkspace> {
         Err(Error::provider(format!(
             "AgentFS provider does not support {:?} working-copy mode yet",
@@ -516,9 +520,9 @@ impl AgentFsProvider {
     /// Prepare a writable workspace using an existing AgentFS daemon socket
     pub fn prepare_writable_workspace_with_socket(
         &self,
-        repo: &Path,
-        mode: WorkingCopyMode,
-        socket_path: &Path,
+        _repo: &Path,
+        _mode: WorkingCopyMode,
+        _socket_path: &Path,
     ) -> Result<PreparedWorkspace> {
         if !Self::experimental_flag_enabled() {
             return Err(Error::provider(
