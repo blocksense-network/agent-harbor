@@ -10,6 +10,7 @@ use std::env;
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 use std::fs;
 use tracing::info;
+use tracing_subscriber;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -45,6 +46,9 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+    // Initialize tracing
+    tracing_subscriber::fmt::init();
+
     // Ensure the driver binary path is resolved (this also provides nicer error
     // messages if the crate is misbuilt).
     let _ = assert_driver_exists()?;
@@ -68,7 +72,7 @@ fn run_shim_smoke() -> Result<()> {
     let shim_path = assert_interpose_shim_exists()?;
     env::set_var("DYLD_INSERT_LIBRARIES", &shim_path);
 
-    info!(path = %shim_path.display(), "shim located");
+    info!("shim located at {}", shim_path.display());
     Ok(())
 }
 
