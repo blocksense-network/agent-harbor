@@ -170,7 +170,6 @@ mod tests {
         // Path resolution may fail in test environments due to syscall availability
         // The important thing is that it doesn't panic
         let _ = result; // We just want to ensure it doesn't panic
-        assert!(true); // Test passes as long as it doesn't panic
     }
 
     #[test]
@@ -196,6 +195,5 @@ mod tests {
         // can_resolve should not panic, even if resolution fails
         let result = resolver.can_resolve(test_path);
         let _ = result; // We just want to ensure it doesn't panic
-        assert!(true); // Test passes as long as it doesn't panic
     }
 }

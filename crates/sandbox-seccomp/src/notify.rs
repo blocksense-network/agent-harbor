@@ -458,8 +458,7 @@ mod tests {
     #[test]
     fn test_channel_supervisor_client_creation() {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let client = ChannelSupervisorClient::new(tx);
+        let _client = ChannelSupervisorClient::new(tx);
         // Client should be created successfully
-        assert!(true);
     }
 }
