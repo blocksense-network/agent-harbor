@@ -72,6 +72,7 @@
 
         imports = [
           ./nix/pre-commit.nix
+          ./nix/rust-toolchain.nix
         ];
 
         flake =
@@ -290,26 +291,7 @@
 
                 # Common packages for all systems
                 commonPackages = (aiCodingAgentsForSystem system) ++ [
-                  # Rust toolchain
-                  (pkgs.rust-bin.stable.latest.default.override {
-                    extensions = [
-                      "rustfmt"
-                      "clippy"
-                      "rust-src"
-                    ];
-                    targets = [
-                      # Linux
-                      "x86_64-unknown-linux-gnu"
-                      "aarch64-unknown-linux-gnu"
-                      # macOS
-                      "x86_64-apple-darwin"
-                      "aarch64-apple-darwin"
-                      # Windows (GNU)
-                      "x86_64-pc-windows-gnu"
-                      "aarch64-pc-windows-gnullvm"
-                    ];
-                  })
-
+                  config.allSystems.${system}.legacyPackages.rustToolchain
                   pkgs.just
                   pkgs.ruby
                   (pkgs.python3.withPackages (ps: [
@@ -373,9 +355,6 @@
 
                   # Pre-commit tool for manual hook execution
                   pkgs.pre-commit
-
-                  # Rust analyzer (matching the Nix-provided toolchain)
-                  pkgs.rust-analyzer
 
                   # OpenSSL for Rust crates that require it
                   pkgs.openssl
