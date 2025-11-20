@@ -10,8 +10,9 @@
 
 use ah_fs_snapshots_traits::{
     Error, FsSnapshotProvider, PreparedWorkspace, ProviderCapabilities, Result, SnapshotInfo,
-    SnapshotProviderKind, SnapshotRef, WorkingCopyMode,
+    SnapshotProviderKind, SnapshotRef, WorkingCopyMode, generate_unique_id,
 };
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -160,7 +161,7 @@ impl FsSnapshotProvider for AgentFsProvider {
         #[cfg(all(feature = "agentfs", target_os = "macos"))]
         {
             let (harness, cleanup_token, branch_id) = {
-                let state_guard = self.state.lock().expect("AgentFS provider state poisoned");
+                let state_guard = self._state.lock().expect("AgentFS provider state poisoned");
                 let session = state_guard.sessions.get(&ws.cleanup_token).ok_or_else(|| {
                     Error::provider(format!(
                         "Unknown AgentFS workspace cleanup token: {}",
@@ -181,7 +182,7 @@ impl FsSnapshotProvider for AgentFsProvider {
 
             // Update session's latest snapshot.
             if let Some(state_session) = self
-                .state
+                ._state
                 .lock()
                 .expect("AgentFS provider state poisoned")
                 .sessions
@@ -232,7 +233,7 @@ impl FsSnapshotProvider for AgentFsProvider {
                 snap.meta.get(META_SNAPSHOT_ID).cloned().unwrap_or_else(|| snap.id.clone());
 
             let (harness, _workspace_path) = {
-                let state_guard = self.state.lock().expect("AgentFS provider state poisoned");
+                let state_guard = self._state.lock().expect("AgentFS provider state poisoned");
                 let session = state_guard.sessions.get(&session_token).ok_or_else(|| {
                     Error::provider(format!(
                         "AgentFS session referenced by snapshot not found: {}",
@@ -254,7 +255,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             let mut missing_session = false;
 
             {
-                let mut state_guard = self.state.lock().expect("AgentFS provider state poisoned");
+                let mut state_guard = self._state.lock().expect("AgentFS provider state poisoned");
                 if let Some(session) = state_guard.sessions.get_mut(&session_token) {
                     session.readonly_exports.push(ReadonlyExport {
                         cleanup_token: cleanup_token.clone(),
@@ -309,7 +310,7 @@ impl FsSnapshotProvider for AgentFsProvider {
             };
 
             let (harness, workspace_path, source_repo, session_mode) = {
-                let state_guard = self.state.lock().expect("AgentFS provider state poisoned");
+                let state_guard = self._state.lock().expect("AgentFS provider state poisoned");
                 let session = state_guard.sessions.get(session_token).ok_or_else(|| {
                     Error::provider(format!(
                         "AgentFS session referenced by snapshot not found: {}",
@@ -354,7 +355,7 @@ impl FsSnapshotProvider for AgentFsProvider {
                 readonly_exports: Vec::new(),
             };
 
-            self.state
+            self._state
                 .lock()
                 .expect("AgentFS provider state poisoned")
                 .sessions
@@ -382,7 +383,7 @@ impl FsSnapshotProvider for AgentFsProvider {
     fn list_snapshots(&self, directory: &Path) -> Result<Vec<SnapshotInfo>> {
         #[cfg(all(feature = "agentfs", target_os = "macos"))]
         {
-            let state_guard = self.state.lock().expect("AgentFS provider state poisoned");
+            let state_guard = self._state.lock().expect("AgentFS provider state poisoned");
             let session = state_guard
                 .sessions
                 .values()
@@ -437,7 +438,7 @@ impl FsSnapshotProvider for AgentFsProvider {
         #[cfg(all(feature = "agentfs", target_os = "macos"))]
         {
             let session = {
-                let mut guard = self.state.lock().expect("AgentFS provider state poisoned");
+                let mut guard = self._state.lock().expect("AgentFS provider state poisoned");
                 guard.sessions.remove(token)
             };
 
@@ -496,7 +497,7 @@ impl AgentFsProvider {
         // Set the branch ID environment variable so interposition binds processes to this branch
         harness.set_branch_id_env(&branch.id);
 
-        self.state
+        self._state
             .lock()
             .expect("AgentFS provider state poisoned")
             .sessions
@@ -520,9 +521,9 @@ impl AgentFsProvider {
     /// Prepare a writable workspace using an existing AgentFS daemon socket
     pub fn prepare_writable_workspace_with_socket(
         &self,
-        _repo: &Path,
-        _mode: WorkingCopyMode,
-        _socket_path: &Path,
+        repo: &Path,
+        mode: WorkingCopyMode,
+        socket_path: &Path,
     ) -> Result<PreparedWorkspace> {
         if !Self::experimental_flag_enabled() {
             return Err(Error::provider(

@@ -5,7 +5,9 @@
 use anyhow::Context;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use fs_snapshots_test_harness::{assert_driver_exists, scenarios};
+use fs_snapshots_test_harness::{assert_driver_exists, assert_interpose_shim_exists, scenarios};
+#[cfg(target_os = "macos")]
+use std::env;
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 use std::fs;
 use tracing::info;

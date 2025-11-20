@@ -292,6 +292,8 @@ fn find_test_helper_path() -> std::path::PathBuf {
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
+    use std::thread;
+    use std::time::Duration;
 
     /// Test that daemon can start and accept connections with InMemory backstore
     #[tokio::test]

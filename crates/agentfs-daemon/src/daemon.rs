@@ -2636,7 +2636,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::WatchRegisterFSEventsPort((_version, _port_req)) => {
+                    Request::WatchRegisterFSEventsPort((_version, port_req)) => {
                         #[cfg(target_os = "macos")]
                         {
                             let port_name_str =
