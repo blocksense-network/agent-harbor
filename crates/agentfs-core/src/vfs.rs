@@ -665,7 +665,7 @@ impl FsCore {
         }
 
         if let Some(child_node) = child {
-            let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
+            let sticky = (dir_node.mode & libc::S_ISVTX) != 0;
             let should_log = sticky && user.uid != 0;
             let should_deny =
                 sticky && user.uid != 0 && user.uid != dir_node.uid && user.uid != child_node.uid;
@@ -706,7 +706,7 @@ impl FsCore {
         };
 
         let dir_node = self.get_node_clone(dir_id)?;
-        let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
+        let sticky = (dir_node.mode & libc::S_ISVTX) != 0;
         if !sticky {
             return Ok(());
         }
@@ -753,7 +753,7 @@ impl FsCore {
         if user_uid == 0 {
             return;
         }
-        let sticky = (dir_node.mode & libc::S_ISVTX as u32) != 0;
+        let sticky = (dir_node.mode & libc::S_ISVTX) != 0;
         if !sticky {
             return;
         }
@@ -2046,21 +2046,19 @@ impl FsCore {
     }
 
     pub fn mknod(&self, pid: &PID, path: &Path, mode: u32, dev: u64) -> FsResult<()> {
-        let file_type = mode & libc::S_IFMT as u32;
+        let file_type = mode & libc::S_IFMT;
         match file_type {
-            t if t == 0 || t == libc::S_IFREG as u32 => {
-                self.create_regular_via_mknod(pid, path, mode)
-            }
-            t if t == libc::S_IFIFO as u32 => {
+            t if t == 0 || t == libc::S_IFREG => self.create_regular_via_mknod(pid, path, mode),
+            t if t == libc::S_IFIFO => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::Fifo, mode)
             }
-            t if t == libc::S_IFCHR as u32 => {
+            t if t == libc::S_IFCHR => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::CharDevice { dev }, mode)
             }
-            t if t == libc::S_IFBLK as u32 => {
+            t if t == libc::S_IFBLK => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::BlockDevice { dev }, mode)
             }
-            t if t == libc::S_IFSOCK as u32 => {
+            t if t == libc::S_IFSOCK => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::Socket, mode)
             }
             _ => Err(FsError::Unsupported),
@@ -3904,19 +3902,19 @@ impl FsCore {
                     special_kind: node.special_kind.clone(),
                     nlink: node.nlink,
                     mode_user: FileMode {
-                        read: (node.mode & libc::S_IRUSR as u32) != 0,
-                        write: (node.mode & libc::S_IWUSR as u32) != 0,
-                        exec: (node.mode & libc::S_IXUSR as u32) != 0,
+                        read: (node.mode & libc::S_IRUSR) != 0,
+                        write: (node.mode & libc::S_IWUSR) != 0,
+                        exec: (node.mode & libc::S_IXUSR) != 0,
                     },
                     mode_group: FileMode {
-                        read: (node.mode & libc::S_IRGRP as u32) != 0,
-                        write: (node.mode & libc::S_IWGRP as u32) != 0,
-                        exec: (node.mode & libc::S_IXGRP as u32) != 0,
+                        read: (node.mode & libc::S_IRGRP) != 0,
+                        write: (node.mode & libc::S_IWGRP) != 0,
+                        exec: (node.mode & libc::S_IXGRP) != 0,
                     },
                     mode_other: FileMode {
-                        read: (node.mode & libc::S_IROTH as u32) != 0,
-                        write: (node.mode & libc::S_IWOTH as u32) != 0,
-                        exec: (node.mode & libc::S_IXOTH as u32) != 0,
+                        read: (node.mode & libc::S_IROTH) != 0,
+                        write: (node.mode & libc::S_IWOTH) != 0,
+                        exec: (node.mode & libc::S_IXOTH) != 0,
                     },
                 };
                 return self.attributes_to_stat_data(attrs, path);
@@ -4630,7 +4628,7 @@ mod tests {
         // Test stat on root directory
         let stat_data = fs.getattr(&pid, "/".as_ref()).expect("getattr should succeed");
 
-        assert_eq!(stat_data.mode() & libc::S_IFMT as u32, libc::S_IFDIR as u32);
+        assert_eq!(stat_data.mode() & libc::S_IFMT, libc::S_IFDIR);
         // Root directory uses default security policy (uid=0, gid=0)
         assert_eq!(stat_data.uid, 0);
         assert_eq!(stat_data.gid, 0);
@@ -4747,7 +4745,7 @@ mod tests {
         fs.mkfifo(&pid, "/pipe".as_ref(), 0o640).expect("mkfifo should succeed");
 
         let attrs = fs.getattr(&pid, "/pipe".as_ref()).expect("getattr should succeed");
-        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFIFO as u32);
+        assert_eq!(attrs.mode() & libc::S_IFMT, libc::S_IFIFO);
         assert_eq!(attrs.mode() & 0o777, 0o640);
     }
 
@@ -4757,11 +4755,11 @@ mod tests {
         let pid = create_test_pid(&fs);
 
         let dev: u64 = 0x1234;
-        fs.mknod(&pid, "/ttyX".as_ref(), (libc::S_IFCHR as u32) | 0o660, dev)
+        fs.mknod(&pid, "/ttyX".as_ref(), libc::S_IFCHR | 0o660, dev)
             .expect("mknod should succeed");
 
         let attrs = fs.getattr(&pid, "/ttyX".as_ref()).expect("getattr should succeed");
-        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFCHR as u32);
+        assert_eq!(attrs.mode() & libc::S_IFMT, libc::S_IFCHR);
         assert_eq!(attrs.mode() & 0o777, 0o660);
         assert_eq!(attrs.rdev(), dev);
     }
@@ -4771,11 +4769,11 @@ mod tests {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
 
-        fs.mknod(&pid, "/sock".as_ref(), (libc::S_IFSOCK as u32) | 0o644, 0)
+        fs.mknod(&pid, "/sock".as_ref(), libc::S_IFSOCK | 0o644, 0)
             .expect("mknod should support sockets");
 
         let attrs = fs.getattr(&pid, "/sock".as_ref()).expect("getattr should succeed");
-        assert_eq!(attrs.mode() & libc::S_IFMT as u32, libc::S_IFSOCK as u32);
+        assert_eq!(attrs.mode() & libc::S_IFMT, libc::S_IFSOCK);
         assert_eq!(attrs.mode() & 0o777, 0o644);
         assert_eq!(attrs.special_kind, Some(SpecialNodeKind::Socket));
     }
@@ -4796,7 +4794,7 @@ mod tests {
         fs.unlink(&pid, "/foo".as_ref()).expect("unlink fifo");
 
         // Create as socket
-        fs.mknod(&pid, "/foo".as_ref(), (libc::S_IFSOCK as u32) | 0o600, 0)
+        fs.mknod(&pid, "/foo".as_ref(), libc::S_IFSOCK | 0o600, 0)
             .expect("mknod socket after unlink");
     }
 
