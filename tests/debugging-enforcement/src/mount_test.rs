@@ -8,8 +8,6 @@
 //!
 //! Note: This test is Linux-specific as macOS doesn't support user namespaces.
 
-#[cfg(target_os = "linux")]
-use libc;
 #[cfg(not(target_os = "linux"))]
 use tracing::info;
 #[cfg(target_os = "linux")]
