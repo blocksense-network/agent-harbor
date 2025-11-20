@@ -36,6 +36,7 @@ async fn harness_driver_sets_dyld_insert_libraries() -> anyhow::Result<()> {
     let driver = assert_driver_exists()?;
     let output = tokio::process::Command::new(driver)
         .arg("shim-smoke")
+        .env("RUST_LOG", "info")
         .output()
         .await
         .context("failed to run harness driver shim-smoke scenario")?;
@@ -47,13 +48,29 @@ async fn harness_driver_sets_dyld_insert_libraries() -> anyhow::Result<()> {
     );
 
     let stdout = String::from_utf8(output.stdout)?;
-    let shim_line = stdout.lines().next().unwrap_or_default().trim();
+
+    // Find the line containing "shim located at" in the tracing output
+    let shim_line = stdout
+        .lines()
+        .find(|line| line.contains("shim located at "))
+        .unwrap_or_default()
+        .trim();
+
     assert!(
-        shim_line.starts_with("shim located at "),
-        "unexpected shim smoke output: {}",
-        shim_line
+        shim_line.contains("shim located at "),
+        "shim location not found in output: {}",
+        stdout
     );
-    let shim_path = shim_line["shim located at ".len()..].trim();
+
+    // Extract the path from the tracing output format
+    // The format is: timestamp LEVEL target: message
+    // We need to find "shim located at " and extract everything after it
+    let shim_path_start = shim_line
+        .find("shim located at ")
+        .map(|pos| pos + "shim located at ".len())
+        .unwrap_or(0);
+
+    let shim_path = shim_line[shim_path_start..].trim();
     assert!(
         std::path::Path::new(shim_path).exists(),
         "reported shim path does not exist: {}",
