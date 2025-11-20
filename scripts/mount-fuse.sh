@@ -39,9 +39,11 @@ if [ ! -d "$mountpoint" ]; then
 fi
 
 # Ensure the mount point is owned by the current user
-if ! sudo chown "$(whoami)" "$mountpoint"; then
-  echo "Error: Unable to chown $mountpoint; aborting mount"
-  exit 1
+if [ "$(stat -c %U "$mountpoint")" != "$(whoami)" ]; then
+  if ! sudo chown "$(whoami)" "$mountpoint"; then
+    echo "Error: Unable to chown $mountpoint; aborting mount"
+    exit 1
+  fi
 fi
 
 FUSE_FLAGS=()
