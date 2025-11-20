@@ -20,7 +20,7 @@ fn initialize_shim() {
         // Try to initialize client for handshake, but don't fail if connection fails
         // This allows the smoke test to verify that the shim can connect
         let _ = posix::initialize_client();
-        eprintln!("[ah-command-trace-shim] Shim initialization complete");
+        // eprintln!("[ah-command-trace-shim] Shim initialization complete");
     }
 }
 
@@ -56,7 +56,7 @@ redhook::hook! {
         let parent_snapshot = if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
             if matches!(**state, crate::core::ShimState::Ready { .. }) {
                 Some((
-                    std::process::id() as u32, // parent PID
+                    std::process::id(), // parent PID
                     std::env::current_exe()
                         .ok()
                         .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
@@ -104,7 +104,7 @@ redhook::hook! {
             if let Some(ref state) = crate::core::SHIM_STATE.get().and_then(|s| s.lock().ok()) {
                 if matches!(**state, crate::core::ShimState::Ready { .. }) {
                     let pid = result as u32;
-                    let ppid = std::process::id() as u32;
+                    let ppid = std::process::id();
                     let executable = std::env::current_exe()
                         .ok()
                         .and_then(|p| p.to_str().map(|s| s.as_bytes().to_vec()))
@@ -128,11 +128,11 @@ redhook::hook! {
 
 redhook::hook! {
     unsafe fn execveat(dirfd: libc::c_int, pathname: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char, flags: libc::c_int) -> libc::c_int => my_execveat {
-        eprintln!("[ah-command-trace-shim] execveat hook called!");
+        // eprintln!("[ah-command-trace-shim] execveat hook called!");
         // Get process info BEFORE calling execveat (since execveat replaces the process)
         if let Some(ref state) = SHIM_STATE.get().and_then(|s| s.lock().ok()) {
             if matches!(**state, ShimState::Ready { .. }) {
-                let pid = std::process::id() as u32;
+                let pid = std::process::id();
                 let ppid = unsafe { libc::getppid() } as u32;
 
                 let (executable, args, env, cwd) = extract_command_info(pathname, argv, envp);
@@ -147,11 +147,11 @@ redhook::hook! {
 
 redhook::hook! {
     unsafe fn execvpe(file: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_execvpe {
-        eprintln!("[ah-command-trace-shim] execvpe hook called!");
+        // eprintln!("[ah-command-trace-shim] execvpe hook called!");
         // Get process info BEFORE calling execvpe (since execvpe replaces the process)
         if let Some(ref state) = SHIM_STATE.get().and_then(|s| s.lock().ok()) {
             if matches!(**state, ShimState::Ready { .. }) {
-                let pid = std::process::id() as u32;
+                let pid = std::process::id();
                 let ppid = unsafe { libc::getppid() } as u32;
 
                 let executable = if !file.is_null() {
