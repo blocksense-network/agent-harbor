@@ -113,7 +113,6 @@ impl SeccompManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc;
 
     #[test]
     fn test_seccomp_config_creation() {
