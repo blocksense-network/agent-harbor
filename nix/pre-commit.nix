@@ -119,6 +119,20 @@
               files = "\\.rs$";
             };
 
+            clippy = {
+              enable = true;
+              packageOverrides = {
+                cargo = self'.legacyPackages.rustToolchain;
+                clippy = self'.legacyPackages.rustToolchain;
+              };
+              settings = {
+                allFeatures = true;
+                denyWarnings = true;
+                extraArgs = "--tests --all-targets";
+                offline = false;
+              };
+            };
+
             # License header check and insertion
             spdx-addlicense = {
               enable = true;
