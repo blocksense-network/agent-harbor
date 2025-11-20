@@ -638,14 +638,13 @@ The left column contains grouped configuration options organized by category and
 
 The right column provides launch action selection with keyboard shortcuts:
 
-- **Go** (Enter) - Launch with current configuration
-- **Background** (b/B) - Launch task without creating multiplexer window
-- **Split View** (s/S) - Auto-detect vertical/horizontal split based on terminal dimensions
-- **Horizontal Split** (h/H) - Create horizontal split pane
-- **Vertical Split** (v/V) - Create vertical split pane
-- **Focus variants**: Capital letters (B, S, H, V) launch and automatically focus the new window/pane
+- **Launch in new tab** - Type `t` when menu is visible (launches the task in a new tab/window in the multiplexer)
+- **Launch in split view** - Type `s` when menu is visible (auto-detects vertical/horizontal split based on longer edge)
+- **Launch in horizontal split** - Type `h` when menu is visible (creates horizontal split pane)
+- **Launch in vertical split** - Type `v` when menu is visible (creates vertical split pane)
+- **Focus variants**: Capital letters `T`, `S`, `H`, `V` launch and automatically focus the new task window/pane
 
-**Launch Menu Navigation**: Arrow keys navigate between launch options. Enter selects the highlighted option. Single letters (b/s/h/v) or capitals (B/S/H/V) can be typed directly to select when modal is visible.
+**Launch Menu Navigation**: Arrow keys navigate between launch options. Enter selects the highlighted option. Single letters (t/s/h/v) or capitals (T/S/H/V) can be typed directly to select when modal is visible.
 
 - **Modal dismissal**: ESC closes without launching
 - **Default focus**: Left column options when modal opens

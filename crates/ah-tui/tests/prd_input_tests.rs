@@ -29,7 +29,9 @@ use ah_tui::view_model::task_entry::CardFocusElement;
 use ah_tui::view_model::{
     FilterControl, ModalState, ModalType, MouseAction, Msg, TaskCardType, TaskExecutionFocusState,
     TaskExecutionViewModel, TaskMetadataViewModel, ViewModel,
-    agents_selector_model::FilteredOption,
+    agents_selector_model::{
+        AdvancedLaunchOptions, FilteredOption, LaunchOptionsColumn, LaunchOptionsViewModel,
+    },
 };
 use ah_workflows::WorkspaceWorkflowsEnumerator;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -1103,7 +1105,12 @@ mod mouse {
         // Verify modal content
         if let Some(modal) = &vm.active_modal {
             assert_eq!(modal.title, "Advanced Launch Options");
-            assert!(!modal.filtered_options.is_empty());
+            if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                // Verify the view model has the expected structure
+                assert_eq!(view_model.draft_id, vm.draft_cards[0].id);
+            } else {
+                panic!("Expected LaunchOptions modal type");
+            }
         }
     }
 
@@ -1164,7 +1171,12 @@ mod mouse {
         // Verify modal content
         if let Some(modal) = &vm.active_modal {
             assert_eq!(modal.title, "Advanced Launch Options");
-            assert!(!modal.filtered_options.is_empty());
+            if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                // Verify the view model has the expected structure
+                assert_eq!(view_model.draft_id, vm.draft_cards[0].id);
+            } else {
+                panic!("Expected LaunchOptions modal type");
+            }
         }
     }
 
@@ -1199,8 +1211,17 @@ mod mouse {
 
         // Select "Launch in background" option
         vm.apply_modal_selection(
-            ModalType::LaunchOptions { draft_id },
-            "Launch in background (b)".to_string(),
+            ModalType::LaunchOptions {
+                view_model: LaunchOptionsViewModel {
+                    draft_id: draft_id.clone(),
+                    config: AdvancedLaunchOptions::default(),
+                    active_column: LaunchOptionsColumn::Actions,
+                    selected_option_index: 0,
+                    selected_action_index: 1, // "Launch in new tab" is 0, "Launch in split view" is 1
+                    inline_enum_popup: None,
+                },
+            },
+            "Launch in new tab (t)".to_string(),
         );
 
         // Verify modal is closed
@@ -1245,7 +1266,16 @@ mod mouse {
 
         // Select "Launch in split view" option
         vm.apply_modal_selection(
-            ModalType::LaunchOptions { draft_id },
+            ModalType::LaunchOptions {
+                view_model: LaunchOptionsViewModel {
+                    draft_id: draft_id.clone(),
+                    config: AdvancedLaunchOptions::default(),
+                    active_column: LaunchOptionsColumn::Actions,
+                    selected_option_index: 0,
+                    selected_action_index: 1, // "Launch in split view" is index 1
+                    inline_enum_popup: None,
+                },
+            },
             "Launch in split view (s)".to_string(),
         );
 
@@ -1288,7 +1318,16 @@ mod mouse {
 
         // Select "Launch in horizontal split" option
         vm.apply_modal_selection(
-            ModalType::LaunchOptions { draft_id },
+            ModalType::LaunchOptions {
+                view_model: LaunchOptionsViewModel {
+                    draft_id: draft_id.clone(),
+                    config: AdvancedLaunchOptions::default(),
+                    active_column: LaunchOptionsColumn::Actions,
+                    selected_option_index: 0,
+                    selected_action_index: 2, // "Launch in horizontal split" is index 2
+                    inline_enum_popup: None,
+                },
+            },
             "Launch in horizontal split (h)".to_string(),
         );
 
@@ -1331,7 +1370,16 @@ mod mouse {
 
         // Select "Launch in vertical split" option
         vm.apply_modal_selection(
-            ModalType::LaunchOptions { draft_id },
+            ModalType::LaunchOptions {
+                view_model: LaunchOptionsViewModel {
+                    draft_id: draft_id.clone(),
+                    config: AdvancedLaunchOptions::default(),
+                    active_column: LaunchOptionsColumn::Actions,
+                    selected_option_index: 0,
+                    selected_action_index: 3, // "Launch in vertical split" is index 3
+                    inline_enum_popup: None,
+                },
+            },
             "Launch in vertical split (v)".to_string(),
         );
 
