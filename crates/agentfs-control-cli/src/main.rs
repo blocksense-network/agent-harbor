@@ -9,7 +9,6 @@ use std::fs::OpenOptions;
 use std::io;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use tracing::info;
 
 const AGENTFS_IOCTL_CMD: libc::c_ulong = 0xD000_4146;
 
@@ -74,9 +73,9 @@ fn main() -> Result<()> {
                         .and_then(|n| String::from_utf8(n).ok())
                         .unwrap_or_else(|| "".to_string());
                     if name.is_empty() {
-                        info!("SNAPSHOT_ID={id}");
+                        println!("SNAPSHOT_ID={id}");
                     } else {
-                        info!("SNAPSHOT_ID={id}\tNAME={name}");
+                        println!("SNAPSHOT_ID={id}\tNAME={name}");
                     }
                 }
                 Response::Error(err) => {
@@ -102,7 +101,7 @@ fn main() -> Result<()> {
                             .name
                             .map(|n| String::from_utf8(n).unwrap_or_else(|_| "<invalid>".into()))
                             .unwrap_or_else(|| "-".into());
-                        info!("SNAPSHOT\t{id}\t{name}");
+                        println!("SNAPSHOT\t{id}\t{name}");
                     }
                 }
                 Response::Error(err) => {
@@ -127,9 +126,9 @@ fn main() -> Result<()> {
                         .and_then(|n| String::from_utf8(n).ok())
                         .unwrap_or_else(|| "".to_string());
                     if name.is_empty() {
-                        info!("BRANCH_ID={id}");
+                        println!("BRANCH_ID={id}");
                     } else {
-                        info!("BRANCH_ID={id}\tNAME={name}");
+                        println!("BRANCH_ID={id}\tNAME={name}");
                     }
                 }
                 Response::Error(err) => {
@@ -146,7 +145,7 @@ fn main() -> Result<()> {
             let response = send_request(&mount, Request::branch_bind(branch, Some(pid)))?;
             match response {
                 Response::BranchBind(_) => {
-                    info!("BRANCH_BIND_OK");
+                    println!("BRANCH_BIND_OK");
                 }
                 Response::Error(err) => {
                     return Err(anyhow!(
