@@ -732,6 +732,7 @@ impl FsCore {
         self.permissions_tracing_enabled
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn log_permission_event(
         &self,
         context: &str,
@@ -824,11 +825,11 @@ impl FsCore {
         }
 
         let mut mask = 0u32;
-        if (node.mode & libc::S_ISUID as u32) != 0 {
-            mask |= libc::S_ISUID as u32;
+        if (node.mode & libc::S_ISUID) != 0 {
+            mask |= libc::S_ISUID;
         }
-        if (node.mode & libc::S_ISGID as u32) != 0 {
-            mask |= libc::S_ISGID as u32;
+        if (node.mode & libc::S_ISGID) != 0 {
+            mask |= libc::S_ISGID;
         }
 
         if mask != 0 {
@@ -4562,19 +4563,19 @@ impl FsCore {
                         special_kind: node.special_kind.clone(),
                         nlink: node.nlink,
                         mode_user: FileMode {
-                            read: (node.mode & libc::S_IRUSR as u32) != 0,
-                            write: (node.mode & libc::S_IWUSR as u32) != 0,
-                            exec: (node.mode & libc::S_IXUSR as u32) != 0,
+                            read: (node.mode & libc::S_IRUSR) != 0,
+                            write: (node.mode & libc::S_IWUSR) != 0,
+                            exec: (node.mode & libc::S_IXUSR) != 0,
                         },
                         mode_group: FileMode {
-                            read: (node.mode & libc::S_IRGRP as u32) != 0,
-                            write: (node.mode & libc::S_IWGRP as u32) != 0,
-                            exec: (node.mode & libc::S_IXGRP as u32) != 0,
+                            read: (node.mode & libc::S_IRGRP) != 0,
+                            write: (node.mode & libc::S_IWGRP) != 0,
+                            exec: (node.mode & libc::S_IXGRP) != 0,
                         },
                         mode_other: FileMode {
-                            read: (node.mode & libc::S_IROTH as u32) != 0,
-                            write: (node.mode & libc::S_IWOTH as u32) != 0,
-                            exec: (node.mode & libc::S_IXOTH as u32) != 0,
+                            read: (node.mode & libc::S_IROTH) != 0,
+                            write: (node.mode & libc::S_IWOTH) != 0,
+                            exec: (node.mode & libc::S_IXOTH) != 0,
                         },
                         mode_bits: node.mode,
                     };
@@ -4582,7 +4583,7 @@ impl FsCore {
                 }
                 // Not a symlink, fall through to stat-style handling below
                 let attrs = self.get_node_attributes(node_id)?;
-                return self.attributes_to_stat_data(attrs, Some(node_id), Some(path));
+                self.attributes_to_stat_data(attrs, Some(node_id), Some(path))
             }
             Err(FsError::NotFound) => {
                 // For non-existent entries, behave like stat (which will also return NotFound)
@@ -4961,17 +4962,18 @@ impl FsCore {
         }
 
         if user.uid != 0
-            && (mode & libc::S_ISGID as u32) != 0
+            && (mode & libc::S_ISGID) != 0
             && !self.has_group(&user, node.gid)
             && matches!(node.kind, NodeKind::File { .. })
         {
-            mode &= !(libc::S_ISGID as u32);
+            mode &= !libc::S_ISGID;
         }
 
         Ok(mode)
     }
 
     /// Helper method to set node times
+    #[allow(dead_code)]
     fn set_node_times(&self, node_id: NodeId, times: FileTimes) -> FsResult<()> {
         let mut nodes = self.nodes.lock().unwrap();
         let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
@@ -5074,10 +5076,12 @@ impl FsCore {
             return Err(FsError::OperationNotPermitted);
         }
 
-        if needs_write && user.uid != 0 && user.uid != node.uid {
-            if !self.allowed_for_user(node, &user, false, true, false) {
-                return Err(FsError::AccessDenied);
-            }
+        if needs_write
+            && user.uid != 0
+            && user.uid != node.uid
+            && !self.allowed_for_user(node, &user, false, true, false)
+        {
+            return Err(FsError::AccessDenied);
         }
 
         Ok(())

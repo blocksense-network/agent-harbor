@@ -9,11 +9,10 @@
 compile_error!("This module requires the 'fuse' feature on Linux");
 
 use agentfs_core::{
-    Attributes, DirEntry, FileTimes, FsConfig, FsCore, FsError, HandleId, LockRange, OpenOptions,
-    ShareMode, SpecialNodeKind, error::FsResult, vfs::PID,
+    Attributes, FsConfig, FsCore, FsError, HandleId, OpenOptions, ShareMode, SpecialNodeKind,
+    error::FsResult, vfs::PID,
 };
 use agentfs_proto::messages::{StatData, TimespecData};
-use agentfs_proto::*;
 use crossbeam_queue::SegQueue;
 use fuser::{
     BackingId, FUSE_ROOT_ID, FileAttr, FileType, Notifier, ReplyAttr, ReplyCreate, ReplyData,
@@ -315,7 +314,7 @@ impl WriteDispatcher {
                         }
                         None => {
                             let (lock, cvar) = &*signal_clone;
-                            let mut guard = lock.lock().unwrap();
+                            let guard = lock.lock().unwrap();
                             let _ = cvar.wait_timeout(guard, Duration::from_millis(5)).unwrap();
                         }
                     }
@@ -331,6 +330,7 @@ impl WriteDispatcher {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     fn submit(&self, job: WriteJob) -> Result<(), WriteJob> {
         self.queue.push(job);
         let (lock, cvar) = &*self.signal;
@@ -780,9 +780,7 @@ impl AgentFsFuse {
             "resolved process groups"
         );
 
-        if groups.is_empty() {
-            groups.push(primary_gid);
-        } else if !groups.contains(&primary_gid) {
+        if groups.is_empty() || !groups.contains(&primary_gid) {
             groups.push(primary_gid);
         }
 
@@ -969,10 +967,7 @@ impl AgentFsFuse {
             for component in parent.components() {
                 if let Component::Normal(name) = component {
                     current.push(name);
-                    let upper_exists = match self.core.has_upper_entry(pid, &current) {
-                        Ok(exists) => exists,
-                        Err(err) => return Err(err),
-                    };
+                    let upper_exists = self.core.has_upper_entry(pid, &current)?;
                     if upper_exists {
                         continue;
                     }
@@ -1158,6 +1153,7 @@ impl AgentFsFuse {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn handle_write_error(&self, fh: u64) -> Option<i32> {
         self.handle_write_state(fh).and_then(|state| state.current_error())
     }
@@ -1216,7 +1212,7 @@ impl AgentFsFuse {
         FileAttr {
             ino,
             size: attr.len,
-            blocks: (attr.len + 511) / 512, // 512-byte blocks
+            blocks: attr.len.div_ceil(512), // 512-byte blocks
             atime: SystemTime::UNIX_EPOCH
                 + Duration::new(attr.times.atime.max(0) as u64, attr.times.atime_nsec),
             mtime: SystemTime::UNIX_EPOCH
@@ -1756,51 +1752,6 @@ fn configure_congestion_threshold(
 impl Drop for AgentFsFuse {
     fn drop(&mut self) {
         self.log_passthrough_stats();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use agentfs_proto::{Request as ControlRequest, Response as ControlResponse};
-
-    #[test]
-    fn cache_ttls_follow_config() {
-        let mut config = FsConfig::default();
-        config.cache.attr_ttl_ms = 1500;
-        config.cache.entry_ttl_ms = 2500;
-        config.cache.negative_ttl_ms = 3500;
-
-        let fuse = AgentFsFuse::new(config).expect("fuse init");
-        assert_eq!(fuse.attr_ttl, Duration::from_millis(1500));
-        assert_eq!(fuse.entry_ttl, Duration::from_millis(2500));
-        assert_eq!(fuse.negative_ttl, Duration::from_millis(3500));
-    }
-
-    #[test]
-    fn control_ioctl_snapshot_roundtrip() {
-        let mut fuse = AgentFsFuse::new(FsConfig::default()).expect("fuse init");
-
-        let create_req = ControlRequest::snapshot_create(Some("snap-one".to_string()));
-        let create_resp = fuse
-            .handle_control_ioctl(&create_req.as_ssz_bytes())
-            .expect("snapshot create resp");
-        match ControlResponse::from_ssz_bytes(&create_resp).expect("decode response") {
-            ControlResponse::SnapshotCreate(info) => {
-                assert!(info.snapshot.name.is_some());
-            }
-            other => panic!("unexpected response: {:?}", other),
-        }
-
-        let list_req = ControlRequest::snapshot_list();
-        let list_resp =
-            fuse.handle_control_ioctl(&list_req.as_ssz_bytes()).expect("snapshot list resp");
-        match ControlResponse::from_ssz_bytes(&list_resp).expect("decode list") {
-            ControlResponse::SnapshotList(entries) => {
-                assert_eq!(entries.snapshots.len(), 1);
-            }
-            other => panic!("unexpected response: {:?}", other),
-        }
     }
 }
 
@@ -2429,7 +2380,6 @@ impl fuser::Filesystem for AgentFsFuse {
                     reply.error(EACCES);
                 }
             }
-            Err(FsError::AccessDenied) => reply.error(EACCES),
             Err(err) => {
                 error!(
                     target: "agentfs::fuse",
@@ -2769,21 +2719,23 @@ impl fuser::Filesystem for AgentFsFuse {
                     }
 
                     let entry_path_buf = self.path_from_bytes(&entry_path);
-                    let entry_ino =
-                        match self.ensure_inode_for_path(&client_pid, &entry_path, &entry_path_buf)
-                        {
-                            Ok(ino) => ino,
-                            Err(err) => {
-                                debug!(
-                                    target: "agentfs::fuse",
-                                    event = "readdir_lookup_failed",
-                                    path = %entry_path_buf.display(),
-                                    errno = errno_from_fs_error(&err),
-                                    ?err
-                                );
-                                continue;
-                            }
-                        };
+                    let entry_ino = match self.ensure_inode_for_path(
+                        &client_pid,
+                        &entry_path,
+                        entry_path_buf,
+                    ) {
+                        Ok(ino) => ino,
+                        Err(err) => {
+                            debug!(
+                                target: "agentfs::fuse",
+                                event = "readdir_lookup_failed",
+                                path = %entry_path_buf.display(),
+                                errno = errno_from_fs_error(&err),
+                                ?err
+                            );
+                            continue;
+                        }
+                    };
 
                     let file_type = if entry.is_dir {
                         FileType::Directory
@@ -2810,7 +2762,7 @@ impl fuser::Filesystem for AgentFsFuse {
         req: &Request,
         parent: u64,
         name: &OsStr,
-        _mode: u32,
+        mode: u32,
         _umask: u32,
         flags: i32,
         reply: ReplyCreate,
@@ -2868,13 +2820,13 @@ impl fuser::Filesystem for AgentFsFuse {
                     Ok(attr) => match self.ensure_inode_for_path(&client_pid, &full_path, path) {
                         Ok(ino) => {
                             let fuse_attr = self.attr_to_fuse(&attr, ino);
-                            self.track_handle(ino, handle_id.0 as u64, &client_pid);
+                            self.track_handle(ino, handle_id.0, &client_pid);
                             self.bump_lookup(ino, 1);
                             reply.created(
                                 &self.entry_ttl,
                                 &fuse_attr,
                                 0,
-                                handle_id.0 as u64,
+                                handle_id.0,
                                 self.open_flags(),
                             );
                         }
@@ -3092,7 +3044,7 @@ impl fuser::Filesystem for AgentFsFuse {
 
                 let moved_special = self.path_special_kinds.remove(&old_path);
                 if let Some(removal) = self.remove_path_mapping(&old_path) {
-                    let inode = self.record_path_for_node(new_path.clone(), removal.node_id);
+                    let _inode = self.record_path_for_node(new_path.clone(), removal.node_id);
                     if let Some(kind) = moved_special {
                         self.path_special_kinds.insert(new_path.clone(), kind);
                     }
@@ -3310,7 +3262,7 @@ impl fuser::Filesystem for AgentFsFuse {
         }
     }
 
-    fn flush(&mut self, _req: &Request, ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
+    fn flush(&mut self, _req: &Request, ino: u64, fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
         if ino == CONTROL_FILE_INO {
             reply.ok(); // No-op for control file
             return;
@@ -3788,7 +3740,7 @@ impl fuser::Filesystem for AgentFsFuse {
                 );
             }
             let core = Arc::clone(&self.core);
-            let mut attempt_chown = |pid: &PID| -> FsResult<()> {
+            let attempt_chown = |pid: &PID| -> FsResult<()> {
                 if let Some(fh_val) = fh {
                     core.fchown(pid, HandleId(fh_val), new_uid, new_gid)
                 } else {

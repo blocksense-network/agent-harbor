@@ -12,7 +12,7 @@ mod adapter;
 #[cfg(all(feature = "fuse", target_os = "linux"))]
 use adapter::AgentFsFuse;
 use agentfs_core::FsConfig;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
@@ -113,14 +113,14 @@ fn main() -> Result<()> {
         }
 
         info!("Mounting filesystem...");
-        let mut session = fuser::spawn_mount2(filesystem, &args.mount_point, &mount_options)?;
+        let session = fuser::spawn_mount2(filesystem, &args.mount_point, &mount_options)?;
         notifier_reg.install(session.notifier());
         info!("AgentFS FUSE host mounted; blocking until unmount");
         match session.guard.join() {
             Ok(Ok(())) => info!("FUSE session exited cleanly"),
             Ok(Err(err)) => return Err(err.into()),
             Err(panic) => {
-                return Err(anyhow!("FUSE session panicked: {:?}", panic));
+                return Err(anyhow::anyhow!("FUSE session panicked: {:?}", panic));
             }
         }
     }
