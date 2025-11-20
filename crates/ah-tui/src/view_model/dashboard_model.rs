@@ -1162,7 +1162,14 @@ impl ViewModel {
                         return true;
                     }
                     CardFocusElement::GoButton => {
-                        return self.launch_task(idx, ah_core::SplitMode::None, false, None, None);
+                        return self.launch_task(
+                            idx,
+                            ah_core::SplitMode::None,
+                            false,
+                            None,
+                            None,
+                            None,
+                        );
                     }
                 }
             }
@@ -1185,6 +1192,7 @@ impl ViewModel {
         focus: bool,
         starting_point: Option<ah_core::task_manager::StartingPoint>,
         working_copy_mode: Option<ah_core::WorkingCopyMode>,
+        advanced_options: Option<super::agents_selector_model::AdvancedLaunchOptions>,
     ) -> bool {
         // Get the specified draft card
         if let Some(card) = self.draft_cards.get(draft_card_index) {
@@ -1219,7 +1227,7 @@ impl ViewModel {
                 }
             });
             let working_copy_mode = working_copy_mode.unwrap_or(ah_core::WorkingCopyMode::InPlace);
-            let params = match ah_core::task_manager::TaskLaunchParams::builder()
+            let mut builder = ah_core::task_manager::TaskLaunchParams::builder()
                 .starting_point(starting_point)
                 .working_copy_mode(working_copy_mode)
                 .description(description.clone())
@@ -1227,10 +1235,36 @@ impl ViewModel {
                 .agent_type(agent_type)
                 .split_mode(split_mode)
                 .focus(focus)
-                .record(true) // Enable recording by default
-                .task_id(card.id.clone()) // Use the draft card's stable ID
-                .build()
-            {
+                .record(true); // Enable recording by default
+
+            // Add advanced launch options if provided
+            if let Some(options) = &advanced_options {
+                builder = builder
+                    .sandbox_profile(options.sandbox_profile.clone())
+                    .fs_snapshots(options.fs_snapshots.clone())
+                    .devcontainer_path(options.devcontainer_path.clone())
+                    .allow_egress(options.allow_egress)
+                    .allow_containers(options.allow_containers)
+                    .allow_vms(options.allow_vms)
+                    .allow_web_search(options.allow_web_search)
+                    .interactive_mode(options.interactive_mode)
+                    .output_format(options.output_format.clone())
+                    .record_output(options.record_output)
+                    .timeout(options.timeout.clone())
+                    .llm_provider(options.llm_provider.clone())
+                    .environment_variables(options.environment_variables.clone())
+                    .delivery_method(options.delivery_method.clone())
+                    .target_branch(options.target_branch.clone())
+                    .create_task_files(options.create_task_files)
+                    .create_metadata_commits(options.create_metadata_commits)
+                    .notifications(options.notifications)
+                    .labels(options.labels.clone())
+                    .fleet(options.fleet.clone());
+            }
+
+            builder = builder.task_id(card.id.clone()); // Use the draft card's stable ID
+
+            let params = match builder.build() {
                 Ok(params) => params,
                 Err(e) => {
                     self.status_bar.error_message = Some(format!("Invalid task parameters: {}", e));
@@ -4935,7 +4969,7 @@ impl ViewModel {
             MouseAction::LaunchTask => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
                 self.change_focus(DashboardFocusState::DraftTask(0));
-                self.launch_task(0, ah_core::SplitMode::None, false, None, None);
+                self.launch_task(0, ah_core::SplitMode::None, false, None, None, None);
             }
             MouseAction::FocusDraftTextarea(_idx) => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));

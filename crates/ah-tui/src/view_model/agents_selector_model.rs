@@ -272,6 +272,22 @@ impl ViewModel {
         if self.handle_modal_navigation(direction) {
             return true;
         }
+
+        if let Some(modal) = &mut self.active_modal {
+            if let ModalType::LaunchOptions { view_model: _ } = &mut modal.modal_type {
+                match direction {
+                    NavigationDirection::Next => {
+                        // Not handled by handle_modal_navigation if it's meant for column switching,
+                        // but handle_modal_navigation handles up/down.
+                        // We need to check if `direction` maps to left/right in `handle_dashboard_operation` context.
+                        // Actually `NavigationDirection` is only Next/Previous (usually tab/shift-tab or arrows depending on mapping).
+                        // Let's check `handle_modal_operation`.
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         self.handle_autocomplete_navigation(direction)
     }
 
@@ -312,6 +328,18 @@ impl ViewModel {
 
     fn handle_dismiss_overlay(&mut self) -> bool {
         if self.modal_state != ModalState::None {
+            // Check if there's an inline popup to close first
+            if let Some(modal) = self.active_modal.as_mut() {
+                if let ModalType::LaunchOptions { view_model } = &mut modal.modal_type {
+                    if view_model.inline_enum_popup.is_some() {
+                        // Close the inline popup
+                        view_model.inline_enum_popup = None;
+                        self.needs_redraw = true;
+                        return true;
+                    }
+                }
+            }
+
             // For model selection modals, focus should return to the model picker button
             if let Some(modal) = &self.active_modal {
                 if matches!(modal.modal_type, ModalType::AgentSelection { .. }) {
@@ -644,19 +672,76 @@ impl ViewModel {
                 self.needs_redraw = true;
                 true
             }
-            ModalType::LaunchOptions { .. } => {
+            ModalType::LaunchOptions { view_model } => {
                 // Launch options modal - allow navigation through options
-                let old_index = modal.selected_index;
-                match direction {
-                    NavigationDirection::Next => {
-                        modal.selected_index = (modal.selected_index + 1)
-                            .min(modal.filtered_options.len().saturating_sub(1));
+                if let Some(popup) = &mut view_model.inline_enum_popup {
+                    // Navigate within the inline popup
+                    match direction {
+                        NavigationDirection::Next => {
+                            popup.selected_index =
+                                (popup.selected_index + 1).min(popup.options.len() - 1);
+                        }
+                        NavigationDirection::Previous => {
+                            popup.selected_index = popup.selected_index.saturating_sub(1);
+                        }
                     }
-                    NavigationDirection::Previous => {
-                        modal.selected_index = modal.selected_index.saturating_sub(1);
+                } else {
+                    match view_model.active_column {
+                        LaunchOptionsColumn::Options => {
+                            // Approximate count or use a safe upper bound
+                            // Actual count is around 24.
+                            let max_options = 30;
+                            match direction {
+                                NavigationDirection::Next => {
+                                    view_model.selected_option_index =
+                                        (view_model.selected_option_index + 1).min(max_options);
+                                }
+                                NavigationDirection::Previous => {
+                                    view_model.selected_option_index =
+                                        view_model.selected_option_index.saturating_sub(1);
+                                }
+                            }
+                        }
+                        LaunchOptionsColumn::Actions => {
+                            let max_actions = 8; // 4 regular + 4 focus variants
+                            match direction {
+                                NavigationDirection::Next => {
+                                    view_model.selected_action_index =
+                                        (view_model.selected_action_index + 1).min(max_actions - 1);
+                                }
+                                NavigationDirection::Previous => {
+                                    view_model.selected_action_index =
+                                        view_model.selected_action_index.saturating_sub(1);
+                                }
+                            }
+                        }
                     }
                 }
-                old_index != modal.selected_index
+                self.needs_redraw = true;
+                true
+            }
+            ModalType::EnumSelection {
+                options,
+                selected_index,
+                ..
+            } => {
+                if options.is_empty() {
+                    return false;
+                }
+                match direction {
+                    NavigationDirection::Next => {
+                        *selected_index = (*selected_index + 1) % options.len();
+                    }
+                    NavigationDirection::Previous => {
+                        if *selected_index == 0 {
+                            *selected_index = options.len() - 1;
+                        } else {
+                            *selected_index -= 1;
+                        }
+                    }
+                }
+                self.needs_redraw = true;
+                true
             }
         }
     }
@@ -785,6 +870,9 @@ impl ViewModel {
             ModalType::LaunchOptions { .. } => {
                 // Launch options don't have filtered options based on input
                 // The options are static
+            }
+            ModalType::EnumSelection { .. } => {
+                // Enum selection doesn't use filtered_options
             }
         }
     }
@@ -974,13 +1062,17 @@ impl ViewModel {
                     // as settings are handled via navigation and selection
                     return false;
                 }
-                ModalType::LaunchOptions { draft_id } => {
+                ModalType::EnumSelection { .. } => {
+                    // Enum selection doesn't handle character input
+                    return false;
+                }
+                ModalType::LaunchOptions { view_model } => {
                     // Handle shortcut keys for launch options
                     let option = match ch.to_ascii_lowercase() {
-                        'b' => Some(if ch.is_uppercase() {
-                            "Launch in background and focus (B)".to_string()
+                        't' => Some(if ch.is_uppercase() {
+                            "Launch in new tab and focus (T)".to_string()
                         } else {
-                            "Launch in background (b)".to_string()
+                            "Launch in new tab (t)".to_string()
                         }),
                         's' => Some(if ch.is_uppercase() {
                             "Launch in split view and focus (S)".to_string()
@@ -1002,7 +1094,7 @@ impl ViewModel {
 
                     if let Some(option_text) = option {
                         // Extract values before dropping the borrow
-                        let draft_id = draft_id.clone();
+                        let draft_id = view_model.draft_id.clone();
                         // Release borrow explicitly
                         let _ = modal;
                         self.launch_task_with_option(draft_id, option_text);
@@ -1118,6 +1210,10 @@ impl ViewModel {
                     // Launch options modal doesn't handle backspace
                     return false;
                 }
+                ModalType::EnumSelection { .. } => {
+                    // Enum selection modal doesn't handle backspace
+                    return false;
+                }
                 ModalType::Settings { .. } => {
                     // Settings modals don't handle backspace
                     return false;
@@ -1215,6 +1311,10 @@ impl ViewModel {
                     // Launch options modal doesn't handle delete
                     return false;
                 }
+                ModalType::EnumSelection { .. } => {
+                    // Enum selection modal doesn't handle delete
+                    return false;
+                }
                 ModalType::Settings { .. } => {
                     // Settings modals don't handle delete
                     return false;
@@ -1269,7 +1369,14 @@ impl ViewModel {
                         return true;
                     }
                     CardFocusElement::GoButton => {
-                        return self.launch_task(idx, ah_core::SplitMode::None, false, None, None);
+                        return self.launch_task(
+                            idx,
+                            ah_core::SplitMode::None,
+                            false,
+                            None,
+                            None,
+                            None,
+                        );
                     }
                     CardFocusElement::AdvancedOptionsButton => {
                         // Open advanced launch options modal
@@ -1298,6 +1405,7 @@ impl ViewModel {
         focus: bool,
         starting_point: Option<ah_core::task_manager::StartingPoint>,
         working_copy_mode: Option<ah_core::WorkingCopyMode>,
+        advanced_options: Option<AdvancedLaunchOptions>,
     ) -> bool {
         // Get the specified draft card
         if let Some(card) = self.draft_cards.get(draft_card_index) {
@@ -1332,7 +1440,7 @@ impl ViewModel {
                 }
             });
             let working_copy_mode = working_copy_mode.unwrap_or(ah_core::WorkingCopyMode::InPlace);
-            let params = match ah_core::task_manager::TaskLaunchParams::builder()
+            let mut builder = ah_core::task_manager::TaskLaunchParams::builder()
                 .starting_point(starting_point)
                 .working_copy_mode(working_copy_mode)
                 .description(description.clone())
@@ -1340,10 +1448,36 @@ impl ViewModel {
                 .agent_type(agent_type)
                 .split_mode(split_mode)
                 .focus(focus)
-                .record(true) // Enable recording by default
-                .task_id(card.id.clone()) // Use the draft card's stable ID
-                .build()
-            {
+                .record(true); // Enable recording by default
+
+            // Add advanced launch options if provided
+            if let Some(options) = &advanced_options {
+                builder = builder
+                    .sandbox_profile(options.sandbox_profile.clone())
+                    .fs_snapshots(options.fs_snapshots.clone())
+                    .devcontainer_path(options.devcontainer_path.clone())
+                    .allow_egress(options.allow_egress)
+                    .allow_containers(options.allow_containers)
+                    .allow_vms(options.allow_vms)
+                    .allow_web_search(options.allow_web_search)
+                    .interactive_mode(options.interactive_mode)
+                    .output_format(options.output_format.clone())
+                    .record_output(options.record_output)
+                    .timeout(options.timeout.clone())
+                    .llm_provider(options.llm_provider.clone())
+                    .environment_variables(options.environment_variables.clone())
+                    .delivery_method(options.delivery_method.clone())
+                    .target_branch(options.target_branch.clone())
+                    .create_task_files(options.create_task_files)
+                    .create_metadata_commits(options.create_metadata_commits)
+                    .notifications(options.notifications)
+                    .labels(options.labels.clone())
+                    .fleet(options.fleet.clone());
+            }
+
+            builder = builder.task_id(card.id.clone()); // Use the draft card's stable ID
+
+            let params = match builder.build() {
                 Ok(params) => params,
                 Err(e) => {
                     self.status_bar.error_message = Some(format!("Invalid task parameters: {}", e));
@@ -1512,11 +1646,11 @@ impl ViewModel {
         if let Some(draft_index) = self.draft_cards.iter().position(|card| card.id == draft_id) {
             // Parse the selected option to determine split mode and focus
             let (split_mode, focus) = match selected_option.as_str() {
-                "Launch in background (b)" => (ah_core::SplitMode::None, false),
+                "Launch in new tab (t)" => (ah_core::SplitMode::None, false),
                 "Launch in split view (s)" => (ah_core::SplitMode::Auto, false),
                 "Launch in horizontal split (h)" => (ah_core::SplitMode::Horizontal, false),
                 "Launch in vertical split (v)" => (ah_core::SplitMode::Vertical, false),
-                "Launch in background and focus (B)" => (ah_core::SplitMode::None, true),
+                "Launch in new tab and focus (T)" => (ah_core::SplitMode::None, true),
                 "Launch in split view and focus (S)" => (ah_core::SplitMode::Auto, true),
                 "Launch in horizontal split and focus (H)" => {
                     (ah_core::SplitMode::Horizontal, true)
@@ -1525,8 +1659,17 @@ impl ViewModel {
                 _ => (ah_core::SplitMode::Auto, false), // Default fallback
             };
 
+            // Get the advanced launch options from the modal if it's open
+            let advanced_options = self.active_modal.as_ref().and_then(|modal| {
+                if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                    Some(view_model.config.clone())
+                } else {
+                    None
+                }
+            });
+
             // Launch the task with the determined parameters
-            self.launch_task(draft_index, split_mode, focus, None, None);
+            self.launch_task(draft_index, split_mode, focus, None, None, advanced_options);
         }
     }
 
@@ -1603,9 +1746,9 @@ impl ViewModel {
                     }
                 }
             }
-            ModalType::LaunchOptions { draft_id } => {
+            ModalType::LaunchOptions { view_model } => {
                 // Launch the task with the selected options
-                self.launch_task_with_option(draft_id, selected_option);
+                self.launch_task_with_option(view_model.draft_id.clone(), selected_option);
             }
             _ => {} // Other modal types don't need selection handling
         }
@@ -1835,6 +1978,87 @@ enum NavigationDirection {
     Previous,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum LaunchOptionsColumn {
+    Options,
+    Actions,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AdvancedLaunchOptions {
+    // Sandbox & Environment
+    pub sandbox_profile: String,
+    pub working_copy_mode: String,
+    pub fs_snapshots: String,
+    pub devcontainer_path: String,
+    pub allow_egress: bool,
+    pub allow_containers: bool,
+    pub allow_vms: bool,
+    pub allow_web_search: bool,
+
+    // Agent Configuration
+    pub interactive_mode: bool,
+    pub output_format: String,
+    pub record_output: bool,
+    pub timeout: String,
+    pub llm_provider: String,
+    pub environment_variables: Vec<(String, String)>,
+
+    // Task Management
+    pub delivery_method: String,
+    pub target_branch: String,
+    pub create_task_files: bool,
+    pub create_metadata_commits: bool,
+    pub notifications: bool,
+    pub labels: Vec<(String, String)>,
+    pub fleet: String,
+}
+
+impl Default for AdvancedLaunchOptions {
+    fn default() -> Self {
+        Self {
+            sandbox_profile: "local".to_string(),
+            working_copy_mode: "auto".to_string(),
+            fs_snapshots: "auto".to_string(),
+            devcontainer_path: "".to_string(),
+            allow_egress: false,
+            allow_containers: false,
+            allow_vms: false,
+            allow_web_search: false,
+            interactive_mode: false,
+            output_format: "text".to_string(),
+            record_output: true,
+            timeout: "".to_string(),
+            llm_provider: "".to_string(),
+            environment_variables: vec![],
+            delivery_method: "pr".to_string(),
+            target_branch: "".to_string(),
+            create_task_files: true,
+            create_metadata_commits: true,
+            notifications: true,
+            labels: vec![],
+            fleet: "default".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct InlineEnumPopup {
+    pub options: Vec<String>,
+    pub selected_index: usize,
+    pub option_index: usize, // The option index this popup is for
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LaunchOptionsViewModel {
+    pub draft_id: String,
+    pub config: AdvancedLaunchOptions,
+    pub active_column: LaunchOptionsColumn,
+    pub selected_option_index: usize,
+    pub selected_action_index: usize,
+    pub inline_enum_popup: Option<InlineEnumPopup>,
+}
+
 /// Modal dialog view models
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModalViewModel {
@@ -1857,7 +2081,13 @@ pub enum ModalType {
         fields: Vec<SettingsFieldViewModel>,
     },
     LaunchOptions {
-        draft_id: String,
+        view_model: LaunchOptionsViewModel,
+    },
+    EnumSelection {
+        title: String,
+        options: Vec<String>,
+        selected_index: usize,
+        original_option_index: usize, // Index in the launch options config
     },
 }
 
@@ -2008,6 +2238,9 @@ pub struct ViewModel {
     pub last_textarea_area: Option<ratatui::layout::Rect>, // Last rendered textarea area for caret positioning
 
     pub needs_redraw: bool, // Flag to indicate when UI needs to be redrawn
+
+    // Temporary storage for launch options modal state during enum selection
+    temp_launch_options: Option<LaunchOptionsViewModel>,
 
     _pending_bubbled_operation: Option<KeyboardOperation>, // underscore: reserved for future bubbling chain handling
     _bubbled_operation_consumed: bool, // underscore: reserved for future bubbling chain handling
@@ -2297,6 +2530,7 @@ impl ViewModel {
             },
 
             needs_redraw: true,
+            temp_launch_options: None,
             _pending_bubbled_operation: None,
             _bubbled_operation_consumed: false,
         };
@@ -2451,6 +2685,7 @@ impl ViewModel {
                                     false,
                                     None,
                                     None,
+                                    None,
                                 ) {
                                     KeyboardOperationResult::Handled
                                 } else {
@@ -2533,6 +2768,7 @@ impl ViewModel {
                                     false,
                                     None,
                                     None,
+                                    None,
                                 ) {
                                     KeyboardOperationResult::Handled
                                 } else {
@@ -2568,6 +2804,7 @@ impl ViewModel {
                         focus,
                         starting_point,
                         working_copy_mode,
+                        None,
                     ) {
                         KeyboardOperationResult::Handled
                     } else {
@@ -2599,14 +2836,292 @@ impl ViewModel {
 
         match operation {
             KeyboardOperation::MoveToNextLine | KeyboardOperation::MoveToNextField => {
+                // Special handling for LaunchOptions column switching
+                if let Some(modal) = self.active_modal.as_mut() {
+                    if let ModalType::LaunchOptions { view_model } = &mut modal.modal_type {
+                        if matches!(operation, KeyboardOperation::MoveToNextField) {
+                            // Tab cycle: Options -> Actions -> Options
+                            view_model.active_column = match view_model.active_column {
+                                LaunchOptionsColumn::Options => LaunchOptionsColumn::Actions,
+                                LaunchOptionsColumn::Actions => LaunchOptionsColumn::Options,
+                            };
+                            self.needs_redraw = true;
+                            return true;
+                        } else if let KeyboardOperation::MoveToNextLine = operation {
+                            // Down arrow
+                            return self.handle_modal_navigation(NavigationDirection::Next);
+                        }
+                    }
+                }
                 self.handle_modal_navigation(NavigationDirection::Next)
             }
             KeyboardOperation::MoveToPreviousLine | KeyboardOperation::MoveToPreviousField => {
+                // Special handling for LaunchOptions column switching
+                if let Some(modal) = self.active_modal.as_mut() {
+                    if let ModalType::LaunchOptions { view_model } = &mut modal.modal_type {
+                        if matches!(operation, KeyboardOperation::MoveToPreviousField) {
+                            // Shift+Tab cycle: Actions -> Options -> Actions
+                            view_model.active_column = match view_model.active_column {
+                                LaunchOptionsColumn::Options => LaunchOptionsColumn::Actions,
+                                LaunchOptionsColumn::Actions => LaunchOptionsColumn::Options,
+                            };
+                            self.needs_redraw = true;
+                            return true;
+                        } else if let KeyboardOperation::MoveToPreviousLine = operation {
+                            // Up arrow
+                            return self.handle_modal_navigation(NavigationDirection::Previous);
+                        }
+                    }
+                }
                 self.handle_modal_navigation(NavigationDirection::Previous)
+            }
+            KeyboardOperation::MoveForwardOneCharacter => {
+                // Right arrow: Switch to Actions column if in LaunchOptions
+                if let Some(modal) = self.active_modal.as_mut() {
+                    if let ModalType::LaunchOptions { view_model } = &mut modal.modal_type {
+                        if view_model.active_column == LaunchOptionsColumn::Options {
+                            view_model.active_column = LaunchOptionsColumn::Actions;
+                            self.needs_redraw = true;
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            KeyboardOperation::MoveBackwardOneCharacter => {
+                // Left arrow: Switch to Options column if in LaunchOptions
+                if let Some(modal) = self.active_modal.as_mut() {
+                    if let ModalType::LaunchOptions { view_model } = &mut modal.modal_type {
+                        if view_model.active_column == LaunchOptionsColumn::Actions {
+                            view_model.active_column = LaunchOptionsColumn::Options;
+                            self.needs_redraw = true;
+                            return true;
+                        }
+                    }
+                }
+                false
             }
             KeyboardOperation::ActivateCurrentItem => {
                 if let Some(modal) = self.active_modal.as_mut() {
                     match &mut modal.modal_type {
+                        ModalType::LaunchOptions { view_model } => {
+                            // Handle inline popup activation first
+                            if let Some(popup) = &view_model.inline_enum_popup {
+                                if let Some(selected_value) =
+                                    popup.options.get(popup.selected_index)
+                                {
+                                    // Apply the selected value to the config
+                                    match popup.option_index {
+                                        1 => {
+                                            view_model.config.sandbox_profile =
+                                                selected_value.clone()
+                                        }
+                                        2 => {
+                                            view_model.config.working_copy_mode =
+                                                selected_value.clone()
+                                        }
+                                        3 => {
+                                            view_model.config.fs_snapshots = selected_value.clone()
+                                        }
+                                        11 => {
+                                            view_model.config.output_format = selected_value.clone()
+                                        }
+                                        17 => {
+                                            view_model.config.delivery_method =
+                                                selected_value.clone()
+                                        }
+                                        23 => view_model.config.fleet = selected_value.clone(),
+                                        _ => {}
+                                    }
+                                    // Close the popup
+                                    view_model.inline_enum_popup = None;
+                                    self.needs_redraw = true;
+                                    return true;
+                                }
+                                return false; // Invalid popup selection
+                            } else if view_model.active_column == LaunchOptionsColumn::Options {
+                                // Handle options editing
+                                match view_model.selected_option_index {
+                                    // Boolean toggles
+                                    5 => {
+                                        view_model.config.allow_egress =
+                                            !view_model.config.allow_egress
+                                    }
+                                    6 => {
+                                        view_model.config.allow_containers =
+                                            !view_model.config.allow_containers
+                                    }
+                                    7 => view_model.config.allow_vms = !view_model.config.allow_vms,
+                                    8 => {
+                                        view_model.config.allow_web_search =
+                                            !view_model.config.allow_web_search
+                                    }
+                                    10 => {
+                                        view_model.config.interactive_mode =
+                                            !view_model.config.interactive_mode
+                                    }
+                                    12 => {
+                                        view_model.config.record_output =
+                                            !view_model.config.record_output
+                                    }
+                                    19 => {
+                                        view_model.config.create_task_files =
+                                            !view_model.config.create_task_files
+                                    }
+                                    20 => {
+                                        view_model.config.create_metadata_commits =
+                                            !view_model.config.create_metadata_commits
+                                    }
+                                    21 => {
+                                        view_model.config.notifications =
+                                            !view_model.config.notifications
+                                    }
+
+                                    // Enum selections - open inline popup
+                                    1 => {
+                                        view_model.inline_enum_popup = Some(InlineEnumPopup {
+                                            options: vec![
+                                                "local".to_string(),
+                                                "devcontainer".to_string(),
+                                                "vm".to_string(),
+                                                "disabled".to_string(),
+                                            ],
+                                            selected_index: 0,
+                                            option_index: view_model.selected_option_index,
+                                        });
+                                        self.exit_confirmation_armed = false;
+                                    }
+                                    2 => {
+                                        view_model.inline_enum_popup = Some(InlineEnumPopup {
+                                            options: vec![
+                                                "auto".to_string(),
+                                                "cow-overlay".to_string(),
+                                                "worktree".to_string(),
+                                                "in-place".to_string(),
+                                            ],
+                                            selected_index: 0,
+                                            option_index: view_model.selected_option_index,
+                                        });
+                                        self.exit_confirmation_armed = false;
+                                    }
+                                    3 => {
+                                        view_model.inline_enum_popup = Some(InlineEnumPopup {
+                                            options: vec![
+                                                "auto".to_string(),
+                                                "zfs".to_string(),
+                                                "btrfs".to_string(),
+                                                "agentfs".to_string(),
+                                                "git".to_string(),
+                                                "disable".to_string(),
+                                            ],
+                                            selected_index: 0,
+                                            option_index: view_model.selected_option_index,
+                                        });
+                                        self.exit_confirmation_armed = false;
+                                    }
+                                    11 => {
+                                        view_model.inline_enum_popup = Some(InlineEnumPopup {
+                                            options: vec![
+                                                "text".to_string(),
+                                                "text-normalized".to_string(),
+                                            ],
+                                            selected_index: 0,
+                                            option_index: view_model.selected_option_index,
+                                        });
+                                        self.exit_confirmation_armed = false;
+                                    }
+                                    17 => {
+                                        view_model.inline_enum_popup = Some(InlineEnumPopup {
+                                            options: vec![
+                                                "pr".to_string(),
+                                                "branch".to_string(),
+                                                "patch".to_string(),
+                                            ],
+                                            selected_index: 0,
+                                            option_index: view_model.selected_option_index,
+                                        });
+                                        self.exit_confirmation_armed = false;
+                                    }
+                                    23 => {
+                                        view_model.inline_enum_popup = Some(InlineEnumPopup {
+                                            options: vec!["default".to_string()], // TODO: add actual fleet options
+                                            selected_index: 0,
+                                            option_index: view_model.selected_option_index,
+                                        });
+                                        self.exit_confirmation_armed = false;
+                                    }
+
+                                    _ => {} // Headers or other non-editable options
+                                }
+                                self.needs_redraw = true;
+                                return true;
+                            } else {
+                                // Handle actions column activation
+                                let action_str = match view_model.selected_action_index {
+                                    0 => "Launch in new tab (t)",
+                                    1 => "Launch in split view (s)",
+                                    2 => "Launch in horizontal split (h)",
+                                    3 => "Launch in vertical split (v)",
+                                    4 => "Launch in new tab and focus (T)", // separator is index 4, so these shift
+                                    5 => "Launch in split view and focus (S)",
+                                    6 => "Launch in horizontal split and focus (H)",
+                                    7 => "Launch in vertical split and focus (V)",
+                                    _ => "",
+                                };
+                                let modal_type = modal.modal_type.clone();
+                                self.apply_modal_selection(modal_type, action_str.to_string());
+                                return true;
+                            }
+                        }
+                        ModalType::EnumSelection {
+                            options,
+                            selected_index,
+                            original_option_index,
+                            ..
+                        } => {
+                            // Apply the selected enum value and return to launch options modal
+                            if let Some(selected_value) = options.get(*selected_index) {
+                                if let Some(mut launch_vm) = self.temp_launch_options.take() {
+                                    // Update the config in the stored launch options
+                                    match *original_option_index {
+                                        1 => {
+                                            launch_vm.config.sandbox_profile =
+                                                selected_value.clone()
+                                        }
+                                        2 => {
+                                            launch_vm.config.working_copy_mode =
+                                                selected_value.clone()
+                                        }
+                                        3 => launch_vm.config.fs_snapshots = selected_value.clone(),
+                                        11 => {
+                                            launch_vm.config.output_format = selected_value.clone()
+                                        }
+                                        17 => {
+                                            launch_vm.config.delivery_method =
+                                                selected_value.clone()
+                                        }
+                                        23 => launch_vm.config.fleet = selected_value.clone(),
+                                        _ => {}
+                                    }
+
+                                    // Create the launch options modal with updated config
+                                    let launch_modal = ModalViewModel {
+                                        title: "Advanced Launch Options".to_string(),
+                                        input_value: "".to_string(),
+                                        filtered_options: vec![],
+                                        selected_index: 0,
+                                        modal_type: ModalType::LaunchOptions {
+                                            view_model: launch_vm,
+                                        },
+                                    };
+
+                                    self.active_modal = Some(launch_modal);
+                                    self.needs_redraw = true;
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }
                         ModalType::AgentSelection { options } => {
                             // Get the currently selected option
                             let selected_filtered_option =
@@ -2656,6 +3171,24 @@ impl ViewModel {
                                 card.focus_element = CardFocusElement::ModelSelector;
                             }
                             true
+                        }
+                        ModalType::LaunchOptions { view_model } => {
+                            if view_model.active_column == LaunchOptionsColumn::Actions {
+                                let action_str = match view_model.selected_action_index {
+                                    0 => "Go (Enter)",
+                                    1 => "Launch in background (b)",
+                                    2 => "Launch in split view (s)",
+                                    3 => "Launch in horizontal split (h)",
+                                    4 => "Launch in vertical split (v)",
+                                    _ => return false,
+                                };
+                                let modal_type = modal.modal_type.clone();
+                                self.apply_modal_selection(modal_type, action_str.to_string());
+                                return true;
+                            } else {
+                                // TODO: Handle option selection (toggles/edits) in left column
+                                true
+                            }
                         }
                         _ => {
                             // For other modals, use the selected option from filtered_options
@@ -3159,7 +3692,14 @@ impl ViewModel {
                             }
                             CardFocusElement::GoButton => {
                                 // Launch the task
-                                self.launch_task(idx, ah_core::SplitMode::None, false, None, None);
+                                self.launch_task(
+                                    idx,
+                                    ah_core::SplitMode::None,
+                                    false,
+                                    None,
+                                    None,
+                                    None,
+                                );
                                 return true;
                             }
                             CardFocusElement::AdvancedOptionsButton => {
@@ -5092,7 +5632,7 @@ impl ViewModel {
             MouseAction::LaunchTask => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
                 self.change_focus(DashboardFocusState::DraftTask(0));
-                self.launch_task(0, ah_core::SplitMode::None, false, None, None);
+                self.launch_task(0, ah_core::SplitMode::None, false, None, None, None);
             }
             MouseAction::ActivateAdvancedOptionsModal => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
@@ -5301,45 +5841,18 @@ impl ViewModel {
         let modal = ModalViewModel {
             title: "Advanced Launch Options".to_string(),
             input_value: String::new(),
-            filtered_options: vec![
-                FilteredOption::Option {
-                    text: "Launch in background (b)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in split view (s)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in horizontal split (h)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in vertical split (v)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Separator {
-                    label: Some("Focus variants".to_string()),
-                },
-                FilteredOption::Option {
-                    text: "Launch in background and focus (B)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in split view and focus (S)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in horizontal split and focus (H)".to_string(),
-                    selected: false,
-                },
-                FilteredOption::Option {
-                    text: "Launch in vertical split and focus (V)".to_string(),
-                    selected: false,
-                },
-            ],
+            filtered_options: vec![],
             selected_index: 0,
-            modal_type: ModalType::LaunchOptions { draft_id },
+            modal_type: ModalType::LaunchOptions {
+                view_model: LaunchOptionsViewModel {
+                    draft_id,
+                    config: AdvancedLaunchOptions::default(),
+                    active_column: LaunchOptionsColumn::Options,
+                    selected_option_index: 0,
+                    selected_action_index: 0,
+                    inline_enum_popup: None,
+                },
+            },
         };
 
         self.active_modal = Some(modal);

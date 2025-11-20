@@ -463,7 +463,7 @@ mod viewmodel_tests {
         vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Should fail validation
-        assert!(!vm.launch_task(0, ah_core::SplitMode::None, false, None, None,)); // Should return false for validation failure
+        assert!(!vm.launch_task(0, ah_core::SplitMode::None, false, None, None, None)); // Should return false for validation failure
         assert!(vm.status_bar.error_message.is_some());
         assert!(vm.status_bar.error_message.as_ref().unwrap().contains("required"));
     }
@@ -488,7 +488,7 @@ mod viewmodel_tests {
         vm.focus_element = DashboardFocusState::DraftTask(0);
 
         // Should fail validation
-        assert!(!vm.launch_task(0, ah_core::SplitMode::None, false, None, None,)); // Should return false for validation failure
+        assert!(!vm.launch_task(0, ah_core::SplitMode::None, false, None, None, None)); // Should return false for validation failure
         assert!(vm.status_bar.error_message.is_some());
         assert!(vm.status_bar.error_message.as_ref().unwrap().contains("model"));
     }

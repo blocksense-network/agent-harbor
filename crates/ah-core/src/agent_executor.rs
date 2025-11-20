@@ -192,8 +192,133 @@ impl AgentExecutor {
             .join(" "))
     }
 
+    /// Get the full agent command with advanced launch options
+    pub fn get_agent_command_with_options(
+        &self,
+        params: &crate::task_manager::TaskLaunchParams,
+        session_id: &str,
+        cwd: Option<&Path>,
+        snapshot_id: Option<String>,
+        task_manager_socket_path: Option<&str>,
+    ) -> Result<Vec<String>, String> {
+        let model = &params.models()[0]; // We validated there's at least one model
+        let mut agent_args = self.get_agent_command(
+            session_id,
+            model.agent.software.cli_arg(),
+            &model.model,
+            params.description(),
+            *params.working_copy_mode(),
+            cwd,
+            snapshot_id,
+            params.record(),
+            task_manager_socket_path,
+        )?;
+
+        // Add advanced launch options that are actually supported by the CLI
+
+        // Web search capability
+        if let Some(allow_web_search) = params.allow_web_search() {
+            if allow_web_search {
+                agent_args.push("--allow-web-search".to_string());
+            }
+        }
+
+        // Interactive mode (inverse of non-interactive)
+        if let Some(interactive_mode) = params.interactive_mode() {
+            if !interactive_mode {
+                agent_args.push("--non-interactive".to_string());
+            }
+        }
+
+        // Output format (maps to --output flag)
+        if let Some(output_format) = params.output_format() {
+            if output_format == "text-normalized" {
+                agent_args.push("--output".to_string());
+                agent_args.push("text-normalized".to_string());
+            } else if output_format == "json" {
+                agent_args.push("--output".to_string());
+                agent_args.push("json".to_string());
+            } else if output_format == "json-normalized" {
+                agent_args.push("--output".to_string());
+                agent_args.push("json-normalized".to_string());
+            }
+            // "text" is the default, so no flag needed
+        }
+
+        // LLM provider/API settings
+        if let Some(llm_provider) = params.llm_provider() {
+            if !llm_provider.is_empty() {
+                agent_args.push("--llm-api".to_string());
+                agent_args.push(llm_provider.to_string());
+            }
+        }
+
+        // Environment variables (passed via --agent-flags as KEY=VALUE)
+        if let Some(env_vars) = params.environment_variables() {
+            if !env_vars.is_empty() {
+                // Add environment variables as agent flags
+                for (key, value) in env_vars {
+                    // Use --agent-flags to pass environment variables
+                    // This is a bit of a hack, but it's how the CLI currently handles env vars
+                    agent_args.push("--agent-flags".to_string());
+                    agent_args.push(format!("{}={}", key, value));
+                }
+            }
+        }
+
+        // Sandbox settings (only basic sandbox support exists)
+        if let Some(sandbox_profile) = params.sandbox_profile() {
+            if sandbox_profile == "disabled" {
+                // No sandbox - don't add any sandbox flags
+            } else if !sandbox_profile.is_empty() && sandbox_profile != "local" {
+                // Enable sandbox with custom type
+                agent_args.push("--sandbox".to_string());
+                agent_args.push("--sandbox-type".to_string());
+                agent_args.push(sandbox_profile.to_string());
+            } else {
+                // Enable basic sandbox
+                agent_args.push("--sandbox".to_string());
+            }
+        }
+
+        // Container and KVM permissions (map to existing flags)
+        if let Some(allow_containers) = params.allow_containers() {
+            if allow_containers {
+                agent_args.push("--allow-containers".to_string());
+            }
+        }
+
+        if let Some(allow_vms) = params.allow_vms() {
+            if allow_vms {
+                agent_args.push("--allow-kvm".to_string());
+            }
+        }
+
+        // Network access (maps to allow-network)
+        if let Some(allow_egress) = params.allow_egress() {
+            if allow_egress {
+                agent_args.push("--allow-network".to_string());
+            }
+        }
+
+        // TODO: Add support for the following options when CLI flags are implemented:
+        // - devcontainer_path: --devcontainer-path (devcontainer integration)
+        // - fs_snapshots: --fs-snapshots (filesystem snapshot provider selection)
+        // - record_output: --no-record-output (disable output recording)
+        // - timeout: --timeout (execution timeout setting)
+        // - delivery_method: --delivery-method (PR/branch/patch delivery)
+        // - target_branch: --target-branch (target branch for delivery)
+        // - create_task_files: --no-create-task-files (disable task file creation)
+        // - create_metadata_commits: --no-create-metadata-commits (disable metadata commits)
+        // - notifications: --notifications (enable notifications)
+        // - labels: --label KEY=VALUE (task labeling)
+        // - fleet: --fleet (fleet selection for distributed execution)
+
+        Ok(agent_args)
+    }
+
     /// Escape a string for safe use in shell commands
-    fn shell_escape(s: &str) -> String {
+    pub fn shell_escape(s: &str) -> String {
         // If the string contains no special characters, return as-is
         if s.chars()
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/')

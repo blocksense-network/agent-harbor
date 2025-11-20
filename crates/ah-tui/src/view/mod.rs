@@ -73,6 +73,7 @@ pub mod draft_card; // Draft card rendering components
 pub mod filter_bar; // Filter bar rendering components
 pub mod header; // Header rendering components
 pub mod hit_test;
+pub mod launch_options_modal; // Launch options modal rendering components
 pub mod modals; // Modal rendering components
 pub mod session_viewer; // Session viewer rendering components
 

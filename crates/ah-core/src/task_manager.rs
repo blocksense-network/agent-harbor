@@ -97,6 +97,28 @@ pub struct TaskLaunchParams {
     focus: bool,
     record: bool,
     task_id: String,
+
+    // Advanced launch options
+    sandbox_profile: Option<String>,
+    fs_snapshots: Option<String>,
+    devcontainer_path: Option<String>,
+    allow_egress: Option<bool>,
+    allow_containers: Option<bool>,
+    allow_vms: Option<bool>,
+    allow_web_search: Option<bool>,
+    interactive_mode: Option<bool>,
+    output_format: Option<String>,
+    record_output: Option<bool>,
+    timeout: Option<String>,
+    llm_provider: Option<String>,
+    environment_variables: Option<Vec<(String, String)>>,
+    delivery_method: Option<String>,
+    target_branch: Option<String>,
+    create_task_files: Option<bool>,
+    create_metadata_commits: Option<bool>,
+    notifications: Option<bool>,
+    labels: Option<Vec<(String, String)>>,
+    fleet: Option<String>,
 }
 
 /// Builder for TaskLaunchParams
@@ -111,6 +133,28 @@ pub struct TaskLaunchParamsBuilder {
     focus: Option<bool>,
     record: Option<bool>,
     task_id: Option<String>,
+
+    // Advanced launch options
+    sandbox_profile: Option<String>,
+    fs_snapshots: Option<String>,
+    devcontainer_path: Option<String>,
+    allow_egress: Option<bool>,
+    allow_containers: Option<bool>,
+    allow_vms: Option<bool>,
+    allow_web_search: Option<bool>,
+    interactive_mode: Option<bool>,
+    output_format: Option<String>,
+    record_output: Option<bool>,
+    timeout: Option<String>,
+    llm_provider: Option<String>,
+    environment_variables: Option<Vec<(String, String)>>,
+    delivery_method: Option<String>,
+    target_branch: Option<String>,
+    create_task_files: Option<bool>,
+    create_metadata_commits: Option<bool>,
+    notifications: Option<bool>,
+    labels: Option<Vec<(String, String)>>,
+    fleet: Option<String>,
 }
 
 impl TaskLaunchParams {
@@ -182,6 +226,87 @@ impl TaskLaunchParams {
         &self.task_id
     }
 
+    // Advanced launch options getters
+    pub fn sandbox_profile(&self) -> Option<&str> {
+        self.sandbox_profile.as_deref()
+    }
+
+    pub fn fs_snapshots(&self) -> Option<&str> {
+        self.fs_snapshots.as_deref()
+    }
+
+    pub fn devcontainer_path(&self) -> Option<&str> {
+        self.devcontainer_path.as_deref()
+    }
+
+    pub fn allow_egress(&self) -> Option<bool> {
+        self.allow_egress
+    }
+
+    pub fn allow_containers(&self) -> Option<bool> {
+        self.allow_containers
+    }
+
+    pub fn allow_vms(&self) -> Option<bool> {
+        self.allow_vms
+    }
+
+    pub fn allow_web_search(&self) -> Option<bool> {
+        self.allow_web_search
+    }
+
+    pub fn interactive_mode(&self) -> Option<bool> {
+        self.interactive_mode
+    }
+
+    pub fn output_format(&self) -> Option<&str> {
+        self.output_format.as_deref()
+    }
+
+    pub fn record_output(&self) -> Option<bool> {
+        self.record_output
+    }
+
+    pub fn timeout(&self) -> Option<&str> {
+        self.timeout.as_deref()
+    }
+
+    pub fn llm_provider(&self) -> Option<&str> {
+        self.llm_provider.as_deref()
+    }
+
+    pub fn environment_variables(&self) -> Option<&[(String, String)]> {
+        self.environment_variables.as_deref()
+    }
+
+    pub fn delivery_method(&self) -> Option<&str> {
+        self.delivery_method.as_deref()
+    }
+
+    pub fn target_branch(&self) -> Option<&str> {
+        self.target_branch.as_deref()
+    }
+
+    pub fn create_task_files(&self) -> Option<bool> {
+        self.create_task_files
+    }
+
+    pub fn create_metadata_commits(&self) -> Option<bool> {
+        self.create_metadata_commits
+    }
+
+    pub fn notifications(&self) -> Option<bool> {
+        self.notifications
+    }
+
+    pub fn labels(&self) -> Option<&[(String, String)]> {
+        self.labels.as_deref()
+    }
+
+    pub fn fleet(&self) -> Option<&str> {
+        self.fleet.as_deref()
+    }
+
     /// Create TaskLaunchParams from a DraftRecord
     ///
     /// This is useful for resuming draft tasks.
@@ -220,6 +345,28 @@ impl TaskLaunchParamsBuilder {
             focus: Some(false),                     // Default focus
             record: Some(true),                     // Default record
             task_id: None,
+
+            // Advanced launch options defaults
+            sandbox_profile: None,
+            fs_snapshots: None,
+            devcontainer_path: None,
+            allow_egress: None,
+            allow_containers: None,
+            allow_vms: None,
+            allow_web_search: None,
+            interactive_mode: None,
+            output_format: None,
+            record_output: None,
+            timeout: None,
+            llm_provider: None,
+            environment_variables: None,
+            delivery_method: None,
+            target_branch: None,
+            create_task_files: None,
+            create_metadata_commits: None,
+            notifications: None,
+            labels: None,
+            fleet: None,
         }
     }
 
@@ -302,6 +449,137 @@ impl TaskLaunchParamsBuilder {
     /// Set the task ID
     pub fn task_id(mut self, task_id: String) -> Self {
         self.task_id = Some(task_id);
+        self
+    }
+
+    /// Set the sandbox profile
+    pub fn sandbox_profile(mut self, sandbox_profile: String) -> Self {
+        self.sandbox_profile = Some(sandbox_profile);
+        self
+    }
+
+    /// Set the filesystem snapshots
+    /// TODO: Map to --fs-snapshots CLI flag when implemented
+    pub fn fs_snapshots(mut self, fs_snapshots: String) -> Self {
+        self.fs_snapshots = Some(fs_snapshots);
+        self
+    }
+
+    /// Set the devcontainer path
+    /// TODO: Map to --devcontainer-path CLI flag when implemented
+    pub fn devcontainer_path(mut self, devcontainer_path: String) -> Self {
+        self.devcontainer_path = Some(devcontainer_path);
+        self
+    }
+
+    /// Set allow egress
+    pub fn allow_egress(mut self, allow_egress: bool) -> Self {
+        self.allow_egress = Some(allow_egress);
+        self
+    }
+
+    /// Set allow containers
+    pub fn allow_containers(mut self, allow_containers: bool) -> Self {
+        self.allow_containers = Some(allow_containers);
+        self
+    }
+
+    /// Set allow VMs
+    pub fn allow_vms(mut self, allow_vms: bool) -> Self {
+        self.allow_vms = Some(allow_vms);
+        self
+    }
+
+    /// Set allow web search
+    pub fn allow_web_search(mut self, allow_web_search: bool) -> Self {
+        self.allow_web_search = Some(allow_web_search);
+        self
+    }
+
+    /// Set interactive mode
+    pub fn interactive_mode(mut self, interactive_mode: bool) -> Self {
+        self.interactive_mode = Some(interactive_mode);
+        self
+    }
+
+    /// Set output format
+    pub fn output_format(mut self, output_format: String) -> Self {
+        self.output_format = Some(output_format);
+        self
+    }
+
+    /// Set record output
+    /// TODO: Map to --no-record-output CLI flag when implemented
+    pub fn record_output(mut self, record_output: bool) -> Self {
+        self.record_output = Some(record_output);
+        self
+    }
+
+    /// Set timeout
+    /// TODO: Map to --timeout CLI flag when implemented
+    pub fn timeout(mut self, timeout: String) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    /// Set LLM provider
+    pub fn llm_provider(mut self, llm_provider: String) -> Self {
+        self.llm_provider = Some(llm_provider);
+        self
+    }
+
+    /// Set environment variables
+    pub fn environment_variables(mut self, environment_variables: Vec<(String, String)>) -> Self {
+        self.environment_variables = Some(environment_variables);
+        self
+    }
+
+    /// Set delivery method
+    /// TODO: Map to --delivery-method CLI flag when implemented
+    pub fn delivery_method(mut self, delivery_method: String) -> Self {
+        self.delivery_method = Some(delivery_method);
+        self
+    }
+
+    /// Set target branch
+    /// TODO: Map to --target-branch CLI flag when implemented
+    pub fn target_branch(mut self, target_branch: String) -> Self {
+        self.target_branch = Some(target_branch);
+        self
+    }
+
+    /// Set create task files
+    /// TODO: Map to --no-create-task-files CLI flag when implemented
+    pub fn create_task_files(mut self, create_task_files: bool) -> Self {
+        self.create_task_files = Some(create_task_files);
+        self
+    }
+
+    /// Set create metadata commits
+    /// TODO: Map to --no-create-metadata-commits CLI flag when implemented
+    pub fn create_metadata_commits(mut self, create_metadata_commits: bool) -> Self {
+        self.create_metadata_commits = Some(create_metadata_commits);
+        self
+    }
+
+    /// Set notifications
+    /// TODO: Map to --notifications CLI flag when implemented
+    pub fn notifications(mut self, notifications: bool) -> Self {
+        self.notifications = Some(notifications);
+        self
+    }
+
+    /// Set labels
+    /// TODO: Map to --label KEY=VALUE CLI flag when implemented
+    pub fn labels(mut self, labels: Vec<(String, String)>) -> Self {
+        self.labels = Some(labels);
+        self
+    }
+
+    /// Set fleet
+    /// TODO: Map to --fleet CLI flag when implemented
+    pub fn fleet(mut self, fleet: String) -> Self {
+        self.fleet = Some(fleet);
         self
     }
 
@@ -413,6 +691,28 @@ impl TaskLaunchParamsBuilder {
             focus,
             record,
             task_id,
+
+            // Advanced launch options
+            sandbox_profile: self.sandbox_profile,
+            fs_snapshots: self.fs_snapshots,
+            devcontainer_path: self.devcontainer_path,
+            allow_egress: self.allow_egress,
+            allow_containers: self.allow_containers,
+            allow_vms: self.allow_vms,
+            allow_web_search: self.allow_web_search,
+            interactive_mode: self.interactive_mode,
+            output_format: self.output_format,
+            record_output: self.record_output,
+            timeout: self.timeout,
+            llm_provider: self.llm_provider,
+            environment_variables: self.environment_variables,
+            delivery_method: self.delivery_method,
+            target_branch: self.target_branch,
+            create_task_files: self.create_task_files,
+            create_metadata_commits: self.create_metadata_commits,
+            notifications: self.notifications,
+            labels: self.labels,
+            fleet: self.fleet,
         })
     }
 }

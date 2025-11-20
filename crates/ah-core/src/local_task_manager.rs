@@ -485,17 +485,13 @@ where
                     None
                 };
 
-                // Get the agent command line from the executor
-                let agent_cmd_inner = match self.agent_executor.get_agent_command_string(
+                // Get the agent command line from the executor with advanced options
+                let agent_cmd_args = match self.agent_executor.get_agent_command_with_options(
+                    &params,
                     &session_id,
-                    model.agent.software.cli_arg(),
-                    &model.model,
-                    params.description(),
-                    working_copy_mode,
                     Some(&current_dir),
                     snapshot_id.clone(),
-                    params.record(),                     // Pass recording flag
-                    task_manager_socket_path.as_deref(), // Pass task manager socket path
+                    task_manager_socket_path.as_deref(),
                 ) {
                     Ok(cmd) => cmd,
                     Err(e) => {
@@ -516,6 +512,12 @@ where
                         continue;
                     }
                 };
+
+                let agent_cmd_inner = agent_cmd_args
+                    .iter()
+                    .map(|arg| crate::agent_executor::AgentExecutor::shell_escape(arg))
+                    .collect::<Vec<_>>()
+                    .join(" ");
 
                 tracing::info!(
                     "Generated agent command for {}: {}",

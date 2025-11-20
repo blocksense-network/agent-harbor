@@ -80,121 +80,32 @@ pub fn render_modals(
             render_settings_dialog(frame, area, theme);
         }
         ModalState::LaunchOptions => {
-            // Render launch options modal without search box
+            // Render launch options modal
             if let Some(modal) = &view_model.active_modal {
-                // Calculate modal dimensions
-                let modal_width = 60.min(area.width - 4);
-                let modal_height = 12.min(area.height - 4);
-
-                let modal_area = Rect {
-                    x: (area.width - modal_width) / 2,
-                    y: (area.height - modal_height) / 2,
-                    width: modal_width,
-                    height: modal_height,
-                };
-
-                // Shadow effect
-                let mut shadow_area = modal_area;
-                shadow_area.x += 1;
-                shadow_area.y += 1;
-                let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
-                frame.render_widget(Clear, shadow_area);
-                frame.render_widget(shadow, shadow_area);
-
-                // Main modal
-                let title_line = Line::from(vec![
-                    Span::raw("┤").fg(theme.primary),
-                    Span::raw(" Advanced Launch Options ")
-                        .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-                    Span::raw("├").fg(theme.primary),
-                ]);
-
-                let modal_block = Block::default()
-                    .title(title_line)
-                    .title_alignment(Alignment::Left)
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(theme.border_focused))
-                    .padding(Padding::new(1, 1, 1, 1))
-                    .style(Style::default().bg(theme.surface));
-
-                frame.render_widget(Clear, modal_area);
-                let inner_area = modal_block.inner(modal_area);
-                frame.render_widget(modal_block, modal_area);
-
-                // Render options as a simple list with right-aligned shortcuts
-                let mut y_offset = 0;
-                for (i, option) in modal.filtered_options.iter().enumerate() {
-                    if y_offset >= inner_area.height as usize {
-                        break;
+                match &modal.modal_type {
+                    crate::view_model::ModalType::LaunchOptions {
+                        view_model: launch_vm,
+                    } => {
+                        super::launch_options_modal::render_advanced_launch_options_modal(
+                            frame, launch_vm, area, theme,
+                        );
                     }
-
-                    let style = if i == modal.selected_index {
-                        Style::default().bg(theme.primary).fg(theme.surface)
-                    } else {
-                        Style::default().fg(theme.text)
-                    };
-
-                    match option {
-                        FilteredOption::Option { text, .. } => {
-                            // Parse the text to separate description from shortcut
-                            let (description, shortcut) = if let Some(paren_idx) = text.rfind(" (")
-                            {
-                                if text.ends_with(')') {
-                                    let desc = &text[..paren_idx];
-                                    let short = &text[paren_idx + 2..text.len() - 1];
-                                    (desc, short)
-                                } else {
-                                    (text.as_str(), "")
-                                }
-                            } else {
-                                (text.as_str(), "")
-                            };
-
-                            let line = if shortcut.is_empty() {
-                                Line::from(description).style(style)
-                            } else {
-                                // Put shortcut on the left with distinct styling
-                                let shortcut_span = Span::styled(
-                                    format!("{} ", shortcut),
-                                    style.fg(theme.primary).add_modifier(Modifier::BOLD),
-                                );
-                                let desc_span = Span::styled(description, style);
-                                Line::from(vec![shortcut_span, desc_span])
-                            };
-
-                            let rect = Rect {
-                                x: inner_area.x,
-                                y: inner_area.y + y_offset as u16,
-                                width: inner_area.width,
-                                height: 1,
-                            };
-                            frame.render_widget(Paragraph::new(line), rect);
-
-                            // Register hit region for mouse click
-                            hit_registry.register(
-                                rect,
-                                crate::view_model::MouseAction::ModalSelectOption(i),
-                            );
-
-                            y_offset += 1;
-                        }
-                        FilteredOption::Separator { label } => {
-                            if let Some(label) = label {
-                                let separator_style = Style::default().fg(theme.muted);
-                                let line =
-                                    Line::from(format!("─ {} ", label)).style(separator_style);
-                                let rect = Rect {
-                                    x: inner_area.x,
-                                    y: inner_area.y + y_offset as u16,
-                                    width: inner_area.width,
-                                    height: 1,
-                                };
-                                frame.render_widget(Paragraph::new(line), rect);
-                                y_offset += 1;
-                            }
-                        }
+                    crate::view_model::ModalType::EnumSelection {
+                        title,
+                        options,
+                        selected_index,
+                        ..
+                    } => {
+                        render_enum_selection_modal(
+                            frame,
+                            title,
+                            options,
+                            *selected_index,
+                            area,
+                            theme,
+                        );
                     }
+                    _ => {}
                 }
             }
         }
@@ -318,5 +229,76 @@ fn render_fuzzy_modal_with_mouse_support(
                 // Skip separators for mouse clicks
             }
         }
+    }
+}
+
+/// Render enum selection modal (simple submenu without search box)
+fn render_enum_selection_modal(
+    frame: &mut Frame,
+    title: &str,
+    options: &[String],
+    selected_index: usize,
+    area: Rect,
+    theme: &Theme,
+) {
+    // Calculate modal dimensions
+    let modal_width = 40.min(area.width - 4);
+    let modal_height = 10.min(area.height - 4);
+
+    let modal_area = Rect {
+        x: (area.width - modal_width) / 2,
+        y: (area.height - modal_height) / 2,
+        width: modal_width,
+        height: modal_height,
+    };
+
+    // Shadow
+    let mut shadow_area = modal_area;
+    shadow_area.x += 1;
+    shadow_area.y += 1;
+    let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
+    frame.render_widget(Clear, shadow_area);
+    frame.render_widget(shadow, shadow_area);
+
+    // Main modal
+    let title_line = Line::from(vec![
+        Span::raw("┤").fg(theme.primary),
+        Span::raw(format!(" {} ", title))
+            .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+        Span::raw("├").fg(theme.primary),
+    ]);
+
+    let modal_block = Block::default()
+        .title(title_line)
+        .title_alignment(Alignment::Left)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_focused))
+        .padding(Padding::new(1, 1, 1, 1))
+        .style(Style::default().bg(theme.surface));
+
+    frame.render_widget(Clear, modal_area);
+    let inner_area = modal_block.inner(modal_area);
+    frame.render_widget(modal_block, modal_area);
+
+    // Render options
+    for (i, option) in options.iter().enumerate() {
+        let is_selected = i == selected_index;
+
+        let (bg, fg) = if is_selected {
+            (theme.primary, theme.surface)
+        } else {
+            (theme.surface, theme.text)
+        };
+        let style = Style::default().bg(bg).fg(fg);
+
+        let row_area = Rect {
+            x: inner_area.x,
+            y: inner_area.y + i as u16,
+            width: inner_area.width,
+            height: 1,
+        };
+
+        frame.render_widget(Paragraph::new(option.clone()).style(style), row_area);
     }
 }
