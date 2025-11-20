@@ -151,5 +151,5 @@ This yields **fully usable HTML** with JS off, and **hydration** when JS loads. 
 [3]: https://docs.solidjs.com/solid-router/concepts/actions?utm_source=chatgpt.com 'Actions - Solid Router Docs'
 [4]: https://deepwiki.com/solidjs/solid-start/2.2-rendering-modes?utm_source=chatgpt.com 'Rendering Modes | solidjs/solid-start | DeepWiki'
 [5]: https://docs.solidjs.com/reference/rendering/render-to-string?utm_source=chatgpt.com 'renderToString - Solid Docs'
-[6]: https://www.solidjs.cn/guides/server?utm_source=chatgpt.com 'SolidJS'
+[6]: https://docs.solidjs.com/guides/server 'SolidJS server rendering guide'
 [7]: https://docs.solidjs.com/reference/components/no-hydration?utm_source=chatgpt.com '<NoHydration> - Solid Docs - docs.solidjs.com'
