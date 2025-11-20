@@ -2,7 +2,6 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_logging::test_utils::strip_ansi_codes;
 use anyhow::Context;
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 use fs_snapshots_test_harness::assert_interpose_shim_exists;
@@ -34,6 +33,8 @@ fn configure_agentfs_env(
 #[cfg(target_os = "macos")]
 #[tokio::test(flavor = "multi_thread")]
 async fn harness_driver_sets_dyld_insert_libraries() -> anyhow::Result<()> {
+    use ah_logging::test_utils::strip_ansi_codes;
+
     let driver = assert_driver_exists()?;
     let output = tokio::process::Command::new(driver)
         .arg("shim-smoke")

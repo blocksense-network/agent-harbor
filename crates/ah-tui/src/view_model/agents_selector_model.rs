@@ -275,15 +275,12 @@ impl ViewModel {
 
         if let Some(modal) = &mut self.active_modal {
             if let ModalType::LaunchOptions { view_model: _ } = &mut modal.modal_type {
-                match direction {
-                    NavigationDirection::Next => {
-                        // Not handled by handle_modal_navigation if it's meant for column switching,
-                        // but handle_modal_navigation handles up/down.
-                        // We need to check if `direction` maps to left/right in `handle_dashboard_operation` context.
-                        // Actually `NavigationDirection` is only Next/Previous (usually tab/shift-tab or arrows depending on mapping).
-                        // Let's check `handle_modal_operation`.
-                    }
-                    _ => {}
+                if let NavigationDirection::Next = direction {
+                    // Not handled by handle_modal_navigation if it's meant for column switching,
+                    // but handle_modal_navigation handles up/down.
+                    // We need to check if `direction` maps to left/right in `handle_dashboard_operation` context.
+                    // Actually `NavigationDirection` is only Next/Previous (usually tab/shift-tab or arrows depending on mapping).
+                    // Let's check `handle_modal_operation`.
                 }
             }
         }
@@ -2069,6 +2066,7 @@ pub struct ModalViewModel {
     pub modal_type: ModalType,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModalType {
     Search {
@@ -2938,7 +2936,7 @@ impl ViewModel {
                                     self.needs_redraw = true;
                                     return true;
                                 }
-                                return false; // Invalid popup selection
+                                false // Invalid popup selection
                             } else if view_model.active_column == LaunchOptionsColumn::Options {
                                 // Handle options editing
                                 match view_model.selected_option_index {
@@ -3054,7 +3052,7 @@ impl ViewModel {
                                     _ => {} // Headers or other non-editable options
                                 }
                                 self.needs_redraw = true;
-                                return true;
+                                true
                             } else {
                                 // Handle actions column activation
                                 let action_str = match view_model.selected_action_index {
@@ -3070,7 +3068,7 @@ impl ViewModel {
                                 };
                                 let modal_type = modal.modal_type.clone();
                                 self.apply_modal_selection(modal_type, action_str.to_string());
-                                return true;
+                                true
                             }
                         }
                         ModalType::EnumSelection {
@@ -3120,7 +3118,7 @@ impl ViewModel {
                                     return true;
                                 }
                             }
-                            return false;
+                            false
                         }
                         ModalType::AgentSelection { options } => {
                             // Get the currently selected option
@@ -3172,6 +3170,7 @@ impl ViewModel {
                             }
                             true
                         }
+                        #[allow(unreachable_patterns)]
                         ModalType::LaunchOptions { view_model } => {
                             if view_model.active_column == LaunchOptionsColumn::Actions {
                                 let action_str = match view_model.selected_action_index {
@@ -3184,7 +3183,7 @@ impl ViewModel {
                                 };
                                 let modal_type = modal.modal_type.clone();
                                 self.apply_modal_selection(modal_type, action_str.to_string());
-                                return true;
+                                true
                             } else {
                                 // TODO: Handle option selection (toggles/edits) in left column
                                 true
