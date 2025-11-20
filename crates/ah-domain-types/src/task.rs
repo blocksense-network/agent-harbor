@@ -152,7 +152,6 @@ pub enum DeliveryStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "clap", derive(ValueEnum))]
-#[cfg_attr(feature = "rusqlite", derive(rusqlite::ToSql, rusqlite::FromSql))]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
     /// Task has been created but not yet started
@@ -199,7 +198,6 @@ impl std::str::FromStr for TaskStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "clap", derive(ValueEnum))]
-#[cfg_attr(feature = "rusqlite", derive(rusqlite::ToSql, rusqlite::FromSql))]
 #[serde(rename_all = "kebab-case")]
 pub enum MultiplexerType {
     /// tmux multiplexer

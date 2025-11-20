@@ -5,8 +5,6 @@
 //!
 //! Types related to AI agents, models, and their configurations.
 
-#[cfg(feature = "clap")]
-use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 use crate::experimental_features::ExperimentalFeature;
