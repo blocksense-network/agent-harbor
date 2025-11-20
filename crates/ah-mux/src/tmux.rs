@@ -477,6 +477,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             };
 
             let window_id = tmux.open_window(&opts).unwrap();
@@ -510,6 +511,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: true, // Should focus the window
+                init_command: None,
             };
 
             let window_id = tmux.open_window(&opts).unwrap();
@@ -554,6 +556,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -636,6 +639,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -683,6 +687,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -741,6 +746,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -795,6 +801,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -805,6 +812,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -859,6 +867,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             })
             .unwrap();
 
@@ -867,6 +876,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             })
             .unwrap();
 
@@ -875,6 +885,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             })
             .unwrap();
 
@@ -931,6 +942,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -977,6 +989,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -1079,6 +1092,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 
@@ -1088,6 +1102,7 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 })
                 .unwrap();
 

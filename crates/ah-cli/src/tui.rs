@@ -341,6 +341,7 @@ impl TuiArgs {
             title: Some("agent-harbor"),
             cwd: Some(&std::env::current_dir()?),
             profile: None,
+            init_command: None,
             focus: true,
         };
 
