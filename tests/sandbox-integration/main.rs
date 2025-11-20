@@ -4,6 +4,7 @@
 //! Integration tests for sandbox functionality
 
 // Use structured logging
+#![allow(clippy::disallowed_methods)]
 
 #[cfg(target_os = "linux")]
 #[tokio::test]
@@ -547,7 +548,7 @@ async fn test_filesystem_isolation_overlay() {
         .join(test_file_path.strip_prefix(temp_dir.path()).unwrap());
 
     let overlay_was_mounted = if upper_dir.exists() {
-        fs::read_to_string(&upper_dir).map_or(false, |content| content.trim() == modified_content)
+        fs::read_to_string(&upper_dir).is_ok_and(|content| content.trim() == modified_content)
     } else {
         false
     };
@@ -585,7 +586,7 @@ async fn test_filesystem_isolation_overlay() {
 #[tokio::test]
 async fn test_filesystem_isolation_readonly_mount() {
     use sandbox_core::{NamespaceConfig, ProcessConfig, Sandbox};
-    use sandbox_fs::{FilesystemConfig, FilesystemManager};
+    use sandbox_fs::FilesystemConfig;
     use std::fs;
     use tempfile::TempDir;
 
