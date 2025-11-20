@@ -215,54 +215,55 @@ pub struct Attributes {
 
 impl Attributes {
     /// Convert the mode fields to a numeric Unix mode
+    #[allow(clippy::useless_conversion)]
     pub fn mode(&self) -> u32 {
         let mut mode = self.mode_bits & 0o7000;
 
         // Add file type
         if self.is_dir {
-            mode |= libc::S_IFDIR as u32;
+            mode |= u32::from(libc::S_IFDIR);
         } else if self.is_symlink {
-            mode |= libc::S_IFLNK as u32;
+            mode |= u32::from(libc::S_IFLNK);
         } else if let Some(kind) = &self.special_kind {
             mode |= match kind {
-                SpecialNodeKind::Fifo => libc::S_IFIFO as u32,
-                SpecialNodeKind::CharDevice { .. } => libc::S_IFCHR as u32,
-                SpecialNodeKind::BlockDevice { .. } => libc::S_IFBLK as u32,
-                SpecialNodeKind::Socket => libc::S_IFSOCK as u32,
+                SpecialNodeKind::Fifo => u32::from(libc::S_IFIFO),
+                SpecialNodeKind::CharDevice { .. } => u32::from(libc::S_IFCHR),
+                SpecialNodeKind::BlockDevice { .. } => u32::from(libc::S_IFBLK),
+                SpecialNodeKind::Socket => u32::from(libc::S_IFSOCK),
             };
         } else {
-            mode |= libc::S_IFREG as u32;
+            mode |= u32::from(libc::S_IFREG);
         }
 
         // Add permissions
         if self.mode_user.read {
-            mode |= libc::S_IRUSR as u32;
+            mode |= u32::from(libc::S_IRUSR);
         }
         if self.mode_user.write {
-            mode |= libc::S_IWUSR as u32;
+            mode |= u32::from(libc::S_IWUSR);
         }
         if self.mode_user.exec {
-            mode |= libc::S_IXUSR as u32;
+            mode |= u32::from(libc::S_IXUSR);
         }
 
         if self.mode_group.read {
-            mode |= libc::S_IRGRP as u32;
+            mode |= u32::from(libc::S_IRGRP);
         }
         if self.mode_group.write {
-            mode |= libc::S_IWGRP as u32;
+            mode |= u32::from(libc::S_IWGRP);
         }
         if self.mode_group.exec {
-            mode |= libc::S_IXGRP as u32;
+            mode |= u32::from(libc::S_IXGRP);
         }
 
         if self.mode_other.read {
-            mode |= libc::S_IROTH as u32;
+            mode |= u32::from(libc::S_IROTH);
         }
         if self.mode_other.write {
-            mode |= libc::S_IWOTH as u32;
+            mode |= u32::from(libc::S_IWOTH);
         }
         if self.mode_other.exec {
-            mode |= libc::S_IXOTH as u32;
+            mode |= u32::from(libc::S_IXOTH);
         }
 
         mode

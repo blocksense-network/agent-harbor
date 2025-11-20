@@ -2636,11 +2636,11 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         }
                     }
-                    Request::WatchRegisterFSEventsPort((_version, port_req)) => {
+                    Request::WatchRegisterFSEventsPort((_version, _port_req)) => {
                         #[cfg(target_os = "macos")]
                         {
                             let port_name_str =
-                                String::from_utf8_lossy(&port_req.port_name).to_string();
+                                String::from_utf8_lossy(&_port_req.port_name).to_string();
                             if std::ffi::CString::new(port_name_str.as_str()).is_err() {
                                 let response = Response::error(
                                     "Invalid port name encoding".to_string(),
@@ -2660,7 +2660,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                                 }
                             };
                             let mut daemon_guard = daemon.lock().unwrap();
-                            daemon_guard.register_fsevents_port(port_req.pid, port);
+                            daemon_guard.register_fsevents_port(_port_req.pid, port);
                             let response = Response::watch_register_fsevents_port();
                             send_response(&mut stream, &response);
                         }

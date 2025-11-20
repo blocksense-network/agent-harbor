@@ -815,6 +815,7 @@ impl FsCore {
         decision
     }
 
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn clear_setid_bits_after_unprivileged_write(node: &mut Node, user: &User) {
         if user.uid == 0 || user.uid == node.uid {
             return;
@@ -825,11 +826,11 @@ impl FsCore {
         }
 
         let mut mask = 0u32;
-        if (node.mode & (libc::S_ISUID as u32)) != 0 {
-            mask |= libc::S_ISUID as u32;
+        if (node.mode & u32::from(libc::S_ISUID)) != 0 {
+            mask |= u32::from(libc::S_ISUID);
         }
-        if (node.mode & (libc::S_ISGID as u32)) != 0 {
-            mask |= libc::S_ISGID as u32;
+        if (node.mode & u32::from(libc::S_ISGID)) != 0 {
+            mask |= u32::from(libc::S_ISGID);
         }
 
         if mask != 0 {
@@ -842,6 +843,7 @@ impl FsCore {
         nodes.get(&node_id).cloned().ok_or(FsError::NotFound)
     }
 
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn check_dir_permissions(
         &self,
         pid: &PID,
@@ -860,7 +862,7 @@ impl FsCore {
         }
 
         if let Some(child_node) = child {
-            let sticky = (dir_node.mode & (libc::S_ISVTX as u32)) != 0;
+            let sticky = (dir_node.mode & u32::from(libc::S_ISVTX)) != 0;
             let should_log = sticky && user.uid != 0;
             let should_deny =
                 sticky && user.uid != 0 && user.uid != dir_node.uid && user.uid != child_node.uid;
@@ -921,6 +923,7 @@ impl FsCore {
         }
     }
 
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn check_dir_cross_parent_permissions(
         &self,
         pid: &PID,
@@ -936,7 +939,7 @@ impl FsCore {
         };
 
         let dir_node = self.get_node_clone(dir_id)?;
-        let sticky = (dir_node.mode & (libc::S_ISVTX as u32)) != 0;
+        let sticky = (dir_node.mode & u32::from(libc::S_ISVTX)) != 0;
         if !sticky {
             return Ok(());
         }
@@ -969,7 +972,11 @@ impl FsCore {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        clippy::useless_conversion,
+        clippy::unnecessary_cast
+    )] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn log_sticky_event(
         &self,
         pid: &PID,
@@ -983,7 +990,7 @@ impl FsCore {
         if user_uid == 0 {
             return;
         }
-        let sticky = (dir_node.mode & (libc::S_ISVTX as u32)) != 0;
+        let sticky = (dir_node.mode & u32::from(libc::S_ISVTX)) != 0;
         if !sticky {
             return;
         }
@@ -2438,22 +2445,23 @@ impl FsCore {
         self.create_special_at_path(pid, path, SpecialNodeKind::Fifo, mode)
     }
 
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     pub fn mknod(&self, pid: &PID, path: &Path, mode: u32, dev: u64) -> FsResult<()> {
-        let file_type = mode & (libc::S_IFMT as u32);
+        let file_type = mode & u32::from(libc::S_IFMT);
         match file_type {
-            t if t == 0 || t == (libc::S_IFREG as u32) => {
+            t if t == 0 || t == u32::from(libc::S_IFREG) => {
                 self.create_regular_via_mknod(pid, path, mode)
             }
-            t if t == (libc::S_IFIFO as u32) => {
+            t if t == u32::from(libc::S_IFIFO) => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::Fifo, mode)
             }
-            t if t == (libc::S_IFCHR as u32) => {
+            t if t == u32::from(libc::S_IFCHR) => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::CharDevice { dev }, mode)
             }
-            t if t == (libc::S_IFBLK as u32) => {
+            t if t == u32::from(libc::S_IFBLK) => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::BlockDevice { dev }, mode)
             }
-            t if t == (libc::S_IFSOCK as u32) => {
+            t if t == u32::from(libc::S_IFSOCK) => {
                 self.create_special_at_path(pid, path, SpecialNodeKind::Socket, mode)
             }
             _ => Err(FsError::Unsupported),
@@ -4546,6 +4554,7 @@ impl FsCore {
     }
 
     /// Get file status (lstat) for a path - does not follow symlinks
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     pub fn lstat(&self, pid: &PID, path: &Path) -> FsResult<StatData> {
         // For lstat, we need to check if it's a symlink without following it
         match self.resolve_path(pid, path) {
@@ -4565,19 +4574,19 @@ impl FsCore {
                         special_kind: node.special_kind.clone(),
                         nlink: node.nlink,
                         mode_user: FileMode {
-                            read: (node.mode & (libc::S_IRUSR as u32)) != 0,
-                            write: (node.mode & (libc::S_IWUSR as u32)) != 0,
-                            exec: (node.mode & (libc::S_IXUSR as u32)) != 0,
+                            read: (node.mode & u32::from(libc::S_IRUSR)) != 0,
+                            write: (node.mode & u32::from(libc::S_IWUSR)) != 0,
+                            exec: (node.mode & u32::from(libc::S_IXUSR)) != 0,
                         },
                         mode_group: FileMode {
-                            read: (node.mode & (libc::S_IRGRP as u32)) != 0,
-                            write: (node.mode & (libc::S_IWGRP as u32)) != 0,
-                            exec: (node.mode & (libc::S_IXGRP as u32)) != 0,
+                            read: (node.mode & u32::from(libc::S_IRGRP)) != 0,
+                            write: (node.mode & u32::from(libc::S_IWGRP)) != 0,
+                            exec: (node.mode & u32::from(libc::S_IXGRP)) != 0,
                         },
                         mode_other: FileMode {
-                            read: (node.mode & (libc::S_IROTH as u32)) != 0,
-                            write: (node.mode & (libc::S_IWOTH as u32)) != 0,
-                            exec: (node.mode & (libc::S_IXOTH as u32)) != 0,
+                            read: (node.mode & u32::from(libc::S_IROTH)) != 0,
+                            write: (node.mode & u32::from(libc::S_IWOTH)) != 0,
+                            exec: (node.mode & u32::from(libc::S_IXOTH)) != 0,
                         },
                         mode_bits: node.mode,
                     };
@@ -4945,6 +4954,7 @@ impl FsCore {
         Ok((new_uid, new_gid, changing_uid, changing_gid))
     }
 
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn sanitize_mode_change(&self, pid: &PID, node: &Node, requested: u32) -> FsResult<u32> {
         let mut mode = requested & 0o7777;
         if !self.config.security.enforce_posix_permissions {
@@ -4964,11 +4974,11 @@ impl FsCore {
         }
 
         if user.uid != 0
-            && (mode & (libc::S_ISGID as u32)) != 0
+            && (mode & u32::from(libc::S_ISGID)) != 0
             && !self.has_group(&user, node.gid)
             && matches!(node.kind, NodeKind::File { .. })
         {
-            mode &= !(libc::S_ISGID as u32);
+            mode &= !u32::from(libc::S_ISGID);
         }
 
         Ok(mode)
@@ -5090,6 +5100,7 @@ impl FsCore {
     }
 
     /// Helper method to convert Attributes to StatData
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn attributes_to_stat_data(
         &self,
         attrs: Attributes,
@@ -5570,6 +5581,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_stat_directory() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -5578,8 +5590,8 @@ mod tests {
         let stat_data = fs.getattr(&pid, "/".as_ref()).expect("getattr should succeed");
 
         assert_eq!(
-            stat_data.mode() & (libc::S_IFMT as u32),
-            libc::S_IFDIR as u32
+            stat_data.mode() & u32::from(libc::S_IFMT),
+            u32::from(libc::S_IFDIR)
         );
         // Root directory uses default security policy (uid=0, gid=0)
         assert_eq!(stat_data.uid, 0);
@@ -5723,6 +5735,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_mkfifo_sets_fifo_type() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -5730,40 +5743,57 @@ mod tests {
         fs.mkfifo(&pid, "/pipe".as_ref(), 0o640).expect("mkfifo should succeed");
 
         let attrs = fs.getattr(&pid, "/pipe".as_ref()).expect("getattr should succeed");
-        assert_eq!(attrs.mode() & (libc::S_IFMT as u32), libc::S_IFIFO as u32);
+        assert_eq!(
+            attrs.mode() & u32::from(libc::S_IFMT),
+            u32::from(libc::S_IFIFO)
+        );
         assert_eq!(attrs.mode() & 0o777, 0o640);
     }
 
     #[test]
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_mknod_char_device_records_rdev() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
 
         let dev: u64 = 0x1234;
-        fs.mknod(&pid, "/ttyX".as_ref(), (libc::S_IFCHR as u32) | 0o660, dev)
-            .expect("mknod should succeed");
+        fs.mknod(
+            &pid,
+            "/ttyX".as_ref(),
+            u32::from(libc::S_IFCHR) | 0o660,
+            dev,
+        )
+        .expect("mknod should succeed");
 
         let attrs = fs.getattr(&pid, "/ttyX".as_ref()).expect("getattr should succeed");
-        assert_eq!(attrs.mode() & (libc::S_IFMT as u32), libc::S_IFCHR as u32);
+        assert_eq!(
+            attrs.mode() & u32::from(libc::S_IFMT),
+            u32::from(libc::S_IFCHR)
+        );
         assert_eq!(attrs.mode() & 0o777, 0o660);
         assert_eq!(attrs.rdev(), dev);
     }
 
     #[test]
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_mknod_socket_creates_special_file() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
 
-        fs.mknod(&pid, "/sock".as_ref(), (libc::S_IFSOCK as u32) | 0o644, 0)
+        fs.mknod(&pid, "/sock".as_ref(), u32::from(libc::S_IFSOCK) | 0o644, 0)
             .expect("mknod should support sockets");
 
         let attrs = fs.getattr(&pid, "/sock".as_ref()).expect("getattr should succeed");
-        assert_eq!(attrs.mode() & (libc::S_IFMT as u32), libc::S_IFSOCK as u32);
+        assert_eq!(
+            attrs.mode() & u32::from(libc::S_IFMT),
+            u32::from(libc::S_IFSOCK)
+        );
         assert_eq!(attrs.mode() & 0o777, 0o644);
         assert_eq!(attrs.special_kind, Some(SpecialNodeKind::Socket));
     }
 
     #[test]
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)] // libc constants are u16 on macOS but u32 on Linux, u32::from() ensures cross-platform compatibility
     fn test_unlink_allows_recreate_same_name() {
         let fs = create_test_fs();
         let pid = create_test_pid(&fs);
@@ -5779,7 +5809,7 @@ mod tests {
         fs.unlink(&pid, "/foo".as_ref()).expect("unlink fifo");
 
         // Create as socket
-        fs.mknod(&pid, "/foo".as_ref(), (libc::S_IFSOCK as u32) | 0o600, 0)
+        fs.mknod(&pid, "/foo".as_ref(), u32::from(libc::S_IFSOCK) | 0o600, 0)
             .expect("mknod socket after unlink");
     }
 
