@@ -979,6 +979,7 @@ mod tests {
             cwd: Some(Path::new("/tmp")),
             profile: None,
             focus: false,
+            init_command: None,
         };
 
         let result = kitty.open_window(&opts);
@@ -1024,6 +1025,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: true, // Should focus the window
+                init_command: None,
             };
 
             let result = kitty.open_window(&opts);
@@ -1069,6 +1071,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             };
 
             let window_result = kitty.open_window(&window_opts);
@@ -1146,6 +1149,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             };
 
             let window_result = kitty.open_window(&window_opts);
@@ -1214,6 +1218,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             };
 
             let window_result = kitty.open_window(&window_opts);
@@ -1267,6 +1272,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             };
 
             let window_result = kitty.open_window(&window_opts);
@@ -1339,6 +1345,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             };
 
             let window_opts2 = WindowOptions {
@@ -1346,6 +1353,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             };
 
             let window1_result = kitty.open_window(&window_opts1);
@@ -1433,18 +1441,21 @@ mod tests {
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 },
                 WindowOptions {
                     title: Some("beta-window-006"),
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 },
                 WindowOptions {
                     title: Some("alpha-other-006"),
                     cwd: Some(Path::new("/tmp")),
                     profile: None,
                     focus: false,
+                    init_command: None,
                 },
             ];
 
@@ -1617,6 +1628,7 @@ mod tests {
                 cwd: Some(Path::new("/tmp")),
                 profile: None,
                 focus: false,
+                init_command: None,
             };
 
             let window_result = kitty.open_window(&window_opts);

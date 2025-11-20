@@ -136,8 +136,8 @@ impl Multiplexer for TilixMultiplexer {
     #[instrument(skip(opts))]
     fn open_window(&self, opts: &WindowOptions) -> Result<WindowId, MuxError> {
         debug!(
-            "Opening new Tilix window with options: title={:?}, cwd={:?}, profile={:?}",
-            opts.title, opts.cwd, opts.profile
+            "Opening new Tilix window with options: title={:?}, cwd={:?}, init_command={:?}",
+            opts.title, opts.cwd, opts.init_command
         );
 
         let mut args = vec![];
@@ -155,10 +155,10 @@ impl Multiplexer for TilixMultiplexer {
             args.extend_from_slice(&["--working-directory".to_string(), cwd_str]);
         }
 
-        // Add command if specified in profile
-        if let Some(profile) = opts.profile {
-            debug!("Setting initial command: {}", profile);
-            let custom_command = Self::wrap_command_with_path(profile);
+        // Add command if specified in init_command
+        if let Some(init_cmd) = opts.init_command {
+            debug!("Setting initial command: {}", init_cmd);
+            let custom_command = Self::wrap_command_with_path(init_cmd);
             args.extend_from_slice(&["--command".to_string(), custom_command]);
         }
 

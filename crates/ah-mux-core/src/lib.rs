@@ -33,6 +33,7 @@ pub struct WindowOptions<'a> {
     pub title: Option<&'a str>,
     pub cwd: Option<&'a std::path::Path>,
     pub profile: Option<&'a str>, // implementation-defined (e.g., iTerm2 profile)
+    pub init_command: Option<&'a str>, // optional command to run when window is created
     pub focus: bool,
 }
 

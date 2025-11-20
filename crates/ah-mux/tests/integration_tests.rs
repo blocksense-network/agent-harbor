@@ -78,6 +78,7 @@ fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplex
             cwd: None,
             focus: false,
             profile: None,
+            init_command: None,
         })
         .expect("Failed to create window");
 
@@ -307,6 +308,7 @@ mod tests {
                     cwd: None,
                     focus: false,
                     profile: None,
+                    init_command: None,
                 })
                 .unwrap();
 

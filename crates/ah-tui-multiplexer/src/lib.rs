@@ -85,6 +85,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                     title: Some(&title),
                     cwd: Some(config.working_dir),
                     profile: None,
+                    init_command: None,
                     focus: true,
                 };
                 self.mux.open_window(&window_opts)?
@@ -183,7 +184,8 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                 let window_opts = WindowOptions {
                     title: Some(&title),
                     cwd: Some(config.working_dir),
-                    profile: Some(editor_cmd), // Use profile field for the initial command
+                    profile: None,
+                    init_command: Some(editor_cmd), // Use init_command for the initial command
                     focus: true,
                 };
                 let wid = self.mux.open_window(&window_opts)?;
