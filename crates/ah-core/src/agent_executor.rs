@@ -6,8 +6,11 @@
 //! This module provides the core functionality for spawning agent processes.
 //! It is used by both REST server and local task managers for basic agent execution.
 
+use ah_local_db::Database;
 use anyhow::Result;
+use chrono::{Datelike, Utc};
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
@@ -56,12 +59,32 @@ impl AgentExecutor {
         &self.config
     }
 
+    /// Get the recordings directory path based on AH_HOME or platform defaults.
+    ///
+    /// This follows the same logic as the database path (see State-Persistence.md):
+    /// Uses the same base directory as the database and appends "recordings/".
+    /// - AH_HOME environment variable (custom)
+    /// - Platform-specific defaults:
+    ///   - Linux: `${XDG_STATE_HOME:-~/.local/state}/agent-harbor/recordings/`
+    ///   - macOS: `~/Library/Application Support/agent-harbor/recordings/`
+    ///   - Windows: `%LOCALAPPDATA%\agent-harbor\recordings\`
+    fn get_recordings_dir() -> Result<PathBuf> {
+        Ok(Database::default_base_dir()?.join("recordings"))
+    }
+
     /// Get the command line for executing the agent
     ///
     /// Returns the command arguments that should be executed to run the agent.
     /// This follows the pattern where core traits provide commands to be executed,
     /// and thin wrappers handle the execution in different contexts (direct spawn,
     /// multiplexer, SSH, etc.).
+    ///
+    /// # Recording Parameters
+    ///
+    /// - `with_recording`: Whether to wrap the agent command with `ah agent record`
+    ///   for capturing output and providing session viewer UI
+    /// - `persist_recording`: Whether to save the recording to a file on disk
+    ///   (only effective when `with_recording` is true)
     #[allow(clippy::too_many_arguments)]
     pub fn get_agent_command(
         &self,
@@ -73,6 +96,7 @@ impl AgentExecutor {
         cwd: Option<&Path>,
         snapshot_id: Option<String>,
         with_recording: bool,
+        persist_recording: bool,
         task_manager_socket_path: Option<&str>,
     ) -> Result<Vec<String>, String> {
         let exe_path = ah_full_path()?;
@@ -129,7 +153,7 @@ impl AgentExecutor {
             })?;
 
             // Get the full path to the current executable
-            // Construct the full command: <exe_path> agent record --session-id <id> --task-manager-socket <path> -- <agent_args...>
+            // Construct the full command: <exe_path> agent record --session-id <id> --task-manager-socket <path> --out-file <path> -- <agent_args...>
             let mut cmd_parts = vec![
                 exe_path,
                 "agent".to_string(),
@@ -139,6 +163,17 @@ impl AgentExecutor {
                 "--task-manager-socket".to_string(),
                 socket_name.to_string(),
             ];
+
+            // Add --out-file parameter with the default recordings path only when persistence is requested
+            if persist_recording {
+                let recordings_dir = Self::get_recordings_dir().map_err(|e| e.to_string())?;
+                let now = Utc::now();
+                let year_month = format!("{:04}/{:02}", now.year(), now.month());
+                let recording_path =
+                    recordings_dir.join(year_month).join(format!("{}.ahr", session_id));
+                cmd_parts.push("--out-file".to_string());
+                cmd_parts.push(recording_path.to_string_lossy().to_string());
+            }
 
             // Add config file to record command if specified
             if let Some(ref config_file) = self.config.config_file {
@@ -171,6 +206,7 @@ impl AgentExecutor {
         cwd: Option<&Path>,
         snapshot_id: Option<String>,
         with_recording: bool,
+        persist_recording: bool,
         task_manager_socket_path: Option<&str>,
     ) -> Result<String, String> {
         let cmd_args = self.get_agent_command(
@@ -182,6 +218,7 @@ impl AgentExecutor {
             cwd,
             snapshot_id,
             with_recording,
+            persist_recording,
             task_manager_socket_path,
         )?;
 
@@ -211,6 +248,7 @@ impl AgentExecutor {
             cwd,
             snapshot_id,
             params.record(),
+            params.record() && params.record_output().unwrap_or(false),
             task_manager_socket_path,
         )?;
 
@@ -375,6 +413,7 @@ impl AgentExecutor {
                     cwd.as_deref(),
                     snapshot_id,
                     true, // spawn_agent_process always uses recording
+                    true, // spawn_agent_process always persists recording
                     None, // spawn_agent_process doesn't need task manager socket
                 ) {
                     Ok(args) => args,

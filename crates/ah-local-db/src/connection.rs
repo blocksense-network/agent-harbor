@@ -14,18 +14,19 @@ pub struct Database {
 }
 
 impl Database {
-    /// Get the default database path based on AH_HOME environment variable or platform defaults.
+    /// Get the default agent-harbor base directory based on AH_HOME environment variable or platform defaults.
     ///
+    /// This returns the base directory where agent-harbor stores its data files.
     /// Priority order (per State-Persistence.md):
     /// 1. AH_HOME environment variable (custom)
     /// 2. Platform-specific defaults:
-    ///    - Linux: `${XDG_STATE_HOME:-~/.local/state}/agent-harbor/state.db`
-    ///    - macOS: `~/Library/Application Support/agent-harbor/state.db`
-    ///    - Windows: `%LOCALAPPDATA%\agent-harbor\state.db`
-    pub fn default_path() -> crate::Result<PathBuf> {
+    ///    - Linux: `${XDG_STATE_HOME:-~/.local/state}/agent-harbor/`
+    ///    - macOS: `~/Library/Application Support/agent-harbor/`
+    ///    - Windows: `%LOCALAPPDATA%\agent-harbor/`
+    pub fn default_base_dir() -> crate::Result<PathBuf> {
         // Check AH_HOME first
         if let Ok(ah_home) = std::env::var("AH_HOME") {
-            return Ok(PathBuf::from(ah_home).join("state.db"));
+            return Ok(PathBuf::from(ah_home));
         }
 
         // Platform-specific defaults
@@ -36,7 +37,7 @@ impl Database {
                     let home = std::env::var("HOME").expect("HOME environment variable not set");
                     PathBuf::from(home).join(".local").join("state")
                 });
-            Ok(xdg_state_home.join("agent-harbor").join("state.db"))
+            Ok(xdg_state_home.join("agent-harbor"))
         }
 
         #[cfg(target_os = "macos")]
@@ -45,23 +46,34 @@ impl Database {
             Ok(PathBuf::from(home)
                 .join("Library")
                 .join("Application Support")
-                .join("agent-harbor")
-                .join("state.db"))
+                .join("agent-harbor"))
         }
 
         #[cfg(target_os = "windows")]
         {
             let local_appdata =
                 std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA environment variable not set");
-            Ok(PathBuf::from(local_appdata).join("agent-harbor").join("state.db"))
+            Ok(PathBuf::from(local_appdata).join("agent-harbor"))
         }
 
         #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         {
             // Fallback for other platforms
             let home = std::env::var("HOME").expect("HOME environment variable not set");
-            Ok(PathBuf::from(home).join(".agent-harbor").join("state.db"))
+            Ok(PathBuf::from(home).join(".agent-harbor"))
         }
+    }
+
+    /// Get the default database path based on AH_HOME environment variable or platform defaults.
+    ///
+    /// Priority order (per State-Persistence.md):
+    /// 1. AH_HOME environment variable (custom)
+    /// 2. Platform-specific defaults:
+    ///    - Linux: `${XDG_STATE_HOME:-~/.local/state}/agent-harbor/state.db`
+    ///    - macOS: `~/Library/Application Support/agent-harbor/state.db`
+    ///    - Windows: `%LOCALAPPDATA%\agent-harbor\state.db`
+    pub fn default_path() -> crate::Result<PathBuf> {
+        Ok(Self::default_base_dir()?.join("state.db"))
     }
 
     /// Open the database at the default path.

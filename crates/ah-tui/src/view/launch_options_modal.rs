@@ -183,7 +183,7 @@ fn get_renderable_options<'a>(config: &AdvancedLaunchOptions) -> Vec<RenderableO
         indent: 1,
     });
     options.push(RenderableOption {
-        label: "Record Output",
+        label: "Record Session",
         value: bool_to_yes_no(config.record_output),
         is_header: false,
         indent: 1,

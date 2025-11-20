@@ -49,7 +49,10 @@ Usage: ah agent record [OPTIONS] -- <CMD> [ARGS...]
 
 **Key options**
 
-- `--out-file <file>`: Optional compressed output file. When not specified, no .ahr file is created but IPC communication remains active for UI interaction and snapshot detection.
+- `--out-file <file>`: Optional compressed output file. When not specified, no .ahr file is created but IPC communication remains active for UI interaction and snapshot detection. When launched by the local task manager (e.g., via `ah agent start`) and the user has selected "Record session" in the launch options, the file is automatically stored at `{AH_HOME}/recordings/YYYY/MM/{session_id}.ahr` where:
+  - `{AH_HOME}` follows the same location logic as the local SQLite database (see State-Persistence.md)
+  - `YYYY/MM` is the UTC year/month when recording started
+  - `{session_id}` is the stable session ULID/UUID
 - `--out-branch-points <file>`: Optional JSON file with the session branch points (the output produced by the `branch-points` command).
 - `--brotli-q <0..11>`: Brotli level (default: 4 for fast/compact balance).
 - `--cols <n> --rows <n>`: Initial terminal size; resizes are tracked live. When specified, attempts to resize the current terminal window using Window Ops escape sequences. By default, preserve the size of the current terminal.
