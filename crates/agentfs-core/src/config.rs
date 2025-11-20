@@ -106,7 +106,7 @@ impl Default for FsConfig {
 }
 
 /// Security/permissions/ownership policy
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SecurityPolicy {
     /// If true, enforce POSIX permission checks (future)
     pub enforce_posix_permissions: bool,
@@ -118,6 +118,18 @@ pub struct SecurityPolicy {
     pub enable_windows_acl_compat: bool,
     /// If true, emulate Unix root DAC override (root bypasses discretionary checks)
     pub root_bypass_permissions: bool,
+}
+
+impl Default for SecurityPolicy {
+    fn default() -> Self {
+        Self {
+            enforce_posix_permissions: true,
+            default_uid: 0,
+            default_gid: 0,
+            enable_windows_acl_compat: false,
+            root_bypass_permissions: true,
+        }
+    }
 }
 
 /// Backstore configuration

@@ -383,6 +383,26 @@ test-fuse-performance-release:
 test-fuse-stress:
     ./scripts/test-fuse-stress.sh
 
+# Security permission matrix harness (F10.3)
+test-fuse-security-permissions:
+    ./scripts/test-fuse-security-permissions.sh
+
+# Security privilege escalation harness (F10.1)
+test-fuse-security-privileges:
+    ./scripts/test-fuse-security-privileges.sh
+
+# Security input validation harness (F10.2)
+test-fuse-security-input:
+    ./scripts/test-fuse-security-input.sh
+
+# Security sandbox boundary harness (T10.4)
+test-fuse-security-sandbox:
+    ./scripts/test-fuse-security-sandbox.sh
+
+# Security robustness harness (T10.5)
+test-fuse-security-robustness:
+    ./scripts/test-fuse-security-robustness.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 # See docs/PJDFSTest-Guide.md for detailed usage instructions

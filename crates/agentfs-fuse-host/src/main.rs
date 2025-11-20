@@ -87,7 +87,6 @@ fn main() -> Result<()> {
             fuser::MountOption::FSName("agentfs".to_string()),
             fuser::MountOption::Subtype("agentfs".to_string()),
             fuser::MountOption::Suid,
-            fuser::MountOption::DefaultPermissions,
         ];
 
         let use_default_permissions =

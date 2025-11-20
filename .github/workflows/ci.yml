@@ -213,6 +213,17 @@ jobs:
           just test-fuse-mount-options
           just test-fuse-advanced-io
 
+      - name: Run F10 security harnesses
+        env:
+          SKIP_FUSE_BUILD: 1
+        run: |
+          set -euo pipefail
+          just test-fuse-security-permissions
+          just test-fuse-security-privileges
+          just test-fuse-security-input
+          just test-fuse-security-sandbox
+          just test-fuse-security-robustness
+
       - name: Run FUSE performance harness
         env:
           SKIP_FUSE_BUILD: 1
