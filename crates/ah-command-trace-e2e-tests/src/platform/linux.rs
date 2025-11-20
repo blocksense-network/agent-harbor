@@ -4,7 +4,7 @@
 //! Linux-specific test utilities for shim injection
 
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 /// Inject the shim using LD_PRELOAD and run a command
 pub async fn inject_shim_and_run(
