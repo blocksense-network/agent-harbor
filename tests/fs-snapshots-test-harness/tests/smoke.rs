@@ -2,6 +2,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use ah_logging::test_utils::strip_ansi_codes;
 use anyhow::Context;
 #[cfg(feature = "agentfs")]
 use fs_snapshots_test_harness::assert_interpose_shim_exists;
@@ -49,28 +50,32 @@ async fn harness_driver_sets_dyld_insert_libraries() -> anyhow::Result<()> {
 
     let stdout = String::from_utf8(output.stdout)?;
 
-    // Find the line containing "shim located at" in the tracing output
+    // Find the line containing "shim located" in the tracing output
     let shim_line = stdout
         .lines()
-        .find(|line| line.contains("shim located at "))
+        .find(|line| line.contains("shim located"))
         .unwrap_or_default()
         .trim();
 
     assert!(
-        shim_line.contains("shim located at "),
+        shim_line.contains("shim located"),
         "shim location not found in output: {}",
         stdout
     );
 
-    // Extract the path from the tracing output format
-    // The format is: timestamp LEVEL target: message
-    // We need to find "shim located at " and extract everything after it
-    let shim_path_start = shim_line
-        .find("shim located at ")
-        .map(|pos| pos + "shim located at ".len())
-        .unwrap_or(0);
+    // Strip ANSI color codes from the line
+    let clean_line = strip_ansi_codes(shim_line);
 
-    let shim_path = shim_line[shim_path_start..].trim();
+    // Extract the path from the structured logging output format
+    // The format is: timestamp LEVEL target: shim located path=/path/to/shim
+    // Split by "path=" and take the second part
+    let path_parts: Vec<&str> = clean_line.split("path=").collect();
+    let shim_path = path_parts
+        .get(1)
+        .unwrap_or_else(|| {
+            panic!("Could not find 'path=' in cleaned line: {}", clean_line);
+        })
+        .trim();
     assert!(
         std::path::Path::new(shim_path).exists(),
         "reported shim path does not exist: {}",

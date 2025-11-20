@@ -33,6 +33,7 @@ agentfs-client = { path = "../agentfs-client" }
 regex = "1.10"
 libc = "0.2"
 ah-repo = { path = "../ah-repo" }
+ah-logging = { path = "../ah-logging", features = ["test-utils"] }
 fs-snapshots-test-harness = { path = "../../tests/fs-snapshots-test-harness", default-features = false, features = [
   "git",
   "zfs",

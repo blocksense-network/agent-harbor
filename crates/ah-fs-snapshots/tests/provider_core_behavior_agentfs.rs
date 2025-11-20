@@ -6,6 +6,7 @@
 //! interpose shim is active by launching the harness driver in a child
 //! process.
 
+use ah_logging::test_utils::strip_ansi_codes;
 use fs_snapshots_test_harness::assert_driver_exists;
 use std::io::{self, Write};
 
@@ -62,28 +63,31 @@ fn provider_core_behavior_agentfs() {
     if env::var_os("FS_SNAPSHOTS_HARNESS_DEBUG").is_some() {
         let _ = writeln!(io::stdout(), "AgentFS provider matrix stdout:\n{}", stdout);
     }
+
+    // Strip ANSI color codes from the output for parsing
+    let clean_stdout = strip_ansi_codes(&stdout);
     assert!(
-        stdout.contains("AgentFS provider matrix completed successfully"),
+        clean_stdout.contains("AgentFS provider matrix completed successfully"),
         "expected agentfs matrix success message in stdout, got:\n{}",
-        stdout
+        clean_stdout
     );
     assert!(
-        stdout.contains("AgentFS matrix branch workspace:"),
+        clean_stdout.contains("AgentFS matrix branch workspace:"),
         "expected branch workspace output in stdout, got:\n{}",
-        stdout
+        clean_stdout
     );
 
-    let readonly_line = stdout
+    let readonly_line = clean_stdout
         .lines()
-        .find(|line| line.starts_with("AgentFS matrix readonly mount:"))
+        .find(|line| line.contains("AgentFS matrix readonly mount:"))
         .expect("readonly mount output missing from AgentFS matrix run");
     let readonly_path = extract_path_from_line(readonly_line);
 
-    let cleanup_line = stdout
+    let cleanup_line = clean_stdout
         .lines()
         .find(|line| {
-            line.starts_with("AgentFS matrix readonly export cleaned:")
-                || line.starts_with("AgentFS matrix readonly export removed:")
+            line.contains("AgentFS matrix readonly export cleaned:")
+                || line.contains("AgentFS matrix readonly export removed:")
         })
         .expect("cleanup confirmation for readonly export missing from AgentFS matrix run");
 

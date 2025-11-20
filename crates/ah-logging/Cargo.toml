@@ -17,8 +17,12 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true, optional = true }
 dirs = "5.0"
+regex = { version = "1.10", optional = true }
+
+[dev-dependencies]
 
 [features]
 default = []
 json = []
 tokio = ["dep:tokio"]
+test-utils = ["dep:regex"]
