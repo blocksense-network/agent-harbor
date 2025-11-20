@@ -7,7 +7,7 @@ use ah_core::{
     DefaultWorkspaceTermsEnumerator, MultiplexerChoice, RemoteWorkspaceFilesEnumerator,
     WorkspaceFilesEnumerator, WorkspaceTermsEnumerator, determine_multiplexer_choice,
 };
-use ah_domain_types::{ExperimentalFeature, MultiplexerType};
+use ah_domain_types::ExperimentalFeature;
 use ah_mux::detection;
 use ah_mux_core::{Multiplexer, WindowOptions};
 use ah_repo::VcsRepo;
