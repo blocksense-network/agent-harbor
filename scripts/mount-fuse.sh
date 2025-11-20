@@ -68,7 +68,41 @@ else
     echo "Using FUSE config: $CONFIG_PATH"
     CONFIG_ARGS=(--config "$CONFIG_PATH")
   else
-    echo "No fuse_config.json supplied; falling back to AgentFS defaults."
+    echo "No fuse_config.json supplied; generating default config for current user."
+    CONFIG_PATH="$(mktemp /tmp/agentfs-default-config-XXXXXX.json)"
+    BACKSTORE_ROOT="$(mktemp -d "/tmp/agentfs-backstore-XXXXXX")"
+    cat >"$CONFIG_PATH" <<JSON
+{
+  "case_sensitivity": "Sensitive",
+  "memory": { "max_bytes_in_memory": 268435456, "spill_directory": null },
+  "limits": { "max_open_handles": 4096, "max_branches": 64, "max_snapshots": 128 },
+  "cache": {
+    "attr_ttl_ms": 500,
+    "entry_ttl_ms": 500,
+    "negative_ttl_ms": 500,
+    "enable_readdir_plus": true,
+    "auto_cache": true,
+    "writeback_cache": false
+  },
+  "enable_xattrs": true,
+  "enable_ads": false,
+  "track_events": false,
+  "security": {
+    "enforce_posix_permissions": true,
+    "default_uid": 0,
+    "default_gid": 0,
+    "enable_windows_acl_compat": false,
+    "root_bypass_permissions": true
+  },
+  "backstore": {
+    "HostFs": { "root": "$BACKSTORE_ROOT", "prefer_native_snapshots": false }
+  },
+  "overlay": { "enabled": false, "lower_root": null, "copyup_mode": "Lazy" },
+  "interpose": { "enabled": false, "max_copy_bytes": 1048576, "require_reflink": false, "allow_windows_reparse": false }
+}
+JSON
+    CONFIG_ARGS=(--config "$CONFIG_PATH")
+    echo "Generated default FUSE config: $CONFIG_PATH (backstore: $BACKSTORE_ROOT)"
   fi
 fi
 
@@ -91,3 +125,35 @@ else
   "$HOST_BIN" "${CONFIG_ARGS[@]}" "${FUSE_FLAGS[@]}" "$mountpoint" &
 fi
 echo "AgentFS FUSE filesystem mounted. PID: $!"
+for _ in {1..30}; do
+  if mountpoint -q "$mountpoint" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+if [[ "${AGENTFS_FUSE_SKIP_AUTO_CHOWN:-0}" != "1" ]]; then
+  chown_ok=false
+  for _ in {1..30}; do
+    if sudo chown "$(id -u)":"$(id -g)" "$mountpoint" 2>/dev/null; then
+      chown_ok=true
+      break
+    fi
+    sleep 0.2
+  done
+  if ! $chown_ok; then
+    echo "Warning: failed to chown mountpoint to $(id -u):$(id -g); continuing" >&2
+  else
+    if command -v stat >/dev/null 2>&1; then
+      echo "Mountpoint ownership: $(stat -c '%u:%g %a' "$mountpoint" 2>/dev/null || true)"
+    fi
+  fi
+
+  for _ in {1..10}; do
+    if chmod 0777 "$mountpoint" 2>/dev/null || sudo chmod 0777 "$mountpoint" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+  done
+else
+  echo "Skipping auto-chown/chmod (AGENTFS_FUSE_SKIP_AUTO_CHOWN=1)"
+fi
