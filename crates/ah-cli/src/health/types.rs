@@ -160,6 +160,57 @@ pub trait HealthFormatter {
 /// Human-readable formatter for console output
 pub struct HumanReadableFormatter;
 
+impl HumanReadableFormatter {
+    /// Get Kitty configuration guidance based on current setup
+    fn get_kitty_configuration_guidance(&self) -> String {
+        use ah_mux::KittyMultiplexer;
+
+        let mut guidance = String::new();
+        guidance.push_str("💡 Kitty Configuration Check:\n");
+
+        // Try to create a KittyMultiplexer and check configuration
+        match KittyMultiplexer::default().check_configuration() {
+            Ok(()) => {
+                guidance.push_str("   ✅ Kitty is properly configured for Agent Harbor\n");
+                guidance.push_str("   ✅ Remote control is enabled\n");
+                guidance.push_str("   ✅ Socket listening is configured\n");
+                guidance.push_str("   ✅ Layout splitting is enabled\n");
+            }
+            Err(error) => {
+                guidance.push_str("   ⚠️  Kitty configuration issues detected:\n");
+
+                // Parse the error message to provide specific guidance
+                let error_str = error.to_string();
+                if error_str.contains("allow_remote_control") {
+                    guidance.push_str("   ❌ Remote control is not enabled\n");
+                    guidance.push_str("   📝 Add to ~/.config/kitty/kitty.conf:\n");
+                    guidance.push_str("      allow_remote_control yes\n");
+                }
+                if error_str.contains("listen_on") {
+                    guidance.push_str("   ❌ Socket listening is not configured\n");
+                    guidance.push_str("   📝 Add to ~/.config/kitty/kitty.conf:\n");
+                    guidance.push_str("      listen_on unix:/tmp/kitty-ah.sock\n");
+                }
+                if error_str.contains("enabled_layouts") {
+                    guidance.push_str("   ❌ Layout splitting is not enabled\n");
+                    guidance.push_str("   📝 Add to ~/.config/kitty/kitty.conf:\n");
+                    guidance.push_str("      enabled_layouts splits\n");
+                }
+                if error_str.contains("not installed") || error_str.contains("not in PATH") {
+                    guidance.push_str("   ❌ Kitty is not installed or not in PATH\n");
+                    guidance.push_str("   📝 Install Kitty: https://sw.kovidgoyal.net/kitty/\n");
+                }
+
+                guidance.push_str(
+                    "   🔄 After making changes, restart Kitty or reload config (Ctrl+Shift+F5)\n",
+                );
+            }
+        }
+
+        guidance
+    }
+}
+
 impl HealthFormatter for HumanReadableFormatter {
     fn format_agent_status(&self, status: &AgentHealthStatus, with_credentials: bool) -> String {
         let mut output = String::new();
@@ -254,6 +305,12 @@ impl HealthFormatter for HumanReadableFormatter {
             for (i, env) in environments.iter().enumerate() {
                 let indent = "  ".repeat(i);
                 output.push_str(&format!("{}{}\n", indent, env));
+            }
+
+            // Check for Kitty-specific configuration guidance
+            if environments.iter().any(|env| env.contains("Kitty")) {
+                output.push('\n');
+                output.push_str(&self.get_kitty_configuration_guidance());
             }
         }
         output.push('\n');
