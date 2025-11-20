@@ -790,7 +790,10 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             } else {
                                 match create_remote_port(&port_name) {
                                     Ok(port) => {
-                                        daemon.register_fsevents_port(port_reg_req.pid, port);
+                                        daemon
+                                            .lock()
+                                            .unwrap()
+                                            .register_fsevents_port(port_reg_req.pid, port);
                                         log::info!(
                                             "Registered FSEvents CFMessagePort for pid {}: {}",
                                             port_reg_req.pid,

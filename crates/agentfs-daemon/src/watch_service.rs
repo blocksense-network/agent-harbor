@@ -534,7 +534,7 @@ impl WatchServiceEventSink {
     /// Route event to matching kqueue watchers with coalescing
     #[cfg(target_os = "macos")]
     fn route_to_kqueue_watchers(&self, evt: &EventKind, affected_paths: &[String]) {
-        let watches = self.watch_service.kqueue_watches.lock().unwrap();
+        let watches = self._watch_service.kqueue_watches.lock().unwrap();
 
         // Collect all events per (pid, kq_fd, fd) to enable coalescing
         let mut coalesced_events: std::collections::HashMap<(u32, u32, u32), u32> =
@@ -604,10 +604,10 @@ impl WatchServiceEventSink {
             };
 
             // Enqueue the event for this kqueue
-            self.watch_service.enqueue_event(pid, kq_fd, synthesized_event);
+            self._watch_service.enqueue_event(pid, kq_fd, synthesized_event);
 
             // Post doorbell to wake up the shim (only once per kqueue)
-            if let Err(e) = self.watch_service.post_doorbell(pid, kq_fd, 1) {
+            if let Err(e) = self._watch_service.post_doorbell(pid, kq_fd, 1) {
                 tracing::error!("Failed to post doorbell for event: {}", e);
             }
         }
@@ -653,7 +653,7 @@ impl WatchServiceEventSink {
                     Ok(()) => {
                         if job.reserved_next_event_id > job.start_event_id {
                             let latest_event_id = job.reserved_next_event_id - 1;
-                            let mut watches = self.watch_service.fsevents_watches.lock().unwrap();
+                            let mut watches = self._watch_service.fsevents_watches.lock().unwrap();
                             if let Some(watch) = watches.get_mut(&(job.pid, job.registration_id)) {
                                 watch.last_sent_event_id = latest_event_id;
                                 watch.next_event_id = job.reserved_next_event_id;
@@ -668,7 +668,7 @@ impl WatchServiceEventSink {
                             e
                         );
 
-                        let mut watches = self.watch_service.fsevents_watches.lock().unwrap();
+                        let mut watches = self._watch_service.fsevents_watches.lock().unwrap();
                         if let Some(watch) = watches.get_mut(&(job.pid, job.registration_id)) {
                             watch.next_event_id = job.start_event_id;
                         }
@@ -697,7 +697,7 @@ impl WatchServiceEventSink {
         }
 
         let mut jobs = Vec::new();
-        let mut watches = self.watch_service.fsevents_watches.lock().unwrap();
+        let mut watches = self._watch_service.fsevents_watches.lock().unwrap();
 
         for ((pid_key, registration_key), watch) in watches.iter_mut() {
             let pid = *pid_key;

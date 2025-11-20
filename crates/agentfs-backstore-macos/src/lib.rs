@@ -1866,6 +1866,7 @@ fn m7_overlay_copy_up_on_write_then_snapshot() -> Result<(), Box<dyn std::error:
             enabled: true,
             lower_root: Some(lower_dir.clone()),
             copyup_mode: CopyUpMode::Lazy,
+            visible_subdir: None,
         },
         interpose: InterposeConfig::default(),
     };
@@ -1957,6 +1958,7 @@ fn m7_branch_from_snapshot_clones_only_metadata() -> Result<(), Box<dyn std::err
             enabled: true,
             lower_root: None,
             copyup_mode: CopyUpMode::Lazy,
+            visible_subdir: None,
         },
         limits: FsLimits::default(),
         ..Default::default()
@@ -2046,6 +2048,7 @@ fn m7_interpose_fd_open_reflink_1gb_file() -> Result<(), Box<dyn std::error::Err
             enabled: false, // Disable overlay for interpose testing
             lower_root: None,
             copyup_mode: CopyUpMode::Lazy,
+            visible_subdir: None,
         },
         interpose: InterposeConfig {
             enabled: true,
@@ -2148,6 +2151,7 @@ fn m7_concurrent_writers_snapshot_read() -> Result<(), Box<dyn std::error::Error
             enabled: true,
             lower_root: None, // No lower - all files in upper
             copyup_mode: CopyUpMode::Lazy,
+            visible_subdir: None,
         },
         limits: FsLimits {
             max_open_handles: 1000,
@@ -2367,6 +2371,7 @@ mod benches {
                 enabled: true,
                 lower_root: Some(lower_dir.clone()),
                 copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
+                visible_subdir: None,
             },
             interpose: agentfs_core::config::InterposeConfig::default(),
         };
@@ -2505,6 +2510,7 @@ mod benches {
                 enabled: true,
                 lower_root: Some(lower_dir.clone()),
                 copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
+                visible_subdir: None,
             },
             interpose: agentfs_core::config::InterposeConfig::default(),
         };
