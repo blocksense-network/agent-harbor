@@ -3,7 +3,6 @@
 
 //! Core type definitions for AgentFS
 
-use libc::mode_t;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -266,7 +265,7 @@ impl Attributes {
             mode |= libc::S_IXOTH;
         }
 
-        mode as u32
+        mode
     }
 
     pub fn rdev(&self) -> u64 {

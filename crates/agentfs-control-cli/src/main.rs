@@ -57,6 +57,7 @@ enum Command {
     },
 }
 
+#[allow(clippy::disallowed_methods)]
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let mount = cli.mount.canonicalize().context("invalid mount path")?;
