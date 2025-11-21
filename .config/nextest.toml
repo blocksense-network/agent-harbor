@@ -3,9 +3,6 @@
 
 [profile.default]
 fail-fast = false
-# Skip known-problem suites (tmux integration, git snapshot harness, command-trace e2e)
-# so `just test-rust` stays green in dev environments without those deps configured.
-default-filter = 'not (package(ah-mux) | package(fs-snapshots-test-harness) | package(ah-command-trace-e2e-tests))'
 
 # Don't show output for passing tests
 status-level = "leak"
