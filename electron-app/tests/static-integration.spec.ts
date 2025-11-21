@@ -67,7 +67,7 @@ test.describe('Static WebUI Integration', () => {
       } catch (e) {
         // Server not ready yet
       }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100));
       if (i === maxRetries - 1) {
         throw new Error('Mock server failed to start after 3 seconds');
       }
@@ -144,7 +144,7 @@ test.describe('Static WebUI Integration', () => {
 
     // Verify no console errors about failed API calls
     const logs: string[] = [];
-    window.on('console', (msg) => {
+    window.on('console', msg => {
       if (msg.type() === 'error') {
         logs.push(msg.text());
       }
@@ -153,9 +153,7 @@ test.describe('Static WebUI Integration', () => {
     await window.waitForTimeout(1000);
 
     // Filter out expected errors (e.g., CORS, dev server notifications)
-    const apiErrors = logs.filter(
-      (log) => log.includes('/api/v1/') && !log.includes('404')
-    );
+    const apiErrors = logs.filter(log => log.includes('/api/v1/') && !log.includes('404'));
     expect(apiErrors.length).toBe(0);
   });
 

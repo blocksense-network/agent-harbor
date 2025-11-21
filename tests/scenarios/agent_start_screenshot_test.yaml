@@ -2,37 +2,37 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: agent_start_screenshot_test
-tags: ["cli", "tui", "local"]
+tags: ['cli', 'tui', 'local']
 repo:
   init: true
-  branch: "feature/screenshot-test"
+  branch: 'feature/screenshot-test'
 server:
-  mode: "none"
+  mode: 'none'
 timeline:
   - think:
-      - [500, "Starting agent execution"]
-  - screenshot: "agent_started"
+      - [500, 'Starting agent execution']
+  - screenshot: 'agent_started'
   - agentToolUse:
-      toolName: "run_command"
+      toolName: 'run_command'
       args:
         command: "echo 'Agent executing command'"
-        cwd: "."
+        cwd: '.'
       progress:
-        - [300, "Executing echo command..."]
-      result: "Agent executing command"
-      status: "ok"
-  - screenshot: "command_executed"
+        - [300, 'Executing echo command...']
+      result: 'Agent executing command'
+      status: 'ok'
+  - screenshot: 'command_executed'
   - agentEdits:
-      path: "test_file.txt"
+      path: 'test_file.txt'
       linesAdded: 2
       linesRemoved: 0
-  - screenshot: "file_created"
+  - screenshot: 'file_created'
   - assistant:
-      - [500, "Screenshot test completed successfully"]
-      - [300, "All test artifacts created and verified"]
+      - [500, 'Screenshot test completed successfully']
+      - [300, 'All test artifacts created and verified']
   - complete: true
 expect:
   exitCode: 0
   artifacts:
-    - type: "file"
-      pattern: "test_file.txt"
+    - type: 'file'
+      pattern: 'test_file.txt'

@@ -55,7 +55,7 @@ test.describe('TOM Select Integration', () => {
     // Find the model selector
     const modelSelector = draftCard.locator('[data-testid="model-selector"]');
     await expect(modelSelector).toBeVisible();
-    console.log('MODEL SELECTOR HTML:', await modelSelector.evaluate((el) => el.outerHTML));
+    console.log('MODEL SELECTOR HTML:', await modelSelector.evaluate(el => el.outerHTML));
 
     // Check that it has the basic TOM Select structure
     const selectElement = modelSelector.locator('select.tom-select-input');
@@ -118,7 +118,7 @@ test.describe('TOM Select Integration', () => {
     // Click increase button
     await increaseBtn.click({ force: true });
     await expect(countDisplay).toHaveText('1');
-    console.log('option after increase', await option.evaluate((el) => el.innerHTML));
+    console.log('option after increase', await option.evaluate(el => el.innerHTML));
 
     // Click decrease button
     await decreaseBtn.click({ force: true });

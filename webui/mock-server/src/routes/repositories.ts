@@ -63,7 +63,7 @@ router.get('/', (req, res) => {
 // GET /api/v1/repositories/:id - Get specific repository
 router.get('/:id', (req, res) => {
   const { id } = req.params;
-  const repository = mockRepositories.find((r) => r.id === id);
+  const repository = mockRepositories.find(r => r.id === id);
 
   if (!repository) {
     return res.status(404).json({

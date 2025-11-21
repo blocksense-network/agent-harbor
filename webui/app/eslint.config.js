@@ -21,17 +21,20 @@ export default [
     settings: {
       // Tailwind v4: point to the CSS entry that has `@import "tailwindcss";`
       'better-tailwindcss': {
-        entryPoint: 'src/app.css'
-      }
+        entryPoint: 'src/app.css',
+      },
     },
     rules: {
       // full recommended bundle (stylistic + correctness)
       ...betterTw.configs['recommended'].rules,
       // Disable unregistered class checking for known third-party/custom classes
-      'better-tailwindcss/no-unregistered-classes': ['error', {
-        ignore: ['tom-select-input']
-      }]
-    }
+      'better-tailwindcss/no-unregistered-classes': [
+        'error',
+        {
+          ignore: ['tom-select-input'],
+        },
+      ],
+    },
   },
   solid.configs['flat/recommended'],
   {
@@ -40,8 +43,8 @@ export default [
     rules: {
       'jsx-a11y/alt-text': 'warn',
       'jsx-a11y/no-autofocus': 'warn',
-      'jsx-a11y/anchor-has-content': 'warn'
-    }
+      'jsx-a11y/anchor-has-content': 'warn',
+    },
   },
   {
     files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],
@@ -49,7 +52,7 @@ export default [
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 2022,
-        sourceType: 'module'
+        sourceType: 'module',
       },
       globals: {
         console: 'readonly',
@@ -82,29 +85,29 @@ export default [
         clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
-        navigator: 'readonly'
-      }
+        navigator: 'readonly',
+      },
     },
     plugins: {
       '@typescript-eslint': tseslint,
-      prettier: prettier
+      prettier: prettier,
     },
     rules: {
       ...tseslint.configs.recommended.rules,
       'prettier/prettier': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/no-explicit-any': 'warn'
-    }
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
   },
   {
     files: ['**/*.js', '**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'module'
+      sourceType: 'module',
     },
     rules: {
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }]
-    }
-  }
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
 ];

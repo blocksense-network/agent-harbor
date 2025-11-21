@@ -58,7 +58,7 @@ test.beforeAll(async () => {
     } catch (e) {
       // Server not ready yet
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 100));
     if (i === maxRetries - 1) {
       throw new Error('Mock server failed to start after 3 seconds');
     }
@@ -88,11 +88,11 @@ test.beforeAll(async () => {
   console.log('Got first window!');
 
   // Set up error listeners BEFORE the page loads
-  page.on('pageerror', (error) => {
+  page.on('pageerror', error => {
     errors.push(`Page error: ${error.message}\n${error.stack}`);
   });
 
-  page.on('console', (msg) => {
+  page.on('console', msg => {
     const text = msg.text();
     const type = msg.type();
 
@@ -139,11 +139,13 @@ test('should not have console errors', async () => {
   await page.waitForTimeout(5000);
 
   // Filter out expected errors (API 404s when backend isn't running)
-  const unexpectedErrors = errors.filter((err) => {
+  const unexpectedErrors = errors.filter(err => {
     // Expected: API 404 errors when backend isn't running
-    if (err.includes('Failed to fetch sessions') ||
-        err.includes('Failed to fetch drafts') ||
-        err.includes('Failed to refresh sessions')) {
+    if (
+      err.includes('Failed to fetch sessions') ||
+      err.includes('Failed to fetch drafts') ||
+      err.includes('Failed to refresh sessions')
+    ) {
       return false;
     }
     // Expected: 404 for missing resources during load

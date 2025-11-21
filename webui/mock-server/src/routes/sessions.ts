@@ -69,7 +69,7 @@ class ScenarioReplayer {
 
     for (const scenarioDir of scenarioDirs) {
       if (fs.existsSync(scenarioDir)) {
-        const files = fs.readdirSync(scenarioDir).filter((f) => f.endsWith('.json'));
+        const files = fs.readdirSync(scenarioDir).filter(f => f.endsWith('.json'));
         for (const file of files) {
           try {
             const filePath = path.join(scenarioDir, file);
@@ -123,7 +123,7 @@ class ScenarioReplayer {
     if (this.scenarios.has(scenarioName)) {
       this.sessionScenarios.set(sessionId, scenarioName);
       logger.log(
-        `Assigned manual scenario '${scenarioName}' to session ${sessionId} (next: ${this.manualScenarios[this.manualScenarioIndex]})`
+        `Assigned manual scenario '${scenarioName}' to session ${sessionId} (next: ${this.manualScenarios[this.manualScenarioIndex]})`,
       );
       return scenarioName;
     }
@@ -233,7 +233,7 @@ if (mockSessions.length === 0) {
   // Assign a scenario to the default session too
   const assignedScenario = scenarioReplayer.assignScenarioToSession('01HVZ6K9T1N8S6M3V3Q3F0X5B7');
   if (assignedScenario) {
-    const defaultSession = mockSessions.find((s) => s.id === '01HVZ6K9T1N8S6M3V3Q3F0X5B7');
+    const defaultSession = mockSessions.find(s => s.id === '01HVZ6K9T1N8S6M3V3Q3F0X5B7');
     if (defaultSession) {
       defaultSession.metadata = { scenario: assignedScenario };
     }
@@ -250,7 +250,7 @@ router.get('/', (req, res) => {
 
   // Add scenario sessions if scenario runner is active
   if (scenarioRunner) {
-    const scenarioSessions = scenarioRunner.getActiveSessions().map((session) => ({
+    const scenarioSessions = scenarioRunner.getActiveSessions().map(session => ({
       id: session.id,
       tenantId: 'scenario',
       projectId: 'scenario-project',
@@ -271,8 +271,8 @@ router.get('/', (req, res) => {
     // Add completed sessions if they should be merged
     const completedSessions = scenarioRunner
       .getCompletedSessions()
-      .filter((session) => session.status === 'completed' && session.merged)
-      .map((session) => ({
+      .filter(session => session.status === 'completed' && session.merged)
+      .map(session => ({
         id: session.id,
         tenantId: 'scenario',
         projectId: 'scenario-project',
@@ -294,11 +294,11 @@ router.get('/', (req, res) => {
   }
 
   if (status) {
-    filteredSessions = filteredSessions.filter((s) => s.status === status);
+    filteredSessions = filteredSessions.filter(s => s.status === status);
   }
 
   if (projectId) {
-    filteredSessions = filteredSessions.filter((s) => s.projectId === projectId);
+    filteredSessions = filteredSessions.filter(s => s.projectId === projectId);
   }
 
   const start = (Number(page) - 1) * Number(perPage);
@@ -319,7 +319,7 @@ router.get('/', (req, res) => {
 // GET /api/v1/sessions/:id - Get Session
 router.get('/:id', (req, res) => {
   // First check regular mock sessions
-  let session = mockSessions.find((s) => s.id === req.params.id);
+  let session = mockSessions.find(s => s.id === req.params.id);
 
   // If not found and scenario runner is active, check scenario sessions
   if (!session && scenarioRunner) {
@@ -365,7 +365,7 @@ router.get('/:id', (req, res) => {
 
 // POST /api/v1/sessions/:id/stop - Stop Session
 router.post('/:id/stop', (req, res) => {
-  const session = mockSessions.find((s) => s.id === req.params.id);
+  const session = mockSessions.find(s => s.id === req.params.id);
 
   if (!session) {
     return res.status(404).json({
@@ -382,7 +382,7 @@ router.post('/:id/stop', (req, res) => {
 
 // DELETE /api/v1/sessions/:id - Cancel Session
 router.delete('/:id', (req, res) => {
-  const index = mockSessions.findIndex((s) => s.id === req.params.id);
+  const index = mockSessions.findIndex(s => s.id === req.params.id);
 
   if (index === -1) {
     return res.status(404).json({
@@ -402,7 +402,7 @@ router.get('/:id/events', (req, res) => {
   const sessionId = req.params.id;
 
   // First check regular mock sessions
-  let session = mockSessions.find((s) => s.id === sessionId);
+  let session = mockSessions.find(s => s.id === sessionId);
 
   // If not found and scenario runner is active, check scenario sessions
   let isScenarioSession = false;
@@ -765,7 +765,7 @@ router.get('/:id/logs', (req, res) => {
   const sessionId = req.params.id;
 
   // First check regular mock sessions
-  let session = mockSessions.find((s) => s.id === sessionId);
+  let session = mockSessions.find(s => s.id === sessionId);
 
   // If not found and scenario runner is active, check scenario sessions
   let isScenarioSession = false;
@@ -935,7 +935,7 @@ router.get('/:id/logs', (req, res) => {
           level: 'info',
           message: 'Task execution in progress',
           ts: new Date(Date.now() - 200000).toISOString(),
-        }
+        },
       );
     }
   }

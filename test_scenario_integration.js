@@ -4,22 +4,29 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-
 // Simple integration test for scenario functionality
 const { spawn } = require('child_process');
 const http = require('http');
 
 console.log('🧪 Testing scenario integration...');
 
-const serverProcess = spawn('node', ['./webui/mock-server/dist/index.js', '--scenario=test_scenarios/test_scenario.yaml', '--merge-completed'], {
-  stdio: ['pipe', 'pipe', 'pipe'],
-  cwd: process.cwd()
-});
+const serverProcess = spawn(
+  'node',
+  [
+    './webui/mock-server/dist/index.js',
+    '--scenario=test_scenarios/test_scenario.yaml',
+    '--merge-completed',
+  ],
+  {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    cwd: process.cwd(),
+  },
+);
 
 let serverOutput = '';
 let serverReady = false;
 
-serverProcess.stdout.on('data', (data) => {
+serverProcess.stdout.on('data', data => {
   const output = data.toString();
   serverOutput += output;
   console.log('SERVER:', output.trim());
@@ -35,17 +42,17 @@ serverProcess.stdout.on('data', (data) => {
   }
 });
 
-serverProcess.stderr.on('data', (data) => {
+serverProcess.stderr.on('data', data => {
   console.error('SERVER ERROR:', data.toString());
 });
 
 function testAPI() {
   console.log('📡 Testing sessions API...');
 
-  const req = http.get('http://localhost:3001/api/v1/sessions', (res) => {
+  const req = http.get('http://localhost:3001/api/v1/sessions', res => {
     let data = '';
 
-    res.on('data', (chunk) => {
+    res.on('data', chunk => {
       data += chunk;
     });
 
@@ -71,31 +78,33 @@ function testAPI() {
           const sessionId = scenarioSessions[0].id;
           console.log(`🔍 Testing individual session ${sessionId}...`);
 
-          const sessionReq = http.get(`http://localhost:3001/api/v1/sessions/${sessionId}`, (sessionRes) => {
-            let sessionData = '';
-            sessionRes.on('data', (chunk) => sessionData += chunk);
-            sessionRes.on('end', () => {
-              try {
-                const session = JSON.parse(sessionData);
-                console.log(`📋 Session status: ${session.status}`);
-                console.log(`📝 Session metadata:`, session.metadata);
+          const sessionReq = http.get(
+            `http://localhost:3001/api/v1/sessions/${sessionId}`,
+            sessionRes => {
+              let sessionData = '';
+              sessionRes.on('data', chunk => (sessionData += chunk));
+              sessionRes.on('end', () => {
+                try {
+                  const session = JSON.parse(sessionData);
+                  console.log(`📋 Session status: ${session.status}`);
+                  console.log(`📝 Session metadata:`, session.metadata);
 
-                cleanup();
-              } catch (e) {
-                console.error('❌ Failed to parse session response:', e.message);
-                cleanup();
-              }
-            });
-          });
+                  cleanup();
+                } catch (e) {
+                  console.error('❌ Failed to parse session response:', e.message);
+                  cleanup();
+                }
+              });
+            },
+          );
 
-          sessionReq.on('error', (e) => {
+          sessionReq.on('error', e => {
             console.error('❌ Session request failed:', e.message);
             cleanup();
           });
         } else {
           cleanup();
         }
-
       } catch (e) {
         console.error('❌ Failed to parse sessions response:', e.message);
         cleanup();
@@ -103,7 +112,7 @@ function testAPI() {
     });
   });
 
-  req.on('error', (e) => {
+  req.on('error', e => {
     console.error('❌ API request failed:', e.message);
     cleanup();
   });

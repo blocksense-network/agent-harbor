@@ -13,7 +13,8 @@ class MinimalReporter {
     this.failedTests = [];
     this.passedTests = [];
     // Use shared timestamp from environment, or generate one
-    this.runTimestamp = process.env.TEST_RUN_TIMESTAMP || new Date().toISOString().replace(/[:.]/g, '-');
+    this.runTimestamp =
+      process.env.TEST_RUN_TIMESTAMP || new Date().toISOString().replace(/[:.]/g, '-');
     this.runDir = path.join(this.logsDir, `test-run-${this.runTimestamp}`);
 
     console.log('MinimalReporter constructor - CWD:', process.cwd());
@@ -44,10 +45,10 @@ class MinimalReporter {
     // Create unique log file for this test in the run-specific directory
     const testId = `${++this.testCounter}`;
     const sanitizedTitle = test.title
-      .replace(/[^a-zA-Z0-9_-]/g, '_')  // Replace special chars with underscores
-      .replace(/_+/g, '_')              // Replace multiple underscores with single
-      .replace(/^_+|_+$/g, '')          // Remove leading/trailing underscores
-      .substring(0, 50);                // Limit length
+      .replace(/[^a-zA-Z0-9_-]/g, '_') // Replace special chars with underscores
+      .replace(/_+/g, '_') // Replace multiple underscores with single
+      .replace(/^_+|_+$/g, '') // Remove leading/trailing underscores
+      .substring(0, 50); // Limit length
 
     // Ensure run directory exists before creating log file
     try {
@@ -111,7 +112,9 @@ class MinimalReporter {
       }
       if (result.error) {
         logStream.write(`[${new Date().toISOString()}] ERROR: ${result.error.message}\n`);
-        logStream.write(`[${new Date().toISOString()}] ERROR_STACK: ${result.error.stack || 'No stack trace'}\n`);
+        logStream.write(
+          `[${new Date().toISOString()}] ERROR_STACK: ${result.error.stack || 'No stack trace'}\n`,
+        );
       }
     }
 
@@ -129,7 +132,7 @@ class MinimalReporter {
       status: result.status,
       duration: result.duration || 0,
       logFile: logFile,
-      error: result.error ? result.error.message : null
+      error: result.error ? result.error.message : null,
     };
 
     if (result.status === 'passed') {
@@ -159,7 +162,9 @@ class MinimalReporter {
         console.log(`      • ${test.title}`);
         console.log(`        📄 ${relativePath}`);
       });
-      console.log(`\n   🔍 View detailed results: cat ${path.join(this.runDir, 'failed-tests.json')}`);
+      console.log(
+        `\n   🔍 View detailed results: cat ${path.join(this.runDir, 'failed-tests.json')}`,
+      );
       console.log(`   📊 View all results: cat ${path.join(this.runDir, 'test-summary.json')}`);
     } else {
       console.log(`   ✅ All ${this.passedTests.length} tests passed!`);
@@ -184,17 +189,22 @@ class MinimalReporter {
 
     // Create failed tests summary (human readable)
     const failedSummaryPath = path.join(this.runDir, 'failed-tests.txt');
-    const failedContent = this.failedTests.map(test => {
-      const relativePath = path.relative(process.cwd(), test.logFile);
-      return `FAILED: ${test.title}
+    const failedContent = this.failedTests
+      .map(test => {
+        const relativePath = path.relative(process.cwd(), test.logFile);
+        return `FAILED: ${test.title}
    File: ${test.file}:${test.line}
    Log: ${relativePath}
    Error: ${test.error || 'No error message'}
    ---
 `;
-    }).join('\n');
+      })
+      .join('\n');
 
-    fs.writeFileSync(failedSummaryPath, `Test Run: ${this.runTimestamp}\nFailed Tests: ${this.failedTests.length}\n\n${failedContent}`);
+    fs.writeFileSync(
+      failedSummaryPath,
+      `Test Run: ${this.runTimestamp}\nFailed Tests: ${this.failedTests.length}\n\n${failedContent}`,
+    );
 
     // Create comprehensive test summary (JSON)
     const summaryPath = path.join(this.runDir, 'test-summary.json');
@@ -205,7 +215,7 @@ class MinimalReporter {
       failed: this.failedTests.length,
       passedTests: this.passedTests,
       failedTests: this.failedTests,
-      runDirectory: this.runDir
+      runDirectory: this.runDir,
     };
 
     fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2));

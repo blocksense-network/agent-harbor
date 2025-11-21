@@ -33,7 +33,7 @@ test.describe('Keyboard Navigation', () => {
       await taskListNav.focus();
 
       // Check that focus was set
-      const isFocused = await taskListNav.evaluate((el) => document.activeElement === el);
+      const isFocused = await taskListNav.evaluate(el => document.activeElement === el);
       console.log('Task list navigation focused:', isFocused);
 
       // Check that we have cards to work with
@@ -69,7 +69,7 @@ test.describe('Keyboard Navigation', () => {
       // Wait for page to load with data
       await page.waitForFunction(
         () => !!document.querySelector('[data-testid="draft-task-card"]'),
-        { timeout: 10000 }
+        { timeout: 10000 },
       );
       await page.waitForFunction(() => !!document.querySelector('[data-testid="task-card"]'), {
         timeout: 10000,
@@ -105,20 +105,20 @@ test.describe('Keyboard Navigation', () => {
       const sessionCards = page.locator('[data-testid="task-card"]');
 
       // Check if any draft card has the selection class
-      const draftSelected = await draftCards.evaluateAll((cards) =>
-        cards.some((card) => card.classList.contains('bg-blue-50'))
+      const draftSelected = await draftCards.evaluateAll(cards =>
+        cards.some(card => card.classList.contains('bg-blue-50')),
       );
 
       // Check if any session card has the selection class
-      const sessionSelected = await sessionCards.evaluateAll((cards) =>
-        cards.some((card) => card.classList.contains('ring-2'))
+      const sessionSelected = await sessionCards.evaluateAll(cards =>
+        cards.some(card => card.classList.contains('ring-2')),
       );
 
       console.log(
         'Up arrow test - draftSelected:',
         draftSelected,
         'sessionSelected:',
-        sessionSelected
+        sessionSelected,
       );
 
       expect(draftSelected || sessionSelected).toBe(true);
@@ -350,7 +350,7 @@ test.describe('Keyboard Navigation', () => {
 
       // Verify no new task card appears with this text
       await expect(
-        page.locator('[data-testid="task-card"]:has-text("Incomplete task")')
+        page.locator('[data-testid="task-card"]:has-text("Incomplete task")'),
       ).not.toBeVisible();
     });
 

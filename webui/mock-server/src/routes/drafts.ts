@@ -34,7 +34,7 @@ let mockDrafts: any[] = [
 router.get('/', (req, res) => {
   try {
     logger.log(`[DRAFTS] GET /api/v1/drafts - Returning ${mockDrafts.length} drafts`);
-    mockDrafts.forEach((d) => logger.log(`  - ${d.id}: prompt="${d.prompt}"`));
+    mockDrafts.forEach(d => logger.log(`  - ${d.id}: prompt="${d.prompt}"`));
     // Return all drafts (in a real implementation, this would be filtered by user)
     res.status(200).json({
       items: mockDrafts,
@@ -107,7 +107,7 @@ router.put('/:id', (req, res) => {
     const { id } = req.params;
 
     // Find the draft
-    const draftIndex = mockDrafts.findIndex((draft) => draft.id === id);
+    const draftIndex = mockDrafts.findIndex(draft => draft.id === id);
     if (draftIndex === -1) {
       return res.status(404).json({
         type: 'https://docs.example.com/errors/not-found',
@@ -151,7 +151,7 @@ router.delete('/:id', (req, res) => {
     const { id } = req.params;
 
     // Find the draft
-    const draftIndex = mockDrafts.findIndex((draft) => draft.id === id);
+    const draftIndex = mockDrafts.findIndex(draft => draft.id === id);
     if (draftIndex === -1) {
       return res.status(404).json({
         type: 'https://docs.example.com/errors/not-found',

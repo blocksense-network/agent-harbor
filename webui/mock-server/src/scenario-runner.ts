@@ -262,7 +262,7 @@ export class ScenarioRunner {
 
   private convertTimelineEventToScenarioEvents(
     event: TimelineEvent,
-    sessionId: string
+    sessionId: string,
   ): ScenarioEvent[] {
     const events: ScenarioEvent[] = [];
     const ts = new Date().toISOString();
@@ -352,17 +352,17 @@ export class ScenarioRunner {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   // Public API methods
   getActiveSessions(): ScenarioSession[] {
-    return Array.from(this.sessions.values()).filter((session) => session.status === 'running');
+    return Array.from(this.sessions.values()).filter(session => session.status === 'running');
   }
 
   getCompletedSessions(): ScenarioSession[] {
     return Array.from(this.sessions.values()).filter(
-      (session) => session.status === 'completed' || session.status === 'failed'
+      session => session.status === 'completed' || session.status === 'failed',
     );
   }
 

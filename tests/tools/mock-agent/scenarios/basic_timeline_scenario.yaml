@@ -8,11 +8,11 @@ repo:
 timeline:
   - llmResponse:
       - think:
-          - [500, "Processing request for basic_timeline_scenario"]
+          - [500, 'Processing request for basic_timeline_scenario']
       - assistant:
-          - [300, "Completed basic_timeline_scenario scenario"]
+          - [300, 'Completed basic_timeline_scenario scenario']
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "test.py"
+    - type: 'taskFile'
+      pattern: 'test.py'
