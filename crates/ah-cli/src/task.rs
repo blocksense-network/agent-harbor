@@ -6,16 +6,15 @@ use ah_core::{
     AgentTasks, DatabaseManager, EditorError, PushHandler, PushOptions, devshell_names,
     edit_content_interactive, parse_push_to_remote_flag,
 };
-
-// Used in test modules
-#[cfg(test)]
-use ah_domain_types::AgentSoftware;
+#[allow(unused_imports)]
+use ah_domain_types::{AgentChoice, AgentSoftware};
 use ah_fs_snapshots::PreparedWorkspace;
 use ah_local_db::{SessionRecord, TaskRecord};
 use ah_repo::VcsRepo;
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand, ValueEnum};
-use std::path::PathBuf;
+use config_core::{load_all, paths};
+use std::path::{Path, PathBuf};
 #[cfg(test)]
 use tui_testing::TestedTerminalProgram;
 
@@ -414,26 +413,39 @@ impl TaskCommands {
 
 impl TaskCreateArgs {
     /// Execute the task creation
-    pub async fn run(self, _global_config: Option<&str>) -> Result<()> {
+    pub async fn run(self, global_config: Option<&str>) -> Result<()> {
         // Validate mutually exclusive options
         if self.prompt.is_some() && self.prompt_file.is_some() {
             anyhow::bail!("Error: --prompt and --prompt-file are mutually exclusive");
         }
 
-        // Parse agent flags into structured selections (applies defaults later)
-        let _agent_selections = self.parse_agents()?;
-
         // Determine if we're creating a new branch or appending to existing
         let branch_name = self.branch.as_ref().filter(|b| !b.trim().is_empty()).cloned();
         let start_new_branch = branch_name.is_some();
-
-        // Get task content
-        let prompt_content = self.get_prompt_content().await?;
 
         // Create VCS repository instance
         let repo = VcsRepo::new(".").context("Failed to initialize VCS repository")?;
 
         let orig_branch = repo.current_branch().context("Failed to get current branch")?;
+
+        // Load layered configuration with CLI flag overlays
+        let resolved_config = self
+            .load_config(global_config, repo.root())
+            .context("Failed to load configuration layers")?;
+
+        // Parse agent flags into structured selections (applies defaults + config)
+        let mut _agent_selections = self.resolve_agents(&resolved_config.json)?;
+
+        // Browser automation is explicitly out-of-scope for this release; guard early.
+        let browser_enabled = match &self.browser_automation {
+            Some(v) => Some(parse_bool_flag(v).context("Invalid --browser-automation value")?),
+            None => resolved_config.json.get("browser-automation").and_then(|v| v.as_bool()),
+        };
+        if browser_enabled.unwrap_or(false) {
+            anyhow::bail!(
+                "Browser automation is disabled for this release; this path is intentionally blocked"
+            );
+        }
 
         // Handle branch creation/validation
         let actual_branch_name = if start_new_branch {
@@ -448,6 +460,9 @@ impl TaskCreateArgs {
 
         let cleanup_branch = start_new_branch;
         let mut _task_committed = false;
+
+        // Get task content
+        let prompt_content = self.get_prompt_content().await?;
 
         // Get task content (editor or provided)
         let task_content = if let Some(content) = prompt_content {
@@ -611,6 +626,86 @@ impl TaskCreateArgs {
         }
 
         Ok(())
+    }
+
+    /// Load merged configuration with proper precedence, including CLI flag overlays.
+    fn load_config(
+        &self,
+        global_config: Option<&str>,
+        repo_root: &Path,
+    ) -> Result<config_core::Resolved> {
+        let mut paths = paths::discover_paths(Some(repo_root));
+        if let Some(cfg_path) = global_config {
+            paths.cli_config = Some(PathBuf::from(cfg_path));
+        }
+
+        let flag_overlays = self.flag_overlays();
+        let flag_refs: Vec<(&str, &str)> =
+            flag_overlays.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+
+        load_all(&paths, &flag_refs).context("Failed to merge configuration layers")
+    }
+
+    /// Convert CLI flag values into dotted-key overlays for config precedence.
+    fn flag_overlays(&self) -> Vec<(String, String)> {
+        let mut pairs = Vec::new();
+        if let Some(val) = &self.browser_automation {
+            pairs.push(("browser-automation".to_string(), val.clone()));
+        }
+        if let Some(val) = &self.browser_profile {
+            pairs.push(("browser-profile".to_string(), val.clone()));
+        }
+        if let Some(val) = &self.chatgpt_username {
+            pairs.push(("chatgpt-username".to_string(), val.clone()));
+        }
+        if let Some(val) = &self.codex_workspace {
+            pairs.push(("codex-workspace".to_string(), val.clone()));
+        }
+        if let Some(val) = &self.workspace {
+            pairs.push(("workspace".to_string(), val.clone()));
+        }
+        if let Some(val) = &self.fleet {
+            pairs.push(("fleet".to_string(), val.clone()));
+        }
+        if let Some(val) = &self.target_branch {
+            pairs.push(("target-branch".to_string(), val.clone()));
+        }
+        if !self.notifications.is_empty() {
+            pairs.push(("notifications".to_string(), self.notifications.clone()));
+        }
+        pairs
+    }
+
+    /// Resolve agent selections from CLI flags or config defaults.
+    fn resolve_agents(&self, resolved_config: &serde_json::Value) -> Result<Vec<AgentSelection>> {
+        let mut selections = self.parse_agents()?;
+        if self.agents.is_empty() && self.models.is_empty() && self.instances.is_empty() {
+            if let Some(cfg_agents) = Self::default_agents_from_config(resolved_config)? {
+                selections = cfg_agents;
+            }
+        }
+        Ok(selections)
+    }
+
+    /// Map `default-agents` config into AgentSelection
+    fn default_agents_from_config(
+        config: &serde_json::Value,
+    ) -> Result<Option<Vec<AgentSelection>>> {
+        let Some(raw) = config.get("default-agents") else {
+            return Ok(None);
+        };
+        let defaults: Vec<AgentChoice> =
+            serde_json::from_value(raw.clone()).context("invalid default-agents config")?;
+        let mapped = defaults
+            .into_iter()
+            .map(|choice| AgentSelection {
+                software: choice.agent.software.to_string(),
+                version: Some(choice.agent.version),
+                model: Some(choice.model),
+                instances: choice.count as u32,
+            })
+            .collect::<Vec<_>>();
+        Ok(Some(mapped))
     }
 
     /// Get prompt content from --prompt or --prompt-file options
@@ -1276,6 +1371,33 @@ mod tests {
                     instances: 2
                 }
             ]
+        );
+    }
+
+    #[test]
+    fn test_default_agents_from_config() {
+        let config_json = serde_json::json!({
+            "default-agents": [
+                {
+                    "agent": { "software": "Claude", "version": "beta" },
+                    "model": "sonnet",
+                    "count": 2,
+                    "settings": {}
+                }
+            ]
+        });
+
+        let mapped = TaskCreateArgs::default_agents_from_config(&config_json)
+            .expect("config parse ok")
+            .unwrap();
+        assert_eq!(
+            mapped,
+            vec![AgentSelection {
+                software: "claude".to_string(),
+                version: Some("beta".to_string()),
+                model: Some("sonnet".to_string()),
+                instances: 2
+            }]
         );
     }
 
