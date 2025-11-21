@@ -15,6 +15,7 @@ use ah_repo::VcsRepo;
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand, ValueEnum};
 use config_core::{load_all, paths};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -539,6 +540,10 @@ impl TaskCreateArgs {
                 .context("Failed to create metadata-only commit")?;
         }
 
+        // Resolve delivery/labels defaults
+        let delivery = self.resolve_delivery(&resolved_config.json)?;
+        let labels = Self::parse_labels(&self.labels)?;
+
         // Initialize database manager
         let db_manager = DatabaseManager::new().context("Failed to initialize database")?;
 
@@ -620,10 +625,14 @@ impl TaskCreateArgs {
             prompt: processed_prompt.clone(),
             repo_url: None, // TODO: Get from VCS remote URL
             branch: Some(actual_branch_name.clone()),
-            commit: None,                         // TODO: Get current commit hash
-            delivery: Some("branch".to_string()), // Default delivery method
+            commit: None, // TODO: Get current commit hash
+            delivery: Some(delivery),
             instances: Some(1),
-            labels: None,
+            labels: if labels.is_empty() {
+                None
+            } else {
+                Some(serde_json::to_string(&labels)?)
+            },
             browser_automation: 0, // Disabled this release
             browser_profile: None,
             chatgpt_username: None,
@@ -985,6 +994,18 @@ impl TaskCreateArgs {
         hint
     }
 
+    fn parse_labels(label_args: &[String]) -> Result<HashMap<String, String>> {
+        let mut labels = HashMap::new();
+        for kv in label_args {
+            if let Some((k, v)) = kv.split_once('=') {
+                labels.insert(k.to_string(), v.to_string());
+            } else {
+                anyhow::bail!("Invalid label '{}'. Use k=v syntax.", kv);
+            }
+        }
+        Ok(labels)
+    }
+
     fn build_metadata_commit_message(&self, repo: &VcsRepo, branch_name: &str) -> String {
         let mut msg = format!("Start-Agent-Branch: {}", branch_name);
         if let Ok(Some(remote)) = repo.default_remote_http_url() {
@@ -998,6 +1019,9 @@ impl TaskCreateArgs {
 
     fn commit_metadata_only(&self, repo: &VcsRepo, branch_name: &str) -> Result<()> {
         // Only support git for now
+        // Ensure branch is checked out
+        repo.checkout_branch(branch_name)?;
+
         let message = self.build_metadata_commit_message(repo, branch_name);
         let status = Command::new("git")
             .args(["commit", "--allow-empty", "-m", &message])
@@ -1008,6 +1032,20 @@ impl TaskCreateArgs {
             anyhow::bail!("git commit --allow-empty failed for metadata-only commit");
         }
         Ok(())
+    }
+
+    fn resolve_delivery(&self, resolved_config: &serde_json::Value) -> Result<String> {
+        if let Some(d) = &self.delivery {
+            return Ok(match d {
+                DeliveryMethod::Pr => "pr".to_string(),
+                DeliveryMethod::Branch => "branch".to_string(),
+                DeliveryMethod::Patch => "patch".to_string(),
+            });
+        }
+        if let Some(val) = resolved_config.get("delivery").and_then(|v| v.as_str()) {
+            return Ok(val.to_string());
+        }
+        Ok("branch".to_string())
     }
 
     /// Handle push operations
@@ -1737,6 +1775,16 @@ mod tests {
         assert!(msg.contains("Dev-Shell: devshell-name"));
 
         Ok(())
+    }
+
+    #[test]
+    fn test_parse_labels() {
+        let labels =
+            TaskCreateArgs::parse_labels(&["k1=v1".to_string(), "foo=bar".to_string()]).unwrap();
+        assert_eq!(labels.get("k1").unwrap(), "v1");
+        assert_eq!(labels.get("foo").unwrap(), "bar");
+
+        assert!(TaskCreateArgs::parse_labels(&["badlabel".to_string()]).is_err());
     }
 
     #[test]
