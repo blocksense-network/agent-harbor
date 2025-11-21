@@ -31,24 +31,31 @@ const BUILD_MODE = process.env['WEBUI_BUILD_MODE'] || 'server';
 const isStaticBuild = BUILD_MODE === 'client';
 
 export default defineConfig({
-  ssr: !isStaticBuild, // SSR mode for server builds, CSR for static builds
-  ...(isStaticBuild ? {
-    // For CSR builds, disable prerendering
-    server: {
-      preset: "static",
-      prerender: {
-        routes: [], // Don't prerender any routes for CSR
-      },
-    },
-  } : {
-    // For SSR builds, use Node.js adapter
-    server: {
-      preset: "node",
-      // Proxy-based architecture: SSR server acts as single entry point
-      // All /api/v1/* requests are forwarded to the access point daemon
-      // This enables SSR server to implement user access policies in the future
-    },
-  }),
+  // ssr: !isStaticBuild, // SSR mode for server builds, CSR for static builds
+  // ...(isStaticBuild ? {
+  //   // For CSR builds, disable prerendering
+  //   server: {
+  //     preset: "static",
+  //     prerender: {
+  //       routes: [], // Don't prerender any routes for CSR
+  //     },
+  //   },
+  // } : {
+  //   // For SSR builds, use Node.js adapter
+  //   server: {
+  //     preset: "node",
+  //     // Proxy-based architecture: SSR server acts as single entry point
+  //     // All /api/v1/* requests are forwarded to the access point daemon
+  //     // This enables SSR server to implement user access policies in the future
+  //   },
+  // }),
+  server: {
+    preset: "cloudflare-pages",
+
+    rollupConfig: {
+      external: ["node:async_hooks"]
+    }
+  },
   vite: {
     // Define environment variables available at build time
     define: {
