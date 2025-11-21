@@ -489,13 +489,9 @@ impl TaskCreateArgs {
                     );
                 }
             }
-        } else if self.non_interactive {
-            tracing::error!(
-                "Non-interactive mode requires --branch when not on an agent task branch"
-            );
-            std::process::exit(10);
         } else {
-            anyhow::bail!("Provide --branch to start a new task branch before recording a task");
+            // Branch creation skipped; use provided branch or stay on current
+            branch_name.unwrap_or(orig_branch.clone())
         };
 
         let cleanup_branch = start_new_branch;
@@ -535,6 +531,12 @@ impl TaskCreateArgs {
 
         if processed_prompt.trim().is_empty() {
             anyhow::bail!("Aborted: empty task prompt.");
+        }
+
+        // When task files are disabled but metadata commits requested, create metadata-only commit
+        if !create_task_files && create_metadata_commits {
+            self.commit_metadata_only(&repo, &actual_branch_name)
+                .context("Failed to create metadata-only commit")?;
         }
 
         // Initialize database manager
@@ -981,6 +983,31 @@ impl TaskCreateArgs {
             hint.push('\n');
         }
         hint
+    }
+
+    fn build_metadata_commit_message(&self, repo: &VcsRepo, branch_name: &str) -> String {
+        let mut msg = format!("Start-Agent-Branch: {}", branch_name);
+        if let Ok(Some(remote)) = repo.default_remote_http_url() {
+            msg.push_str(&format!("\nTarget-Remote: {}", remote));
+        }
+        if let Some(devshell) = &self.devshell {
+            msg.push_str(&format!("\nDev-Shell: {}", devshell));
+        }
+        msg
+    }
+
+    fn commit_metadata_only(&self, repo: &VcsRepo, branch_name: &str) -> Result<()> {
+        // Only support git for now
+        let message = self.build_metadata_commit_message(repo, branch_name);
+        let status = Command::new("git")
+            .args(["commit", "--allow-empty", "-m", &message])
+            .current_dir(repo.root())
+            .status()
+            .context("Failed to spawn git commit for metadata-only commit")?;
+        if !status.success() {
+            anyhow::bail!("git commit --allow-empty failed for metadata-only commit");
+        }
+        Ok(())
     }
 
     /// Handle push operations
@@ -1692,6 +1719,24 @@ mod tests {
         let raw2 = "// c1\nTask body\n// c2\n\n\nMore";
         let processed2 = TaskCreateArgs::process_prompt(raw2, "//");
         assert_eq!(processed2, "Task body\n\nMore");
+    }
+
+    #[tokio::test]
+    async fn test_metadata_commit_message_includes_remote_and_devshell() -> Result<()> {
+        let (_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
+        let repo = VcsRepo::new(repo_dir.path()).expect("vcs repo");
+
+        let args = TaskCreateArgs {
+            devshell: Some("devshell-name".to_string()),
+            ..base_task_args()
+        };
+
+        let msg = args.build_metadata_commit_message(&repo, "feature-x");
+        assert!(msg.contains("Start-Agent-Branch: feature-x"));
+        assert!(msg.contains("Target-Remote: "));
+        assert!(msg.contains("Dev-Shell: devshell-name"));
+
+        Ok(())
     }
 
     #[test]
