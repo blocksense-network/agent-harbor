@@ -8,7 +8,7 @@ use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
 pub async fn process_request(request: Request) -> Response {
-    info!("Processing request: {:?}", request);
+    info!(operation = "process_request", request = ?request, "Processing request");
 
     match request {
         Request::Ping(_) => Response::success(),
@@ -48,17 +48,17 @@ pub async fn process_request(request: Request) -> Response {
 }
 
 async fn handle_zfs_clone(snapshot: String, clone: String) -> Response {
-    debug!("Creating ZFS clone {} from {}", clone, snapshot);
+    debug!(operation = "zfs_clone", snapshot = %snapshot, clone = %clone, "Creating ZFS clone");
 
     // Validate that the snapshot exists
     if !zfs_snapshot_exists(&snapshot).await {
-        debug!("Snapshot {} does not exist; returning error", snapshot);
+        debug!(operation = "zfs_clone", snapshot = %snapshot, "Snapshot does not exist; returning error");
         return Response::error(format!("ZFS snapshot {} does not exist", snapshot));
     }
 
     // Validate that the clone dataset doesn't already exist
     if zfs_dataset_exists(&clone).await {
-        debug!("Clone dataset {} already exists; returning error", clone);
+        debug!(operation = "zfs_clone", clone = %clone, "Clone dataset already exists; returning error");
         return Response::error(format!("ZFS dataset {} already exists", clone));
     }
 
@@ -69,32 +69,23 @@ async fn handle_zfs_clone(snapshot: String, clone: String) -> Response {
             match get_zfs_mountpoint(&clone).await {
                 Ok(mountpoint) => match mountpoint.as_str() {
                     "none" | "legacy" => {
-                        debug!(
-                            "Clone {} has mountpoint {}; returning success without mountpoint",
-                            clone, mountpoint
-                        );
+                        debug!(operation = "zfs_clone", clone = %clone, mountpoint = %mountpoint, "Clone has mountpoint; returning success without mountpoint");
                         Response::success()
                     }
                     _ => {
-                        debug!(
-                            "Clone {} mounted at {} (preserving original ownership)",
-                            clone, mountpoint
-                        );
+                        debug!(operation = "zfs_clone", clone = %clone, mountpoint = %mountpoint, "Clone mounted (preserving original ownership)");
                         Response::success_with_mountpoint(mountpoint)
                     }
                 },
                 Err(e) => {
-                    warn!("Failed to get mountpoint for clone {}: {}", clone, e);
+                    warn!(operation = "zfs_clone", clone = %clone, error = %e, "Failed to get mountpoint for clone");
                     Response::success() // Clone succeeded but mountpoint unknown
                 }
             }
         }
         Err(e) => {
-            error!(
-                "Failed to create ZFS clone {} from {}: {}",
-                clone, snapshot, e
-            );
-            debug!("Returning error to client for clone {}: {}", clone, e);
+            error!(operation = "zfs_clone", clone = %clone, snapshot = %snapshot, error = %e, "Failed to create ZFS clone");
+            debug!(operation = "zfs_clone", clone = %clone, error = %e, "Returning error to client for clone");
             Response::error(format!(
                 "Failed to create ZFS clone {} from {}: {}",
                 clone, snapshot, e
@@ -104,7 +95,7 @@ async fn handle_zfs_clone(snapshot: String, clone: String) -> Response {
 }
 
 async fn handle_zfs_snapshot(source: String, snapshot: String) -> Response {
-    debug!("Creating ZFS snapshot {} from {}", snapshot, source);
+    debug!(operation = "zfs_snapshot", source = %source, snapshot = %snapshot, "Creating ZFS snapshot");
 
     // Validate that the source dataset exists
     if !zfs_dataset_exists(&source).await {
@@ -120,14 +111,14 @@ async fn handle_zfs_snapshot(source: String, snapshot: String) -> Response {
     match run_privileged_command("zfs", &["snapshot", &snapshot]).await {
         Ok(_) => Response::success(),
         Err(e) => {
-            error!("Failed to create ZFS snapshot {}: {}", snapshot, e);
+            error!(operation = "zfs_snapshot", snapshot = %snapshot, error = %e, "Failed to create ZFS snapshot");
             Response::error(format!("Failed to create ZFS snapshot {}: {}", snapshot, e))
         }
     }
 }
 
 async fn handle_zfs_delete(target: String) -> Response {
-    debug!("Deleting ZFS dataset {}", target);
+    debug!(operation = "zfs_delete", target = %target, "Deleting ZFS dataset");
 
     // Validate that the target dataset exists
     if !zfs_dataset_exists(&target).await {
@@ -138,17 +129,14 @@ async fn handle_zfs_delete(target: String) -> Response {
     match run_privileged_command("zfs", &["destroy", "-r", &target]).await {
         Ok(_) => Response::success(),
         Err(e) => {
-            error!("Failed to delete ZFS dataset {}: {}", target, e);
+            error!(operation = "zfs_delete", target = %target, error = %e, "Failed to delete ZFS dataset");
             Response::error(format!("Failed to delete ZFS dataset {}: {}", target, e))
         }
     }
 }
 
 async fn handle_btrfs_clone(source: String, destination: String) -> Response {
-    debug!(
-        "Creating Btrfs subvolume snapshot {} from {}",
-        destination, source
-    );
+    debug!(operation = "btrfs_clone", source = %source, destination = %destination, "Creating Btrfs subvolume snapshot");
 
     // Validate that the source subvolume exists
     if !btrfs_subvolume_exists(&source).await {
@@ -170,10 +158,7 @@ async fn handle_btrfs_clone(source: String, destination: String) -> Response {
             Response::success_with_path(destination)
         }
         Err(e) => {
-            error!(
-                "Failed to create Btrfs snapshot {} from {}: {}",
-                destination, source, e
-            );
+            error!(operation = "btrfs_clone", source = %source, destination = %destination, error = %e, "Failed to create Btrfs snapshot");
             Response::error(format!(
                 "Failed to create Btrfs snapshot {} from {}: {}",
                 destination, source, e
@@ -188,7 +173,7 @@ async fn handle_btrfs_snapshot(source: String, destination: String) -> Response 
 }
 
 async fn handle_btrfs_delete(target: String) -> Response {
-    debug!("Deleting Btrfs subvolume {}", target);
+    debug!(operation = "btrfs_delete", target = %target, "Deleting Btrfs subvolume");
 
     // Validate that the target subvolume exists
     if !btrfs_subvolume_exists(&target).await {
@@ -199,7 +184,7 @@ async fn handle_btrfs_delete(target: String) -> Response {
     match run_privileged_command("btrfs", &["subvolume", "delete", "-R", &target]).await {
         Ok(_) => Response::success(),
         Err(e) => {
-            error!("Failed to delete Btrfs subvolume {}: {}", target, e);
+            error!(operation = "btrfs_delete", target = %target, error = %e, "Failed to delete Btrfs subvolume");
             Response::error(format!(
                 "Failed to delete Btrfs subvolume {}: {}",
                 target, e
@@ -226,7 +211,7 @@ async fn run_privileged_command(program: &str, args: &[&str]) -> Result<Output, 
 }
 
 async fn run_command(program: &str, args: &[&str]) -> Result<Output, String> {
-    debug!("Running command: {} {}", program, args.join(" "));
+    debug!(operation = "run_command", program = %program, args = ?args, "Running command");
 
     let output = Command::new(program)
         .args(args)
@@ -256,7 +241,7 @@ fn get_sudo_user() -> Option<String> {
 }
 
 async fn handle_zfs_list_snapshots(dataset: String) -> Response {
-    debug!("Listing ZFS snapshots for dataset: {}", dataset);
+    debug!(operation = "zfs_list_snapshots", dataset = %dataset, "Listing ZFS snapshots for dataset");
 
     // Run zfs list to get all snapshots for this dataset
     let result = run_privileged_command(

@@ -1,6 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use ah_logging::{Level, init_plaintext};
 use anyhow::Result;
 use clap::Parser;
 use ssz::{Decode, Encode};
@@ -34,17 +35,21 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Initialize tracing
+    // Initialize logging with ah_logging
     let level = match args.log_level.as_str() {
-        "error" => tracing::Level::ERROR,
-        "warn" => tracing::Level::WARN,
-        "info" => tracing::Level::INFO,
-        "debug" => tracing::Level::DEBUG,
-        "trace" => tracing::Level::TRACE,
-        _ => tracing::Level::INFO,
+        "error" => Level::ERROR,
+        "warn" => Level::WARN,
+        "info" => Level::INFO,
+        "debug" => Level::DEBUG,
+        "trace" => Level::TRACE,
+        _ => Level::INFO,
     };
 
-    tracing_subscriber::fmt().with_max_level(level).init();
+    init_plaintext("ah-fs-snapshots-daemon", level)?;
+
+    // Create a span that sets the component field for all log messages in this daemon
+    let span = tracing::info_span!("daemon", component = "ah-fs-snapshots-daemon");
+    let _enter = span.enter();
 
     info!("Starting AH filesystem snapshots daemon");
 
@@ -52,10 +57,7 @@ async fn main() -> Result<()> {
         info!("Running in stdin mode");
         run_stdin_mode().await?;
     } else {
-        info!(
-            "Running in socket mode, socket path: {}",
-            args.socket_path.display()
-        );
+        info!(operation = "start_daemon", socket_path = %args.socket_path.display(), "Running in socket mode");
         run_socket_mode(args.socket_path).await?;
     }
 
@@ -72,16 +74,16 @@ async fn run_socket_mode(socket_path: PathBuf) -> Result<()> {
     tokio::select! {
         result = server.run() => {
             if let Err(e) = result {
-                error!("Server error: {}", e);
+                error!(error = %e, "Server error");
                 return Err(e);
             }
         }
         _ = sigint.recv() => {
-            info!("Received SIGINT, shutting down...");
+            info!(operation = "shutdown", signal = "SIGINT", "Received SIGINT, shutting down");
             server.shutdown().await?;
         }
         _ = sigterm.recv() => {
-            info!("Received SIGTERM, shutting down...");
+            info!(operation = "shutdown", signal = "SIGTERM", "Received SIGTERM, shutting down");
             server.shutdown().await?;
         }
     }
@@ -116,7 +118,7 @@ async fn run_stdin_mode() -> Result<()> {
 
         // Encode response as SSZ and output as hex
         let response_bytes = Encode::as_ssz_bytes(&response);
-        tracing::info!(response_hex = %hex::encode(&response_bytes), "daemon response");
+        tracing::info!(operation = "process_request", response_hex = %hex::encode(&response_bytes), "daemon response");
     }
 
     Ok(())

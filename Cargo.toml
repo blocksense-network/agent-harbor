@@ -113,6 +113,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 log = "0.4"
+ah-logging = { path = "crates/ah-logging" }
 
 # Error handling
 anyhow = "1.0"

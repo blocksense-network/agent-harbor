@@ -345,7 +345,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
 
 - **Deliverables**:
   - Enhance `crates/ah-fs-snapshots-daemon` so the daemon can spawn and monitor the `agentfs-fuse-host` binary (from `crates/agentfs-fuse-host`).
-  - Add lifecycle RPCs (SSZ `Request` variants) for `mount_agentfs_fuse` with the correct mount flags/backstore configuration, `unmount_agentfs_fuse`, and `status_agentfs_fuse`, persisting mountpoints, PID files, and log paths under `/run/agentfs-fuse/`.
+  - Add lifecycle RPCs (SSZ `Request` variants) for `MountAgentfsFuse` with the correct mount flags/backstore configuration, `UnmountAgentfsFuse`, and `StatusAgentfsFuse`, persisting mountpoints, PID files, and log paths under `/run/agentfs-fuse/`.
   - Surface explicit backstore parameters (InMemory, HostFs directory, RamDisk) in the RPCs so downstream tests can request the same combinations described in `AgentFS.md` and `AgentFS-Core.md`; ensure mount logs report which backstore is active.
   - Emit structured logs (mount command, PID, stderr tail, reason for restart) via `tracing` so `just check-ah-fs-snapshots-daemon` can report actionable diagnostics when the mount fails.
 
@@ -355,7 +355,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - Integration tests in `crates/ah-fs-snapshots-daemon/tests` cover mount/unmount flows, status queries, and failure propagation (bad config, missing fuse device) without requiring manual sudo steps beyond launching the daemon.
 
 - **Automated Test Plan**:
-  - **T12.1 Mount RPC Test**: Tokio integration test that sends `mount_agentfs_fuse` over the daemon socket, waits for `/tmp/agentfs/.agentfs/control`, and then issues `unmount_agentfs_fuse`.
+  - **T12.1 Mount RPC Test**: Tokio integration test that sends `MountAgentfsFuse` over the daemon socket, waits for `/tmp/agentfs/.agentfs/control`, and then issues `UnmountAgentfsFuse`.
   - **T12.2 Crash/Restart Harness**: Script under `scripts/test-fs-daemon-mount.sh` that kills the `agentfs-fuse-host` PID mid-run and asserts the daemon restarts it while preserving the mountpoint.
   - **T12.3 Status CLI**: Extend `scripts/check-ah-fs-snapshots-daemon.sh` to call the new status RPC and verify output (mount path, pid, health) so CI can gate on daemon readiness.
 
