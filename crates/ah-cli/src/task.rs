@@ -465,18 +465,37 @@ impl TaskCreateArgs {
 
         // Handle branch creation/validation when task files are enabled
         let actual_branch_name = if create_task_files {
+            let agent_tasks =
+                AgentTasks::new(repo.root()).context("Failed to initialize agent tasks")?;
+            let on_task_branch = agent_tasks.on_task_branch().unwrap_or(false);
+
             if start_new_branch {
                 let branch = branch_name.as_ref().unwrap();
                 self.handle_new_branch_creation(&repo, branch).await?;
                 branch.clone()
             } else {
-                // Using existing branch
-                self.validate_existing_branch(&repo, &orig_branch).await?;
-                orig_branch.clone()
+                // No branch provided: must be on an agent task branch for follow-up
+                if on_task_branch {
+                    self.validate_existing_branch(&repo, &orig_branch).await?;
+                    orig_branch.clone()
+                } else if self.non_interactive {
+                    tracing::error!(
+                        "Non-interactive mode requires --branch when not on an agent task branch"
+                    );
+                    std::process::exit(10);
+                } else {
+                    anyhow::bail!(
+                        "Provide --branch to start a new task branch before recording a task"
+                    );
+                }
             }
+        } else if self.non_interactive {
+            tracing::error!(
+                "Non-interactive mode requires --branch when not on an agent task branch"
+            );
+            std::process::exit(10);
         } else {
-            // No local branch creation; rely on remote/cloud paths
-            orig_branch.clone()
+            anyhow::bail!("Provide --branch to start a new task branch before recording a task");
         };
 
         let cleanup_branch = start_new_branch;
@@ -542,8 +561,9 @@ impl TaskCreateArgs {
         // Create task and commit when task files are enabled
         if create_task_files {
             let tasks = AgentTasks::new(repo.root()).context("Failed to initialize agent tasks")?;
+            let on_task_branch = tasks.on_task_branch().unwrap_or(false);
 
-            let commit_result = if start_new_branch || !tasks.on_task_branch().unwrap_or(false) {
+            let commit_result = if start_new_branch || !on_task_branch {
                 tasks.record_initial_task(
                     &processed_prompt,
                     &actual_branch_name,
@@ -2386,7 +2406,7 @@ exit {}
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(env)]
     fn integration_test_sandbox_basic() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -2430,7 +2450,7 @@ exit {}
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(env)]
     fn integration_test_sandbox_with_network() -> Result<()> {
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
 

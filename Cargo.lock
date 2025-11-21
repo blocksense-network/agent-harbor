@@ -298,7 +298,7 @@ dependencies = [
  "security-framework 2.11.1",
  "serde",
  "serde_json",
- "serial_test",
+ "serial_test 3.2.0",
  "tar",
  "tempfile",
  "thiserror 1.0.69",
@@ -673,7 +673,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "serial_test",
+ "serial_test 3.2.0",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -7899,7 +7899,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "scc",
- "serial_test_derive",
+ "serial_test_derive 3.2.0",
 ]
 
 [[package]]
