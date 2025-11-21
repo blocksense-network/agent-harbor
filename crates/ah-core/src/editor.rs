@@ -100,6 +100,14 @@ fn editor_available(editor: &str) -> bool {
 /// Returns `EditorError::EditorFailed` if the editor exits with a non-zero status.
 /// Returns `EditorError::NoEditorFound` if no suitable editor is available.
 pub fn edit_content_interactive(initial_content: Option<&str>) -> EditorResult<String> {
+    edit_content_interactive_with_hint(initial_content, EDITOR_HINT)
+}
+
+/// Interactive editor flow with a custom hint block (used by CLI to respect comment prefixes).
+pub fn edit_content_interactive_with_hint(
+    initial_content: Option<&str>,
+    hint: &str,
+) -> EditorResult<String> {
     let editor = discover_editor();
 
     // Create temporary file
@@ -112,7 +120,7 @@ pub fn edit_content_interactive(initial_content: Option<&str>) -> EditorResult<S
     } else {
         writeln!(temp_file)?;
     }
-    write!(temp_file, "{}", EDITOR_HINT)?;
+    write!(temp_file, "{}", hint)?;
     temp_file.flush()?;
 
     // Close the file so the editor can access it
