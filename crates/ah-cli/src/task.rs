@@ -496,7 +496,7 @@ impl TaskCreateArgs {
                 tracing::error!("Error: Non-interactive mode requires --prompt or --prompt-file");
                 std::process::exit(10);
             }
-            match self.get_editor_content() {
+            match self.get_editor_content(&resolved_config.json) {
                 Ok(content) => content,
                 Err(e) => {
                     // Cleanup branch if we created it and editor failed
@@ -850,7 +850,8 @@ impl TaskCreateArgs {
     }
 
     /// Get content using the interactive editor
-    fn get_editor_content(&self) -> Result<String> {
+    fn get_editor_content(&self, _resolved_config: &serde_json::Value) -> Result<String> {
+        // TODO: honor task-template from config; placeholder for now
         match edit_content_interactive(None) {
             Ok(content) => Ok(content),
             Err(EditorError::EmptyTaskPrompt) => anyhow::bail!("Aborted: empty task prompt."),

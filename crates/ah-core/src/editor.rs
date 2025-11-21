@@ -17,7 +17,8 @@ use std::process::Command;
 /// This exact text must be present in the template for proper comment stripping.
 pub const EDITOR_HINT: &str = r#"# Please write your task prompt above.
 # Enter an empty prompt to abort the task creation process.
-# Feel free to leave this comment in the file. It will be ignored."#;
+# Feel free to leave this comment in the file. It will be ignored.
+# Saving and exiting will deliver work according to the configured delivery method."#;
 
 /// Error type for editor operations.
 #[derive(Debug, thiserror::Error)]
