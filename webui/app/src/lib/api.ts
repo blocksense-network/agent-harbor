@@ -247,7 +247,7 @@ export interface ApiError {
 const API_BASE =
   typeof window !== 'undefined'
     ? '/api/v1' // Browser: use proxy
-    : 'http://localhost:3002/api/v1'; // SSR: call SSR server's proxy
+    : 'http://localhost:3001/api/v1'; // SSR: call SSR server's proxy
 
 class ApiClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
