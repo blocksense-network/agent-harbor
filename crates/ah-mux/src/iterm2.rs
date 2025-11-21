@@ -284,10 +284,8 @@ impl Multiplexer for ITerm2Multiplexer {
     fn run_command(&self, pane: &PaneId, cmd: &str, opts: &CommandOptions) -> Result<(), MuxError> {
         debug!("Running command in pane {}: {}", pane, cmd);
 
-        // Determine which session to target based on the pane ID
-        // Pane IDs ending with ".0" are the left pane (current session)
-        // Other pane IDs are the right pane (second session)
-        let session_target = if pane.ends_with(".0") {
+        // Determine which session to target based on the pane ID.
+        let session_target = if pane.starts_with("iterm2-window-") || pane.ends_with(".0") {
             "current session"
         } else {
             "second session"
@@ -321,8 +319,8 @@ impl Multiplexer for ITerm2Multiplexer {
     fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
         debug!("Sending text to pane {}: {}", pane, text);
 
-        // Determine which session to target based on the pane ID
-        let session_target = if pane.ends_with(".0") {
+        // Determine which session to target based on the pane ID.
+        let session_target = if pane.starts_with("iterm2-window-") || pane.ends_with(".0") {
             "current session"
         } else {
             "second session"
