@@ -14,6 +14,7 @@ use ah_repo::VcsRepo;
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand, ValueEnum};
 use config_core::{load_all, paths};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 #[cfg(test)]
 use tui_testing::TestedTerminalProgram;
@@ -718,6 +719,41 @@ impl TaskCreateArgs {
         Ok(Some(mapped))
     }
 
+    /// Validate branch name against the CLI spec regex subset.
+    ///
+    /// Allowed characters: A-Z, a-z, 0-9, dot, underscore, hyphen. Must be non-empty.
+    fn validate_branch_name(name: &str) -> Result<()> {
+        if name.is_empty() {
+            anyhow::bail!("Invalid branch name: cannot be empty");
+        }
+        let valid = name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+        if !valid {
+            anyhow::bail!(
+                "Invalid branch name '{}': only A-Z, a-z, 0-9, dot, underscore, and hyphen are allowed",
+                name
+            );
+        }
+        Ok(())
+    }
+
+    /// Guard against using protected branch names
+    fn guard_primary_branch(name: &str) -> Result<()> {
+        let primaries: HashSet<&str> = ["main", "master", "trunk", "default"].into_iter().collect();
+        if primaries.contains(name) {
+            anyhow::bail!("Error: Refusing to operate on primary branch '{}'", name);
+        }
+        Ok(())
+    }
+
+    fn is_primary_branch(repo: &VcsRepo, branch: &str) -> bool {
+        let mut primaries: HashSet<String> =
+            ["main", "master", "trunk", "default"].iter().map(|s| s.to_string()).collect();
+        primaries.insert(repo.default_branch().to_string());
+        primaries.contains(branch)
+    }
+
     fn validate_task_file_options(
         &self,
         create_task_files: bool,
@@ -747,6 +783,8 @@ impl TaskCreateArgs {
 
     /// Handle new branch creation with validation
     async fn handle_new_branch_creation(&self, repo: &VcsRepo, branch_name: &str) -> Result<()> {
+        Self::validate_branch_name(branch_name)?;
+        Self::guard_primary_branch(branch_name)?;
         repo.start_branch(branch_name)?;
 
         // Validate devshell if specified
@@ -770,9 +808,7 @@ impl TaskCreateArgs {
 
     /// Validate existing branch (not main branch, etc.)
     async fn validate_existing_branch(&self, repo: &VcsRepo, branch_name: &str) -> Result<()> {
-        let main_names = [repo.default_branch(), "main", "master", "trunk", "default"];
-
-        if main_names.contains(&branch_name) {
+        if Self::is_primary_branch(repo, branch_name) {
             anyhow::bail!("Error: Refusing to run on the main branch");
         }
 
