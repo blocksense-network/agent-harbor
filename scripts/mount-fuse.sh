@@ -131,6 +131,10 @@ fi
 echo "Mounting AgentFS FUSE filesystem at $mountpoint..."
 HOST_BIN="${AGENTFS_FUSE_HOST_BIN:-$REPO_ROOT/target/debug/agentfs-fuse-host}"
 echo "AgentFS host binary: $HOST_BIN"
+HOST_LAUNCHER=()
+if [[ "${AGENTFS_FUSE_SUDO:-0}" == "1" ]]; then
+  HOST_LAUNCHER=(sudo -E)
+fi
 
 attempt_mount() {
   local allow_other_flag="$1"
@@ -151,9 +155,9 @@ attempt_mount() {
   if [ -n "${AGENTFS_FUSE_LOG_FILE:-}" ]; then
     mkdir -p "$(dirname "$AGENTFS_FUSE_LOG_FILE")"
     echo "Logging FUSE host output to $AGENTFS_FUSE_LOG_FILE"
-    "$HOST_BIN" "${CONFIG_ARGS[@]}" "${fuse_flags[@]}" "$mountpoint" >>"$AGENTFS_FUSE_LOG_FILE" 2>&1 &
+    "${HOST_LAUNCHER[@]}" "$HOST_BIN" "${CONFIG_ARGS[@]}" "${fuse_flags[@]}" "$mountpoint" >>"$AGENTFS_FUSE_LOG_FILE" 2>&1 &
   else
-    "$HOST_BIN" "${CONFIG_ARGS[@]}" "${fuse_flags[@]}" "$mountpoint" &
+    "${HOST_LAUNCHER[@]}" "$HOST_BIN" "${CONFIG_ARGS[@]}" "${fuse_flags[@]}" "$mountpoint" &
   fi
   local pid=$!
   for _ in {1..30}; do

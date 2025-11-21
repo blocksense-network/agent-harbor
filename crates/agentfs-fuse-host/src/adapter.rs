@@ -304,6 +304,7 @@ struct WriteHandleState {
     inflight: AtomicUsize,
     waiter: (Mutex<()>, Condvar),
     error: Mutex<Option<i32>>,
+    direct_file: Mutex<Option<File>>,
 }
 
 impl WriteHandleState {
@@ -312,6 +313,7 @@ impl WriteHandleState {
             inflight: AtomicUsize::new(0),
             waiter: (Mutex::new(()), Condvar::new()),
             error: Mutex::new(None),
+            direct_file: Mutex::new(None),
         }
     }
 
@@ -344,6 +346,21 @@ impl WriteHandleState {
 
     fn current_error(&self) -> Option<i32> {
         *self.error.lock().unwrap()
+    }
+
+    fn direct_file(&self, path: &Path, writable: bool) -> std::io::Result<File> {
+        let mut guard = self.direct_file.lock().unwrap();
+        if let Some(file) = guard.as_ref() {
+            return file.try_clone();
+        }
+        let mut opts = StdOpenOptions::new();
+        opts.read(true);
+        if writable {
+            opts.write(true);
+        }
+        let file = opts.open(path)?;
+        *guard = Some(file);
+        guard.as_ref().unwrap().try_clone()
     }
 }
 
@@ -518,6 +535,8 @@ pub struct AgentFsFuse {
     pseudo_pid_map: Mutex<HashMap<(u32, u32, u64), u32>>,
     /// If true, perform file writes inline on the FUSE worker thread (avoids extra copies)
     inline_writes: bool,
+    /// If true, try direct host I/O against HostFs backing paths
+    direct_host_io: bool,
 }
 
 impl AgentFsFuse {
@@ -581,8 +600,12 @@ impl AgentFsFuse {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
         let inline_writes = inline_writes_enabled();
+        let direct_host_io = direct_host_io_enabled();
         if inline_writes {
             info!(target: "agentfs::fuse", "Inline write path enabled (bypasses write queue)");
+        }
+        if direct_host_io {
+            info!(target: "agentfs::fuse", "Direct HostFs I/O enabled (read/write via backing files)");
         }
 
         let inflight_writes = Arc::new(AtomicU64::new(0));
@@ -624,6 +647,7 @@ impl AgentFsFuse {
             pseudo_pid_counter: AtomicU32::new(0),
             pseudo_pid_map: Mutex::new(HashMap::new()),
             inline_writes,
+            direct_host_io,
         })
     }
 
@@ -1805,6 +1829,12 @@ fn inline_writes_enabled() -> bool {
         .unwrap_or(false)
 }
 
+fn direct_host_io_enabled() -> bool {
+    std::env::var("AGENTFS_FUSE_HOSTFS_DIRECT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 const DEFAULT_MAX_WRITE_BYTES: u32 = 16 * 1024 * 1024;
 const DEFAULT_MAX_BACKGROUND: u16 = 256;
 const MAX_SUPPORTED_WRITE_BYTES: u32 = 16 * 1024 * 1024;
@@ -2670,6 +2700,30 @@ impl fuser::Filesystem for AgentFsFuse {
         let mut buf = vec![0u8; size as usize];
         let client_pid = self.get_client_pid(req);
 
+        if self.direct_host_io {
+            if let Some(path) = self.core.handle_backing_path(handle_id) {
+                if let Some(state) = self.handle_write_state(fh) {
+                    match state.direct_file(&path, false) {
+                        Ok(file) => match file.read_at(&mut buf, offset as u64) {
+                            Ok(bytes_read) => {
+                                buf.truncate(bytes_read);
+                                reply.data(&buf);
+                                return;
+                            }
+                            Err(err) => {
+                                reply.error(err.raw_os_error().unwrap_or(EIO));
+                                return;
+                            }
+                        },
+                        Err(err) => {
+                            reply.error(err.raw_os_error().unwrap_or(EIO));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
         match self.core.read(&client_pid, handle_id, offset as u64, &mut buf) {
             Ok(bytes_read) => {
                 buf.truncate(bytes_read);
@@ -2732,6 +2786,52 @@ impl fuser::Filesystem for AgentFsFuse {
         }
 
         state.begin_write();
+
+        if self.direct_host_io {
+            if let Some(path) = self.core.handle_backing_path(handle_id) {
+                match state.direct_file(&path, true) {
+                    Ok(file) => {
+                        let result = file.write_at(data, offset as u64);
+                        if let Some(trace) = trace.take() {
+                            trace.finish();
+                        }
+                        match result {
+                            Ok(written) => {
+                                if let Err(err) = self.core.refresh_backing_len(handle_id) {
+                                    let errno = errno_from_fs_error(&err);
+                                    state.record_error(errno);
+                                    state.finish_write();
+                                    reply.error(errno);
+                                    return;
+                                }
+                                if written == data.len() {
+                                    state.finish_write();
+                                    reply.written(written as u32);
+                                } else {
+                                    state.record_error(EIO);
+                                    state.finish_write();
+                                    reply.error(EIO);
+                                }
+                            }
+                            Err(err) => {
+                                let errno = err.raw_os_error().unwrap_or(EIO);
+                                state.record_error(errno);
+                                state.finish_write();
+                                reply.error(errno);
+                            }
+                        }
+                        return;
+                    }
+                    Err(err) => {
+                        let errno = err.raw_os_error().unwrap_or(EIO);
+                        state.record_error(errno);
+                        state.finish_write();
+                        reply.error(errno);
+                        return;
+                    }
+                }
+            }
+        }
 
         if self.inline_writes {
             let result = self.core.write(&client_pid, handle_id, offset as u64, data);
