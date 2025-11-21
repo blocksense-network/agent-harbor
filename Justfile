@@ -403,6 +403,10 @@ test-fuse-security-sandbox:
 test-fuse-security-robustness:
     ./scripts/test-fuse-security-robustness.sh
 
+# Cross-version compatibility harness (F9)
+test-fuse-compat:
+    ./scripts/test-fuse-compat.sh
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 # See docs/PJDFSTest-Guide.md for detailed usage instructions

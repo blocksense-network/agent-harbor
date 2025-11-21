@@ -251,6 +251,11 @@ jobs:
           just test-fuse-security-sandbox
           just test-fuse-security-robustness
 
+      - name: Run F9 compatibility harness
+        env:
+          SKIP_FUSE_BUILD: 1
+        run: just test-fuse-compat
+
       - name: Run FUSE performance harness
         env:
           SKIP_FUSE_BUILD: 1
