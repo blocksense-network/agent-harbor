@@ -48,7 +48,7 @@ jobs:
           substituters: ${{ vars.SUBSTITUTERS }}
 
       - name: Run Lint
-        run: nix develop -c pre-commit run --all-files
+        run: nix develop -c sh -c 'yarn && pre-commit run --all-files'
 
   build-and-cache-devshell:
     strategy:
