@@ -382,6 +382,7 @@
                   pkgs.screen
                   pkgs.zellij
                   pkgs.kitty
+                  pkgs.tilix
                 ];
 
                 # GUI testing tools for headless environments

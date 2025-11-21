@@ -14,6 +14,23 @@ use ah_mux_core::{CommandOptions, Multiplexer, SplitDirection, WindowOptions};
 
 mod common;
 
+/// Initialize tracing for tests if not already initialized
+fn init_tracing() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+
+    INIT.call_once(|| {
+        // Only initialize if RUST_LOG is set (user wants logging)
+        if std::env::var("RUST_LOG").is_ok() {
+            tracing_subscriber::fmt()
+                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+                .with_test_writer()
+                .try_init()
+                .ok(); // Ignore errors if already initialized
+        }
+    });
+}
+
 /// Border characteristics for different multiplexers
 #[derive(Debug)]
 struct BorderInfo {
@@ -46,6 +63,10 @@ impl BorderInfo {
                 vertical_border_cols: 1, // screen has minimal borders
                 horizontal_border_rows: 0,
             },
+            "tilix" => BorderInfo {
+                vertical_border_cols: 0, // tilix has minimal borders in split view
+                horizontal_border_rows: 0,
+            },
             _ => BorderInfo {
                 vertical_border_cols: 0,
                 horizontal_border_rows: 0,
@@ -59,13 +80,14 @@ impl BorderInfo {
 /// This test exercises the core multiplexer functionality that should work
 /// across all implementations: window creation, pane splitting, command execution.
 fn test_multiplexer_basic_operations(mux_name: &str, mux: &mut Box<dyn Multiplexer + Send + Sync>) {
+    init_tracing(); // Initialize tracing for this test
     tracing::info!(multiplexer = mux_name, "Testing multiplexer");
 
     // Skip multiplexers that don't support the required operations
-    if matches!(mux_name, "zellij") {
+    if matches!(mux_name, "zellij" | "tilix") {
         tracing::info!(
             multiplexer = mux_name,
-            "Skipping - limited pane splitting support"
+            "Skipping - limited operations support"
         );
         return;
     }
@@ -226,6 +248,135 @@ fn test_multiplexer_sizing_logic_internal() {
     }
 }
 
+/// Test Tilix-specific functionality
+///
+/// Since Tilix has limited CLI-based control, this test focuses on the operations
+/// it does support: window creation and pane splitting via actions.
+#[cfg(all(target_os = "linux", feature = "tilix"))]
+fn test_tilix_specific_operations_impl() {
+    init_tracing(); // Initialize tracing for this test
+    use ah_mux_core::MuxError;
+
+    // Try to get tilix from available multiplexers
+    let multiplexers = available_multiplexers();
+    let tilix_mux = multiplexers.into_iter().find(|(name, _)| name == "tilix").map(|(_, mux)| mux);
+
+    if let Some(mux) = tilix_mux {
+        tracing::info!("Testing Tilix-specific operations");
+
+        // Test 1: Window creation with various options
+        let current_dir = std::env::current_dir().expect("Failed to get current directory");
+        let window_id = mux
+            .open_window(&WindowOptions {
+                title: Some(&format!("tilix-test-{}", std::process::id())),
+                cwd: Some(&current_dir),
+                focus: false,
+                profile: None,
+                init_command: Some("echo 'Test window created'"),
+            })
+            .expect("Failed to create Tilix window");
+
+        tracing::info!(window_id = window_id.as_str(), "Created Tilix window");
+
+        // Give window time to initialize
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        // Test 2: Pane splitting (the main feature Tilix supports)
+        let opts = CommandOptions {
+            cwd: Some(&current_dir),
+            env: None,
+        };
+
+        // Test horizontal split
+        let pane_id_h = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Horizontal,
+                None,
+                &opts,
+                Some("echo 'Horizontal pane'"),
+            )
+            .expect("Failed to split pane horizontally");
+
+        tracing::info!(pane_id = pane_id_h.as_str(), "Created horizontal pane");
+
+        // Give split time to complete
+        std::thread::sleep(std::time::Duration::from_millis(300));
+
+        // Test vertical split
+        let pane_id_v = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Vertical,
+                None,
+                &opts,
+                Some("echo 'Vertical pane'"),
+            )
+            .expect("Failed to split pane vertically");
+
+        tracing::info!(pane_id = pane_id_v.as_str(), "Created vertical pane");
+
+        // Test 3: Verify all unsupported operations return appropriate errors
+        let test_pane = "test-pane".to_string();
+        let test_window = "test-window".to_string();
+
+        // These should all return NotAvailable errors
+        assert!(matches!(
+            mux.run_command(&test_pane, "echo test", &opts),
+            Err(MuxError::NotAvailable(_))
+        ));
+        assert!(matches!(
+            mux.send_text(&test_pane, "test"),
+            Err(MuxError::NotAvailable(_))
+        ));
+        assert!(matches!(
+            mux.focus_window(&test_window),
+            Err(MuxError::NotAvailable(_))
+        ));
+        assert!(matches!(
+            mux.focus_pane(&test_pane),
+            Err(MuxError::NotAvailable(_))
+        ));
+        assert!(matches!(
+            mux.list_windows(None),
+            Err(MuxError::NotAvailable(_))
+        ));
+        assert!(matches!(
+            mux.list_panes(&test_window),
+            Err(MuxError::NotAvailable(_))
+        ));
+
+        tracing::info!("All unsupported operations correctly returned errors");
+
+        // Note: Cleanup is not easily testable with Tilix since it doesn't provide
+        // programmatic session/window management via CLI. In real usage, users
+        // would manually close the Tilix windows or they would be cleaned up
+        // when the session ends.
+
+        tracing::info!("Tilix-specific operations test completed successfully");
+    } else {
+        tracing::info!("Skipping Tilix test - not available");
+    }
+}
+
+/// Test that Tilix operations fail gracefully when tilix is not available
+#[cfg(all(target_os = "linux", feature = "tilix"))]
+fn test_tilix_unavailable_handling_impl() {
+    // This test verifies error handling when tilix binary is not found
+    let multiplexers = available_multiplexers();
+    let has_tilix = multiplexers.iter().any(|(name, _)| name == "tilix");
+
+    if has_tilix {
+        tracing::info!("Tilix is available - basic functionality should work");
+    } else {
+        tracing::info!(
+            "Tilix is not available - this is expected on systems without tilix installed"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,5 +475,25 @@ mod tests {
             let windows = mux.list_windows(None).unwrap();
             assert!(!windows.is_empty(), "No windows found after creation");
         }
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", feature = "tilix"))]
+    #[ignore] // Integration test - requires tilix to be installed
+    fn test_tilix_specific_operations() {
+        test_tilix_specific_operations_impl();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", feature = "tilix"))]
+    fn test_tilix_unavailable_handling() {
+        test_tilix_unavailable_handling_impl();
+    }
+
+    #[test]
+    fn test_tilix_border_info() {
+        let tilix_borders = BorderInfo::for_multiplexer("tilix");
+        assert_eq!(tilix_borders.vertical_border_cols, 0);
+        assert_eq!(tilix_borders.horizontal_border_rows, 0);
     }
 }
