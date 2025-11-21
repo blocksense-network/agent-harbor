@@ -393,6 +393,15 @@ pub enum DeliveryMethod {
     Patch,
 }
 
+/// Parsed agent selection with optional model/version and instance count
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AgentSelection {
+    software: String,
+    version: Option<String>,
+    model: Option<String>,
+    instances: u32,
+}
+
 impl TaskCommands {
     /// Execute the task command
     pub async fn run(self, global_config: Option<&str>) -> Result<()> {
@@ -410,6 +419,9 @@ impl TaskCreateArgs {
         if self.prompt.is_some() && self.prompt_file.is_some() {
             anyhow::bail!("Error: --prompt and --prompt-file are mutually exclusive");
         }
+
+        // Parse agent flags into structured selections (applies defaults later)
+        let _agent_selections = self.parse_agents()?;
 
         // Determine if we're creating a new branch or appending to existing
         let branch_name = self.branch.as_ref().filter(|b| !b.trim().is_empty()).cloned();
@@ -688,6 +700,107 @@ impl TaskCreateArgs {
             .current_dir(repo.root())
             .output();
     }
+
+    /// Parse agent/model/instances flags into structured selections following CLI.md precedence rules.
+    ///
+    /// Behavior:
+    /// - Each `--agent` starts a new selection (TYPE or TYPE@VERSION).
+    /// - `--model` and `--instances` apply to the most recent selection; if provided before any agent, they apply to the first implicit/default agent later.
+    /// - Instances default to 1.
+    fn parse_agents(&self) -> Result<Vec<AgentSelection>> {
+        let mut selections: Vec<AgentSelection> = Vec::new();
+
+        // Pending model/instances before first agent should attach to the first selection (implicit default)
+        let mut pending_model: Option<String> = None;
+        let mut pending_instances: Option<u32> = None;
+
+        let push_selection = |sel: AgentSelection, selections: &mut Vec<AgentSelection>| {
+            selections.push(sel);
+        };
+
+        // Helper to apply a model/instances to the last selection or pending
+        let apply_model =
+            |value: &str, selections: &mut Vec<AgentSelection>, pending: &mut Option<String>| {
+                if let Some(last) = selections.last_mut() {
+                    last.model = Some(value.to_string());
+                } else {
+                    *pending = Some(value.to_string());
+                }
+            };
+
+        let apply_instances =
+            |value: u32, selections: &mut Vec<AgentSelection>, pending: &mut Option<u32>| {
+                if let Some(last) = selections.last_mut() {
+                    last.instances = value;
+                } else {
+                    *pending = Some(value);
+                }
+            };
+
+        for agent_str in &self.agents {
+            let (software, version) = if let Some((sw, ver)) = agent_str.split_once('@') {
+                (sw.to_string(), Some(ver.to_string()))
+            } else {
+                (agent_str.clone(), None)
+            };
+
+            let mut selection = AgentSelection {
+                software,
+                version,
+                model: None,
+                instances: 1,
+            };
+
+            if let Some(model) = pending_model.take() {
+                selection.model = Some(model);
+            }
+            if let Some(instances) = pending_instances.take() {
+                selection.instances = instances;
+            }
+
+            push_selection(selection, &mut selections);
+        }
+
+        // Apply models in order to last selection; if none exist yet, they get recorded as pending.
+        for model in &self.models {
+            apply_model(model, &mut selections, &mut pending_model);
+        }
+
+        for inst in &self.instances {
+            apply_instances(*inst, &mut selections, &mut pending_instances);
+        }
+
+        // If no agents were specified, create one default selection and attach pending model/instances
+        if selections.is_empty() {
+            let mut default_sel = AgentSelection {
+                software: "codex".to_string(),
+                version: None,
+                model: None,
+                instances: 1,
+            };
+            if let Some(model) = pending_model.take() {
+                default_sel.model = Some(model);
+            }
+            if let Some(instances) = pending_instances.take() {
+                default_sel.instances = instances;
+            }
+            selections.push(default_sel);
+        }
+
+        // If models or instances remain pending, apply to last selection
+        if let Some(model) = pending_model {
+            if let Some(last) = selections.last_mut() {
+                last.model = Some(model);
+            }
+        }
+        if let Some(instances) = pending_instances {
+            if let Some(last) = selections.last_mut() {
+                last.instances = instances;
+            }
+        }
+
+        Ok(selections)
+    }
 }
 
 /// Helper function to get the workspace root path
@@ -815,6 +928,7 @@ mod tests {
             crate::Commands::Task {
                 subcommand: TaskCommands::Create(args),
             } => {
+                let selections = args.parse_agents().expect("agents parse");
                 assert_eq!(args.branch.as_deref(), Some("feature-x"));
                 assert_eq!(args.agents, vec!["claude@1".to_string()]);
                 assert_eq!(args.models, vec!["sonnet".to_string()]);
@@ -824,6 +938,15 @@ mod tests {
                 assert!(args.follow);
                 assert!(args.assume_yes);
                 assert_eq!(args.notifications, "no");
+                assert_eq!(
+                    selections,
+                    vec![AgentSelection {
+                        software: "claude".to_string(),
+                        version: Some("1".to_string()),
+                        model: Some("sonnet".to_string()),
+                        instances: 2
+                    }]
+                );
             }
             _ => panic!("Expected task create command"),
         }
@@ -1104,6 +1227,56 @@ mod tests {
             // The error is expected in some test environments
             tracing::warn!(error = ?result, "Nix not available for devshell testing");
         }
+    }
+
+    #[test]
+    fn test_agent_flag_precedence_default_and_pending() {
+        // model/instances before any agent apply to default implicit agent
+        let args = TaskCreateArgs {
+            models: vec!["mistral".to_string()],
+            instances: vec![3],
+            ..base_task_args()
+        };
+
+        let selections = args.parse_agents().unwrap();
+        assert_eq!(
+            selections,
+            vec![AgentSelection {
+                software: "codex".to_string(),
+                version: None,
+                model: Some("mistral".to_string()),
+                instances: 3
+            }]
+        );
+    }
+
+    #[test]
+    fn test_agent_flag_precedence_applies_to_last_agent() {
+        let args = TaskCreateArgs {
+            agents: vec!["claude@2".to_string(), "codex".to_string()],
+            models: vec!["sonnet".to_string()],
+            instances: vec![2],
+            ..base_task_args()
+        };
+
+        let selections = args.parse_agents().unwrap();
+        assert_eq!(
+            selections,
+            vec![
+                AgentSelection {
+                    software: "claude".to_string(),
+                    version: Some("2".to_string()),
+                    model: None,
+                    instances: 1
+                },
+                AgentSelection {
+                    software: "codex".to_string(),
+                    version: None,
+                    model: Some("sonnet".to_string()),
+                    instances: 2
+                }
+            ]
+        );
     }
 
     #[test]
