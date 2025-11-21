@@ -1554,12 +1554,27 @@ mod tests {
         core.mkdir(&pid, "/dir1/subdir".as_ref(), 0o755).unwrap();
         core.create(&pid, "/dir1/subdir/target.txt".as_ref(), &rw_create()).unwrap();
 
-        // Create a symlink with relative path
-        core.symlink(&pid, "../target.txt", "/dir1/subdir/link.txt".as_ref()).unwrap();
+        // Create a symlink with a safe relative path (no parent traversal)
+        core.symlink(&pid, "target.txt", "/dir1/subdir/link.txt".as_ref()).unwrap();
 
         // Verify the symlink
         let target = core.readlink(&pid, "/dir1/subdir/link.txt".as_ref()).unwrap();
-        assert_eq!(target, "../target.txt");
+        assert_eq!(target, "target.txt");
+    }
+
+    #[test]
+    fn test_symlink_parent_traversal_rejected() {
+        let core = test_core();
+        let pid = core.register_process(1000, 1000, 0, 0);
+
+        core.mkdir(&pid, "/dir1".as_ref(), 0o755).unwrap();
+        core.mkdir(&pid, "/dir1/subdir".as_ref(), 0o755).unwrap();
+        core.create(&pid, "/dir1/subdir/target.txt".as_ref(), &rw_create()).unwrap();
+
+        let err = core
+            .symlink(&pid, "../target.txt", "/dir1/subdir/bad_link.txt".as_ref())
+            .unwrap_err();
+        assert!(matches!(err, FsError::AccessDenied));
     }
 
     #[test]
