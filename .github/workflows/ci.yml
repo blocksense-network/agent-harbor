@@ -187,6 +187,10 @@ jobs:
             if command -v modprobe >/dev/null 2>&1; then
               sudo modprobe fuse || true
             fi
+            if [ ! -e /dev/fuse ]; then
+              sudo mknod /dev/fuse c 10 229 || true
+              sudo chmod 666 /dev/fuse || true
+            fi
           fi
           if [ ! -e /dev/fuse ]; then
             echo "/dev/fuse is missing and could not be created" >&2
