@@ -1,6 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -188,8 +189,8 @@ fn do_status(client: &DaemonClient, json: bool, allow_not_ready: bool) -> Result
 
 fn to_mount_request(args: &MountArgs) -> Result<AgentfsFuseMountRequest> {
     let mount_point = args.mount_point.to_string_lossy().into_owned().into_bytes();
-    let uid = args.uid.unwrap_or_else(current_uid);
-    let gid = args.gid.unwrap_or_else(current_gid);
+    let uid = args.uid.unwrap_or_else(default_uid);
+    let gid = args.gid.unwrap_or_else(default_gid);
     let backstore = build_backstore(args)?;
 
     Ok(AgentfsFuseMountRequest {
@@ -229,12 +230,16 @@ fn build_backstore(args: &MountArgs) -> Result<AgentfsFuseBackstore> {
     Ok(backstore)
 }
 
-fn current_uid() -> u32 {
-    unsafe { libc::geteuid() }
+fn default_uid() -> u32 {
+    sudo_override("SUDO_UID").unwrap_or_else(|| unsafe { libc::geteuid() })
 }
 
-fn current_gid() -> u32 {
-    unsafe { libc::getegid() }
+fn default_gid() -> u32 {
+    sudo_override("SUDO_GID").unwrap_or_else(|| unsafe { libc::getegid() })
+}
+
+fn sudo_override(var: &str) -> Option<u32> {
+    env::var(var).ok().and_then(|value| value.parse::<u32>().ok())
 }
 
 fn print_status(status: &AgentfsFuseStatusData, json: bool) -> anyhow::Result<AgentfsFuseState> {

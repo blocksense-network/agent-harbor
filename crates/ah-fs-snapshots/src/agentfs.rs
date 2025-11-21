@@ -13,10 +13,9 @@ use ah_fs_snapshots_traits::{
     SnapshotProviderKind, SnapshotRef, WorkingCopyMode,
 };
 
-// macOS-specific imports
-#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[cfg(all(feature = "agentfs", any(target_os = "macos", target_os = "linux")))]
 use ah_fs_snapshots_traits::generate_unique_id;
-#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[cfg(all(feature = "agentfs", any(target_os = "macos", target_os = "linux")))]
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -29,12 +28,12 @@ enum PlatformSupport {
 }
 
 impl PlatformSupport {
-    #[cfg(feature = "agentfs")]
+    #[cfg(all(feature = "agentfs", any(target_os = "macos", target_os = "linux")))]
     fn detect() -> Self {
         PlatformSupport::Supported
     }
 
-    #[cfg(not(feature = "agentfs"))]
+    #[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
     fn detect() -> Self {
         PlatformSupport::Unsupported("AgentFS provider not compiled; enable the `agentfs` feature")
     }
@@ -63,9 +62,17 @@ impl AgentFsProvider {
     }
 
     fn experimental_flag_enabled() -> bool {
-        std::env::var("AH_ENABLE_AGENTFS_PROVIDER")
-            .map(|value| value != "0")
-            .unwrap_or(false)
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            true
+        }
+
+        #[cfg(not(all(feature = "agentfs", target_os = "linux")))]
+        {
+            std::env::var("AH_ENABLE_AGENTFS_PROVIDER")
+                .map(|value| value != "0")
+                .unwrap_or(false)
+        }
     }
 
     #[cfg(feature = "agentfs")]
@@ -75,6 +82,50 @@ impl AgentFsProvider {
             "AgentFS provider does not support {:?} working-copy mode yet",
             mode
         )))
+    }
+
+    #[cfg(all(feature = "agentfs", target_os = "linux"))]
+    fn prepare_fuse_workspace(
+        &self,
+        repo: &Path,
+        mode: WorkingCopyMode,
+    ) -> Result<PreparedWorkspace> {
+        let requested_mode = match mode {
+            WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
+            other => return Self::unsupported_mode(other),
+        };
+
+        let workspace = fuse::FuseWorkspace::discover(repo)?;
+        let control = workspace.control.clone();
+
+        let snapshot = control.snapshot_create(None)?;
+        let branch_name = format!("branch-{}", generate_unique_id());
+        let branch = control.branch_create(&snapshot.id, Some(&branch_name))?;
+        control.branch_bind(&branch.id, Some(std::process::id()))?;
+
+        let cleanup_token = generate_unique_id();
+        let session = FuseSession {
+            control,
+            cleanup_token: cleanup_token.clone(),
+            workspace_path: workspace.workspace_path.clone(),
+            mount_root: workspace.mount_root.clone(),
+            branch_id: branch.id.clone(),
+            current_snapshot: Mutex::new(Some(snapshot.id.clone())),
+            mode: requested_mode,
+        };
+
+        self._state
+            .lock()
+            .expect("AgentFS provider state poisoned")
+            .sessions
+            .insert(cleanup_token.clone(), session);
+
+        Ok(PreparedWorkspace {
+            exec_path: workspace.workspace_path,
+            working_copy: requested_mode,
+            provider: SnapshotProviderKind::AgentFs,
+            cleanup_token,
+        })
     }
 }
 
@@ -89,11 +140,13 @@ impl FsSnapshotProvider for AgentFsProvider {
         SnapshotProviderKind::AgentFs
     }
 
-    fn detect_capabilities(&self, _repo: &Path) -> ProviderCapabilities {
+    fn detect_capabilities(&self, repo: &Path) -> ProviderCapabilities {
         match self.platform {
             PlatformSupport::Supported => {
-                let mut notes = Vec::new();
-                notes.push("AgentFS control-plane integration available on this platform".into());
+                let mut notes =
+                    vec!["AgentFS control-plane integration available on this platform".into()];
+
+                #[cfg(not(all(feature = "agentfs", target_os = "linux")))]
                 if !Self::experimental_flag_enabled() {
                     notes.push(
                         "Set AH_ENABLE_AGENTFS_PROVIDER=1 to opt into AgentFS provider experiments."
@@ -101,13 +154,38 @@ impl FsSnapshotProvider for AgentFsProvider {
                     );
                 }
 
+                let mut score = 0;
+                if Self::experimental_flag_enabled() {
+                    #[cfg(all(feature = "agentfs", target_os = "linux"))]
+                    {
+                        match fuse::FuseWorkspace::discover(repo) {
+                            Ok(workspace) => {
+                                notes.push(format!(
+                                    "Detected AgentFS FUSE mount at {}",
+                                    workspace.mount_root.display()
+                                ));
+                                score = 80;
+                            }
+                            Err(err) => {
+                                notes.push(format!(
+                                    "AgentFS FUSE mount unavailable for {}: {}",
+                                    repo.display(),
+                                    err
+                                ));
+                                score = 0;
+                            }
+                        }
+                    }
+
+                    #[cfg(not(all(feature = "agentfs", target_os = "linux")))]
+                    {
+                        score = 70;
+                    }
+                }
+
                 ProviderCapabilities {
                     kind: self.kind(),
-                    score: if Self::experimental_flag_enabled() {
-                        70
-                    } else {
-                        0
-                    },
+                    score,
                     supports_cow_overlay: true,
                     notes,
                 }
@@ -121,6 +199,7 @@ impl FsSnapshotProvider for AgentFsProvider {
         }
     }
 
+    #[allow(clippy::needless_return)]
     fn prepare_writable_workspace(
         &self,
         repo: &Path,
@@ -152,7 +231,12 @@ impl FsSnapshotProvider for AgentFsProvider {
             self.prepare_agentfs_workspace(harness, repo, requested_mode)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            return self.prepare_fuse_workspace(repo, mode);
+        }
+
+        #[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
         {
             let _ = repo;
             let _ = mode;
@@ -162,6 +246,7 @@ impl FsSnapshotProvider for AgentFsProvider {
         }
     }
 
+    #[allow(clippy::needless_return)]
     fn snapshot_now(&self, ws: &PreparedWorkspace, label: Option<&str>) -> Result<SnapshotRef> {
         #[cfg(all(feature = "agentfs", target_os = "macos"))]
         {
@@ -216,7 +301,48 @@ impl FsSnapshotProvider for AgentFsProvider {
             })
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            let (control, branch_id) = {
+                let state_guard = self._state.lock().expect("AgentFS provider state poisoned");
+                let session = state_guard.sessions.get(&ws.cleanup_token).ok_or_else(|| {
+                    Error::provider(format!(
+                        "Unknown AgentFS workspace cleanup token: {}",
+                        ws.cleanup_token
+                    ))
+                })?;
+                (session.control.clone(), session.branch_id.clone())
+            };
+
+            let snapshot = control.snapshot_create(label)?;
+
+            if let Some(session) = self
+                ._state
+                .lock()
+                .expect("AgentFS provider state poisoned")
+                .sessions
+                .get(&ws.cleanup_token)
+            {
+                *session
+                    .current_snapshot
+                    .lock()
+                    .expect("AgentFS session snapshot state poisoned") = Some(snapshot.id.clone());
+            }
+
+            let mut meta = HashMap::new();
+            meta.insert(META_SESSION_TOKEN.into(), ws.cleanup_token.clone());
+            meta.insert(META_BRANCH_ID.into(), branch_id);
+            meta.insert(META_SNAPSHOT_ID.into(), snapshot.id.clone());
+
+            return Ok(SnapshotRef {
+                id: snapshot.id,
+                label: snapshot.label,
+                provider: SnapshotProviderKind::AgentFs,
+                meta,
+            });
+        }
+
+        #[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
         {
             let _ = ws;
             let _ = label;
@@ -226,6 +352,7 @@ impl FsSnapshotProvider for AgentFsProvider {
         }
     }
 
+    #[allow(clippy::needless_return)]
     fn mount_readonly(&self, snap: &SnapshotRef) -> Result<PathBuf> {
         #[cfg(all(feature = "agentfs", target_os = "macos"))]
         {
@@ -286,7 +413,15 @@ impl FsSnapshotProvider for AgentFsProvider {
             Ok(readonly_path)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            let _ = snap;
+            return Err(Error::provider(
+                "AgentFS FUSE snapshot exports are not yet supported",
+            ));
+        }
+
+        #[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
         {
             let _ = snap;
             Err(Error::provider(
@@ -295,6 +430,7 @@ impl FsSnapshotProvider for AgentFsProvider {
         }
     }
 
+    #[allow(clippy::needless_return)]
     fn branch_from_snapshot(
         &self,
         snap: &SnapshotRef,
@@ -376,7 +512,73 @@ impl FsSnapshotProvider for AgentFsProvider {
             Ok(workspace)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            let session_token = snap
+                .meta
+                .get(META_SESSION_TOKEN)
+                .ok_or_else(|| Error::provider("AgentFS snapshot missing session metadata"))?;
+            let snapshot_id =
+                snap.meta.get(META_SNAPSHOT_ID).cloned().unwrap_or_else(|| snap.id.clone());
+
+            let requested_mode = match mode {
+                WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
+                other => return Self::unsupported_mode(other),
+            };
+
+            let (control, workspace_path, mount_root, session_mode) = {
+                let state_guard = self._state.lock().expect("AgentFS provider state poisoned");
+                let session = state_guard.sessions.get(session_token).ok_or_else(|| {
+                    Error::provider(format!(
+                        "AgentFS session referenced by snapshot not found: {}",
+                        session_token
+                    ))
+                })?;
+                (
+                    session.control.clone(),
+                    session.workspace_path.clone(),
+                    session.mount_root.clone(),
+                    session.mode,
+                )
+            };
+
+            if requested_mode != session_mode {
+                return Err(Error::provider(format!(
+                    "AgentFS workspace was prepared with {:?} but {:?} was requested",
+                    session_mode, requested_mode
+                )));
+            }
+
+            let branch_name = format!("branch-{}", generate_unique_id());
+            let branch = control.branch_create(&snapshot_id, Some(&branch_name))?;
+            control.branch_bind(&branch.id, Some(std::process::id()))?;
+
+            let cleanup_token = generate_unique_id();
+            let session = FuseSession {
+                control,
+                cleanup_token: cleanup_token.clone(),
+                workspace_path: workspace_path.clone(),
+                mount_root,
+                branch_id: branch.id.clone(),
+                current_snapshot: Mutex::new(Some(snapshot_id.clone())),
+                mode: requested_mode,
+            };
+
+            self._state
+                .lock()
+                .expect("AgentFS provider state poisoned")
+                .sessions
+                .insert(cleanup_token.clone(), session);
+
+            return Ok(PreparedWorkspace {
+                exec_path: workspace_path,
+                working_copy: requested_mode,
+                provider: SnapshotProviderKind::AgentFs,
+                cleanup_token,
+            });
+        }
+
+        #[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
         {
             let _ = (snap, mode);
             Err(Error::provider(
@@ -385,6 +587,7 @@ impl FsSnapshotProvider for AgentFsProvider {
         }
     }
 
+    #[allow(clippy::needless_return)]
     fn list_snapshots(&self, directory: &Path) -> Result<Vec<SnapshotInfo>> {
         #[cfg(all(feature = "agentfs", target_os = "macos"))]
         {
@@ -430,7 +633,51 @@ impl FsSnapshotProvider for AgentFsProvider {
             Ok(results)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            let (control, cleanup_token, branch_id) = {
+                let state_guard = self._state.lock().expect("AgentFS provider state poisoned");
+                let session = state_guard
+                    .sessions
+                    .values()
+                    .find(|session| session.workspace_path == directory)
+                    .ok_or_else(|| {
+                        Error::provider(format!(
+                            "No active AgentFS session for repository {}",
+                            directory.display()
+                        ))
+                    })?;
+                (
+                    session.control.clone(),
+                    session.cleanup_token.clone(),
+                    session.branch_id.clone(),
+                )
+            };
+
+            let snapshots = control.snapshot_list()?;
+            let results = snapshots
+                .into_iter()
+                .map(|record| SnapshotInfo {
+                    snapshot: SnapshotRef {
+                        id: record.id.clone(),
+                        label: record.label.clone(),
+                        provider: SnapshotProviderKind::AgentFs,
+                        meta: {
+                            let mut meta = HashMap::new();
+                            meta.insert(META_SESSION_TOKEN.into(), cleanup_token.clone());
+                            meta.insert(META_BRANCH_ID.into(), branch_id.clone());
+                            meta.insert(META_SNAPSHOT_ID.into(), record.id);
+                            meta
+                        },
+                    },
+                    created_at: 0,
+                    session_id: None,
+                })
+                .collect();
+            return Ok(results);
+        }
+
+        #[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
         {
             let _ = directory;
             Err(Error::provider(
@@ -454,7 +701,18 @@ impl FsSnapshotProvider for AgentFsProvider {
             Ok(())
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            let _ = self
+                ._state
+                .lock()
+                .expect("AgentFS provider state poisoned")
+                .sessions
+                .remove(token);
+            Ok(())
+        }
+
+        #[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
         {
             let _ = token;
             Ok(())
@@ -575,24 +833,21 @@ impl AgentFsProvider {
     }
 }
 
+#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[derive(Default)]
 struct AgentFsState {
-    #[cfg(all(feature = "agentfs", target_os = "macos"))]
     sessions: HashMap<String, AgentFsSession>,
 }
 
-impl Default for AgentFsState {
-    #[cfg(all(feature = "agentfs", target_os = "macos"))]
-    fn default() -> Self {
-        Self {
-            sessions: HashMap::new(),
-        }
-    }
-
-    #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
-    fn default() -> Self {
-        Self {}
-    }
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+#[derive(Default)]
+struct AgentFsState {
+    sessions: HashMap<String, FuseSession>,
 }
+
+#[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
+#[derive(Default)]
+struct AgentFsState {}
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 struct AgentFsSession {
@@ -628,6 +883,243 @@ impl AgentFsSession {
 
         Ok(())
     }
+}
+
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+mod fuse {
+    use super::*;
+    use agentfs_proto::{Request, Response};
+    use ssz::{Decode, Encode};
+    use std::env;
+    use std::fs::OpenOptions;
+    use std::io;
+    use std::os::fd::AsRawFd;
+
+    const AGENTFS_IOCTL_CMD: libc::c_ulong = 0xD000_4146;
+
+    #[derive(Clone)]
+    pub struct ControlClient {
+        control_path: PathBuf,
+    }
+
+    #[derive(Clone)]
+    pub struct FuseWorkspace {
+        pub control: ControlClient,
+        pub workspace_path: PathBuf,
+        pub mount_root: PathBuf,
+    }
+
+    #[derive(Clone)]
+    pub struct SnapshotRecord {
+        pub id: String,
+        pub label: Option<String>,
+    }
+
+    #[derive(Clone)]
+    pub struct BranchRecord {
+        pub id: String,
+        #[allow(dead_code)]
+        pub label: Option<String>,
+    }
+
+    impl FuseWorkspace {
+        pub fn discover(repo: &Path) -> Result<Self> {
+            let absolute = if repo.is_absolute() {
+                repo.to_path_buf()
+            } else {
+                env::current_dir()
+                    .map_err(|err| {
+                        Error::provider(format!(
+                            "failed to resolve working directory while probing {}: {}",
+                            repo.display(),
+                            err
+                        ))
+                    })?
+                    .join(repo)
+            };
+            let workspace_path = repo.canonicalize().unwrap_or(absolute);
+
+            let mut cursor = workspace_path.as_path();
+            loop {
+                let control_path = cursor.join(".agentfs").join("control");
+                if control_path.exists() {
+                    let control = ControlClient::new(control_path)?;
+                    return Ok(Self {
+                        control,
+                        workspace_path: workspace_path.clone(),
+                        mount_root: cursor.to_path_buf(),
+                    });
+                }
+
+                cursor = match cursor.parent() {
+                    Some(parent) => parent,
+                    None => {
+                        return Err(Error::provider(format!(
+                            "AgentFS control file not found while probing {}. Ensure the path resides inside the mounted filesystem.",
+                            repo.display()
+                        )));
+                    }
+                };
+            }
+        }
+    }
+
+    impl ControlClient {
+        fn new(control_path: PathBuf) -> Result<Self> {
+            if !control_path.exists() {
+                return Err(Error::provider(format!(
+                    "AgentFS control file missing at {}",
+                    control_path.display()
+                )));
+            }
+            Ok(Self { control_path })
+        }
+
+        fn send_request(&self, request: Request) -> Result<Response> {
+            let payload = request.as_ssz_bytes();
+            let mut frame = Vec::with_capacity(payload.len() + 4);
+            frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+            frame.extend_from_slice(&payload);
+
+            let file = OpenOptions::new().read(true).write(true).open(&self.control_path).map_err(
+                |err| {
+                    Error::provider(format!(
+                        "failed to open AgentFS control file {}: {}",
+                        self.control_path.display(),
+                        err
+                    ))
+                },
+            )?;
+            let fd = file.as_raw_fd();
+            let result = unsafe {
+                libc::ioctl(
+                    fd,
+                    AGENTFS_IOCTL_CMD,
+                    frame.as_mut_ptr() as *mut libc::c_void,
+                )
+            };
+            drop(file);
+
+            if result < 0 {
+                return Err(Error::provider(format!(
+                    "AgentFS ioctl failed for {}: {}",
+                    self.control_path.display(),
+                    io::Error::last_os_error()
+                )));
+            }
+
+            if frame.len() < 4 {
+                return Err(Error::provider(
+                    "AgentFS control response truncated".to_string(),
+                ));
+            }
+            let mut len_bytes = [0u8; 4];
+            len_bytes.copy_from_slice(&frame[..4]);
+            let resp_len = u32::from_le_bytes(len_bytes) as usize;
+            if resp_len == 0 || 4 + resp_len > frame.len() {
+                return Err(Error::provider(format!(
+                    "invalid AgentFS control response length {}",
+                    resp_len
+                )));
+            }
+
+            let response = Response::from_ssz_bytes(&frame[4..4 + resp_len]).map_err(|err| {
+                Error::provider(format!(
+                    "failed to decode AgentFS control response: {:?}",
+                    err
+                ))
+            })?;
+
+            if let Response::Error(err) = &response {
+                return Err(Error::provider(format!(
+                    "AgentFS control error: {} (errno={})",
+                    String::from_utf8_lossy(&err.error),
+                    err.code.unwrap_or_default()
+                )));
+            }
+
+            Ok(response)
+        }
+
+        pub fn snapshot_create(&self, label: Option<&str>) -> Result<SnapshotRecord> {
+            let request = Request::snapshot_create(label.map(|s| s.to_string()));
+            match self.send_request(request)? {
+                Response::SnapshotCreate(resp) => Ok(SnapshotRecord {
+                    id: utf8_from_vec(resp.snapshot.id)?,
+                    label: resp.snapshot.name.map(utf8_from_vec).transpose()?,
+                }),
+                other => Err(Error::provider(format!(
+                    "unexpected response to snapshot_create: {:?}",
+                    other
+                ))),
+            }
+        }
+
+        pub fn branch_create(&self, from: &str, name: Option<&str>) -> Result<BranchRecord> {
+            let request =
+                Request::branch_create(from.to_string(), name.map(|value| value.to_string()));
+            match self.send_request(request)? {
+                Response::BranchCreate(resp) => Ok(BranchRecord {
+                    id: utf8_from_vec(resp.branch.id)?,
+                    label: resp.branch.name.map(utf8_from_vec).transpose()?,
+                }),
+                other => Err(Error::provider(format!(
+                    "unexpected response to branch_create: {:?}",
+                    other
+                ))),
+            }
+        }
+
+        pub fn branch_bind(&self, branch: &str, pid: Option<u32>) -> Result<()> {
+            let request = Request::branch_bind(branch.to_string(), pid);
+            match self.send_request(request)? {
+                Response::BranchBind(_) => Ok(()),
+                other => Err(Error::provider(format!(
+                    "unexpected response to branch_bind: {:?}",
+                    other
+                ))),
+            }
+        }
+
+        pub fn snapshot_list(&self) -> Result<Vec<SnapshotRecord>> {
+            match self.send_request(Request::snapshot_list())? {
+                Response::SnapshotList(resp) => resp
+                    .snapshots
+                    .into_iter()
+                    .map(|info| {
+                        Ok(SnapshotRecord {
+                            id: utf8_from_vec(info.id)?,
+                            label: info.name.map(utf8_from_vec).transpose()?,
+                        })
+                    })
+                    .collect(),
+                other => Err(Error::provider(format!(
+                    "unexpected response to snapshot_list: {:?}",
+                    other
+                ))),
+            }
+        }
+    }
+
+    fn utf8_from_vec(bytes: Vec<u8>) -> Result<String> {
+        String::from_utf8(bytes).map_err(|err| {
+            Error::provider(format!(
+                "invalid UTF-8 returned by AgentFS control plane: {}",
+                err
+            ))
+        })
+    }
+}
+
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+struct FuseSession {
+    control: fuse::ControlClient,
+    cleanup_token: String,
+    workspace_path: PathBuf,
+    mount_root: PathBuf,
+    branch_id: String,
+    current_snapshot: Mutex<Option<String>>,
+    mode: WorkingCopyMode,
 }
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]

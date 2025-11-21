@@ -42,4 +42,43 @@ if [ ! -e "$SOCKET_PATH" ]; then
   echo "\nTimed out waiting for daemon socket; check sudo logs"
   exit 1
 fi
+
+AUTOMOUNT="${AGENTFS_FUSE_AUTOMOUNT:-1}"
+MOUNT_POINT="${AGENTFS_FUSE_MOUNT_POINT:-/tmp/agentfs}"
+ALLOW_OTHER="${AGENTFS_FUSE_ALLOW_OTHER:-1}"
+ALLOW_ROOT="${AGENTFS_FUSE_ALLOW_ROOT:-0}"
+AUTO_UNMOUNT="${AGENTFS_FUSE_AUTO_UNMOUNT:-1}"
+WRITEBACK="${AGENTFS_FUSE_WRITEBACK_CACHE:-0}"
+BACKSTORE="${AGENTFS_FUSE_BACKSTORE:-in-memory}"
+HOSTFS_ROOT="${AGENTFS_FUSE_HOSTFS_ROOT:-$REPO_ROOT/tmp/agentfs-hostfs}"
+RAMDISK_MB="${AGENTFS_FUSE_RAMDISK_MB:-2048}"
+
+if [ "$AUTOMOUNT" = "1" ]; then
+  if [ "$BACKSTORE" = "hostfs" ]; then
+    mkdir -p "$HOSTFS_ROOT"
+  fi
+  echo "Requesting AgentFS FUSE mount at $MOUNT_POINT via daemonctl..."
+  MOUNT_CMD=("$CLI_BIN" --socket-path "$SOCKET_PATH" fuse mount --mount-point "$MOUNT_POINT")
+  [ "$ALLOW_OTHER" = "1" ] && MOUNT_CMD+=(--allow-other)
+  [ "$ALLOW_ROOT" = "1" ] && MOUNT_CMD+=(--allow-root)
+  [ "$AUTO_UNMOUNT" = "1" ] && MOUNT_CMD+=(--auto-unmount)
+  [ "$WRITEBACK" = "1" ] && MOUNT_CMD+=(--writeback-cache)
+  MOUNT_CMD+=(--backstore "$BACKSTORE")
+  case "$BACKSTORE" in
+  hostfs)
+    MOUNT_CMD+=(--hostfs-root "$HOSTFS_ROOT")
+    ;;
+  ramdisk)
+    MOUNT_CMD+=(--ramdisk-size-mb "$RAMDISK_MB")
+    ;;
+  esac
+  if ! sudo "${MOUNT_CMD[@]}"; then
+    echo "Daemon mount request failed; inspect the logs and rerun the mount command manually."
+    exit 1
+  fi
+
+  echo "Ensuring $MOUNT_POINT is owned by $USER for test runs..."
+  sudo chown -R "$USER":"$(id -gn)" "$MOUNT_POINT" || true
+fi
+
 echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage FUSE mounts as needed."

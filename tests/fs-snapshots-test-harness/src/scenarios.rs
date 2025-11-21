@@ -46,8 +46,11 @@ use crate::{BtrfsHarnessEnvironment, btrfs_available, btrfs_is_root};
 #[cfg(feature = "btrfs")]
 use ah_fs_snapshots_btrfs::BtrfsProvider;
 
-#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[cfg(all(feature = "agentfs", any(target_os = "macos", target_os = "linux")))]
 use ah_fs_snapshots::AgentFsProvider;
+
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+use crate::agentfs;
 
 struct MatrixOutcome {
     creation_time: Duration,
@@ -203,12 +206,6 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
         }
         #[cfg(feature = "agentfs")]
         "agentfs" => {
-            #[cfg(not(target_os = "macos"))]
-            {
-                tracing::info!("AgentFS provider matrix is only supported on macOS");
-                Ok(())
-            }
-
             #[cfg(target_os = "macos")]
             {
                 let temp_dir =
@@ -243,6 +240,17 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
                 )?;
                 Ok(())
             }
+
+            #[cfg(target_os = "linux")]
+            {
+                agentfs_provider_matrix_linux()
+            }
+
+            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+            {
+                tracing::info!("AgentFS provider matrix is only supported on this platform");
+                Ok(())
+            }
         }
         #[cfg(not(feature = "agentfs"))]
         "agentfs" => {
@@ -272,6 +280,56 @@ fn provider_matrix_git() -> Result<MatrixOutcome> {
         WorkingCopyMode::Worktree,
         Some(WorkingCopyMode::Worktree),
     )
+}
+
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+fn agentfs_provider_matrix_linux() -> Result<()> {
+    use std::env;
+
+    let harness = match agentfs::FuseHarness::new() {
+        Ok(harness) => harness,
+        Err(err) => {
+            tracing::info!("Skipping AgentFS provider matrix: {err}");
+            return Ok(());
+        }
+    };
+    let repo = match harness.prepare_repo("agentfs-matrix") {
+        Ok(repo) => repo,
+        Err(err) => {
+            tracing::info!("Skipping AgentFS provider matrix: unable to create repo ({err})");
+            return Ok(());
+        }
+    };
+    tracing::info!(
+        repo = %repo.path().display(),
+        backstore = env::var("AGENTFS_FUSE_BACKSTORE").ok(),
+        "AgentFS FUSE matrix workspace prepared"
+    );
+    populate_test_repo(repo.path())?;
+
+    let provider = AgentFsProvider::new();
+    let outcome = run_matrix_common(
+        "AgentFS",
+        &provider,
+        repo.path(),
+        WorkingCopyMode::CowOverlay,
+        Some(WorkingCopyMode::CowOverlay),
+    )?;
+    verify_performance(
+        "AgentFS",
+        &outcome,
+        Duration::from_secs_f32(5.0),
+        Duration::from_secs_f32(5.0),
+    )?;
+    run_concurrency_test(
+        "AgentFS",
+        outcome.repo_path.as_path(),
+        WorkingCopyMode::CowOverlay,
+        3,
+        AgentFsProvider::new,
+    )?;
+    run_error_handling_test("AgentFS", WorkingCopyMode::CowOverlay, AgentFsProvider::new)?;
+    Ok(())
 }
 
 fn run_matrix_common<P>(

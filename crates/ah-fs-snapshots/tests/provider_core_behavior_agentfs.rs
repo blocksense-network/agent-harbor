@@ -8,7 +8,9 @@
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 use ah_logging::test_utils::strip_ansi_codes;
-#[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+use fs_snapshots_test_harness::agentfs;
+#[cfg(all(feature = "agentfs", any(target_os = "macos", target_os = "linux")))]
 use fs_snapshots_test_harness::assert_driver_exists;
 use std::io::{self, Write};
 
@@ -19,6 +21,9 @@ use {
     std::path::{Path, PathBuf},
     std::process::Command as StdCommand,
 };
+
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+use {std::env, std::process::Command as StdCommand};
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 fn configure_agentfs_env(command: &mut StdCommand, driver_path: &Path) -> tempfile::TempDir {
@@ -108,7 +113,86 @@ fn provider_core_behavior_agentfs() {
     }
 }
 
-#[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+#[test]
+fn provider_core_behavior_agentfs() {
+    let harness = match agentfs::FuseHarness::new() {
+        Ok(harness) => harness,
+        Err(err) => {
+            let _ = writeln!(io::stdout(), "Skipping AgentFS provider core test: {err}");
+            return;
+        }
+    };
+
+    if !harness.socket_path().exists() {
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping AgentFS provider core test: daemon socket missing at {}",
+            harness.socket_path().display()
+        );
+        return;
+    }
+
+    if let Err(err) = harness.prepare_repo("agentfs-provider-core") {
+        let _ = writeln!(
+            io::stdout(),
+            "Skipping AgentFS provider core test: unable to create repo root ({err})"
+        );
+        return;
+    }
+
+    let driver = match assert_driver_exists() {
+        Ok(path) => path,
+        Err(err) => {
+            let _ = writeln!(io::stdout(), "Skipping AgentFS provider core test: {err}");
+            return;
+        }
+    };
+
+    env::set_var(agentfs::ENV_TRANSPORT, "fuse");
+    env::set_var(
+        "AH_FS_SNAPSHOTS_DAEMON_SOCKET",
+        harness.socket_path().to_string_lossy().to_string(),
+    );
+    env::set_var(
+        "AGENTFS_FUSE_MOUNT_POINT",
+        harness.mount_point().to_string_lossy().to_string(),
+    );
+    env::set_var(
+        "AGENTFS_FUSE_REPO_ROOT",
+        harness.repo_root().to_string_lossy().to_string(),
+    );
+    env::set_var("AGENTFS_BACKSTORE_MATRIX", "inmemory");
+
+    let output = StdCommand::new(&driver)
+        .arg("provider-matrix")
+        .arg("--provider")
+        .arg("agentfs")
+        .env(agentfs::ENV_TRANSPORT, "fuse")
+        .output()
+        .expect("failed to execute fs-snapshots harness provider-matrix agentfs scenario");
+
+    assert!(
+        output.status.success(),
+        "provider-matrix agentfs scenario exited with status {:?}\nstdout:\n{}\nstderr:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout not valid utf-8");
+    if env::var_os("FS_SNAPSHOTS_HARNESS_DEBUG").is_some() {
+        let _ = writeln!(io::stdout(), "AgentFS provider matrix stdout:\n{}", stdout);
+    }
+
+    assert!(
+        stdout.contains("AgentFS provider matrix completed successfully"),
+        "expected agentfs matrix success message in stdout, got:\n{}",
+        stdout
+    );
+}
+
+#[cfg(not(all(feature = "agentfs", any(target_os = "macos", target_os = "linux"))))]
 #[test]
 fn provider_core_behavior_agentfs() {
     let _ = writeln!(
