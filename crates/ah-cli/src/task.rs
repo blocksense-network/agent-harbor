@@ -458,6 +458,9 @@ impl TaskCreateArgs {
             );
         }
 
+        // Resolve push preference (apply --yes)
+        let push_preference = self.resolve_push_preference()?;
+
         // Handle branch creation/validation
         let actual_branch_name = if start_new_branch {
             let branch = branch_name.as_ref().unwrap();
@@ -621,13 +624,15 @@ impl TaskCreateArgs {
         }
 
         // Handle push operations
-        if let Some(push_flag) = &self.push_to_remote {
-            let push_bool =
-                parse_push_to_remote_flag(push_flag).context("Invalid --push-to-remote value")?;
-            self.handle_push(&actual_branch_name, Some(push_bool)).await?;
-        } else if !self.non_interactive {
-            self.handle_push(&actual_branch_name, None).await?;
-        }
+        match (push_preference, self.non_interactive) {
+            (Some(force), _) => self.handle_push(&actual_branch_name, Some(force)).await?,
+            (None, false) => self.handle_push(&actual_branch_name, None).await?,
+            (None, true) => {
+                anyhow::bail!(
+                    "Non-interactive mode requires --push-to-remote <true|false> or --yes"
+                );
+            }
+        };
 
         // Success - don't cleanup branch
 
@@ -717,6 +722,19 @@ impl TaskCreateArgs {
             })
             .collect::<Vec<_>>();
         Ok(Some(mapped))
+    }
+
+    /// Resolve push preference considering explicit flag and --yes shortcut.
+    fn resolve_push_preference(&self) -> Result<Option<bool>> {
+        if let Some(push_flag) = &self.push_to_remote {
+            let push_bool =
+                parse_push_to_remote_flag(push_flag).context("Invalid --push-to-remote value")?;
+            return Ok(Some(push_bool));
+        }
+        if self.assume_yes {
+            return Ok(Some(true));
+        }
+        Ok(None)
     }
 
     /// Validate branch name against the CLI spec regex subset.
@@ -1483,6 +1501,34 @@ mod tests {
                 instances: 2
             }]
         );
+    }
+
+    #[test]
+    fn test_resolve_push_preference_flags_and_yes() {
+        // Explicit flag true
+        let args = TaskCreateArgs {
+            push_to_remote: Some("true".into()),
+            ..base_task_args()
+        };
+        assert_eq!(args.resolve_push_preference().unwrap(), Some(true));
+
+        // Explicit flag false
+        let args = TaskCreateArgs {
+            push_to_remote: Some("false".into()),
+            ..base_task_args()
+        };
+        assert_eq!(args.resolve_push_preference().unwrap(), Some(false));
+
+        // --yes implies push true when flag absent
+        let args = TaskCreateArgs {
+            assume_yes: true,
+            ..base_task_args()
+        };
+        assert_eq!(args.resolve_push_preference().unwrap(), Some(true));
+
+        // No flag, no --yes -> None
+        let args = base_task_args();
+        assert_eq!(args.resolve_push_preference().unwrap(), None);
     }
 
     #[test]
