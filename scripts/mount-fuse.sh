@@ -53,6 +53,11 @@ ensure_dev_fuse() {
   if command -v modprobe >/dev/null 2>&1; then
     sudo modprobe fuse 2>/dev/null || true
   fi
+  if [ ! -e /dev/fuse ] && command -v mknod >/dev/null 2>&1; then
+    # Try to create the device node manually (major 10, minor 229)
+    sudo mknod /dev/fuse c 10 229 2>/dev/null || true
+    sudo chmod 666 /dev/fuse 2>/dev/null || true
+  fi
   if [ -e /dev/fuse ]; then
     return 0
   fi
