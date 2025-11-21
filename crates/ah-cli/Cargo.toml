@@ -119,3 +119,4 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = { workspace = true }
 tui-testing = { path = "../tui-testing" }
 assert_cmd = "2.0"
+serial_test = "2.0"
