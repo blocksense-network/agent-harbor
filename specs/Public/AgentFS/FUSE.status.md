@@ -26,6 +26,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - Control plane ioctl flows pass with SSZ union type validation
   - pjdfstests subset green with basic filesystem operations
   - Cache knobs (attr_timeout, entry_timeout, negative_timeout) properly configured
+  - Full pjdfstest suite executes for every supported AgentFS backstore mode (InMemory, HostFs directory, RamDisk) with FD forwarding both disabled and enabled, with each combination matching the established baseline
 
 - **Implementation Details**:
   - Implemented complete FUSE adapter (`AgentFsFuse`) that maps all major FUSE operations to AgentFS Core calls
@@ -65,6 +66,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **Audit and fix permission checking logic** for chown, chmod, link, open, symlink, and utimensat operations
   - **Review root_bypass_permissions implementation** - may be incorrectly applied
   - **Add comprehensive permission test coverage** to prevent regression
+  - **Automate pjdfstest matrix runs** across every backstore mode × FD-forwarding on/off combination until the verification criterion above is continuously enforced
 
 **F2. FUSE Mount/Unmount Cycle Testing** (3–4d)
 
@@ -338,6 +340,122 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T11.2 Package Installation**: Test package installation and basic functionality on target distributions
   - **T11.3 Documentation Validation**: Automated testing of setup procedures and documentation
   - **T11.4 Package Integrity**: Verify package signatures, dependencies, and file permissions
+
+**F12. AH FS Snapshots Daemon FUSE Mount Management (Linux)** (4–5d)
+
+- **Deliverables**:
+  - Enhance `crates/ah-fs-snapshots-daemon` so the daemon can spawn and monitor the `agentfs-fuse-host` binary (from `crates/agentfs-fuse-host`).
+  - Add lifecycle RPCs (SSZ `Request` variants) for `mount_agentfs_fuse` with the correct mount flags/backstore configuration, `unmount_agentfs_fuse`, and `status_agentfs_fuse`, persisting mountpoints, PID files, and log paths under `/run/agentfs-fuse/`.
+  - Surface explicit backstore parameters (InMemory, HostFs directory, RamDisk) in the RPCs so downstream tests can request the same combinations described in `AgentFS.md` and `AgentFS-Core.md`; ensure mount logs report which backstore is active.
+  - Emit structured logs (mount command, PID, stderr tail, reason for restart) via `tracing` so `just check-ah-fs-snapshots-daemon` can report actionable diagnostics when the mount fails.
+
+- **Success criteria (automated integration tests)**:
+  - `just start-ah-fs-snapshots-daemon` results in a mounted `/tmp/agentfs` (or configured path) listed in `/proc/self/mounts`, with the mount owned by the daemon-managed `agentfs-fuse-host` process; `just stop-…` cleanly unmounts and removes sockets.
+  - The daemon survives `agentfs-fuse-host` crashes by restarting the mount (respecting exponential backoff) and exposes mount health over the existing Unix socket so callers can block until the filesystem is ready.
+  - Integration tests in `crates/ah-fs-snapshots-daemon/tests` cover mount/unmount flows, status queries, and failure propagation (bad config, missing fuse device) without requiring manual sudo steps beyond launching the daemon.
+
+- **Automated Test Plan**:
+  - **T12.1 Mount RPC Test**: Tokio integration test that sends `mount_agentfs_fuse` over the daemon socket, waits for `/tmp/agentfs/.agentfs/control`, and then issues `unmount_agentfs_fuse`.
+  - **T12.2 Crash/Restart Harness**: Script under `scripts/test-fs-daemon-mount.sh` that kills the `agentfs-fuse-host` PID mid-run and asserts the daemon restarts it while preserving the mountpoint.
+  - **T12.3 Status CLI**: Extend `scripts/check-ah-fs-snapshots-daemon.sh` to call the new status RPC and verify output (mount path, pid, health) so CI can gate on daemon readiness.
+
+- **Verification Results**:
+  - [ ] T12.1 Mount RPC Test – pending
+  - [ ] T12.2 Crash/Restart Harness – pending
+  - [ ] T12.3 Status CLI – pending
+
+**F13. AgentFS Daemon Orchestration for macOS Interpose Mounts** (3–4d)
+
+- **Deliverables**:
+  - Reuse the same `ah-fs-snapshots-daemon` control plane to optionally launch `crates/agentfs-daemon` on macOS (driven by a new `mount_agentfs_interpose` RPC) so the CLI/harness can request process-isolated mounts without re-implementing shim plumbing.
+  - Bridge the daemon’s configuration to the Swift/FSKit host by generating socket paths compatible with `agentfs_interpose_e2e_tests`, copying the behavior currently hard-coded in `tests/fs-snapshots-test-harness/src/bin/driver.rs`.
+  - Provide per-platform policy: Linux requests `agentfs-fuse-host`, macOS requests `agentfs-daemon`; both share the same SSZ API surface so higher layers don’t need #cfg soup.
+  - Document the new macOS path in `specs/Public/AgentFS/FUSE.status.md` and `specs/Public/AgentFS/AgentFS.status.md`, explaining how interpose + daemon-managed mounts relate to the FUSE/Linux flow.
+
+- **Success criteria (automated integration tests)**:
+  - `just start-ah-fs-snapshots-daemon` on macOS spawns `agentfs-daemon`. Tests confirm clients can bind to the daemon over the exported Unix socket thought the interpose shim mechanism.
+  - macOS status checks report the active branch/mount list, so support engineers can tell whether the daemon is serving interpose clients without digging through launchctl logs.
+
+- **Automated Test Plan**:
+  - **T13.1 Interpose RPC Test**: macOS-only integration test in `crates/ah-fs-snapshots-daemon/tests` that issues `mount_agentfs_interpose`, verifies the returned socket path accepts connections, then unmounts.
+  - **T13.2 Harness Regression**: Update `tests/fs-snapshots-test-harness/tests/smoke.rs` to run once with daemon-managed interpose and assert the same readiness logs appear as before.
+
+- **Verification Results**:
+  - [ ] T13.1 Interpose RPC Test – pending
+  - [ ] T13.2 Harness Regression – pending
+
+**F14. AgentFS FUSE Provider Validation in FS Snapshots Harness** (3–4d)
+
+- **Deliverables**:
+  - Extend `tests/fs-snapshots-test-harness/src/bin/driver.rs` so Linux runs can select the AgentFS provider by exporting `AGENTFS_TRANSPORT=fuse` (today this simply discriminates against the future `AGENTFS_TRANSPORT=interpose` mode we plan to support on Linux via `LD_PRELOAD`), discovering the already-running daemon/mount (same pattern used by existing FS snapshot tests), and passing the resolved mount/root into the scenarios module.
+  - Add Linux-targeted copies of `crates/ah-fs-snapshots/tests/agentfs_provider.rs` and `provider_core_behavior_agentfs.rs` (guarded by `#[cfg(all(feature = "agentfs", target_os = "linux"))]`) that connect to the FUSE mount, assert `.agentfs/control` presence, and drive the same prepare → snapshot → branch → cleanup assertions already enforced on macOS.
+  - Update `tests/fs-snapshots-test-harness/src/scenarios.rs` so the AgentFS branch of `provider_matrix` delegates to the FUSE-backed provider on Linux while retaining the interpose shim flow on macOS; record daemon/mount diagnostics in the harness logs for CI triage.
+  - Parameterize the FS snapshots suite to run against multiple AgentFS backstores (InMemory, HostFs directory, RamDisk) so every provider test exercises the Kernel-Backstore Proxy behaviors documented in `specs/Public/AgentFS/AgentFS.md` (§Backstore) and `AgentFS-Core.md` (§Backstore Manager). Each run must tag logs with `backstore=<mode>` for triage.
+  - Remove the legacy `AH_ENABLE_AGENTFS_PROVIDER` opt-in on Linux so the provider is always available when the FUSE mount can be detected; expose helpful skip messages only when prerequisites (daemon, fuse device) are missing.
+  - Provide reusable Rust helpers to probe the daemon socket/mount status (mirroring the current FS snapshot policy where tests assume the daemon was started out-of-band via `just start-ah-fs-snapshots-daemon`); fail fast with actionable skips when the daemon is unavailable instead of trying to launch it.
+
+- **Success criteria (automated integration tests)**:
+  - `cargo test --package ah-fs-snapshots --features agentfs -- --nocapture integration` passes on a Linux FUSE host without requiring any opt-in environment variables, assuming the daemon is already running (tests should emit clear skips when it is not).
+  - `tests/fs-snapshots-test-harness -- provider-matrix --provider agentfs` succeeds on Linux for every supported backstore mode (InMemory, HostFs directory, RamDisk), producing the same workspace/snapshot metrics as macOS and leaving no stale readonly exports or cleanup tokens.
+  - CI artifacts (from `just test-fs-snapshots`) include the daemon log, mount table snapshot, and harness stdout whenever the AgentFS provider fails, with log metadata indicating which backstore mode was under test.
+
+- **Automated Test Plan**:
+  - **T14.1 Harness Readiness Check**: Rust integration test under `tests/fs-snapshots-test-harness/tests` that pings the daemon socket/mount (without launching it), mirroring the existing FS snapshot tests’ “assume running” policy and skipping when unavailable.
+  - **T14.2 AgentFsProvider (FUSE) Smoke**: Linux-only unit test that mirrors `agentfs_provider.rs`, verifying `SnapshotProviderKind::AgentFs` resolves to the FUSE backend, `.agentfs/control` responds to ioctl pings, and cleanup tokens remove the workspace.
+  - **T14.3 Provider Matrix (FUSE)**: Harness scenario that runs `fs-snapshots-harness-driver provider-matrix --provider agentfs` with `AGENTFS_TRANSPORT=fuse`, collecting `logs/fs-snapshots-agentfs-<ts>.log` and comparing timings to macOS baselines (the same entry point will later mode-switch to `AGENTFS_TRANSPORT=interpose` when Linux LD_PRELOAD support ships).
+  - **T14.4 Backstore Sweep**: Wrapper test (Rust or shell) that iterates over the supported backstore modes (InMemory, HostFs directory, RamDisk) by issuing the appropriate daemon RPCs, running the full FS snapshots suite for each, and asserting that all modes pass or produce mode-specific diagnostics.
+
+- **Verification Results**:
+  - [ ] T14.1 Harness Lifecycle Hook – pending
+  - [ ] T14.2 AgentFsProvider (FUSE) Smoke – pending
+  - [ ] T14.3 Provider Matrix (FUSE) – pending
+  - [ ] T14.4 Backstore Sweep – pending
+
+**F15. AgentFS Control Plane Wiring for `ah agent fs snapshot`** (3–4d)
+
+- **Deliverables**:
+  - Reuse the existing `agentfs-control-cli` (`crates/agentfs-control-cli`) logic to implement ioctl + SSZ request/response handling inside the `ah agent fs snapshot` command, so snapshot create/list/branch/bind requests can target the mounted FUSE filesystem through `.agentfs/control`.
+  - Add configuration discovery so `ah agent fs snapshot` can locate the mount started by `just start-fs-snapshots-daemon` (default `/tmp/agentfs`), overridable via CLI flags/env vars that also feed upcoming `ah agent sandbox` / `ah agent start` flows.
+  - Ensure the command records structured logs (snapshot IDs, branch IDs, errno on failure) and integrates with the existing `agentfs-control.request.logical.json` SSZ schema validation.
+  - Provide documentation/examples showing how to replace `cargo run -p agentfs-control-cli` with the user-facing `ah agent fs snapshot` flows while keeping the low-level CLI available for debugging.
+
+- **Success criteria (automated integration tests)**:
+  - `ah agent fs snapshot create --name smoke --mount /tmp/agentfs` successfully issues ioctl requests against the FUSE control file and prints the new snapshot ID, matching the behavior of `agentfs-control-cli snapshot-create`.
+  - Control-plane parity tests prove that `snapshot list`, `branch create`, and `branch bind` produce byte-identical SSZ payloads compared to the reference CLI, guaranteeing compatibility with the daemon.
+  - Error handling surfaces actionable messages (control file missing, ioctl errno) and exits non-zero when the daemon is not running.
+
+- **Automated Test Plan**:
+  - **T15.1 CLI Parity Harness**: New Rust integration test (or shell script under `scripts/test-agentfs-cli-control-plane.sh`) that starts the daemon, runs both `agentfs-control-cli` and `ah agent fs snapshot` for create/list/bind, and diff-checks their stdout/JSON outputs.
+  - **T15.2 Failure Injection**: Add a harness subtest that intentionally stops the daemon mid-run to ensure `ah agent fs snapshot` reports ioctl failures with errno context and cleans up temporary files.
+  - **T15.3 Schema Validation**: Extend SSZ golden tests to cover the command’s request builders so deviations from `agentfs-control.request.logical.json` fail CI immediately.
+
+- **Verification Results**:
+  - [ ] T15.1 CLI Parity Harness – pending
+  - [ ] T15.2 Failure Injection – pending
+  - [ ] T15.3 Schema Validation – pending
+
+**F16. Agent CLI Integration (`ah agent sandbox` / `ah agent start`) with AgentFS** (4–5d)
+
+- **Deliverables**:
+  - Update the CLI runtime selection logic (`ah agent sandbox` and `ah agent start`, see `specs/Public/CLI.md`) so when `--fs-snapshots agentfs` (or the auto detector chooses AgentFS) the commands ensure the daemon (Linux FUSE or macOS interpose) is running, mount paths are exported, and per-process branches are managed through the control plane.
+  - Reuse the `ah agent fs snapshot` plumbing to create/restore snapshots as part of workspace preparation, ensuring snapshot IDs flow into the task metadata that currently records provider selection.
+  - Wire branch binding so every agent process is assigned to its own branch by calling the control plane before `ah agent record` launches the workload; track bindings for cleanup on exit.
+  - Add user-facing logging/telemetry describing when the CLI switches between AgentFS interpose (macOS) and FUSE (Linux) backends, and expose troubleshooting hints (mount status, control file path, daemon logs).
+
+- **Success criteria (automated integration tests)**:
+  - New end-to-end tests run `ah agent sandbox --fs-snapshots agentfs --sandbox local --repo <temp>` and verify the CLI snapshot list contains entries created through the control plane while the daemon logs show per-process branch binding.
+  - `ah agent start --agent echo --fs-snapshots agentfs --working-copy auto` completes end-to-end with recorded workspace metadata referencing the AgentFS provider, and subsequent `ah agent fs snapshot list` shows the automatically created checkpoints.
+  - Mount lifecycle automation guarantees no stale mounts remain after the CLI terminates, even when the agent crashes or the user interrupts the command.
+
+- **Automated Test Plan**:
+  - **T16.1 Sandbox Smoke (`just test-agentfs-sandbox`)**: Scripted test that runs `ah agent sandbox` against a throwaway repo on both Linux and macOS, asserts branch binding succeeded via control-plane logs, and validates cleanup.
+  - **T16.2 Agent Start Integration (`just test-agentfs-cli-e2e`)**: Launches `ah agent start` with a lightweight dummy agent, inspects the SQLite state DB to ensure the recorded provider is `AgentFs` with mount metadata, and confirms a follow-up `ah agent fs snapshot list` returns the expected snapshot IDs.
+  - **T16.3 Abort/Crash Cleanup**: Injects a forced termination (e.g., `SIGKILL` to the agent subprocess) and verifies the CLI stop hook unbinds branches and unmounts/tears down daemon resources before returning.
+
+- **Verification Results**:
+  - [ ] T16.1 Sandbox Smoke – pending
+  - [ ] T16.2 Agent Start Integration – pending
+  - [ ] T16.3 Abort/Crash Cleanup – pending
 
 ### Test strategy & tooling
 

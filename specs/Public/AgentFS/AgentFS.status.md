@@ -992,7 +992,7 @@ Notes:
   - Snapshot path: If backstore FS supports native snapshots → adapter calls them; else copy the **upper change set** only.
   - Tests: Throughput comparison vs InMemory backstore (I/O size 4–1024KiB). Snapshot/branch creation under HostFs mode.
 - Adapter tasks:
-  - **Linux (FUSE)**: tmpfs or other RAM-fs for backstore; enable passthrough-fd on upper handles when supported.
+  - **Linux (FUSE)**: tmpfs for backstore; enable passthrough-fd on upper handles when supported.
   - **macOS (FSKit)**: APFS RAM disk backstore; proxy I/O via native file handles.
   - **Windows (WinFsp)**: backstore under a fast local volume; document supported drivers where applicable.
 - **Success criteria**:

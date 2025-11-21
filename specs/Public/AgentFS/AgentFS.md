@@ -98,9 +98,16 @@ Adapters consult these to choose optimal paths; correctness is invariant to capa
 
 ### Backstore
 
-`FsConfig.backstore`: `{ mode: "InMemory" | "HostFs", root?: "<absolute host path>", prefer_native_snapshots: bool }`
+`FsConfig.backstore`: `{ mode: "InMemory" | "HostFs" | "RamDisk", root?: "<absolute host path>", prefer_native_snapshots: bool, size_mb?: <u32> }`
+
+**Platform-specific RamDisk implementations:**
+
+- **Linux**: RamDisk mode creates a tmpfs mount (temporary filesystem backed by RAM)
+- **macOS**: RamDisk mode creates APFS volumes on RAM disks using system utilities
+- **Windows**: RamDisk mode creates RAM disks with NTFS filesystem
 
 - When `HostFs`, adapters use **KBP** against `root`. The core still governs overlay/branch/snapshot semantics.
+- When `RamDisk`, adapters create a RAM-backed filesystem mount point and use **KBP** against it.
 
 ### Interpose
 
