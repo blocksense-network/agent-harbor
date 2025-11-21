@@ -461,14 +461,19 @@ impl TaskCreateArgs {
         // Resolve push preference (apply --yes)
         let push_preference = self.resolve_push_preference()?;
 
-        // Handle branch creation/validation
-        let actual_branch_name = if start_new_branch {
-            let branch = branch_name.as_ref().unwrap();
-            self.handle_new_branch_creation(&repo, branch).await?;
-            branch.clone()
+        // Handle branch creation/validation when task files are enabled
+        let actual_branch_name = if create_task_files {
+            if start_new_branch {
+                let branch = branch_name.as_ref().unwrap();
+                self.handle_new_branch_creation(&repo, branch).await?;
+                branch.clone()
+            } else {
+                // Using existing branch
+                self.validate_existing_branch(&repo, &orig_branch).await?;
+                orig_branch.clone()
+            }
         } else {
-            // Using existing branch
-            self.validate_existing_branch(&repo, &orig_branch).await?;
+            // No local branch creation; rely on remote/cloud paths
             orig_branch.clone()
         };
 
@@ -488,7 +493,8 @@ impl TaskCreateArgs {
                 if cleanup_branch {
                     self.cleanup_branch(&repo, &actual_branch_name);
                 }
-                anyhow::bail!("Error: Non-interactive mode requires --prompt or --prompt-file");
+                tracing::error!("Error: Non-interactive mode requires --prompt or --prompt-file");
+                std::process::exit(10);
             }
             match self.get_editor_content() {
                 Ok(content) => content,
@@ -528,25 +534,31 @@ impl TaskCreateArgs {
         // Generate session ID
         let session_id = DatabaseManager::generate_session_id();
 
-        // Create task and commit
-        let tasks = AgentTasks::new(repo.root()).context("Failed to initialize agent tasks")?;
+        // Create task and commit when task files are enabled
+        if create_task_files {
+            let tasks = AgentTasks::new(repo.root()).context("Failed to initialize agent tasks")?;
 
-        let commit_result = if start_new_branch {
-            tasks.record_initial_task(&task_content, &actual_branch_name, self.devshell.as_deref())
-        } else {
-            tasks.append_task(&task_content)
-        };
+            let commit_result = if start_new_branch || !tasks.on_task_branch().unwrap_or(false) {
+                tasks.record_initial_task(
+                    &task_content,
+                    &actual_branch_name,
+                    self.devshell.as_deref(),
+                )
+            } else {
+                tasks.append_task(&task_content)
+            };
 
-        if let Err(e) = commit_result {
-            // Cleanup branch if we created it and task recording failed
-            if cleanup_branch {
-                self.cleanup_branch(&repo, &actual_branch_name);
+            if let Err(e) = commit_result {
+                // Cleanup branch if we created it and task recording failed
+                if cleanup_branch {
+                    self.cleanup_branch(&repo, &actual_branch_name);
+                }
+                return Err(e.into());
             }
-            return Err(e.into());
-        }
 
-        // Success - mark as committed and don't cleanup branch
-        _task_committed = true;
+            // Success - mark as committed and don't cleanup branch
+            _task_committed = true;
+        }
 
         // Create session record
         let session_record = SessionRecord {
