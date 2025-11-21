@@ -403,6 +403,7 @@
                     pkgs.screen
                     pkgs.zellij
                     pkgs.kitty
+                    pkgs.wezterm
                   ]
                   ++ pkgs.lib.optionals isLinux [
                     pkgs.tilix
