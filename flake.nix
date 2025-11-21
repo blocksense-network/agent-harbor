@@ -378,13 +378,17 @@
                   pkgs.zlib.dev
                 ];
 
-                ah-mux-test-tools = [
-                  pkgs.ncurses
-                  pkgs.tmux
-                  pkgs.screen
-                  pkgs.zellij
-                  pkgs.kitty
-                ];
+                ah-mux-test-tools =
+                  [
+                    pkgs.ncurses
+                    pkgs.tmux
+                    pkgs.screen
+                    pkgs.zellij
+                    pkgs.kitty
+                  ]
+                  ++ pkgs.lib.optionals isLinux [
+                    pkgs.tilix
+                  ];
 
                 # GUI testing tools for headless environments
                 gui-test-tools = [
