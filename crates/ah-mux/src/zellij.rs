@@ -400,6 +400,12 @@ impl Multiplexer for ZellijMultiplexer {
         fields(component = "ah-mux", operation = "zellij_focus_window", window = %window)
     )]
     fn focus_window(&self, window: &WindowId) -> Result<(), MuxError> {
+        if let Ok(current) = std::env::var("ZELLIJ_SESSION_NAME") {
+            if current == *window {
+                return Ok(());
+            }
+        }
+
         // Attach to the given session and bring it to the foreground.
         let output = Command::new("zellij").arg("attach").arg(window).output().map_err(|e| {
             error!(
