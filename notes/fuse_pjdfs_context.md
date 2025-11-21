@@ -2,6 +2,11 @@
 
 <!-- cSpell:ignore fdatasync conv ENOTCONN writeback Backoff perfdata memmove erms memfd siphash setid FOWNER noprof subtest subtests -->
 
+## Latest (Nov 22 2025)
+
+- CI FUSE jobs now assume a self-hosted NixOS runner with passwordless sudo. Workflow labels were bumped to `[self-hosted, nixos, x86-64-v3]` and we fail fast if `sudo -n true` is unavailable. The mount helper always uses sudo for `/dev/fuse` setup and no longer tries non-sudo fallbacks; this aligns with the GitHub runner requirements where `/dev/fuse` must be created via `modprobe/mknod`.
+- FUSE/pjdfstest failures on the sandbox runners were due to missing `/dev/fuse` and lack of sudo (some runners even without sudo installed). Expect the harness to pass once it lands on a privileged runner; there is no skip path in CI.
+
 ## Latest (Nov 21 2025)
 
 - Branch `feat/agentfs-fuse-f7` rebased on main; F1–F5/F7/F8/F10 rerun and passing. Logs: `logs/fuse-basic-ops-20251121-113210`, `…negative-ops-20251121-113229`, `…overlay-ops-20251121-113235`, `…control-plane-20251121-113243`, `…mount-cycle-20251121-113309`, `…mount-failures-20251121-113355`, `…mount-concurrent-20251121-113417`, `…xattrs-20251121-113438`, `…mknod-20251121-113452`, `…mount-options-20251121-113500`, `…advanced-io-20251121-113514`, `…security-permissions-20251121-113829`, `…security-privileges-20251121-113858`, `…security-input-20251121-113918`, `…security-sandbox-20251121-113942`, `…security-robustness-20251121-114004`.
