@@ -1067,6 +1067,7 @@ mod tests {
             Ok(()) => tracing::debug!("start_test_kitty succeeded"),
             Err(e) => tracing::error!(error=%e, "start_test_kitty failed"),
         }
+        stop_test_kitty();
     }
 
     #[test]
