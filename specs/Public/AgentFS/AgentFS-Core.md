@@ -10,6 +10,12 @@
 
 The core exposes a `Backstore` abstraction with implementations:
 `InMemoryUpper`, `HostFsUpper{root: Path}` (mostly platform-agnostic logic, but reliant on platform-specific setup), `RamdiskUpper{mount: Path, fs: FsKind, supports_native_snapshots: bool}` (platform-specific).
+**Platform-specific RamDisk implementations:**
+
+- **Linux**: Uses tmpfs (temporary filesystem backed by RAM) mounted with `mount -t tmpfs`
+- **macOS**: Uses APFS volumes created on RAM disks via `hdiutil` and `diskutil` commands
+- **Windows**: Uses RAM disks with NTFS filesystem (implementation TBD)
+
 Responsibilities:
 
 1. **Provisioning**: `create_ramdisk(cfg)`, `attach_hostfs(root)`, `fallback_inmem()`.
@@ -151,7 +157,11 @@ pub struct LowerConfig {
     pub root: std::path::PathBuf,
 }
 
-pub enum BackstoreMode { InMemory, HostFs }
+pub enum BackstoreMode {
+    InMemory,
+    HostFs,
+    RamDisk { size_mb: u32 }
+}
 
 pub struct BackstoreConfig {
     pub mode: BackstoreMode,
