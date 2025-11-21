@@ -551,6 +551,7 @@ dependencies = [
 name = "ah-fs-snapshots-daemon"
 version = "0.1.0"
 dependencies = [
+ "agentfs-core",
  "ah-logging",
  "anyhow",
  "clap",
@@ -559,12 +560,15 @@ dependencies = [
  "futures",
  "hex",
  "libc",
+ "once_cell",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
  "tokio-test",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
 ]
@@ -8486,6 +8490,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

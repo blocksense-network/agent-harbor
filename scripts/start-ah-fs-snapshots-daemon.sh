@@ -5,6 +5,10 @@
 set -euo pipefail
 
 SOCKET_PATH="/tmp/agent-harbor/ah-fs-snapshots-daemon"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DAEMON_BIN="$REPO_ROOT/target/release/ah-fs-snapshots-daemon"
+CLI_BIN="$REPO_ROOT/target/release/ah-fs-snapshots-daemonctl"
+HOST_BIN="${AGENTFS_FUSE_HOST_BIN:-$REPO_ROOT/target/release/agentfs-fuse-host}"
 
 if [ -e "$SOCKET_PATH" ]; then
   # Check if socket is actually accepting connections by trying to connect
@@ -17,10 +21,25 @@ if [ -e "$SOCKET_PATH" ]; then
   fi
 fi
 
-echo "Starting AH filesystem snapshots daemon with sudo..."
-echo "The daemon will run in the background and handle privileged filesystem snapshot operations."
-echo "Stop it with: just stop-ah-fs-snapshots-daemon"
+echo "Building ah-fs-snapshots-daemon (daemon + ctl) and agentfs-fuse-host (release)..."
+cargo build --release --package ah-fs-snapshots-daemon --bins
+cargo build --release --package agentfs-fuse-host --features fuse
 
-# Build and run the daemon
-cargo build --release --package ah-fs-snapshots-daemon
-sudo -b ./target/release/ah-fs-snapshots-daemon
+echo "Launching AH filesystem snapshots daemon with sudo..."
+echo "Stop it with: just stop-ah-fs-snapshots-daemon"
+sudo -b AGENTFS_FUSE_HOST_BIN="$HOST_BIN" "$DAEMON_BIN"
+
+echo -n "Waiting for daemon socket $SOCKET_PATH ..."
+for _ in {1..30}; do
+  if [ -e "$SOCKET_PATH" ]; then
+    echo " ready"
+    break
+  fi
+  sleep 1
+done
+
+if [ ! -e "$SOCKET_PATH" ]; then
+  echo "\nTimed out waiting for daemon socket; check sudo logs"
+  exit 1
+fi
+echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage FUSE mounts as needed."
