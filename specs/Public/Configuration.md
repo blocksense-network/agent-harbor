@@ -233,5 +233,93 @@ AH_REPO_SUPPORTED_AGENTS=all
 
 ### Rust Configuration Patterns
 
-- Each crate defines its own configuration structs which must be provided by the user when instantiating types from the crate.
-- To promote maximum flexibility, crates should avoid providing default configuration values that are highly-specific to agent harbor. Instead, the default agent harbor configuration is provided in the `ah-configuration-types` module, which is referenced only in the `ah-cli` crate. This simplifies the creation of alternative CLI tools and entry points for the functionality of the crates for testing purposes.
+The Agent Harbor configuration system follows a **distributed ownership with centralized composition** pattern that enables clean separation of concerns while maintaining a unified configuration interface.
+
+#### Distributed Configuration Types
+
+Each subsystem/crate defines its own configuration type locally (e.g., in `$subsystem_config.rs`), owning the complete type definition for its configuration needs:
+
+```rust
+// In ah-tui/src/tui_config.rs
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct TuiConfig {
+    pub font_style: FontStyle,
+    pub font: Option<String>,
+    // ... other TUI-specific fields
+}
+
+// In ah-cli/src/cli_config.rs
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct CliConfig {
+    pub json_output: bool,
+    pub non_interactive: bool,
+    // ... other CLI-specific fields
+}
+```
+
+This approach ensures:
+
+- **Type Safety**: Each subsystem has strongly-typed access to its configuration
+- **Encapsulation**: Subsystems control their own configuration schema and validation
+- **Testability**: Subsystem-specific configuration can be tested in isolation
+- **Flexibility**: Subsystems can evolve their configuration independently
+
+#### Centralized Configuration Composition
+
+The main application (`ah-cli`) defines a single root configuration struct that composes all subsystem configurations using Serde attributes for flattening and field mapping:
+
+```rust
+// In ah-cli/src/config.rs or ah-config-types/src/lib.rs
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct Config {
+    // Top-level fields that don't belong to specific subsystems
+    pub remote_server: Option<String>,
+
+    // Subsystem configurations composed via flattening
+    #[serde(flatten)]
+    pub ui: UiConfig,
+
+    #[serde(flatten)]
+    pub repo: RepoConfig,
+
+    // Rename fields to match CLI spec conventions
+    #[serde(rename = "browser-automation")]
+    pub browser_automation: bool,
+
+    #[serde(rename = "browser-profile")]
+    pub browser_profile: Option<String>,
+    // ... other top-level and flattened fields
+}
+```
+
+#### Configuration Loading and Distribution
+
+One of the first steps after launching `ah` is loading the complete configuration across all layers (system, user, repo, repo-user, environment, CLI flags). This produces a fully populated `Config` instance from which subsystem-specific configuration objects are extracted and passed to respective subsystems:
+
+```rust
+// In ah-cli/src/main.rs or initialization code
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load configuration from all layers
+    let config = config_core::load_config()?;
+
+    // Extract and pass subsystem configurations
+    let tui = TuiSubsystem::new(config.ui)?;
+    let cli = CliSubsystem::new(config.cli)?;
+    let repo = RepoSubsystem::new(config.repo)?;
+
+    // Initialize application with configured subsystems
+    App::new(tui, cli, repo).run()
+}
+```
+
+#### Benefits of This Approach
+
+- **Clean Separation**: Each subsystem owns its configuration while the main app handles composition
+- **Spec Compliance**: Serde attributes ensure TOML field names match CLI.md specifications
+- **Type Safety**: Compile-time guarantees that configuration is correctly structured
+- **Testing Flexibility**: Alternative CLI tools can compose different subsets of configurations
+- **Evolution Safety**: Subsystem configuration changes are isolated and don't break other components
+
+#### Default Configuration Values
+
+To promote maximum flexibility, crates should avoid providing default configuration values that are highly-specific to agent harbor. Instead, the default agent harbor configuration is provided in the `ah-configuration-types` module, which is referenced only in the `ah-cli` crate. This simplifies the creation of alternative CLI tools and entry points for the functionality of the crates for testing purposes.
