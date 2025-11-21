@@ -6,8 +6,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "next --webpack",
-    "build": "next build --webpack && yarn build:pagefind",
+    "dev": "next --turbopack",
+    "build": "next build && yarn build:pagefind",
     "start": "next start",
     "build:pagefind": "pagefind --site .next/server/app --output-path public/_pagefind"
   },
