@@ -48,7 +48,9 @@ pub use session::{Session, SessionId, SessionManager, SessionStatus};
 pub use agent_tasks::AgentTasks;
 
 /// Interactive editor integration for task content creation.
-pub use editor::{EDITOR_HINT, EditorError, edit_content_interactive};
+pub use editor::{
+    EDITOR_HINT, EditorError, edit_content_interactive, edit_content_interactive_with_hint,
+};
 
 /// Nix devshell detection and parsing utilities.
 pub use devshell::devshell_names;
