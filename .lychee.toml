@@ -71,6 +71,10 @@ exclude = [
   "http://man7.org/.*",
   "https://man7.org/.*",
   "https://formulae.brew.sh/.*",
+  # Flaky TLS on Arch Linux man mirror
+  "https://man.archlinux.org/.*",
+  # Apple developer docs often fail TLS/redirect checks in CI
+  "https://developer.apple.com/.*",
 ]
 max_concurrency = 8
 timeout = 20
