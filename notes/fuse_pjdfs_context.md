@@ -12,6 +12,7 @@
 - Branch `feat/agentfs-fuse-f7` rebased on main; F1–F5/F7/F8/F10 rerun and passing. Logs: `logs/fuse-basic-ops-20251121-113210`, `…negative-ops-20251121-113229`, `…overlay-ops-20251121-113235`, `…control-plane-20251121-113243`, `…mount-cycle-20251121-113309`, `…mount-failures-20251121-113355`, `…mount-concurrent-20251121-113417`, `…xattrs-20251121-113438`, `…mknod-20251121-113452`, `…mount-options-20251121-113500`, `…advanced-io-20251121-113514`, `…security-permissions-20251121-113829`, `…security-privileges-20251121-113858`, `…security-input-20251121-113918`, `…security-sandbox-20251121-113942`, `…security-robustness-20251121-114004`.
 - F7 stress harness green: `logs/fuse-stress-20251121-113542/summary.json`.
 - F6 performance still under target (seq_write ~0.42×, seq_read ~0.28×, metadata ~0.11×, concurrent_write ~0.13×) in `logs/fuse-performance-20251121-113521/summary.json`.
+- F9 compatibility harness added and wired into CI: `just test-fuse-compat` exercises `fusermount` (libfuse2) and `fusermount3` (libfuse3) mount/unmount flows, logs helper/kernel versions, and writes `summary.json`; first run: `logs/fuse-compat-20251121-143907/summary.json` (both helpers succeeded on NixOS 6.12).
 - pjdfstest full suite rerun: `logs/pjdfstest-full-20251121-114039/summary.json` passes main set; privileged `chmod/12.t` still fails as expected under user-mounted FUSE.
 
 ## Latest (Nov 20 2025)

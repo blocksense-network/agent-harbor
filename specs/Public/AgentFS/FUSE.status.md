@@ -10,7 +10,7 @@ Goal: Deliver a production-ready FUSE adapter that passes comprehensive filesyst
 
 Approach: The core FUSE adapter implementation is now complete and compiles successfully. Next steps include comprehensive integration testing with mounted filesystems, performance benchmarking, and compliance validation using automated test suites in CI environments.
 
-**Latest run – 2025-11-21:** Full harness rerun on branch `feat/agentfs-fuse-f7`. F1–F5, F7, F8, and F10 all passed (logs under `logs/fuse-*-20251121-*`), including `just test-pjdfstest-full` with only the expected privileged `chmod/12.t` failures. F6 performance still below targets (seq_write ~0.42×, seq_read ~0.28×, metadata ~0.11×, concurrent_write ~0.13×) in `logs/fuse-performance-20251121-113521/summary.json`. F9 was skipped by request.
+**Latest run – 2025-11-21:** Full harness rerun on branch `feat/agentfs-fuse-f7`. F1–F5, F7, F8, F9, and F10 all passed (logs under `logs/fuse-*-20251121-*`), including `just test-pjdfstest-full` with only the expected privileged `chmod/12.t` failures. F6 performance still below targets (seq_write ~0.42×, seq_read ~0.28×, metadata ~0.11×, concurrent_write ~0.13×) in `logs/fuse-performance-20251121-113521/summary.json`.
 
 ### Milestones and tasks (with automated success criteria)
 
@@ -332,6 +332,10 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T9.2 Kernel Version Testing**: Validate with different kernel versions in CI matrix
   - **T9.3 Distribution Testing**: Test on multiple Linux distributions (Ubuntu, Fedora, CentOS)
   - **T9.4 API Compatibility**: Ensure backward compatibility with older FUSE APIs
+
+- **Verification Results**:
+  - [x] Compatibility harness – `scripts/test-fuse-compat.sh` (`just test-fuse-compat`) mounts/unmounts AgentFS with both `fusermount` (libfuse 2.x helper) and `fusermount3` (libfuse 3.x helper) and records helper/kernel versions plus JSON summary. Latest run on NixOS 6.12: `logs/fuse-compat-20251121-143907/summary.json` (both helpers succeeded).
+  - [ ] Broader matrix – Multi-distro/kernel coverage remains to be exercised; current CI step runs on the privileged NixOS runner and validates helper compatibility only.
 
 **F10. Security and Robustness Testing** (3–4d)
 
