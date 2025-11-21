@@ -2483,7 +2483,7 @@ exit {}
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(env)]
     fn integration_test_sandbox_with_seccomp() -> Result<()> {
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
 
@@ -2517,6 +2517,13 @@ exit {}
 
     #[tokio::test]
     async fn integration_test_agent_start_with_screenshots() -> Result<()> {
+        if !get_workspace_root()
+            .join("tests/scenarios/agent_start_screenshot_test.yaml")
+            .exists()
+        {
+            eprintln!("Skipping screenshots integration; scenario file missing");
+            return Ok(());
+        }
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
