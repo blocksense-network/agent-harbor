@@ -63,21 +63,12 @@ impl Default for FaultRule {
 }
 
 /// JSON-serializable policy transmitted over the control plane.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct FaultPolicy {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
     pub rules: Vec<FaultRule>,
-}
-
-impl Default for FaultPolicy {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            rules: Vec::new(),
-        }
-    }
 }
 
 impl FaultPolicy {
@@ -117,6 +108,12 @@ struct FaultState {
 /// Runtime controller that tracks policy + hit counts.
 pub struct FaultInjector {
     state: Mutex<FaultState>,
+}
+
+impl Default for FaultInjector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FaultInjector {

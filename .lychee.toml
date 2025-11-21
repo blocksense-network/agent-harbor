@@ -74,6 +74,10 @@ exclude = [
   "https://formulae.brew.sh/.*",
   "https://www.electronjs.org/.*",
   "https://microvm-nix.github.io/.*",
+  # Flaky TLS on Arch Linux man mirror
+  "https://man.archlinux.org/.*",
+  # Apple developer docs often fail TLS/redirect checks in CI
+  "https://developer.apple.com/.*",
 ]
 max_concurrency = 8
 timeout = 20

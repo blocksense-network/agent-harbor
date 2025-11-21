@@ -29,27 +29,34 @@ fn main() -> Result<()> {
             if let Some(path) = report.json_output.clone() {
                 serde_json::to_writer_pretty(File::create(&path)?, &report.report)?;
             }
-            println!("{}", serde_json::to_string_pretty(&report.report)?);
+            write_json_to_stdout(&report.report)?;
         }
         Command::Fingerprint(args) => {
             let fp = compute_tree_fingerprint(&args.path)?;
-            println!("{}", serde_json::to_string_pretty(&fp)?);
+            write_json_to_stdout(&fp)?;
         }
         Command::Resource(args) => {
             let report = run_resource_workload(args)?;
             if let Some(path) = report.json_output.clone() {
                 serde_json::to_writer_pretty(File::create(&path)?, &report.report)?;
             }
-            println!("{}", serde_json::to_string_pretty(&report.report)?);
+            write_json_to_stdout(&report.report)?;
         }
         Command::Crash(args) => {
             let report = run_crash_workload(args)?;
             if let Some(path) = report.json_output.clone() {
                 serde_json::to_writer_pretty(File::create(&path)?, &report.report)?;
             }
-            println!("{}", serde_json::to_string_pretty(&report.report)?);
+            write_json_to_stdout(&report.report)?;
         }
     }
+    Ok(())
+}
+
+fn write_json_to_stdout<T: serde::Serialize>(value: &T) -> Result<()> {
+    let mut out = io::stdout().lock();
+    writeln!(out, "{}", serde_json::to_string_pretty(value)?)?;
+    out.flush()?;
     Ok(())
 }
 
@@ -609,7 +616,7 @@ impl Worker {
         let mut guard = self
             .files
             .lock()
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "file set poisoned during insert"))?;
+            .map_err(|_| io::Error::other("file set poisoned during insert"))?;
         guard.insert(path);
         Ok(())
     }
@@ -618,7 +625,7 @@ impl Worker {
         let mut guard = self
             .files
             .lock()
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "file set poisoned during rename"))?;
+            .map_err(|_| io::Error::other("file set poisoned during rename"))?;
         guard.remove(old);
         guard.insert(new_path);
         Ok(())
@@ -628,7 +635,7 @@ impl Worker {
         let mut guard = self
             .files
             .lock()
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "file set poisoned during delete"))?;
+            .map_err(|_| io::Error::other("file set poisoned during delete"))?;
         guard.remove(target);
         Ok(())
     }
@@ -841,7 +848,13 @@ fn run_fd_exhaust(workdir: &Path, max_open: u64) -> Result<ResourceScenarioResul
     let mut fd_peak = count_open_fds().unwrap_or_default();
     for idx in 0..max_open {
         let path = workdir.join(format!("fd-exhaust-{idx:016x}.bin"));
-        match OpenOptions::new().create(true).read(true).write(true).open(&path) {
+        match OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+        {
             Ok(file) => {
                 handles.push((path, file));
                 opened += 1;
