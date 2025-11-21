@@ -13,6 +13,9 @@ use super::Theme;
 use crate::view_model::TaskEntryViewModel;
 use crate::view_model::task_entry::CardFocusElement;
 
+/// Fixed spacing between left-aligned buttons (repo, branch, model)
+const BUTTON_SPACING: u16 = 1;
+
 /// Geometry describing interactive regions inside a rendered draft card.
 #[derive(Debug, Clone, Copy)]
 pub struct DraftCardLayout {
@@ -197,7 +200,7 @@ pub fn render_draft_card_content(
 
     // Calculate button positions: left buttons take available space, Go and Advanced Options buttons to the right
     let go_button_width = 6; // "⏎ Go" width
-    let advanced_options_button_width = 4; // "⚙️" width
+    let advanced_options_button_width = 11; // " ≡ Options " width
     let right_buttons_width = go_button_width + advanced_options_button_width;
     let left_buttons_width = button_area.width.saturating_sub(right_buttons_width);
 
@@ -222,20 +225,79 @@ pub fn render_draft_card_content(
         height: button_area.height,
     };
 
-    // Create layout for left buttons (repo, branch, models)
-    let left_button_constraints = if has_enumerators {
-        vec![
-            Constraint::Ratio(1, 3), // Repository
-            Constraint::Ratio(1, 3), // Branch
-            Constraint::Ratio(1, 3), // Models
-        ]
+    // Create layout for left buttons (repo, branch, models) with fixed spacing
+    let repo_button_width = if has_enumerators {
+        if let Some(ref repo_text) = repo_button_text {
+            (repo_text.len() + 2) as u16 // +2 for padding
+        } else {
+            0
+        }
     } else {
-        vec![Constraint::Ratio(1, 1)] // Models only
+        0
     };
-    let left_button_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(left_button_constraints)
-        .split(left_buttons_area);
+
+    let branch_button_width = if has_enumerators {
+        if let Some(ref branch_text) = branch_button_text {
+            (branch_text.len() + 2) as u16 // +2 for padding
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    let model_button_width = (models_button_text.len() + 2) as u16; // +2 for padding
+
+    // Calculate total width needed for left buttons with spacing
+    let total_left_buttons_width = if has_enumerators {
+        repo_button_width + branch_button_width + model_button_width + (BUTTON_SPACING * 2) // 2 spaces between 3 buttons
+    } else {
+        model_button_width
+    };
+
+    // If we don't have enough space, fall back to equal distribution
+    let left_button_chunks = if total_left_buttons_width <= left_buttons_area.width {
+        // Use fixed widths with spacing
+        let mut x_pos = left_buttons_area.x;
+        let y = left_buttons_area.y;
+        let height = left_buttons_area.height;
+
+        let repo_rect = if repo_button_width > 0 {
+            let rect = Rect::new(x_pos, y, repo_button_width, height);
+            x_pos += repo_button_width + BUTTON_SPACING;
+            rect
+        } else {
+            Rect::default()
+        };
+
+        let branch_rect = if branch_button_width > 0 {
+            let rect = Rect::new(x_pos, y, branch_button_width, height);
+            x_pos += branch_button_width + BUTTON_SPACING;
+            rect
+        } else {
+            Rect::default()
+        };
+
+        let model_rect = Rect::new(x_pos, y, model_button_width, height);
+
+        vec![repo_rect, branch_rect, model_rect]
+    } else {
+        // Fallback to equal distribution if not enough space
+        let left_button_constraints = if has_enumerators {
+            vec![
+                Constraint::Ratio(1, 3), // Repository
+                Constraint::Ratio(1, 3), // Branch
+                Constraint::Ratio(1, 3), // Models
+            ]
+        } else {
+            vec![Constraint::Ratio(1, 1)] // Models only
+        };
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(left_button_constraints)
+            .split(left_buttons_area)
+            .to_vec()
+    };
 
     let repo_style =
         if is_selected && matches!(card.focus_element, CardFocusElement::RepositorySelector) {
@@ -337,7 +399,7 @@ pub fn render_draft_card_content(
     // Render Advanced Options button next to Go button
     render_button(
         advanced_options_button_rect,
-        "⚙️",
+        "≡ Options",
         advanced_options_style,
         Alignment::Center,
     );
