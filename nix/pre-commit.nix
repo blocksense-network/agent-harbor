@@ -10,14 +10,16 @@
       pre-commit = {
         settings = {
           hooks = {
-            # Markdown formatting (run first)
-            prettier-md = {
+            prettier = {
               enable = true;
-              name = "prettier --write (Markdown)";
-              entry = "prettier --log-level warn --write";
-              language = "system";
-              pass_filenames = true;
-              files = "\\.md$";
+              excludes = [ "\\.yarn" ];
+              settings = {
+                check = true;
+                write = true;
+                list-different = false;
+                ignore-unknown = true;
+                log-level = "warn";
+              };
             };
             # Fast auto-fixers and sanity checks
             # Local replacements for common sanity checks (portable, no Python deps)
@@ -161,14 +163,13 @@
               '';
             };
 
-            # Fast link check on changed files (CI will run full scan)
             lychee-fast = {
               enable = true;
-              name = "lychee (changed files)";
+              name = "lychee-fast";
               entry = "lychee --no-progress --require-https --cache --config .lychee.toml";
               language = "system";
               pass_filenames = true;
-              files = "\\.md$";
+              files = "\\.(md|mdx)$";
             };
           };
 
