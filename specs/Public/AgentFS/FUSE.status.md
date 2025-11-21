@@ -348,9 +348,15 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - Add lifecycle RPCs (SSZ `Request` variants) for `MountAgentfsFuse` with the correct mount flags/backstore configuration, `UnmountAgentfsFuse`, and `StatusAgentfsFuse`, persisting mountpoints, PID files, and log paths under `/run/agentfs-fuse/`.
   - Surface explicit backstore parameters (InMemory, HostFs directory, RamDisk) in the RPCs so downstream tests can request the same combinations described in `AgentFS.md` and `AgentFS-Core.md`; ensure mount logs report which backstore is active.
   - Emit structured logs (mount command, PID, stderr tail, reason for restart) via `tracing` so `just check-ah-fs-snapshots-daemon` can report actionable diagnostics when the mount fails.
+  - Ship a `ah-fs-snapshots-daemonctl` CLI plus updated `just start/stop/check` helpers so engineers can drive mount/unmount/status RPCs without bespoke scripts.
+
+- **Implementation details**:
+  - The daemon now owns a long-lived `DaemonState`/`AgentfsFuseManager` pair that supervises the `agentfs-fuse-host` child, rewrites config files in `/run/agentfs-fuse/`, and restarts crashed hosts with exponential backoff while persisting PID/log/status metadata for troubleshooting.
+  - New SSZ union variants (`MountAgentfsFuse`, `UnmountAgentfsFuse`, `StatusAgentfsFuse`) plus strongly typed backstore payloads keep RPCs in sync with `FsConfig`; helper binaries and tests validate InMemory, HostFs, and RamDisk modes.
+  - `ah-fs-snapshots-daemonctl fuse {mount,unmount,status}` wraps the RPCs, exposes JSON for CI, and powers `scripts/check-ah-fs-snapshots-daemon.sh` and the new crash harness (`scripts/test-fs-daemon-mount.sh`). `just start-ah-fs-snapshots-daemon` now launches only the daemon, while `just stop-…` relies on the supervisor’s shutdown unmount path.
 
 - **Success criteria (automated integration tests)**:
-  - `just start-ah-fs-snapshots-daemon` results in a mounted `/tmp/agentfs` (or configured path) listed in `/proc/self/mounts`, with the mount owned by the daemon-managed `agentfs-fuse-host` process; `just stop-…` cleanly unmounts and removes sockets.
+  - `just start-ah-fs-snapshots-daemon` launches the daemon and leaves mount orchestration to RPC callers (e.g., `ah-fs-snapshots-daemonctl fuse mount`). `just stop-…` now only shuts down the daemon, relying on the supervisor’s shutdown path to handle unmount/cleanup.
   - The daemon survives `agentfs-fuse-host` crashes by restarting the mount (respecting exponential backoff) and exposes mount health over the existing Unix socket so callers can block until the filesystem is ready.
   - Integration tests in `crates/ah-fs-snapshots-daemon/tests` cover mount/unmount flows, status queries, and failure propagation (bad config, missing fuse device) without requiring manual sudo steps beyond launching the daemon.
 
@@ -360,9 +366,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T12.3 Status CLI**: Extend `scripts/check-ah-fs-snapshots-daemon.sh` to call the new status RPC and verify output (mount path, pid, health) so CI can gate on daemon readiness.
 
 - **Verification Results**:
-  - [ ] T12.1 Mount RPC Test – pending
-  - [ ] T12.2 Crash/Restart Harness – pending
-  - [ ] T12.3 Status CLI – pending
+  - [x] T12.1 Mount RPC Test – `cargo test -p ah-fs-snapshots-daemon fuse_manager::mount_and_unmount_stub_host` boots the daemon-managed supervisor against a stub `agentfs-fuse-host`, drives the Mount/Status/Unmount RPCs over the Unix socket, and asserts the runtime metadata files under `/run/agentfs-fuse/` are populated.
+  - [x] T12.2 Crash/Restart Harness – `scripts/test-fs-daemon-mount.sh` kills the live `agentfs-fuse-host` PID via the new status RPC, waits for the daemon’s exponential-backoff restart, and fails with log excerpts when the PID never changes.
+  - [x] T12.3 Status CLI – `scripts/check-ah-fs-snapshots-daemon.sh` shells out to `ah-fs-snapshots-daemonctl fuse status --json`, verifies the reported `state=running`/PID/log path, and fails fast (with hints) when the daemon isn’t healthy.
 
 **F13. AgentFS Daemon Orchestration for macOS Interpose Mounts** (3–4d)
 

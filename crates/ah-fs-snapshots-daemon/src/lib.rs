@@ -7,13 +7,14 @@
 // with proper privilege escalation using sudo.
 
 pub mod client;
+pub mod fuse_manager;
 pub mod operations;
 pub mod server;
 pub mod types;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::server::DaemonState;
     use crate::types::{Request, Response};
     use ssz::{Decode, Encode};
 
@@ -28,7 +29,8 @@ mod tests {
     #[test]
     fn test_ping_response() {
         let request = Request::ping();
-        let response = tokio_test::block_on(operations::process_request(request));
+        let state = DaemonState::new();
+        let response = tokio_test::block_on(state.process_request(request));
         match response {
             Response::Success(_) => {} // Expected
             _ => panic!("Expected Success response"),

@@ -6,14 +6,16 @@ use anyhow::Result;
 use clap::Parser;
 use ssz::{Decode, Encode};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::{error, info};
 
+mod fuse_manager;
 mod operations;
 mod server;
 mod types;
 
-use server::DaemonServer;
+use server::{DaemonServer, DaemonState};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -53,19 +55,21 @@ async fn main() -> Result<()> {
 
     info!("Starting AH filesystem snapshots daemon");
 
+    let daemon_state = Arc::new(DaemonState::new());
+
     if args.stdin_mode {
         info!("Running in stdin mode");
-        run_stdin_mode().await?;
+        run_stdin_mode(daemon_state.clone()).await?;
     } else {
         info!(operation = "start_daemon", socket_path = %args.socket_path.display(), "Running in socket mode");
-        run_socket_mode(args.socket_path).await?;
+        run_socket_mode(args.socket_path, daemon_state).await?;
     }
 
     Ok(())
 }
 
-async fn run_socket_mode(socket_path: PathBuf) -> Result<()> {
-    let mut server = DaemonServer::new(socket_path)?;
+async fn run_socket_mode(socket_path: PathBuf, state: Arc<DaemonState>) -> Result<()> {
+    let mut server = DaemonServer::new(socket_path, state)?;
 
     // Set up signal handlers for graceful shutdown
     let mut sigint = signal(SignalKind::interrupt())?;
@@ -91,7 +95,7 @@ async fn run_socket_mode(socket_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn run_stdin_mode() -> Result<()> {
+async fn run_stdin_mode(state: Arc<DaemonState>) -> Result<()> {
     use tokio::io::{AsyncBufReadExt, BufReader, stdin};
     use types::Request;
 
@@ -114,7 +118,7 @@ async fn run_stdin_mode() -> Result<()> {
         })?;
 
         // Process the request
-        let response = operations::process_request(request).await;
+        let response = state.process_request(request).await;
 
         // Encode response as SSZ and output as hex
         let response_bytes = Encode::as_ssz_bytes(&response);

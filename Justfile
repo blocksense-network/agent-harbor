@@ -233,6 +233,10 @@ stop-ah-fs-snapshots-daemon:
 check-ah-fs-snapshots-daemon:
     scripts/check-ah-fs-snapshots-daemon.sh
 
+# Crash/restart harness for the daemon-managed AgentFS FUSE mount
+test-fs-daemon-mount:
+    scripts/test-fs-daemon-mount.sh
+
 # Run comprehensive daemon integration tests (requires test filesystems)
 test-daemon-integration: build-daemon-tests
     cargo test --package ah-fs-snapshots-daemon -- --nocapture integration

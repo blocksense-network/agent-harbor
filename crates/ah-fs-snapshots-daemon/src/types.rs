@@ -17,6 +17,9 @@ pub enum Request {
     CloneBtrfs((Vec<u8>, Vec<u8>)),    // (source, destination)
     SnapshotBtrfs((Vec<u8>, Vec<u8>)), // (source, destination)
     DeleteBtrfs(Vec<u8>),              // target
+    MountAgentfsFuse(AgentfsFuseMountRequest),
+    UnmountAgentfsFuse(Vec<u8>),
+    StatusAgentfsFuse(Vec<u8>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
@@ -27,6 +30,84 @@ pub enum Response {
     SuccessWithPath(Vec<u8>),       // path
     SuccessWithList(Vec<u8>),       // JSON-encoded list
     Error(Vec<u8>),                 // message
+    AgentfsFuseStatus(AgentfsFuseStatusData),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct AgentfsFuseMountRequest {
+    pub mount_point: Vec<u8>,
+    pub uid: u32,
+    pub gid: u32,
+    pub allow_other: bool,
+    pub allow_root: bool,
+    pub auto_unmount: bool,
+    pub writeback_cache: bool,
+    pub mount_timeout_ms: u32,
+    pub backstore: AgentfsFuseBackstore,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+#[ssz(enum_behaviour = "union")]
+pub enum AgentfsFuseBackstore {
+    InMemory(Vec<u8>),
+    HostFs(AgentfsHostFsBackstore),
+    RamDisk(AgentfsRamDiskBackstore),
+}
+
+impl Default for AgentfsFuseBackstore {
+    fn default() -> Self {
+        Self::InMemory(vec![])
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct AgentfsHostFsBackstore {
+    pub root: Vec<u8>,
+    pub prefer_native_snapshots: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct AgentfsRamDiskBackstore {
+    pub size_mb: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct AgentfsFuseStatusData {
+    pub state: u8,
+    pub mount_point: Vec<u8>,
+    pub pid: u64,
+    pub restart_count: u32,
+    pub log_path: Vec<u8>,
+    pub runtime_dir: Vec<u8>,
+    pub last_error: Vec<u8>,
+    pub backstore: AgentfsFuseBackstore,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentfsFuseState {
+    Unknown = 0,
+    Starting = 1,
+    Running = 2,
+    BackingOff = 3,
+    Unmounted = 4,
+    Failed = 5,
+}
+
+impl AgentfsFuseState {
+    pub fn as_code(self) -> u8 {
+        self as u8
+    }
+
+    pub fn from_code(code: u8) -> Self {
+        match code {
+            1 => AgentfsFuseState::Starting,
+            2 => AgentfsFuseState::Running,
+            3 => AgentfsFuseState::BackingOff,
+            4 => AgentfsFuseState::Unmounted,
+            5 => AgentfsFuseState::Failed,
+            _ => AgentfsFuseState::Unknown,
+        }
+    }
 }
 
 // Constructors for SSZ union variants (convert String to Vec<u8>)
@@ -63,6 +144,18 @@ impl Request {
     pub fn delete_btrfs(target: String) -> Self {
         Self::DeleteBtrfs(target.into_bytes())
     }
+
+    pub fn mount_agentfs_fuse(request: AgentfsFuseMountRequest) -> Self {
+        Self::MountAgentfsFuse(request)
+    }
+
+    pub fn unmount_agentfs_fuse() -> Self {
+        Self::UnmountAgentfsFuse(vec![])
+    }
+
+    pub fn status_agentfs_fuse() -> Self {
+        Self::StatusAgentfsFuse(vec![])
+    }
 }
 
 impl Response {
@@ -84,5 +177,9 @@ impl Response {
 
     pub fn error(message: String) -> Self {
         Self::Error(message.into_bytes())
+    }
+
+    pub fn agentfs_fuse_status(status: AgentfsFuseStatusData) -> Self {
+        Self::AgentfsFuseStatus(status)
     }
 }

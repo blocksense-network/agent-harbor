@@ -1,53 +1,36 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use crate::types::{Request, Response};
+use crate::fuse_manager::AgentfsFuseManager;
+use crate::types::{AgentfsFuseMountRequest, Response};
 use libc::geteuid;
 use std::process::{Output, Stdio};
 use tokio::process::Command;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 
-pub async fn process_request(request: Request) -> Response {
-    info!(operation = "process_request", request = ?request, "Processing request");
-
-    match request {
-        Request::Ping(_) => Response::success(),
-        Request::ListZfsSnapshots(dataset) => {
-            let dataset_str = String::from_utf8_lossy(&dataset).to_string();
-            handle_zfs_list_snapshots(dataset_str).await
-        }
-        Request::CloneZfs((snapshot, clone)) => {
-            let snapshot_str = String::from_utf8_lossy(&snapshot).to_string();
-            let clone_str = String::from_utf8_lossy(&clone).to_string();
-            handle_zfs_clone(snapshot_str, clone_str).await
-        }
-        Request::SnapshotZfs((source, snapshot)) => {
-            let source_str = String::from_utf8_lossy(&source).to_string();
-            let snapshot_str = String::from_utf8_lossy(&snapshot).to_string();
-            handle_zfs_snapshot(source_str, snapshot_str).await
-        }
-        Request::DeleteZfs(target) => {
-            let target_str = String::from_utf8_lossy(&target).to_string();
-            handle_zfs_delete(target_str).await
-        }
-        Request::CloneBtrfs((source, destination)) => {
-            let source_str = String::from_utf8_lossy(&source).to_string();
-            let destination_str = String::from_utf8_lossy(&destination).to_string();
-            handle_btrfs_clone(source_str, destination_str).await
-        }
-        Request::SnapshotBtrfs((source, destination)) => {
-            let source_str = String::from_utf8_lossy(&source).to_string();
-            let destination_str = String::from_utf8_lossy(&destination).to_string();
-            handle_btrfs_snapshot(source_str, destination_str).await
-        }
-        Request::DeleteBtrfs(target) => {
-            let target_str = String::from_utf8_lossy(&target).to_string();
-            handle_btrfs_delete(target_str).await
-        }
+pub async fn handle_mount_agentfs_fuse(
+    manager: &AgentfsFuseManager,
+    request: AgentfsFuseMountRequest,
+) -> Response {
+    match manager.mount(request).await {
+        Ok(status) => Response::agentfs_fuse_status(status),
+        Err(err) => Response::error(err.to_string()),
     }
 }
 
-async fn handle_zfs_clone(snapshot: String, clone: String) -> Response {
+pub async fn handle_unmount_agentfs_fuse(manager: &AgentfsFuseManager) -> Response {
+    match manager.unmount().await {
+        Ok(()) => Response::success(),
+        Err(err) => Response::error(err.to_string()),
+    }
+}
+
+pub async fn handle_status_agentfs_fuse(manager: &AgentfsFuseManager) -> Response {
+    let status = manager.status().await;
+    Response::agentfs_fuse_status(status)
+}
+
+pub async fn handle_zfs_clone(snapshot: String, clone: String) -> Response {
     debug!(operation = "zfs_clone", snapshot = %snapshot, clone = %clone, "Creating ZFS clone");
 
     // Validate that the snapshot exists
@@ -94,7 +77,7 @@ async fn handle_zfs_clone(snapshot: String, clone: String) -> Response {
     }
 }
 
-async fn handle_zfs_snapshot(source: String, snapshot: String) -> Response {
+pub async fn handle_zfs_snapshot(source: String, snapshot: String) -> Response {
     debug!(operation = "zfs_snapshot", source = %source, snapshot = %snapshot, "Creating ZFS snapshot");
 
     // Validate that the source dataset exists
@@ -117,7 +100,7 @@ async fn handle_zfs_snapshot(source: String, snapshot: String) -> Response {
     }
 }
 
-async fn handle_zfs_delete(target: String) -> Response {
+pub async fn handle_zfs_delete(target: String) -> Response {
     debug!(operation = "zfs_delete", target = %target, "Deleting ZFS dataset");
 
     // Validate that the target dataset exists
@@ -135,7 +118,7 @@ async fn handle_zfs_delete(target: String) -> Response {
     }
 }
 
-async fn handle_btrfs_clone(source: String, destination: String) -> Response {
+pub async fn handle_btrfs_clone(source: String, destination: String) -> Response {
     debug!(operation = "btrfs_clone", source = %source, destination = %destination, "Creating Btrfs subvolume snapshot");
 
     // Validate that the source subvolume exists
@@ -167,12 +150,12 @@ async fn handle_btrfs_clone(source: String, destination: String) -> Response {
     }
 }
 
-async fn handle_btrfs_snapshot(source: String, destination: String) -> Response {
+pub async fn handle_btrfs_snapshot(source: String, destination: String) -> Response {
     // For Btrfs, clone and snapshot are the same operation (subvolume snapshot)
     handle_btrfs_clone(source, destination).await
 }
 
-async fn handle_btrfs_delete(target: String) -> Response {
+pub async fn handle_btrfs_delete(target: String) -> Response {
     debug!(operation = "btrfs_delete", target = %target, "Deleting Btrfs subvolume");
 
     // Validate that the target subvolume exists
@@ -240,7 +223,7 @@ fn get_sudo_user() -> Option<String> {
     std::env::var("SUDO_USER").ok().or_else(|| std::env::var("USER").ok())
 }
 
-async fn handle_zfs_list_snapshots(dataset: String) -> Response {
+pub async fn handle_zfs_list_snapshots(dataset: String) -> Response {
     debug!(operation = "zfs_list_snapshots", dataset = %dataset, "Listing ZFS snapshots for dataset");
 
     // Run zfs list to get all snapshots for this dataset

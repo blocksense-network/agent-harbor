@@ -9,6 +9,11 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
+pub use crate::types::{
+    AgentfsFuseBackstore, AgentfsFuseMountRequest, AgentfsFuseState, AgentfsFuseStatusData,
+    AgentfsHostFsBackstore, AgentfsRamDiskBackstore,
+};
+
 /// Default path to the daemon socket.
 pub const DEFAULT_SOCKET_PATH: &str = "/tmp/agent-harbor/ah-fs-snapshots-daemon";
 
@@ -217,6 +222,45 @@ impl DaemonClient {
             )),
             _ => Err(DaemonError::ProtocolError(
                 "Unexpected response to Btrfs delete".to_string(),
+            )),
+        }
+    }
+
+    pub fn mount_agentfs_fuse(
+        &self,
+        request: AgentfsFuseMountRequest,
+    ) -> Result<AgentfsFuseStatusData, DaemonError> {
+        match self.send_request(Request::mount_agentfs_fuse(request))? {
+            Response::AgentfsFuseStatus(status) => Ok(status),
+            Response::Error(msg) => Err(DaemonError::DaemonError(
+                String::from_utf8_lossy(&msg).to_string(),
+            )),
+            _ => Err(DaemonError::ProtocolError(
+                "Unexpected response to AgentFS FUSE mount".to_string(),
+            )),
+        }
+    }
+
+    pub fn unmount_agentfs_fuse(&self) -> Result<(), DaemonError> {
+        match self.send_request(Request::unmount_agentfs_fuse())? {
+            Response::Success(_) => Ok(()),
+            Response::Error(msg) => Err(DaemonError::DaemonError(
+                String::from_utf8_lossy(&msg).to_string(),
+            )),
+            _ => Err(DaemonError::ProtocolError(
+                "Unexpected response to AgentFS FUSE unmount".to_string(),
+            )),
+        }
+    }
+
+    pub fn status_agentfs_fuse(&self) -> Result<AgentfsFuseStatusData, DaemonError> {
+        match self.send_request(Request::status_agentfs_fuse())? {
+            Response::AgentfsFuseStatus(status) => Ok(status),
+            Response::Error(msg) => Err(DaemonError::DaemonError(
+                String::from_utf8_lossy(&msg).to_string(),
+            )),
+            _ => Err(DaemonError::ProtocolError(
+                "Unexpected response to AgentFS FUSE status".to_string(),
             )),
         }
     }
