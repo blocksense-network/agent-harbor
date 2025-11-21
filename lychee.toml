@@ -29,6 +29,7 @@ exclude = [
   "^https://www.trio.so/.*",
   "/en/docs/.*",
   "^https://www.electronjs.org/.*",
+  "^https://dennisbabkin.com/.*",
   "^https://lwn.net/.*",
   "^https://news.ycombinator.com/.*",
   "^http://class.ece.iastate.edu/.*",

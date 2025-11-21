@@ -10,6 +10,7 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
+pub mod agentfs;
 pub mod scenarios;
 
 #[cfg(feature = "zfs")]

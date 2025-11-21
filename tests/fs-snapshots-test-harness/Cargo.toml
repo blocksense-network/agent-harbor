@@ -23,6 +23,7 @@ uuid.workspace = true
 libc.workspace = true
 clap = { workspace = true, features = ["derive"] }
 ah-repo = { path = "../../crates/ah-repo" }
+ah-fs-snapshots-daemon = { path = "../../crates/ah-fs-snapshots-daemon" }
 
 [dependencies.ah-fs-snapshots]
 path = "../../crates/ah-fs-snapshots"

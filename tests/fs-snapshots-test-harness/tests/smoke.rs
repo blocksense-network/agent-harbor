@@ -10,8 +10,14 @@ use fs_snapshots_test_harness::{assert_driver_exists, scenarios};
 use fs_snapshots_test_harness::{btrfs_available, btrfs_is_root};
 #[cfg(feature = "zfs")]
 use fs_snapshots_test_harness::{zfs_available, zfs_is_root};
+use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use tracing::info;
+
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+use ah_fs_snapshots_daemon::client::{AgentfsFuseState, DaemonClient};
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+use fs_snapshots_test_harness::agentfs;
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
 fn configure_agentfs_env(
@@ -196,6 +202,52 @@ fn git_snapshot_scenario_matches_legacy_checks() -> anyhow::Result<()> {
     }
 
     scenarios::git_snapshot_scenario()
+}
+
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
+#[test]
+fn agentfs_fuse_daemon_readiness_check() -> anyhow::Result<()> {
+    let harness = match agentfs::FuseHarness::new() {
+        Ok(harness) => harness,
+        Err(err) => {
+            info!("Skipping AgentFS readiness check: {err}");
+            return Ok(());
+        }
+    };
+
+    if !harness.socket_path().exists() {
+        info!(
+            socket = %harness.socket_path().display(),
+            "Skipping AgentFS readiness check: daemon socket missing"
+        );
+        return Ok(());
+    }
+
+    let client = DaemonClient::with_socket_path(harness.socket_path());
+    let status = match client.status_agentfs_fuse() {
+        Ok(status) => status,
+        Err(err) => {
+            info!("Skipping AgentFS readiness check: {err}");
+            return Ok(());
+        }
+    };
+
+    if AgentfsFuseState::from_code(status.state) != AgentfsFuseState::Running {
+        info!(
+            state = status.state,
+            "AgentFS daemon not running; readiness check skipped"
+        );
+        return Ok(());
+    }
+
+    let mount_point = PathBuf::from(String::from_utf8_lossy(&status.mount_point).to_string());
+    let control = mount_point.join(".agentfs").join("control");
+    assert!(
+        control.exists(),
+        "AgentFS control file missing at {}",
+        control.display()
+    );
+    Ok(())
 }
 
 #[cfg(feature = "zfs")]

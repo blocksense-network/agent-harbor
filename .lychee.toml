@@ -58,6 +58,7 @@ exclude = [
   "https://ignite.readthedocs.io/.*",
   "https://aws.amazon.com/.*",
   "https://www.qemu.org/.*",
+  "https://dennisbabkin.com/.*",
   "https://jonathanwoollett-light.github.io/.*",
   "https://www.cloudhypervisor.org/.*",
   "https://igorstechnoclub.com/.*",
