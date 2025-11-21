@@ -81,9 +81,12 @@ export default defineConfig(({ command }) => ({
     }),
   ],
   // Only configure build for development/preview, disable for production build
-  build: command === 'serve' ? {
-    // Allow normal development builds
-  } : undefined,
+  build:
+    command === 'serve'
+      ? {
+          // Allow normal development builds
+        }
+      : undefined,
   server: {
     port: 5173,
   },

@@ -12,9 +12,9 @@ files:
   - dist-electron
   - resources/**/*
   - node_modules/@agent-harbor/gui-core/**/*
-  - "!node_modules"
-  - "!src"
-  - "!*.md"
+  - '!node_modules'
+  - '!src'
+  - '!*.md'
 
 # macOS configuration
 mac:

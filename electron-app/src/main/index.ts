@@ -82,7 +82,7 @@ function createMainWindow(): void {
   // In production: will load from `ah webui` subprocess (M0.4)
   const webuiUrl = process.env.WEBUI_URL || 'http://localhost:3001';
 
-  mainWindow.loadURL(webuiUrl).catch((err) => {
+  mainWindow.loadURL(webuiUrl).catch(err => {
     console.error('Failed to load WebUI:', err);
     // Show error page if WebUI fails to load
     if (mainWindow) {

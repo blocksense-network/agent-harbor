@@ -56,7 +56,7 @@ test.describe('Toast Notifications', () => {
       .first();
 
     // Mock the confirm dialog to return true
-    page.on('dialog', async (dialog) => {
+    page.on('dialog', async dialog => {
       expect(dialog.type()).toBe('confirm');
       await dialog.accept();
     });

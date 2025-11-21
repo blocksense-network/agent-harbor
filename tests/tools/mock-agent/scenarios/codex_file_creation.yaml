@@ -2,23 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: codex_file_creation
-initialPrompt: "Create a test.txt file with content for Codex file creation"
+initialPrompt: 'Create a test.txt file with content for Codex file creation'
 repo:
   init: true
 timeline:
   - think:
-      - [500, "Processing request for codex_file_creation"]
+      - [500, 'Processing request for codex_file_creation']
   - agentToolUse:
-      toolName: "writeFile"
+      toolName: 'writeFile'
       args:
-        path: "test.txt"
-        text: "Test content for codex_file_creation"
-      result: "File created"
-      status: "ok"
+        path: 'test.txt'
+        text: 'Test content for codex_file_creation'
+      result: 'File created'
+      status: 'ok'
   - assistant:
-      - [300, "Completed codex_file_creation scenario"]
+      - [300, 'Completed codex_file_creation scenario']
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "test.txt"
+    - type: 'taskFile'
+      pattern: 'test.txt'

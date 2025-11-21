@@ -185,9 +185,7 @@ test.describe('Fixed-Height Card Requirements', () => {
       // Check if any row is empty (transparent)
       for (let i = 0; i < 3; i++) {
         const row = activityRows.nth(i);
-        const hasTransparent = await row.evaluate((el) =>
-          el.className.includes('text-transparent')
-        );
+        const hasTransparent = await row.evaluate(el => el.className.includes('text-transparent'));
 
         if (hasTransparent) {
           // Empty row should contain non-breaking space

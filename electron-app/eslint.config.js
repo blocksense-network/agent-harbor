@@ -58,12 +58,6 @@ export default [
     },
   },
   {
-    ignores: [
-      'dist/**',
-      'dist-electron/**',
-      'node_modules/**',
-      '*.config.js',
-      '*.config.ts',
-    ],
+    ignores: ['dist/**', 'dist-electron/**', 'node_modules/**', '*.config.js', '*.config.ts'],
   },
 ];

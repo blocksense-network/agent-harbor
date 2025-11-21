@@ -2,23 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: bug_fix_scenario
-initialPrompt: "Fix the bug in the application"
+initialPrompt: 'Fix the bug in the application'
 repo:
   init: true
 timeline:
   - think:
-      - [500, "Processing request for bug_fix_scenario"]
+      - [500, 'Processing request for bug_fix_scenario']
   - agentToolUse:
-      toolName: "writeFile"
+      toolName: 'writeFile'
       args:
-        path: "test.txt"
-        text: "Test content for bug_fix_scenario"
-      result: "File created"
-      status: "ok"
+        path: 'test.txt'
+        text: 'Test content for bug_fix_scenario'
+      result: 'File created'
+      status: 'ok'
   - assistant:
-      - [300, "Completed bug_fix_scenario scenario"]
+      - [300, 'Completed bug_fix_scenario scenario']
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "test.txt"
+    - type: 'taskFile'
+      pattern: 'test.txt'

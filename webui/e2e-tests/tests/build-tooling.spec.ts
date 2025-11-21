@@ -17,7 +17,7 @@ test.describe('Build and Tooling Tests', () => {
     const sanitizedDescription = description.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     const logFile = path.join(
       'test-results',
-      `build-tooling-${sanitizedDescription}-${timestamp}.log`
+      `build-tooling-${sanitizedDescription}-${timestamp}.log`,
     );
 
     // Ensure test-results directory exists
@@ -35,16 +35,16 @@ test.describe('Build and Tooling Tests', () => {
       let stdout = '';
       let stderr = '';
 
-      child.stdout?.on('data', (data) => {
+      child.stdout?.on('data', data => {
         stdout += data.toString();
       });
 
-      child.stderr?.on('data', (data) => {
+      child.stderr?.on('data', data => {
         stderr += data.toString();
       });
 
       await new Promise<void>((resolve, reject) => {
-        child.on('close', (code) => {
+        child.on('close', code => {
           const fullOutput = `Command: ${command} ${args.join(' ')}\nExit Code: ${code}\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}`;
           fs.writeFileSync(logFile, fullOutput);
 
@@ -55,7 +55,7 @@ test.describe('Build and Tooling Tests', () => {
           }
         });
 
-        child.on('error', (error) => {
+        child.on('error', error => {
           const errorOutput = `Command: ${command} ${args.join(' ')}\nError: ${error.message}\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}`;
           fs.writeFileSync(logFile, errorOutput);
           reject(error);
@@ -110,7 +110,7 @@ test.describe('Build and Tooling Tests', () => {
     await runCommandWithLogging(
       'npx playwright test --list | head -1',
       [],
-      'Playwright config validation'
+      'Playwright config validation',
     );
   });
 });

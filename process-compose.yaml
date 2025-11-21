@@ -1,11 +1,11 @@
 # Copyright 2025 Schelling Point Labs Inc
 # SPDX-License-Identifier: AGPL-3.0-only
 
-version: "0.5"
+version: '0.5'
 
 processes:
   mock-server:
-    command: "cd webui/mock-server && npm run dev"
+    command: 'cd webui/mock-server && npm run dev'
     readiness_probe:
       http_get:
         scheme: http
@@ -19,7 +19,7 @@ processes:
       failure_threshold: 5
 
   api-tests:
-    command: "cd webui/e2e-tests && BASE_URL=http://localhost:3001 yarn playwright test tests/api-contract.spec.ts --project=api-tests --timeout=10000"
+    command: 'cd webui/e2e-tests && BASE_URL=http://localhost:3001 yarn playwright test tests/api-contract.spec.ts --project=api-tests --timeout=10000'
     depends_on:
       mock-server:
         condition: process_healthy

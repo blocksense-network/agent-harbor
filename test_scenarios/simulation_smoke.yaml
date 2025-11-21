@@ -2,37 +2,39 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: simulation_smoke
-initialPrompt: "Investigate intermittent CI test failure"
+initialPrompt: 'Investigate intermittent CI test failure'
 tags:
   - smoke
   - tui-demo
 ah:
-  cmd: "ah tui"
+  cmd: 'ah tui'
   flags:
-    - "--remote-server"
-    - "http://127.0.0.1:38180/api/v1"
+    - '--remote-server'
+    - 'http://127.0.0.1:38180/api/v1'
 timeline:
   - llmResponse:
       - think:
-          - [120, "Inspecting CI build artifacts and junit logs"]
-          - [220, "Found the failing suite: workspace::analytics::test_exports"]
+          - [120, 'Inspecting CI build artifacts and junit logs']
+          - [220, 'Found the failing suite: workspace::analytics::test_exports']
       - agentToolUse:
           toolName: run_cmd
           args:
-            cmd: "pnpm test workspace::analytics::test_exports"
+            cmd: 'pnpm test workspace::analytics::test_exports'
           progress:
-            - [200, "Executing affected test suite"]
-            - [400, "All shards reporting success"]
-          result: "Suite passed on retry"
-          status: "completed"
+            - [200, 'Executing affected test suite']
+            - [400, 'All shards reporting success']
+          result: 'Suite passed on retry'
+          status: 'completed'
   - type: advanceMs
     ms: 600
   - llmResponse:
       - assistant:
-          - [140, "The transient failure was reproduced locally and is green after rerunning the analytics test suite. Pushing a rerun to CI now."]
+          - [
+              140,
+              'The transient failure was reproduced locally and is green after rerunning the analytics test suite. Pushing a rerun to CI now.',
+            ]
   - assert:
       text:
         contains:
-          - "Suite passed on retry"
+          - 'Suite passed on retry'
   - complete: true
-
