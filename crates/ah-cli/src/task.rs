@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::sandbox::{parse_bool_flag, prepare_workspace_with_fallback};
+use ah_core::editor::edit_content_interactive_with_hint;
 use ah_core::{
     AgentTasks, DatabaseManager, EditorError, PushHandler, PushOptions, devshell_names,
-    edit_content_interactive, parse_push_to_remote_flag,
+    parse_push_to_remote_flag,
 };
 #[allow(unused_imports)]
 use ah_domain_types::{AgentChoice, AgentSoftware};
@@ -16,6 +17,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use config_core::{load_all, paths};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 #[cfg(test)]
 use tui_testing::TestedTerminalProgram;
 
@@ -496,7 +498,7 @@ impl TaskCreateArgs {
                 tracing::error!("Error: Non-interactive mode requires --prompt or --prompt-file");
                 std::process::exit(10);
             }
-            match self.get_editor_content(&resolved_config.json) {
+            match self.get_editor_content(repo.root(), &resolved_config.json) {
                 Ok(content) => content,
                 Err(e) => {
                     // Cleanup branch if we created it and editor failed
@@ -508,8 +510,11 @@ impl TaskCreateArgs {
             }
         };
 
-        // Validate task content
-        if task_content.trim().is_empty() {
+        // Validate task content after stripping comments/template
+        let comment_prefix = Self::resolve_comment_prefix(repo.root(), &resolved_config.json);
+        let processed_prompt = Self::process_prompt(&task_content, &comment_prefix);
+
+        if processed_prompt.trim().is_empty() {
             anyhow::bail!("Aborted: empty task prompt.");
         }
 
@@ -540,12 +545,12 @@ impl TaskCreateArgs {
 
             let commit_result = if start_new_branch || !tasks.on_task_branch().unwrap_or(false) {
                 tasks.record_initial_task(
-                    &task_content,
+                    &processed_prompt,
                     &actual_branch_name,
                     self.devshell.as_deref(),
                 )
             } else {
-                tasks.append_task(&task_content)
+                tasks.append_task(&processed_prompt)
             };
 
             if let Err(e) = commit_result {
@@ -590,14 +595,14 @@ impl TaskCreateArgs {
         let task_record = TaskRecord {
             id: 0, // Will be set by autoincrement
             session_id: session_id.clone(),
-            prompt: task_content.clone(),
+            prompt: processed_prompt.clone(),
             repo_url: None, // TODO: Get from VCS remote URL
             branch: Some(actual_branch_name.clone()),
             commit: None,                         // TODO: Get current commit hash
             delivery: Some("branch".to_string()), // Default delivery method
             instances: Some(1),
             labels: None,
-            browser_automation: 1, // Default to enabled
+            browser_automation: 0, // Disabled this release
             browser_profile: None,
             chatgpt_username: None,
             codex_workspace: None,
@@ -850,13 +855,112 @@ impl TaskCreateArgs {
     }
 
     /// Get content using the interactive editor
-    fn get_editor_content(&self, _resolved_config: &serde_json::Value) -> Result<String> {
-        // TODO: honor task-template from config; placeholder for now
-        match edit_content_interactive(None) {
+    fn get_editor_content(
+        &self,
+        repo_root: &Path,
+        resolved_config: &serde_json::Value,
+    ) -> Result<String> {
+        let comment_prefix = Self::resolve_comment_prefix(repo_root, resolved_config);
+        let hint = Self::build_editor_hint(&comment_prefix);
+
+        let template_content = resolved_config
+            .get("task-template")
+            .and_then(|v| v.as_str())
+            .map(|path| repo_root.join(path))
+            .map(std::fs::read_to_string)
+            .transpose()
+            .context("Failed to read task-template file")?;
+
+        let initial = template_content.as_deref();
+
+        match edit_content_interactive_with_hint(initial, &hint) {
             Ok(content) => Ok(content),
             Err(EditorError::EmptyTaskPrompt) => anyhow::bail!("Aborted: empty task prompt."),
             Err(e) => Err(e.into()),
         }
+    }
+
+    fn resolve_comment_prefix(repo_root: &Path, resolved_config: &serde_json::Value) -> String {
+        // Default prefix
+        let mut prefix = "# ".to_string();
+        let use_vcs_comment = resolved_config
+            .get("task-editor")
+            .and_then(|t| t.get("use-vcs-comment-string"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        if use_vcs_comment {
+            if let Some(cfg_prefix) = Self::git_comment_string(repo_root) {
+                prefix = cfg_prefix;
+            }
+        }
+
+        prefix
+    }
+
+    fn git_comment_string(repo_root: &Path) -> Option<String> {
+        // Try git config core.commentString
+        let output = Command::new("git")
+            .args(["config", "--get", "core.commentString"])
+            .current_dir(repo_root)
+            .output()
+            .ok()?;
+        if output.status.success() {
+            let val = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !val.is_empty() {
+                return Some(val);
+            }
+        }
+        None
+    }
+
+    /// Strip comment lines, normalize whitespace/newlines, and collapse blank lines.
+    fn process_prompt(raw: &str, comment_prefix: &str) -> String {
+        let trimmed_prefix = comment_prefix.trim();
+        let mut cleaned = String::new();
+        for line in raw.replace("\r\n", "\n").lines() {
+            let trimmed_start = line.trim_start();
+            if !trimmed_prefix.is_empty() && trimmed_start.starts_with(trimmed_prefix) {
+                continue;
+            }
+            let trimmed = line.trim_end();
+            cleaned.push_str(trimmed);
+            cleaned.push('\n');
+        }
+
+        // Collapse multiple blank lines to single
+        let mut collapsed = String::new();
+        let mut last_blank = false;
+        for line in cleaned.lines() {
+            let is_blank = line.trim().is_empty();
+            if is_blank {
+                if last_blank {
+                    continue;
+                }
+                last_blank = true;
+            } else {
+                last_blank = false;
+            }
+            collapsed.push_str(line);
+            collapsed.push('\n');
+        }
+        collapsed.trim_end_matches('\n').to_string()
+    }
+
+    fn build_editor_hint(comment_prefix: &str) -> String {
+        let base_lines = vec![
+            "Please write your task prompt above.",
+            "Enter an empty prompt to abort the task creation process.",
+            "Feel free to leave this comment in the file. It will be ignored.",
+            "Saving and exiting will deliver work according to the configured delivery method.",
+        ];
+        let mut hint = String::new();
+        for line in base_lines {
+            hint.push_str(comment_prefix);
+            hint.push_str(line);
+            hint.push('\n');
+        }
+        hint
     }
 
     /// Handle push operations
@@ -1556,6 +1660,18 @@ mod tests {
         // No flag, no --yes -> None
         let args = base_task_args();
         assert_eq!(args.resolve_push_preference().unwrap(), None);
+    }
+
+    #[test]
+    fn test_process_prompt_strips_comments_and_collapses_blanks() {
+        let raw = "# comment line\nLine 1\r\n\r\n# another\nLine 2\n\nLine 3";
+        let processed = TaskCreateArgs::process_prompt(raw, "#");
+        assert_eq!(processed, "Line 1\n\nLine 2\n\nLine 3");
+
+        // Custom prefix
+        let raw2 = "// c1\nTask body\n// c2\n\n\nMore";
+        let processed2 = TaskCreateArgs::process_prompt(raw2, "//");
+        assert_eq!(processed2, "Task body\n\nMore");
     }
 
     #[test]
