@@ -18,7 +18,7 @@ export default [
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 2022,
-        sourceType: 'module'
+        sourceType: 'module',
       },
       globals: {
         console: 'readonly',
@@ -32,29 +32,32 @@ export default [
         localStorage: 'readonly',
         HTMLElement: 'readonly',
         fetch: 'readonly',
-        getComputedStyle: 'readonly'
-      }
+        getComputedStyle: 'readonly',
+      },
     },
     plugins: {
       '@typescript-eslint': tseslint,
-      prettier: prettier
+      prettier: prettier,
     },
     rules: {
       ...tseslint.configs.recommended.rules,
       'prettier/prettier': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/no-explicit-any': 'warn'
-    }
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
   },
   {
     files: ['**/*.js', '**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'module'
+      sourceType: 'module',
     },
     rules: {
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }]
-    }
-  }
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
 ];

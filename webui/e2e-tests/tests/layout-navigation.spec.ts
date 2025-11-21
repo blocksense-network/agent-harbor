@@ -77,7 +77,7 @@ test.describe('Layout and Navigation Tests', () => {
         const app = document.getElementById('app');
         return app && app.innerHTML && app.innerHTML.includes('Agent Harbor');
       },
-      { timeout: 15000 }
+      { timeout: 15000 },
     );
 
     // Wait for draft card to load from API (with proper wait, not fixed timeout)
@@ -278,7 +278,7 @@ test.describe('Layout and Navigation Tests', () => {
         const app = document.getElementById('app');
         return app && app.innerHTML && app.innerHTML.includes('Agent Harbor');
       },
-      { timeout: 15000 }
+      { timeout: 15000 },
     );
 
     // Check that status filter select is present (use specific ID to avoid Tom Select selects)
@@ -296,7 +296,7 @@ test.describe('Layout and Navigation Tests', () => {
 
     const statusLabels = await page
       .locator('[data-testid="task-card"] span[aria-label^="Status:"]')
-      .evaluateAll((elements) => elements.map((el) => el.getAttribute('aria-label') || ''));
+      .evaluateAll(elements => elements.map(el => el.getAttribute('aria-label') || ''));
 
     if (statusLabels.length > 0) {
       for (const label of statusLabels) {

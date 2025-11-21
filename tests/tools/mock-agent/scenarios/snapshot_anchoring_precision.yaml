@@ -2,69 +2,72 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: snapshot_anchoring_precision
-initialPrompt: "Test snapshot anchoring precision"
-description: "Test byte-level anchoring precision for filesystem snapshots in recordings"
+initialPrompt: 'Test snapshot anchoring precision'
+description: 'Test byte-level anchoring precision for filesystem snapshots in recordings'
 repo:
   init: true
 timeline:
   - think:
-      - [100, "Testing precise snapshot anchoring with multiple operations."]
+      - [100, 'Testing precise snapshot anchoring with multiple operations.']
   - agentToolUse:
-      toolName: "writeFile"
+      toolName: 'writeFile'
       args:
-        path: "config.json"
+        path: 'config.json'
         text: |
           {
             "version": "1.0.0",
             "name": "test-app"
           }
-      result: "Config created"
-      status: "ok"
+      result: 'Config created'
+      status: 'ok'
   - assistant:
-      - [50, "First checkpoint - initial config."]
+      - [50, 'First checkpoint - initial config.']
   - agentToolUse:
-      toolName: "writeFile"
+      toolName: 'writeFile'
       args:
-        path: "app.py"
+        path: 'app.py'
         text: |
           import json
 
           def load_config():
               with open('config.json') as f:
                   return json.load(f)
-      result: "App created"
-      status: "ok"
+      result: 'App created'
+      status: 'ok'
   - assistant:
-      - [50, "Second checkpoint - app loader."]
+      - [50, 'Second checkpoint - app loader.']
   - agentToolUse:
-      toolName: "appendFile"
+      toolName: 'appendFile'
       args:
-        path: "config.json"
+        path: 'config.json'
         text: |
           ,
             "port": 8080
-      result: "Port added"
-      status: "ok"
+      result: 'Port added'
+      status: 'ok'
   - assistant:
-      - [50, "Third checkpoint - configuration updated."]
+      - [50, 'Third checkpoint - configuration updated.']
   - agentToolUse:
-      toolName: "replaceInFile"
+      toolName: 'replaceInFile'
       args:
-        path: "config.json"
+        path: 'config.json'
         old_str: '"version": "1.0.0"'
         new_str: '"version": "1.1.0"'
-      result: "Version bumped"
-      status: "ok"
+      result: 'Version bumped'
+      status: 'ok'
   - assistant:
-      - [50, "Fourth checkpoint - version updated. Each snapshot should be anchored to precise byte offsets in the PTY stream."]
+      - [
+          50,
+          'Fourth checkpoint - version updated. Each snapshot should be anchored to precise byte offsets in the PTY stream.',
+        ]
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "config.json"
-    - type: "taskFile"
-      pattern: "app.py"
+    - type: 'taskFile'
+      pattern: 'config.json'
+    - type: 'taskFile'
+      pattern: 'app.py'
   snapshots:
     count: 4
-    anchor_validation: "byte_offset_monotonic"
-    anchor_spacing_ms: ">= 50"
+    anchor_validation: 'byte_offset_monotonic'
+    anchor_spacing_ms: '>= 50'

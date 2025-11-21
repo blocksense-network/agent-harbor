@@ -18,17 +18,17 @@ targets:
     sources:
       - path: AgentHarbor
         excludes:
-          - "*.storyboard"
-          - "*.xcassets"
+          - '*.storyboard'
+          - '*.xcassets'
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.agentfs.AgentHarbor
         CODE_SIGN_ENTITLEMENTS: AgentHarbor/AgentHarbor.entitlements
-        LIBRARY_SEARCH_PATHS: ["$(PROJECT_DIR)/libs"]
-        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/../Frameworks"]
+        LIBRARY_SEARCH_PATHS: ['$(PROJECT_DIR)/libs']
+        LD_RUNPATH_SEARCH_PATHS: ['$(inherited)', '@executable_path/../Frameworks']
         MACOSX_DEPLOYMENT_TARGET: 15.4
         ENABLE_HARDENED_RUNTIME: true
-        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_IDENTITY: '-'
         CODE_SIGN_STYLE: Manual
       configs:
         Debug:
@@ -47,7 +47,6 @@ targets:
             echo "Warning: Extension not found at $EXTENSION_PATH"
           fi
         name: Copy Extension to App Bundle
-
 
 schemes:
   AgentHarbor:

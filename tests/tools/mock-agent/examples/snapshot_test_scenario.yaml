@@ -2,41 +2,53 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: snapshot_test_scenario
-description: "Test scenario for filesystem snapshot functionality"
+description: 'Test scenario for filesystem snapshot functionality'
 repo:
   init: true
 timeline:
   - llmResponse:
       - think:
-          - [500, "I need to create a Python file with a print statement and a filesystem snapshot should be taken."]
+          - [
+              500,
+              'I need to create a Python file with a print statement and a filesystem snapshot should be taken.',
+            ]
       - assistant:
-          - [300, "Created hello.py successfully. A filesystem snapshot should have been taken after this operation."]
+          - [
+              300,
+              'Created hello.py successfully. A filesystem snapshot should have been taken after this operation.',
+            ]
   - agentToolUse:
-      toolName: "write_file"
+      toolName: 'write_file'
       args:
-        path: "hello.py"
+        path: 'hello.py'
         text: "print('Hello, World!')\nprint('Snapshot test complete!')\n"
-      result: "File created"
-      status: "ok"
+      result: 'File created'
+      status: 'ok'
   - agentToolUse:
-      toolName: "read_file"
+      toolName: 'read_file'
       args:
-        path: "hello.py"
-      result: "File read successfully"
-      status: "ok"
+        path: 'hello.py'
+      result: 'File read successfully'
+      status: 'ok'
   - assistant:
-      - [400, "Read the file and another snapshot should have been taken. Let me also append to the file."]
+      - [
+          400,
+          'Read the file and another snapshot should have been taken. Let me also append to the file.',
+        ]
   - agentToolUse:
-      toolName: "append_file"
+      toolName: 'append_file'
       args:
-        path: "hello.py"
+        path: 'hello.py'
         text: "print('Additional line added!')\n"
-      result: "File appended"
-      status: "ok"
+      result: 'File appended'
+      status: 'ok'
   - assistant:
-      - [300, "Appended to hello.py. This should have triggered another snapshot. The integration test can verify that all three snapshots were taken."]
+      - [
+          300,
+          'Appended to hello.py. This should have triggered another snapshot. The integration test can verify that all three snapshots were taken.',
+        ]
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "hello.py"
+    - type: 'taskFile'
+      pattern: 'hello.py'

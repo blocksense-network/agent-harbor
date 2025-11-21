@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: test_scenario
-tags: ["test", "cli"]
+tags: ['test', 'cli']
 repo:
   init: true
   files:
-    - path: "README.md"
+    - path: 'README.md'
       contents: |
         # Test Scenario
 
@@ -14,24 +14,24 @@ repo:
 timeline:
   - llmResponse:
       - think:
-          - [1000, "Starting test scenario"]
-          - [500, "This is a simple test to verify scenario execution"]
+          - [1000, 'Starting test scenario']
+          - [500, 'This is a simple test to verify scenario execution']
       - assistant:
-          - [1000, "Test scenario completed successfully"]
-          - [500, "All events processed"]
+          - [1000, 'Test scenario completed successfully']
+          - [500, 'All events processed']
 
   - agentToolUse:
-      toolName: "run_command"
+      toolName: 'run_command'
       args:
         command: "echo 'Hello from scenario'"
-        cwd: "."
+        cwd: '.'
       progress:
-        - [200, "Running echo command..."]
-      result: "Hello from scenario"
-      status: "ok"
+        - [200, 'Running echo command...']
+      result: 'Hello from scenario'
+      status: 'ok'
 
   - agentEdits:
-      path: "test.txt"
+      path: 'test.txt'
       linesAdded: 1
       linesRemoved: 0
 
@@ -41,5 +41,5 @@ timeline:
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "README.md"
+    - type: 'taskFile'
+      pattern: 'README.md'

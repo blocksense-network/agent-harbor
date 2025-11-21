@@ -13,7 +13,7 @@ import { Page, TestInfo } from '@playwright/test';
  */
 export function setupLogging(page: Page, testInfo: TestInfo) {
   // Log browser console messages
-  page.on('console', (msg) => {
+  page.on('console', msg => {
     const type = msg.type();
     const text = msg.text();
 
@@ -22,18 +22,20 @@ export function setupLogging(page: Page, testInfo: TestInfo) {
 
     // Also log location if available
     if (msg.location) {
-      console.log(`[BROWSER_LOCATION] ${msg.location.url}:${msg.location.lineNumber}:${msg.location.columnNumber}`);
+      console.log(
+        `[BROWSER_LOCATION] ${msg.location.url}:${msg.location.lineNumber}:${msg.location.columnNumber}`,
+      );
     }
   });
 
   // Log page errors
-  page.on('pageerror', (error) => {
+  page.on('pageerror', error => {
     console.log(`[PAGE_ERROR] ${error.message}`);
     console.log(`[PAGE_ERROR_STACK] ${error.stack || 'No stack trace'}`);
   });
 
   // Log request failures
-  page.on('requestfailed', (request) => {
+  page.on('requestfailed', request => {
     console.log(`[REQUEST_FAILED] ${request.method()} ${request.url()}`);
     console.log(`[REQUEST_FAILURE_REASON] ${request.failure()?.errorText || 'Unknown error'}`);
   });
@@ -48,7 +50,7 @@ export function setupLogging(page: Page, testInfo: TestInfo) {
   });
 
   // Log unhandled promise rejections
-  page.on('pageerror', (error) => {
+  page.on('pageerror', error => {
     if (error.name === 'UnhandledPromiseRejection') {
       console.log(`[UNHANDLED_PROMISE_REJECTION] ${error.message}`);
     }

@@ -6,7 +6,7 @@ initialPrompt: "Let's work on implementing a user authentication system. I'll gu
 repo:
   init: true
   files:
-    - path: "README.md"
+    - path: 'README.md'
       contents: |
         # User Authentication System
 
@@ -15,37 +15,58 @@ timeline:
   # Initial requirements gathering
   - llmResponse:
       - think:
-          - [1000, "Starting the authentication system implementation. I need to gather requirements from the user."]
+          - [
+              1000,
+              'Starting the authentication system implementation. I need to gather requirements from the user.',
+            ]
       - assistant:
-          - [500, "Let's start by gathering the requirements for your authentication system. What type of users will be using this system?"]
+          - [
+              500,
+              "Let's start by gathering the requirements for your authentication system. What type of users will be using this system?",
+            ]
 
   # First user input - user types
   - userInputs:
-      - [1500, "What types of users will authenticate with this system? (e.g., customers, employees, admins)"]
-    target: "tui"
+      - [
+          1500,
+          'What types of users will authenticate with this system? (e.g., customers, employees, admins)',
+        ]
+    target: 'tui'
 
   # Process user requirements
   - llmResponse:
       - think:
-          - [800, "User specified their user types. Now I need to ask about authentication methods."]
+          - [
+              800,
+              'User specified their user types. Now I need to ask about authentication methods.',
+            ]
       - assistant:
-          - [400, "Great! Now, what authentication methods do you want to support? (password, email verification, social login, etc.)"]
+          - [
+              400,
+              'Great! Now, what authentication methods do you want to support? (password, email verification, social login, etc.)',
+            ]
 
   # Second user input - authentication methods
   - userInputs:
-      - [1500, "What authentication methods should we support? Please specify which ones are most important."]
-    target: "tui"
+      - [
+          1500,
+          'What authentication methods should we support? Please specify which ones are most important.',
+        ]
+    target: 'tui'
 
   # Design phase
   - llmResponse:
       - think:
-          - [1000, "Got the authentication methods. Now I need to design the database schema."]
+          - [1000, 'Got the authentication methods. Now I need to design the database schema.']
       - assistant:
-          - [600, "Now I'll start designing the system. Let me create the user model and database schema first."]
+          - [
+              600,
+              "Now I'll start designing the system. Let me create the user model and database schema first.",
+            ]
       - tool:
-          - [2000, "writeFile"]
+          - [2000, 'writeFile']
           - args:
-              path: "models.py"
+              path: 'models.py'
               text: |
                 # User authentication models
                 from dataclasses import dataclass
@@ -65,25 +86,37 @@ timeline:
   # Show the user the design
   - llmResponse:
       - think:
-          - [500, "Created the basic user model. Now I should show it to the user and ask for feedback."]
+          - [
+              500,
+              'Created the basic user model. Now I should show it to the user and ask for feedback.',
+            ]
       - assistant:
-          - [400, "I've created a basic User model. Take a look at it and let me know if you want any changes."]
+          - [
+              400,
+              "I've created a basic User model. Take a look at it and let me know if you want any changes.",
+            ]
 
   # Third user input - model feedback
   - userInputs:
-      - [2000, "Please review the User model I created. Do you want to add any additional fields or modify existing ones?"]
-    target: "tui"
+      - [
+          2000,
+          'Please review the User model I created. Do you want to add any additional fields or modify existing ones?',
+        ]
+    target: 'tui'
 
   # Implement authentication logic
   - llmResponse:
       - think:
           - [800, "User approved the model. Now I'll implement the authentication service."]
       - assistant:
-          - [400, "Great! Now I'll implement the authentication service with login and registration functionality."]
+          - [
+              400,
+              "Great! Now I'll implement the authentication service with login and registration functionality.",
+            ]
       - tool:
-          - [2500, "writeFile"]
+          - [2500, 'writeFile']
           - args:
-              path: "auth_service.py"
+              path: 'auth_service.py'
               text: |
                 # Authentication service
                 import hashlib
@@ -121,13 +154,13 @@ timeline:
   # Test the implementation
   - llmResponse:
       - think:
-          - [600, "Implemented the auth service. Now I should test it."]
+          - [600, 'Implemented the auth service. Now I should test it.']
       - assistant:
-          - [300, "Let me create a simple test to verify the authentication works."]
+          - [300, 'Let me create a simple test to verify the authentication works.']
       - tool:
-          - [1500, "writeFile"]
+          - [1500, 'writeFile']
           - args:
-              path: "test_auth.py"
+              path: 'test_auth.py'
               text: |
                 # Test the authentication system
                 from auth_service import AuthService
@@ -159,28 +192,34 @@ timeline:
   # Run the test
   - llmResponse:
       - think:
-          - [400, "Created the test. Now let me run it to make sure everything works."]
+          - [400, 'Created the test. Now let me run it to make sure everything works.']
       - assistant:
-          - [200, "Running the authentication test to verify everything works."]
+          - [200, 'Running the authentication test to verify everything works.']
       - tool:
-          - [1000, "runCmd"]
+          - [1000, 'runCmd']
           - args:
-              command: "cd /workspace && python test_auth.py"
-              cwd: "."
-          - result: "Test completed successfully"
-          - status: "ok"
+              command: 'cd /workspace && python test_auth.py'
+              cwd: '.'
+          - result: 'Test completed successfully'
+          - status: 'ok'
 
   # Add password requirements
   - llmResponse:
       - think:
-          - [700, "Tests pass. Now I should add password strength requirements."]
+          - [700, 'Tests pass. Now I should add password strength requirements.']
       - assistant:
-          - [400, "The basic authentication is working! Now let's add password strength validation. What password requirements do you want?"]
+          - [
+              400,
+              "The basic authentication is working! Now let's add password strength validation. What password requirements do you want?",
+            ]
 
   # Fourth user input - password requirements
   - userInputs:
-      - [2000, "What password requirements should we enforce? (minimum length, special characters, etc.)"]
-    target: "tui"
+      - [
+          2000,
+          'What password requirements should we enforce? (minimum length, special characters, etc.)',
+        ]
+    target: 'tui'
 
   # Implement password validation
   - llmResponse:
@@ -189,9 +228,9 @@ timeline:
       - assistant:
           - [300, "I'll add password validation to the registration process."]
       - tool:
-          - [2000, "writeFile"]
+          - [2000, 'writeFile']
           - args:
-              path: "password_validator.py"
+              path: 'password_validator.py'
               text: |
                 # Password validation utilities
                 import re
@@ -225,16 +264,16 @@ timeline:
   # Update auth service to use validation
   - llmResponse:
       - think:
-          - [500, "Created password validator. Now I need to integrate it with the auth service."]
+          - [500, 'Created password validator. Now I need to integrate it with the auth service.']
       - assistant:
           - [300, "Now I'll update the auth service to use the password validator."]
       - tool:
-          - [1500, "readFile"]
+          - [1500, 'readFile']
           - args:
-              path: "auth_service.py"
-          - result: "File read successfully"
+              path: 'auth_service.py'
+          - result: 'File read successfully'
       - tool:
-          - [2000, "runCmd"]
+          - [2000, 'runCmd']
           - args:
               command: |
                 cd /workspace && python -c "
@@ -252,21 +291,24 @@ timeline:
 
                 print(f'Strong password \"{strong_password}\": {\"VALID\" if PasswordValidator.is_valid_password(strong_password) else \"INVALID\"}')"
 
-              cwd: "."
-          - result: "Password validation test completed"
-          - status: "ok"
+              cwd: '.'
+          - result: 'Password validation test completed'
+          - status: 'ok'
 
   # Add session management
   - llmResponse:
       - think:
-          - [600, "Password validation is working. Now I should add session management."]
+          - [600, 'Password validation is working. Now I should add session management.']
       - assistant:
-          - [400, "Great! Now let's add session management to keep users logged in. How long should sessions last?"]
+          - [
+              400,
+              "Great! Now let's add session management to keep users logged in. How long should sessions last?",
+            ]
 
   # Fifth user input - session duration
   - userInputs:
-      - [2000, "How long should user sessions last? (e.g., 30 minutes, 2 hours, 1 day, etc.)"]
-    target: "tui"
+      - [2000, 'How long should user sessions last? (e.g., 30 minutes, 2 hours, 1 day, etc.)']
+    target: 'tui'
 
   # Implement session management
   - llmResponse:
@@ -275,9 +317,9 @@ timeline:
       - assistant:
           - [300, "I'll create a session manager that handles login sessions."]
       - tool:
-          - [2500, "writeFile"]
+          - [2500, 'writeFile']
           - args:
-              path: "session_manager.py"
+              path: 'session_manager.py'
               text: |
                 # Session management
                 import uuid
@@ -325,13 +367,19 @@ timeline:
   # Final integration
   - llmResponse:
       - think:
-          - [700, "Session management is done. Now I should create a main application file that ties everything together."]
+          - [
+              700,
+              'Session management is done. Now I should create a main application file that ties everything together.',
+            ]
       - assistant:
-          - [400, "Perfect! Now let me create a main application file that demonstrates the complete authentication system."]
+          - [
+              400,
+              'Perfect! Now let me create a main application file that demonstrates the complete authentication system.',
+            ]
       - tool:
-          - [2000, "writeFile"]
+          - [2000, 'writeFile']
           - args:
-              path: "main.py"
+              path: 'main.py'
               text: |
                 # Main authentication application
                 from auth_service import AuthService
@@ -376,34 +424,37 @@ timeline:
   # Run the final demo
   - llmResponse:
       - think:
-          - [400, "Created the main application. Let me run it to show the complete system."]
+          - [400, 'Created the main application. Let me run it to show the complete system.']
       - assistant:
-          - [200, "Let me run the complete authentication system demo."]
+          - [200, 'Let me run the complete authentication system demo.']
       - tool:
-          - [1500, "runCmd"]
+          - [1500, 'runCmd']
           - args:
-              command: "cd /workspace && python main.py"
-              cwd: "."
-          - result: "Demo completed successfully"
-          - status: "ok"
+              command: 'cd /workspace && python main.py'
+              cwd: '.'
+          - result: 'Demo completed successfully'
+          - status: 'ok'
 
   # Final summary
   - llmResponse:
       - think:
-          - [500, "The authentication system is complete and working. Let me provide a summary."]
+          - [500, 'The authentication system is complete and working. Let me provide a summary.']
       - assistant:
-          - [800, "Excellent! I've successfully implemented a complete user authentication system with user management, password validation, and session handling. The system includes proper error handling and security measures."]
+          - [
+              800,
+              "Excellent! I've successfully implemented a complete user authentication system with user management, password validation, and session handling. The system includes proper error handling and security measures.",
+            ]
 
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "models.py"
-    - type: "taskFile"
-      pattern: "auth_service.py"
-    - type: "taskFile"
-      pattern: "password_validator.py"
-    - type: "taskFile"
-      pattern: "session_manager.py"
-    - type: "taskFile"
-      pattern: "main.py"
+    - type: 'taskFile'
+      pattern: 'models.py'
+    - type: 'taskFile'
+      pattern: 'auth_service.py'
+    - type: 'taskFile'
+      pattern: 'password_validator.py'
+    - type: 'taskFile'
+      pattern: 'session_manager.py'
+    - type: 'taskFile'
+      pattern: 'main.py'

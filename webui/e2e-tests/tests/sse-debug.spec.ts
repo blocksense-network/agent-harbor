@@ -17,7 +17,7 @@ test.describe('SSE Live Updates Debug', () => {
     const consoleErrors: string[] = [];
 
     // Capture all console logs
-    page.on('console', (msg) => {
+    page.on('console', msg => {
       const text = msg.text();
       consoleLogs.push(text);
       if (msg.type() === 'error') {
@@ -50,13 +50,13 @@ test.describe('SSE Live Updates Debug', () => {
       const statusText = await statusEl.getAttribute('aria-label');
       const cardText = await card.textContent();
       console.log(
-        `Card ${i}: status="${statusText}", text preview: "${cardText?.substring(0, 100)}..."`
+        `Card ${i}: status="${statusText}", text preview: "${cardText?.substring(0, 100)}..."`,
       );
     }
 
     // Find active session cards
     const activeCards = page.locator(
-      '[data-testid="task-card"]:has([aria-label="Status: running"])'
+      '[data-testid="task-card"]:has([aria-label="Status: running"])',
     );
     const activeCount = await activeCards.count();
 
@@ -73,36 +73,36 @@ test.describe('SSE Live Updates Debug', () => {
       await page.waitForTimeout(1000);
 
       // Check for SSE subscription logs
-      const subscriptionLogs = consoleLogs.filter((log) =>
-        log.includes('[SessionCard] Subscribing to SSE')
+      const subscriptionLogs = consoleLogs.filter(log =>
+        log.includes('[SessionCard] Subscribing to SSE'),
       );
       console.log(`SSE subscription logs: ${subscriptionLogs.length}`);
-      subscriptionLogs.forEach((log) => console.log('  -', log));
+      subscriptionLogs.forEach(log => console.log('  -', log));
 
       // Wait for SSE events (mock server sends every 2 seconds)
       await page.waitForTimeout(5000);
 
       // Check for SSE event logs
-      const eventLogs = consoleLogs.filter((log) => log.includes('SSE event received'));
+      const eventLogs = consoleLogs.filter(log => log.includes('SSE event received'));
       console.log(`\nSSE event logs: ${eventLogs.length}`);
-      eventLogs.slice(0, 5).forEach((log) => console.log('  -', log));
+      eventLogs.slice(0, 5).forEach(log => console.log('  -', log));
 
       // Check for state update logs (new patterns)
       const stateUpdateLogs = consoleLogs.filter(
-        (log) =>
+        log =>
           log.includes('Added thinking row') ||
           log.includes('Added tool start row') ||
           log.includes('Updated tool last_line') ||
           log.includes('Tool completed') ||
-          log.includes('Added file edit row')
+          log.includes('Added file edit row'),
       );
       console.log(`\nState update logs: ${stateUpdateLogs.length}`);
-      stateUpdateLogs.slice(0, 5).forEach((log) => console.log('  -', log));
+      stateUpdateLogs.slice(0, 5).forEach(log => console.log('  -', log));
 
       // Check for liveActivity logs (rows count)
-      const activityLogs = consoleLogs.filter((log) => log.includes('Live activity rows:'));
+      const activityLogs = consoleLogs.filter(log => log.includes('Live activity rows:'));
       console.log(`\nLive activity logs: ${activityLogs.length}`);
-      activityLogs.slice(0, 3).forEach((log) => console.log('  -', log));
+      activityLogs.slice(0, 3).forEach(log => console.log('  -', log));
 
       // Get current text
       const currentText = await firstActiveCard.textContent();
@@ -126,7 +126,7 @@ test.describe('SSE Live Updates Debug', () => {
 
       // Check for errors
       console.log(`\nConsole errors: ${consoleErrors.length}`);
-      consoleErrors.forEach((err) => console.log('  ERROR:', err));
+      consoleErrors.forEach(err => console.log('  ERROR:', err));
 
       // Analyze the issue
       console.log('\n=== ANALYSIS ===');
@@ -142,7 +142,7 @@ test.describe('SSE Live Updates Debug', () => {
         console.log('SUCCESS: Live updates are working! UI updated with activity.');
       } else {
         console.log(
-          'PARTIAL SUCCESS: Events arriving and state updating, but UI may not reflect changes yet'
+          'PARTIAL SUCCESS: Events arriving and state updating, but UI may not reflect changes yet',
         );
       }
 

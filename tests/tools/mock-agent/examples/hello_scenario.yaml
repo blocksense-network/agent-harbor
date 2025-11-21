@@ -9,24 +9,24 @@ timeline:
       - think:
           - [500, "I'll create hello.py with a print statement."]
       - assistant:
-          - [300, "Created hello.py. Run: python hello.py"]
+          - [300, 'Created hello.py. Run: python hello.py']
   - agentToolUse:
-      toolName: "write_file"
+      toolName: 'write_file'
       args:
-        path: "hello.py"
+        path: 'hello.py'
         text: "print('Hello, World!')\n"
-      result: "File created"
-      status: "ok"
+      result: 'File created'
+      status: 'ok'
   - agentToolUse:
-      toolName: "read_file"
+      toolName: 'read_file'
       args:
-        path: "hello.py"
-      result: "File read successfully"
-      status: "ok"
+        path: 'hello.py'
+      result: 'File read successfully'
+      status: 'ok'
   - assistant:
-      - [200, "Confirmed content of hello.py."]
+      - [200, 'Confirmed content of hello.py.']
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "hello.py"
+    - type: 'taskFile'
+      pattern: 'hello.py'

@@ -2,23 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: documentation_scenario
-initialPrompt: "Add documentation to the project"
+initialPrompt: 'Add documentation to the project'
 repo:
   init: true
 timeline:
   - think:
-      - [500, "Processing request for documentation_scenario"]
+      - [500, 'Processing request for documentation_scenario']
   - agentToolUse:
-      toolName: "writeFile"
+      toolName: 'writeFile'
       args:
-        path: "test.txt"
-        text: "Test content for documentation_scenario"
-      result: "File created"
-      status: "ok"
+        path: 'test.txt'
+        text: 'Test content for documentation_scenario'
+      result: 'File created'
+      status: 'ok'
   - assistant:
-      - [300, "Completed documentation_scenario scenario"]
+      - [300, 'Completed documentation_scenario scenario']
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "test.txt"
+    - type: 'taskFile'
+      pattern: 'test.txt'

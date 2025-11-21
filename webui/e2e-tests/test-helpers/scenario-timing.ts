@@ -90,9 +90,8 @@ export class ScenarioTimingValidator {
       expectedCumulativeDelay += expectedEvent.expectedDelay;
 
       // Find corresponding recorded event
-      const recordedEvent = this.events.find(e =>
-        e.type === expectedEvent.type &&
-        this.matchesEventData(e.data, expectedEvent.data)
+      const recordedEvent = this.events.find(
+        e => e.type === expectedEvent.type && this.matchesEventData(e.data, expectedEvent.data),
       );
 
       if (recordedEvent) {
@@ -120,8 +119,8 @@ export class ScenarioTimingValidator {
       }
     }
 
-    const totalDuration = this.events.length > 0 ?
-      this.events[this.events.length - 1].timestamp - this.startTime : 0;
+    const totalDuration =
+      this.events.length > 0 ? this.events[this.events.length - 1].timestamp - this.startTime : 0;
 
     return {
       scenarioName: this.scenario.name,
@@ -191,8 +190,10 @@ export class ScenarioTimingValidator {
   private matchesEventData(recordedData: any, expectedData: any): boolean {
     // Simple matching logic - can be enhanced based on event types
     if (expectedData.thought && recordedData.thought) {
-      return recordedData.thought.includes(expectedData.thought) ||
-             expectedData.thought.includes(recordedData.thought);
+      return (
+        recordedData.thought.includes(expectedData.thought) ||
+        expectedData.thought.includes(recordedData.thought)
+      );
     }
 
     if (expectedData.tool_name && recordedData.tool_name) {
@@ -230,7 +231,7 @@ export class ScenarioTimingValidator {
 export async function recordScenarioEvents(
   sessionId: string,
   baseUrl: string = 'http://localhost:3001',
-  duration: number = 10000
+  duration: number = 10000,
 ): Promise<RecordedEvent[]> {
   const events: RecordedEvent[] = [];
   const startTime = Date.now();
