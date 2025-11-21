@@ -382,6 +382,7 @@
                   pkgs.screen
                   pkgs.zellij
                   pkgs.kitty
+                  pkgs.wezterm
                 ];
 
                 # GUI testing tools for headless environments
