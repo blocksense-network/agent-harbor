@@ -419,6 +419,16 @@ impl TaskCreateArgs {
             anyhow::bail!("Error: --prompt and --prompt-file are mutually exclusive");
         }
 
+        // Parse boolean-ish task options
+        let create_task_files = parse_bool_flag(&self.create_task_files)
+            .context("Invalid --create-task-files value (expected yes/no/true/false/1/0)")?;
+        let create_metadata_commits = parse_bool_flag(&self.create_metadata_commits)
+            .context("Invalid --create-metadata-commits value (expected yes/no/true/false/1/0)")?;
+        let _notifications_enabled = parse_bool_flag(&self.notifications)
+            .context("Invalid --notifications value (expected yes/no/true/false/1/0)")?;
+
+        self.validate_task_file_options(create_task_files, create_metadata_commits)?;
+
         // Determine if we're creating a new branch or appending to existing
         let branch_name = self.branch.as_ref().filter(|b| !b.trim().is_empty()).cloned();
         let start_new_branch = branch_name.is_some();
@@ -706,6 +716,19 @@ impl TaskCreateArgs {
             })
             .collect::<Vec<_>>();
         Ok(Some(mapped))
+    }
+
+    fn validate_task_file_options(
+        &self,
+        create_task_files: bool,
+        create_metadata_commits: bool,
+    ) -> Result<()> {
+        if create_task_files && !create_metadata_commits {
+            anyhow::bail!(
+                "--create-metadata-commits cannot be 'no' when --create-task-files is enabled"
+            );
+        }
+        Ok(())
     }
 
     /// Get prompt content from --prompt or --prompt-file options
@@ -1248,6 +1271,31 @@ mod tests {
         assert!(!protected.contains(&"feature-x"));
         assert!(!protected.contains(&"bugfix"));
         assert!(!protected.contains(&"develop"));
+    }
+
+    #[test]
+    fn test_create_task_files_options_validation() {
+        // Valid yes/yes
+        let args = TaskCreateArgs {
+            create_task_files: "yes".into(),
+            create_metadata_commits: "yes".into(),
+            notifications: "no".into(),
+            ..base_task_args()
+        };
+        assert!(parse_bool_flag(&args.create_task_files).unwrap());
+        assert!(parse_bool_flag(&args.create_metadata_commits).unwrap());
+        assert!(!parse_bool_flag(&args.notifications).unwrap());
+
+        // Invalid combination: metadata=no while task files=yes should error when run is invoked
+        let args_err = TaskCreateArgs {
+            create_task_files: "yes".into(),
+            create_metadata_commits: "no".into(),
+            ..base_task_args()
+        };
+        let ct = parse_bool_flag(&args_err.create_task_files).unwrap();
+        let cm = parse_bool_flag(&args_err.create_metadata_commits).unwrap();
+        let err = args_err.validate_task_file_options(ct, cm).unwrap_err();
+        assert!(err.to_string().contains("--create-metadata-commits cannot be 'no'"));
     }
 
     #[tokio::test]
