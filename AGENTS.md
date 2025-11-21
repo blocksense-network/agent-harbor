@@ -3,6 +3,7 @@
 - You can execute the Rust test suite with `just test-rust`.
 - You can lint the codebase with `just lint-rust`.
   Don't disable lints just to make the linter happy. ALWAYS try to fix the code first.
+- Once tests and lints pass, run `pre-commit run` to catch any remaining issues before handing off the task.
 
 ## 🧪 Testing Tips
 
