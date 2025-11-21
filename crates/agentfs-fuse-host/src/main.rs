@@ -126,7 +126,7 @@ fn main() -> Result<()> {
         }
 
         info!("Mounting filesystem...");
-        let mut session = fuser::spawn_mount2(filesystem, &args.mount_point, &mount_options)?;
+        let session = fuser::spawn_mount2(filesystem, &args.mount_point, &mount_options)?;
         notifier_reg.install(session.notifier());
         info!("AgentFS FUSE host mounted; blocking until unmount");
         match session.guard.join() {
