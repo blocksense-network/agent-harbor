@@ -38,6 +38,12 @@ if [ ! -d "$mountpoint" ]; then
   fi
 fi
 
+# Require sudo for device setup and mount prep
+if ! command -v sudo >/dev/null 2>&1; then
+  echo "Error: sudo is required to mount AgentFS FUSE (for /dev/fuse setup and mount prep)" >&2
+  exit 1
+fi
+
 # Ensure the mount point is owned by the current user (best effort)
 if [ "$(stat -c %U "$mountpoint")" != "$(whoami)" ]; then
   if ! sudo chown "$(whoami)" "$mountpoint" 2>/dev/null; then
@@ -50,21 +56,12 @@ ensure_dev_fuse() {
     return 0
   fi
   if command -v modprobe >/dev/null 2>&1; then
-    if command -v sudo >/dev/null 2>&1; then
-      sudo modprobe fuse 2>/divnull || true
-    else
-      modprobe fuse 2>/divnull || true
-    fi
+    sudo modprobe fuse 2>/dev/null || true
   fi
   if [ ! -e /dev/fuse ] && command -v mknod >/dev/null 2>&1; then
     # Try to create the device node manually (major 10, minor 229)
-    if command -v sudo >/dev/null 2>&1; then
-      sudo mknod /dev/fuse c 10 229 2>/dev/null || true
-      sudo chmod 666 /dev/fuse 2>/dev/null || true
-    else
-      mknod /dev/fuse c 10 229 2>/dev/null || true
-      chmod 666 /dev/fuse 2>/dev/null || true
-    fi
+    sudo mknod /dev/fuse c 10 229 2>/dev/null || true
+    sudo chmod 666 /dev/fuse 2>/dev/null || true
   fi
   if [ -e /dev/fuse ]; then
     return 0
