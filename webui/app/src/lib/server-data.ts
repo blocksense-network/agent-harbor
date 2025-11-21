@@ -22,7 +22,7 @@ const logger = {
 // API base URL for SSR - uses SSR server's proxy
 // The SSR server proxies /api/v1/* to the access point daemon
 // SSR code calls back to itself (localhost:3002) to leverage the proxy
-const API_BASE_URL = process.env['SSR_SERVER_URL'] || 'http://localhost:3002';
+const API_BASE_URL = process.env['SSR_SERVER_URL'] || 'http://localhost:3001';
 
 export interface SessionsResponse {
   items: Session[];
