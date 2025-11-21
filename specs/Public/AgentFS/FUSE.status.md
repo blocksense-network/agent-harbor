@@ -10,6 +10,8 @@ Goal: Deliver a production-ready FUSE adapter that passes comprehensive filesyst
 
 Approach: The core FUSE adapter implementation is now complete and compiles successfully. Next steps include comprehensive integration testing with mounted filesystems, performance benchmarking, and compliance validation using automated test suites in CI environments.
 
+**Latest run – 2025-11-21:** Full harness rerun on branch `feat/agentfs-fuse-f7`. F1–F5, F7, F8, and F10 all passed (logs under `logs/fuse-*-20251121-*`), including `just test-pjdfstest-full` with only the expected privileged `chmod/12.t` failures. F6 performance still below targets (seq_write ~0.42×, seq_read ~0.28×, metadata ~0.11×, concurrent_write ~0.13×) in `logs/fuse-performance-20251121-113521/summary.json`. F9 was skipped by request.
+
 ### Milestones and tasks (with automated success criteria)
 
 **F1. FUSE Adapter Core Implementation** ⚠️ CORE COMPLETE WITH KNOWN ISSUES (4–6d)
