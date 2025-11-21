@@ -21,6 +21,18 @@
                 log-level = "warn";
               };
             };
+            eslint = {
+              enable = true;
+              excludes = [
+                ".obsidian"
+                ".yarn"
+                "electron-app"
+              ];
+              settings = {
+                binPath = "yarn run -T eslint";
+                extensions = "\\.[jt]s(x?)$";
+              };
+            };
             # Fast auto-fixers and sanity checks
             # Local replacements for common sanity checks (portable, no Python deps)
             check-merge-conflict = {
