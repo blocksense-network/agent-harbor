@@ -46,15 +46,11 @@ if [ "$(stat -c %U "$mountpoint")" != "$(whoami)" ]; then
   fi
 fi
 
-FUSE_FLAGS=()
-ALLOW_OTHER="${AGENTFS_FUSE_ALLOW_OTHER:-1}"
-if [ "$ALLOW_OTHER" = "1" ]; then
-  FUSE_FLAGS+=("--allow-other")
-fi
-
 CONFIG_PATH_DEFAULT="$REPO_ROOT/fuse_config.json"
 CONFIG_PATH="${AGENTFS_FUSE_CONFIG:-$CONFIG_PATH_DEFAULT}"
 CONFIG_ARGS=()
+ALLOW_OTHER="${AGENTFS_FUSE_ALLOW_OTHER:-1}"
+FALLBACK_ALLOW_OTHER="${AGENTFS_FUSE_ALLOW_OTHER_FALLBACK:-1}"
 
 if [ -n "${AGENTFS_FUSE_CONFIG:-}" ]; then
   if [ ! -f "$CONFIG_PATH" ]; then
@@ -107,30 +103,62 @@ JSON
 fi
 
 echo "Mounting AgentFS FUSE filesystem at $mountpoint..."
-if [ ${#FUSE_FLAGS[@]} -gt 0 ]; then
-  echo "Additional FUSE flags: ${FUSE_FLAGS[*]}"
-fi
-if [ ${#CONFIG_ARGS[@]} -gt 0 ]; then
-  echo "Config args: ${CONFIG_ARGS[*]}"
-fi
-echo "Note: This will run in the background. To unmount later: fusermount -u $mountpoint"
-echo ""
 HOST_BIN="${AGENTFS_FUSE_HOST_BIN:-$REPO_ROOT/target/debug/agentfs-fuse-host}"
 echo "AgentFS host binary: $HOST_BIN"
-if [ -n "${AGENTFS_FUSE_LOG_FILE:-}" ]; then
-  mkdir -p "$(dirname "$AGENTFS_FUSE_LOG_FILE")"
-  echo "Logging FUSE host output to $AGENTFS_FUSE_LOG_FILE"
-  "$HOST_BIN" "${CONFIG_ARGS[@]}" "${FUSE_FLAGS[@]}" "$mountpoint" >>"$AGENTFS_FUSE_LOG_FILE" 2>&1 &
-else
-  "$HOST_BIN" "${CONFIG_ARGS[@]}" "${FUSE_FLAGS[@]}" "$mountpoint" &
-fi
-echo "AgentFS FUSE filesystem mounted. PID: $!"
-for _ in {1..30}; do
-  if mountpoint -q "$mountpoint" 2>/dev/null; then
-    break
+
+attempt_mount() {
+  local allow_other_flag="$1"
+  local fuse_flags=()
+  if [ "$allow_other_flag" = "1" ]; then
+    fuse_flags+=("--allow-other")
   fi
-  sleep 0.1
-done
+
+  if [ ${#fuse_flags[@]} -gt 0 ]; then
+    echo "Additional FUSE flags: ${fuse_flags[*]}"
+  fi
+  if [ ${#CONFIG_ARGS[@]} -gt 0 ]; then
+    echo "Config args: ${CONFIG_ARGS[*]}"
+  fi
+  echo "Note: This will run in the background. To unmount later: fusermount -u $mountpoint"
+  echo ""
+
+  if [ -n "${AGENTFS_FUSE_LOG_FILE:-}" ]; then
+    mkdir -p "$(dirname "$AGENTFS_FUSE_LOG_FILE")"
+    echo "Logging FUSE host output to $AGENTFS_FUSE_LOG_FILE"
+    "$HOST_BIN" "${CONFIG_ARGS[@]}" "${fuse_flags[@]}" "$mountpoint" >>"$AGENTFS_FUSE_LOG_FILE" 2>&1 &
+  else
+    "$HOST_BIN" "${CONFIG_ARGS[@]}" "${fuse_flags[@]}" "$mountpoint" &
+  fi
+  local pid=$!
+  for _ in {1..30}; do
+    if mountpoint -q "$mountpoint" 2>/dev/null; then
+      echo "AgentFS FUSE filesystem mounted. PID: $pid"
+      return 0
+    fi
+    if ! ps -p "$pid" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  echo "Mount attempt failed (allow_other=$allow_other_flag); cleaning up..." >&2
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  return 1
+}
+
+if ! attempt_mount "$ALLOW_OTHER"; then
+  if [ "$ALLOW_OTHER" = "1" ] && [ "$FALLBACK_ALLOW_OTHER" = "1" ]; then
+    echo "Retrying mount without --allow-other (user_allow_other likely missing on this runner)..." >&2
+    attempt_mount "0" || {
+      echo "Mount failed even without --allow-other" >&2
+      exit 1
+    }
+  else
+    echo "Mount failed and fallback is disabled" >&2
+    exit 1
+  fi
+fi
 if [[ "${AGENTFS_FUSE_SKIP_AUTO_CHOWN:-0}" != "1" ]]; then
   chown_ok=false
   for _ in {1..30}; do
