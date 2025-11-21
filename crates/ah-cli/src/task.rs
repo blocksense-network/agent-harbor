@@ -1308,6 +1308,20 @@ mod tests {
         assert!(!VcsRepo::valid_branch_name("")); // empty
     }
 
+    #[tokio::test]
+    async fn test_validate_branch_name_and_primary_guard() {
+        TaskCreateArgs::validate_branch_name("feat-123").unwrap();
+        assert!(TaskCreateArgs::validate_branch_name("with space").is_err());
+        assert!(TaskCreateArgs::guard_primary_branch("main").is_err());
+        assert!(TaskCreateArgs::guard_primary_branch("feature").is_ok());
+
+        // Create a real git repo to get default branch mapping
+        let simple_repo = ah_repo::test_helpers::create_git_repo(None).await.expect("git repo");
+        let repo = VcsRepo::new(simple_repo.path.as_path()).expect("vcs repo");
+        assert!(TaskCreateArgs::is_primary_branch(&repo, "main"));
+        assert!(!TaskCreateArgs::is_primary_branch(&repo, "topic"));
+    }
+
     #[test]
     fn test_main_branch_protection() {
         use ah_repo::VcsType;
