@@ -551,6 +551,7 @@ dependencies = [
 name = "ah-fs-snapshots-daemon"
 version = "0.1.0"
 dependencies = [
+ "ah-logging",
  "anyhow",
  "clap",
  "ethereum_ssz",

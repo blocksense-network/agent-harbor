@@ -46,7 +46,7 @@ impl DaemonServer {
             std::fs::set_permissions(&socket_path, perms)?;
         }
 
-        info!("Daemon listening on socket: {}", socket_path.display());
+        info!(operation = "start_server", socket_path = %socket_path.display(), "Daemon listening on socket");
 
         Ok(Self {
             socket_path,
@@ -58,19 +58,22 @@ impl DaemonServer {
         let listener = self.listener.take().ok_or_else(|| anyhow!("Server not initialized"))?;
         let mut stream = UnixListenerStream::new(listener);
 
-        info!("AH filesystem snapshots daemon started. Press Ctrl+C to stop.");
+        info!(
+            operation = "server_running",
+            "AH filesystem snapshots daemon started. Press Ctrl+C to stop."
+        );
 
         while let Some(stream) = stream.next().await {
             match stream {
                 Ok(socket) => {
                     tokio::spawn(async move {
                         if let Err(e) = handle_client(socket).await {
-                            error!("Error handling client: {}", e);
+                            error!(operation = "handle_client", error = %e, "Error handling client");
                         }
                     });
                 }
                 Err(e) => {
-                    warn!("Error accepting connection: {}", e);
+                    warn!(operation = "accept_connection", error = %e, "Error accepting connection");
                 }
             }
         }
@@ -79,7 +82,7 @@ impl DaemonServer {
     }
 
     pub async fn shutdown(self) -> Result<()> {
-        info!("Shutting down daemon...");
+        info!(operation = "shutdown", "Shutting down daemon");
 
         // Remove the socket file
         if self.socket_path.exists() {
@@ -91,7 +94,10 @@ impl DaemonServer {
 }
 
 async fn handle_client(mut socket: UnixStream) -> Result<()> {
-    debug!("Handling new client connection");
+    debug!(
+        operation = "handle_client",
+        "Handling new client connection"
+    );
 
     let (reader, mut writer) = socket.split();
     let mut reader = BufReader::new(reader);
@@ -120,7 +126,10 @@ async fn handle_client(mut socket: UnixStream) -> Result<()> {
     writer.write_all(b"\n").await?;
     writer.flush().await?;
 
-    debug!("Handled client request successfully");
+    debug!(
+        operation = "handle_client",
+        "Handled client request successfully"
+    );
 
     Ok(())
 }

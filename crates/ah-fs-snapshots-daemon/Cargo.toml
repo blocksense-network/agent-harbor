@@ -12,6 +12,7 @@ tokio = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+ah-logging = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 libc = "0.2"
