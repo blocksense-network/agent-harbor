@@ -13,6 +13,9 @@
   };
 
   inputs = {
+
+    self.submodules = true;
+
     nixos-modules.url = "github:metacraft-labs/nixos-modules";
 
     nixpkgs.follows = "nixos-modules/nixpkgs-unstable";
@@ -164,7 +167,7 @@
                 rustWorkspaceFiles = fs.unions [
                   ./Cargo.toml
                   ./Cargo.lock
-                  ./rust-toolchain.toml
+                  (lib.fileset.maybeMissing ./rust-toolchain.toml)
                   ./clippy.toml
                   ./rustfmt.toml
                   ./src
@@ -173,6 +176,7 @@
                   ./assets
                   ./resources
                   ./specs
+                  ./vendor
                 ];
                 rustWorkspaceSource = fs.toSource {
                   root = ./.;
@@ -185,10 +189,6 @@
                   src = rustWorkspaceSource;
                   cargoLock = {
                     lockFile = ./Cargo.lock;
-                    outputHashes = {
-                      "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
-                      "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                    };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
                   buildInputs = [
@@ -213,10 +213,6 @@
                   src = rustWorkspaceSource;
                   cargoLock = {
                     lockFile = ./Cargo.lock;
-                    outputHashes = {
-                      "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
-                      "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                    };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
                   buildInputs = [
