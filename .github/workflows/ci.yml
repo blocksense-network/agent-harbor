@@ -158,8 +158,9 @@ jobs:
 
   fuse-harness:
     name: FUSE harness
-    needs: test
     runs-on: [self-hosted, nixos, x86-64-v3, microvm]
+    env:
+      AGENTFS_FUSE_ALLOW_OTHER: 0
 
     steps:
       - uses: actions/checkout@v5
