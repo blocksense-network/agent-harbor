@@ -14,7 +14,7 @@ use ah_fs_snapshots::PreparedWorkspace;
 use ah_local_db::{SessionRecord, TaskRecord};
 use ah_repo::VcsRepo;
 use anyhow::{Context, Result};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use std::path::PathBuf;
 #[cfg(test)]
 use tui_testing::TestedTerminalProgram;
@@ -256,7 +256,12 @@ pub struct TaskCreateArgs {
     pub prompt_file: Option<PathBuf>,
 
     /// Record the dev shell name in the commit
-    #[arg(short = 's', long = "devshell", value_name = "NAME")]
+    #[arg(
+        short = 's',
+        long = "dev-shell",
+        alias = "devshell",
+        value_name = "NAME"
+    )]
     pub devshell: Option<String>,
 
     /// Push branch to remote automatically (true/false/yes/no)
@@ -298,21 +303,109 @@ pub struct TaskCreateArgs {
     /// Paths to promote to copy-on-write overlays
     #[arg(long = "overlay", value_name = "PATH")]
     pub overlay: Vec<PathBuf>,
+
+    /// Agent type and optional version (can be specified multiple times)
+    #[arg(long = "agent", value_name = "TYPE[@VERSION]")]
+    pub agents: Vec<String>,
+
+    /// LLM model to use (applies to the last --agent parameter)
+    #[arg(long = "model", value_name = "NAME")]
+    pub models: Vec<String>,
+
+    /// Number of agent instances (applies to the last --agent parameter)
+    #[arg(long = "instances", value_name = "N")]
+    pub instances: Vec<u32>,
+
+    /// Devcontainer path or image/tag
+    #[arg(long = "devcontainer", value_name = "PATH|TAG")]
+    pub devcontainer: Option<String>,
+
+    /// Key-value labels for the task
+    #[arg(long = "labels", value_name = "k=v")]
+    pub labels: Vec<String>,
+
+    /// Delivery method for results
+    #[arg(long = "delivery", value_enum)]
+    pub delivery: Option<DeliveryMethod>,
+
+    /// Target branch for delivery
+    #[arg(long = "target-branch", value_name = "NAME")]
+    pub target_branch: Option<String>,
+
+    /// Enable/disable browser automation (explicitly not implemented this release)
+    #[arg(long = "browser-automation", value_name = "BOOL")]
+    pub browser_automation: Option<String>,
+
+    /// Browser profile to use
+    #[arg(long = "browser-profile", value_name = "NAME")]
+    pub browser_profile: Option<String>,
+
+    /// ChatGPT username for Codex
+    #[arg(long = "chatgpt-username", value_name = "NAME")]
+    pub chatgpt_username: Option<String>,
+
+    /// Codex workspace identifier
+    #[arg(long = "codex-workspace", value_name = "WORKSPACE")]
+    pub codex_workspace: Option<String>,
+
+    /// Named workspace (cloud agents)
+    #[arg(long = "workspace", value_name = "NAME")]
+    pub workspace: Option<String>,
+
+    /// Fleet configuration name
+    #[arg(long = "fleet", value_name = "NAME")]
+    pub fleet: Option<String>,
+
+    /// Skip interactive prompts
+    #[arg(long = "yes", short = 'y')]
+    pub assume_yes: bool,
+
+    /// Control creation of local task files (default: yes)
+    #[arg(
+        long = "create-task-files",
+        value_name = "yes|no",
+        default_value = "yes"
+    )]
+    pub create_task_files: String,
+
+    /// Control creation of metadata-only commits when task files are disabled (default: yes)
+    #[arg(
+        long = "create-metadata-commits",
+        value_name = "yes|no",
+        default_value = "yes"
+    )]
+    pub create_metadata_commits: String,
+
+    /// Enable/disable OS notifications on task completion (default: yes)
+    #[arg(long = "notifications", value_name = "yes|no", default_value = "yes")]
+    pub notifications: String,
+
+    /// Launch TUI/WebUI to monitor the newly created task
+    #[arg(long = "follow")]
+    pub follow: bool,
+}
+
+/// Delivery method for task results
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+pub enum DeliveryMethod {
+    Pr,
+    Branch,
+    Patch,
 }
 
 impl TaskCommands {
     /// Execute the task command
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, global_config: Option<&str>) -> Result<()> {
         match self {
-            TaskCommands::Create(args) => (*args).run().await,
-            TaskCommands::Get(args) => args.run().await,
+            TaskCommands::Create(args) => (*args).run(global_config).await,
+            TaskCommands::Get(args) => args.run(global_config).await,
         }
     }
 }
 
 impl TaskCreateArgs {
     /// Execute the task creation
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, _global_config: Option<&str>) -> Result<()> {
         // Validate mutually exclusive options
         if self.prompt.is_some() && self.prompt_file.is_some() {
             anyhow::bail!("Error: --prompt and --prompt-file are mutually exclusive");
@@ -616,7 +709,7 @@ fn get_ah_binary_path() -> std::path::PathBuf {
 
 impl TaskGetArgs {
     /// Execute the task retrieval and display
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, _global_config: Option<&str>) -> Result<()> {
         // Create VCS repository instance
         let repo = VcsRepo::new(".").context("Failed to initialize VCS repository")?;
 
@@ -653,8 +746,88 @@ impl TaskGetArgs {
 #[allow(clippy::disallowed_methods, clippy::items_after_test_module)]
 mod tests {
     use super::*;
+    use clap::Parser;
     use std::fs;
     use tempfile::TempDir;
+
+    fn base_task_args() -> TaskCreateArgs {
+        TaskCreateArgs {
+            branch: None,
+            prompt: None,
+            prompt_file: None,
+            devshell: None,
+            push_to_remote: None,
+            non_interactive: false,
+            sandbox: "none".to_string(),
+            allow_network: "no".to_string(),
+            allow_containers: "no".to_string(),
+            allow_kvm: "no".to_string(),
+            seccomp: "no".to_string(),
+            seccomp_debug: "no".to_string(),
+            mount_rw: vec![],
+            overlay: vec![],
+            agents: vec![],
+            models: vec![],
+            instances: vec![],
+            devcontainer: None,
+            labels: vec![],
+            delivery: None,
+            target_branch: None,
+            browser_automation: None,
+            browser_profile: None,
+            chatgpt_username: None,
+            codex_workspace: None,
+            workspace: None,
+            fleet: None,
+            assume_yes: false,
+            create_task_files: "yes".to_string(),
+            create_metadata_commits: "yes".to_string(),
+            notifications: "yes".to_string(),
+            follow: false,
+        }
+    }
+
+    #[test]
+    fn parse_extended_task_flags() {
+        let cli = crate::Cli::try_parse_from([
+            "ah",
+            "task",
+            "create",
+            "feature-x",
+            "--agent",
+            "claude@1",
+            "--model",
+            "sonnet",
+            "--instances",
+            "2",
+            "--delivery",
+            "branch",
+            "--target-branch",
+            "main",
+            "--follow",
+            "--yes",
+            "--notifications",
+            "no",
+        ])
+        .expect("Failed to parse CLI");
+
+        match cli.command {
+            crate::Commands::Task {
+                subcommand: TaskCommands::Create(args),
+            } => {
+                assert_eq!(args.branch.as_deref(), Some("feature-x"));
+                assert_eq!(args.agents, vec!["claude@1".to_string()]);
+                assert_eq!(args.models, vec!["sonnet".to_string()]);
+                assert_eq!(args.instances, vec![2]);
+                assert_eq!(args.delivery, Some(DeliveryMethod::Branch));
+                assert_eq!(args.target_branch.as_deref(), Some("main"));
+                assert!(args.follow);
+                assert!(args.assume_yes);
+                assert_eq!(args.notifications, "no");
+            }
+            _ => panic!("Expected task create command"),
+        }
+    }
 
     fn assert_snapshot_provider_used_if_possible(output: &str) {
         let require = std::env::var("AH_REQUIRE_SANDBOX_PROVIDER")
@@ -704,18 +877,10 @@ mod tests {
         let args = TaskCreateArgs {
             branch: Some("feature-branch".to_string()),
             prompt: Some("Implement feature X".to_string()),
-            prompt_file: None,
             devshell: Some("dev".to_string()),
             push_to_remote: Some("yes".to_string()),
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         assert_eq!(args.branch, Some("feature-branch".to_string()));
@@ -734,18 +899,8 @@ mod tests {
         let args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
             prompt: Some("Test task content".to_string()),
-            prompt_file: None,
-            devshell: None,
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         let content = args.get_prompt_content().await.unwrap();
@@ -764,19 +919,9 @@ mod tests {
 
         let args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
-            prompt: None,
             prompt_file: Some(file_path), // Use absolute path
-            devshell: None,
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         let content = args.get_prompt_content().await.unwrap();
@@ -793,17 +938,8 @@ mod tests {
             branch: Some("test-branch".to_string()),
             prompt: Some("prompt".to_string()),
             prompt_file: Some("file.txt".into()),
-            devshell: None,
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         // The validation logic is: if both prompt and prompt_file are Some, it's an error
@@ -820,17 +956,8 @@ mod tests {
             branch: Some("test-branch".to_string()),
             prompt: None,
             prompt_file: Some(temp_dir.path().join("nonexistent.txt")),
-            devshell: None,
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         let content = args.get_prompt_content().await;
@@ -845,18 +972,8 @@ mod tests {
         let _args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
             prompt: None,
-            prompt_file: None,
-            devshell: None,
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         // This would normally be tested in the run() method, but we'll test the validation logic
@@ -869,18 +986,8 @@ mod tests {
         let _args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
             prompt: None,
-            prompt_file: None,
-            devshell: None,
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         // This would normally be tested in the run() method, but we'll test the validation logic
@@ -937,18 +1044,9 @@ mod tests {
         let _args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
             prompt: Some("test".to_string()),
-            prompt_file: None,
             devshell: Some("custom".to_string()),
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         // This test would normally be integration-tested, but we'll verify the logic
@@ -1012,19 +1110,8 @@ mod tests {
     fn test_non_interactive_mode_requires_input() {
         let args = TaskCreateArgs {
             branch: Some("test-branch".to_string()),
-            prompt: None,
-            prompt_file: None,
-            devshell: None,
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         // This test verifies the logic that non-interactive mode requires --prompt or --prompt-file
@@ -1039,18 +1126,9 @@ mod tests {
         let args = TaskCreateArgs {
             branch: None, // No branch means append to existing
             prompt: Some("test".to_string()),
-            prompt_file: None,
             devshell: Some("custom".to_string()),
-            push_to_remote: None,
             non_interactive: true,
-            sandbox: "none".to_string(),
-            allow_network: "no".to_string(),
-            allow_containers: "no".to_string(),
-            allow_kvm: "no".to_string(),
-            seccomp: "no".to_string(),
-            seccomp_debug: "no".to_string(),
-            mount_rw: vec![],
-            overlay: vec![],
+            ..base_task_args()
         };
 
         // This test verifies the logic that --devshell is only allowed for new branches
