@@ -158,7 +158,7 @@ jobs:
 
   fuse-harness:
     name: FUSE harness
-    runs-on: [self-hosted, nixos, x86-64-v3]
+    runs-on: [self-hosted, fine-tuned-systemd-sandbox]
     env:
       AGENTFS_FUSE_ALLOW_OTHER: 0
 
@@ -318,7 +318,7 @@ jobs:
   pjdfstest:
     name: pjdfstest suite
     needs: fuse-harness
-    runs-on: [self-hosted, nixos, x86-64-v3]
+    runs-on: [self-hosted, fine-tuned-systemd-sandbox]
 
     steps:
       - name: Test passwordless `sudo`
