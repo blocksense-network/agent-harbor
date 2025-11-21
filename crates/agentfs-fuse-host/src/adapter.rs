@@ -516,6 +516,8 @@ pub struct AgentFsFuse {
     pseudo_pid_counter: AtomicU32,
     /// Cached synthetic PID per (uid, gid, groups_hash) tuple for pid=0 requests
     pseudo_pid_map: Mutex<HashMap<(u32, u32, u64), u32>>,
+    /// If true, perform file writes inline on the FUSE worker thread (avoids extra copies)
+    inline_writes: bool,
 }
 
 impl AgentFsFuse {
@@ -578,6 +580,10 @@ impl AgentFsFuse {
         let enable_passthrough = std::env::var("AGENTFS_FUSE_PASSTHROUGH")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
+        let inline_writes = inline_writes_enabled();
+        if inline_writes {
+            info!(target: "agentfs::fuse", "Inline write path enabled (bypasses write queue)");
+        }
 
         let inflight_writes = Arc::new(AtomicU64::new(0));
         let max_write_depth = Arc::new(AtomicU64::new(0));
@@ -617,6 +623,7 @@ impl AgentFsFuse {
             metadata_lock: Arc::new(Mutex::new(())),
             pseudo_pid_counter: AtomicU32::new(0),
             pseudo_pid_map: Mutex::new(HashMap::new()),
+            inline_writes,
         })
     }
 
@@ -1792,8 +1799,14 @@ fn write_worker_count() -> usize {
     }
 }
 
-const DEFAULT_MAX_WRITE_BYTES: u32 = 4 * 1024 * 1024;
-const DEFAULT_MAX_BACKGROUND: u16 = 64;
+fn inline_writes_enabled() -> bool {
+    std::env::var("AGENTFS_FUSE_INLINE_WRITES")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+const DEFAULT_MAX_WRITE_BYTES: u32 = 16 * 1024 * 1024;
+const DEFAULT_MAX_BACKGROUND: u16 = 256;
 const MAX_SUPPORTED_WRITE_BYTES: u32 = 16 * 1024 * 1024;
 
 fn desired_max_write_bytes() -> u32 {
@@ -2697,14 +2710,12 @@ impl fuser::Filesystem for AgentFsFuse {
 
         let handle_id = HandleId(fh);
         let client_pid = self.get_client_pid(req);
-        let mut buffer = Vec::with_capacity(data.len());
-        buffer.extend_from_slice(data);
-        let trace = self.start_write_trace(req, ino, fh, offset, buffer.len());
+        let mut trace = self.start_write_trace(req, ino, fh, offset, data.len());
 
         let state = match self.handle_write_state(fh) {
             Some(state) => state,
             None => {
-                if let Some(trace) = trace {
+                if let Some(trace) = trace.take() {
                     trace.finish();
                 }
                 reply.error(EIO);
@@ -2713,7 +2724,7 @@ impl fuser::Filesystem for AgentFsFuse {
         };
 
         if let Some(errno) = state.current_error() {
-            if let Some(trace) = trace {
+            if let Some(trace) = trace.take() {
                 trace.finish();
             }
             reply.error(errno);
@@ -2721,6 +2732,35 @@ impl fuser::Filesystem for AgentFsFuse {
         }
 
         state.begin_write();
+
+        if self.inline_writes {
+            let result = self.core.write(&client_pid, handle_id, offset as u64, data);
+            if let Some(trace) = trace.take() {
+                trace.finish();
+            }
+            match result {
+                Ok(written) => {
+                    if written == data.len() {
+                        state.finish_write();
+                        reply.written(written as u32);
+                    } else {
+                        state.record_error(EIO);
+                        state.finish_write();
+                        reply.error(EIO);
+                    }
+                }
+                Err(err) => {
+                    let errno = errno_from_fs_error(&err);
+                    state.record_error(errno);
+                    state.finish_write();
+                    reply.error(errno);
+                }
+            }
+            return;
+        }
+
+        let mut buffer = Vec::with_capacity(data.len());
+        buffer.extend_from_slice(data);
 
         let job = WriteJob {
             pid: client_pid,

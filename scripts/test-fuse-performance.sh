@@ -23,12 +23,24 @@ FUSE_CONFIG="$RUN_DIR/fuse-config.json"
 BACKSTORE_DIR="$RUN_DIR/backstore"
 USER_ID="$(id -u)"
 GROUP_ID="$(id -g)"
-SEQ_BLOCK_SIZE_BYTES=${SEQ_BLOCK_SIZE_BYTES:-$((4 * 1024 * 1024))}
+SEQ_BLOCK_SIZE_BYTES=${SEQ_BLOCK_SIZE_BYTES:-$((8 * 1024 * 1024))}
 SEQ_TOTAL_BYTES=${SEQ_TOTAL_BYTES:-$((8 * 1024 * 1024 * 1024))}
 MIN_SEQ_WRITE_RATIO=${MIN_SEQ_WRITE_RATIO:-0.75}
 MIN_SEQ_READ_RATIO=${MIN_SEQ_READ_RATIO:-0.75}
 MIN_METADATA_RATIO=${MIN_METADATA_RATIO:-0.5}
 MIN_CONCURRENT_RATIO=${MIN_CONCURRENT_RATIO:-0.5}
+: "${FUSE_BUILD_PROFILE:=release}"
+# Perf-oriented FUSE tuning defaults (overridable by env)
+: "${AGENTFS_FUSE_MAX_WRITE:=16777216}"
+: "${AGENTFS_FUSE_MAX_BACKGROUND:=256}"
+: "${AGENTFS_FUSE_WRITE_THREADS:=8}"
+: "${AGENTFS_FUSE_PASSTHROUGH:=1}"
+: "${AGENTFS_FUSE_INLINE_WRITES:=1}"
+: "${AGENTFS_FUSE_HOST_BIN:=$REPO_ROOT/target/${FUSE_BUILD_PROFILE}/agentfs-fuse-host}"
+: "${RUST_LOG:=agentfs::fuse=info}"
+export AGENTFS_FUSE_MAX_WRITE AGENTFS_FUSE_MAX_BACKGROUND AGENTFS_FUSE_WRITE_THREADS
+export AGENTFS_FUSE_PASSTHROUGH AGENTFS_FUSE_INLINE_WRITES
+export FUSE_BUILD_PROFILE AGENTFS_FUSE_HOST_BIN RUST_LOG
 mkdir -p "$RUN_DIR" "$BASELINE_DIR" "$BACKSTORE_DIR"
 
 log() {
@@ -134,7 +146,7 @@ mount_agentfs() {
     "negative_ttl_ms": 250,
     "enable_readdir_plus": true,
     "auto_cache": true,
-    "writeback_cache": false
+    "writeback_cache": true
   },
   "enable_xattrs": true,
   "enable_ads": false,
