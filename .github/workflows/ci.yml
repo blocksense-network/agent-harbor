@@ -180,6 +180,19 @@ jobs:
           direnv allow .
           direnv export gha > "$GITHUB_ENV"
 
+      - name: Ensure /dev/fuse is available
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/fuse ]; then
+            if command -v modprobe >/dev/null 2>&1; then
+              sudo modprobe fuse || true
+            fi
+          fi
+          if [ ! -e /dev/fuse ]; then
+            echo "/dev/fuse is missing and could not be created" >&2
+            exit 1
+          fi
+
       - name: Build AgentFS FUSE binaries
         run: |
           cargo build -p agentfs-fuse-host --features fuse

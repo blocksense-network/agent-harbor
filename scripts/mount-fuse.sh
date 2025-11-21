@@ -46,6 +46,22 @@ if [ "$(stat -c %U "$mountpoint")" != "$(whoami)" ]; then
   fi
 fi
 
+ensure_dev_fuse() {
+  if [ -e /dev/fuse ]; then
+    return 0
+  fi
+  if command -v modprobe >/dev/null 2>&1; then
+    sudo modprobe fuse 2>/dev/null || true
+  fi
+  if [ -e /dev/fuse ]; then
+    return 0
+  fi
+  echo "Error: /dev/fuse not found (tried modprobe fuse); cannot mount" >&2
+  return 1
+}
+
+ensure_dev_fuse || exit 1
+
 CONFIG_PATH_DEFAULT="$REPO_ROOT/fuse_config.json"
 CONFIG_PATH="${AGENTFS_FUSE_CONFIG:-$CONFIG_PATH_DEFAULT}"
 CONFIG_ARGS=()
