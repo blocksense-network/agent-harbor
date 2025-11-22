@@ -1787,6 +1787,77 @@ mod tests {
         assert!(TaskCreateArgs::parse_labels(&["badlabel".to_string()]).is_err());
     }
 
+    #[tokio::test]
+    async fn test_config_precedence_merging_for_task() -> Result<()> {
+        use std::fs;
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let repo_root = temp_dir.path().join("repo");
+        fs::create_dir(&repo_root).unwrap();
+
+        // system layer with enforced key
+        let system_path = temp_dir.path().join("system.toml");
+        fs::write(
+            &system_path,
+            r#"
+            enforced = ["notifications"]
+            notifications = "no"
+        "#,
+        )?;
+
+        // user layer
+        let user_path = temp_dir.path().join("user.toml");
+        fs::write(
+            &user_path,
+            r#"
+            delivery = "pr"
+        "#,
+        )?;
+
+        // repo layer
+        let repo_config_path = repo_root.join(".agents/config.toml");
+        fs::create_dir_all(repo_config_path.parent().unwrap())?;
+        fs::write(
+            &repo_config_path,
+            r#"
+            delivery = "branch"
+            notifications = "yes"
+        "#,
+        )?;
+
+        // env overlay
+        std::env::set_var("AH_DELIVERY", "patch");
+
+        let paths = config_core::paths::Paths {
+            system: system_path,
+            user: user_path,
+            repo: Some(repo_config_path),
+            repo_user: None,
+            cli_config: None,
+        };
+
+        // Flags overlay
+        let flags = vec![("notifications", "yes"), ("delivery", "branch")];
+        let resolved = config_core::load_all(&paths, &flags).expect("config load should succeed");
+
+        // Enforced system value should win for notifications
+        assert_eq!(resolved.json["notifications"], "no");
+        // Delivery should come from flags
+        assert_eq!(resolved.json["delivery"], "branch");
+        // Provenance checks
+        assert_eq!(
+            resolved.provenance.winner.get("notifications"),
+            Some(&config_core::Scope::System)
+        );
+        assert_eq!(
+            resolved.provenance.winner.get("delivery"),
+            Some(&config_core::Scope::Flags)
+        );
+
+        std::env::remove_var("AH_DELIVERY");
+        Ok(())
+    }
+
     #[test]
     fn test_non_interactive_mode_requires_input() {
         let args = TaskCreateArgs {
