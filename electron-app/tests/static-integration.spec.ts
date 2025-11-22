@@ -64,7 +64,7 @@ test.describe('Static WebUI Integration', () => {
           console.log('Mock server is ready!');
           break;
         }
-      } catch (e) {
+      } catch {
         // Server not ready yet
       }
       await new Promise(resolve => setTimeout(resolve, 100));

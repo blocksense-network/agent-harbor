@@ -6,7 +6,6 @@
 // LiveStore schema and events for Agent Harbor WebUI data layer
 // Reference: https://livestore.dev/
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as LS from '@livestore/livestore';
 
 // Use loose typings to insulate from upstream API changes while keeping this module stable

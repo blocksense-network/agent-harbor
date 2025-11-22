@@ -29,7 +29,6 @@ function resolveElectronCli(): string | undefined {
 
   // Fallback for Node >= 20: import.meta.resolve returns a file URL
   try {
-    // @ts-ignore - Node 20+
     const url = import.meta.resolve('electron/cli.js');
     return fileURLToPath(url);
   } catch {}

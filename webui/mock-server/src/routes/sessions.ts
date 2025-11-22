@@ -9,8 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { setInterval, clearInterval, setTimeout, clearTimeout } from 'timers';
-import { logger } from '../index.js';
-import { scenarioRunner } from '../index.js';
+import { logger, scenarioRunner } from '../index.js';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -789,7 +788,7 @@ router.get('/:id/logs', (req, res) => {
     });
   }
 
-  let logs: Array<{ level: string; message: string; ts: string }> = [];
+  const logs: Array<{ level: string; message: string; ts: string }> = [];
 
   if (isScenarioSession && scenarioRunner) {
     // Generate logs from scenario events
