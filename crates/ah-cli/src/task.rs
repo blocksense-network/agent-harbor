@@ -2221,6 +2221,107 @@ exit {}
     }
 
     #[test]
+    fn integration_test_follow_up_appends_task_file() -> Result<()> {
+        use std::process::Command;
+
+        let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
+        let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
+
+        // First task creates branch and task file
+        let (status1, _output1, _editor_called1) = run_ah_task_create_integration(
+            repo_dir.path(),
+            "follow-branch",
+            Some("First task content"),
+            None,
+            Some(false),
+            None,
+            None,
+            vec![],
+            0,
+            Some(ah_home_dir.path()),
+        )?;
+        assert!(status1.success());
+
+        // Checkout the task branch to trigger follow-up append
+        Command::new("git")
+            .args(["checkout", "follow-branch"])
+            .current_dir(repo_dir.path())
+            .output()?;
+
+        // Follow-up task on existing agent branch
+        let (status2, _output2, _editor_called2) = run_ah_task_create_integration(
+            repo_dir.path(),
+            "", // no branch provided -> follow-up
+            Some("Second task content"),
+            None,
+            Some(false),
+            None,
+            None,
+            vec![],
+            0,
+            Some(ah_home_dir.path()),
+        )?;
+        assert!(status2.success());
+
+        // Locate task file from latest commit
+        let tip_commit_output = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_dir.path())
+            .output()?;
+        let tip_commit = String::from_utf8_lossy(&tip_commit_output.stdout).trim().to_string();
+
+        let files_output = Command::new("git")
+            .args(["show", "--name-only", "--format=", &tip_commit])
+            .current_dir(repo_dir.path())
+            .output()?;
+        let files_output_str = String::from_utf8_lossy(&files_output.stdout);
+        let task_file = files_output_str
+            .lines()
+            .find(|l| l.contains(".agents/tasks/"))
+            .expect("task file path");
+
+        let contents = std::fs::read_to_string(repo_dir.path().join(task_file))?;
+        assert!(contents.contains("First task content"));
+        assert!(contents.contains("Second task content"));
+        assert!(contents.contains("--- FOLLOW UP TASK ---"));
+
+        // Verify branch exists and has two commits
+        let commit_count_output = Command::new("git")
+            .args(["rev-list", "--count", "main..follow-branch"])
+            .current_dir(repo_dir.path())
+            .output()?;
+        let commit_count =
+            String::from_utf8_lossy(&commit_count_output.stdout).trim().parse::<i32>()?;
+        assert_eq!(commit_count, 2);
+
+        // Verify initial commit message includes Start-Agent-Branch
+        let first_commit_output = Command::new("git")
+            .args(["rev-list", "--reverse", "main..follow-branch"])
+            .current_dir(repo_dir.path())
+            .output()?;
+        let first_commit = String::from_utf8_lossy(&first_commit_output.stdout)
+            .lines()
+            .next()
+            .unwrap()
+            .to_string();
+        let first_commit_msg = Command::new("git")
+            .args(["show", "-s", "--format=%B", &first_commit])
+            .current_dir(repo_dir.path())
+            .output()?;
+        let msg = String::from_utf8_lossy(&first_commit_msg.stdout);
+        assert!(msg.contains("Start-Agent-Branch: follow-branch"));
+
+        assert_task_branch_created_integration(
+            repo_dir.path(),
+            remote_dir.path(),
+            "follow-branch",
+            false,
+        )?;
+
+        Ok(())
+    }
+
+    #[test]
     fn integration_test_prompt_file_option() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
