@@ -1,0 +1,33 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: task_metadata_only_commit
+tags: ['cli', 'task', 'metadata']
+repo:
+  init: true
+timeline:
+  - userCommand:
+      args:
+        - task
+        - create
+        - metadata-only
+        - --prompt
+        - "Metadata only task"
+        - --non-interactive
+        - --push-to-remote
+        - "false"
+        - --create-task-files
+        - "no"
+        - --create-metadata-commits
+        - "yes"
+      expect:
+        exitCode: 0
+        fs:
+          notExists:
+            - ".agents/tasks/metadata-only"
+  - assertGit:
+      branch: metadata-only
+      exists: true
+      commitsAheadOf: main
+      commitCount: 1
+      headMessageContains: "Start-Agent-Branch: metadata-only"
