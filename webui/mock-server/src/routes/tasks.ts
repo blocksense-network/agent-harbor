@@ -13,7 +13,7 @@ const router = express.Router();
 // Initial mock sessions for testing - exactly 5 sessions as per PRD:
 // - 3 completed sessions
 // - 2 active (running) sessions with continuous SSE event streams
-let mockSessions: any[] = [
+const mockSessions: any[] = [
   // Completed Session 1
   {
     id: '01HVZ6K9T1N8S6M3V3Q3F0X1',

@@ -22,7 +22,7 @@ type RootLayoutProps = {
 export default async function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
-      <Head></Head>
+      <Head />
       <body>
         <Layout
           navbar={navbar}

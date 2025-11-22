@@ -5,7 +5,6 @@
 
 import * as YAML from 'yaml';
 import * as fs from 'fs';
-import * as path from 'path';
 
 export interface RecordedEvent {
   type: string;
@@ -230,7 +229,7 @@ export class ScenarioTimingValidator {
  */
 export async function recordScenarioEvents(
   sessionId: string,
-  baseUrl: string = 'http://localhost:3001',
+  _baseUrl: string = 'http://localhost:3001',
   duration: number = 10000,
 ): Promise<RecordedEvent[]> {
   const events: RecordedEvent[] = [];

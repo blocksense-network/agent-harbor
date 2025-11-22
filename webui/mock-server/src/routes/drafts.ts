@@ -9,7 +9,7 @@ import { logger } from '../index.js';
 const router = express.Router();
 
 // Mock draft storage - initialize with one empty draft for testing
-let mockDrafts: any[] = [
+const mockDrafts: any[] = [
   {
     id: 'draft-default',
     prompt: '',

@@ -5,14 +5,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import * as YAML from 'yaml';
 import { setTimeout } from 'timers';
 import { logger } from './index.js';
-
-// ES module equivalent of __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Scenario format types
 export interface Scenario {
@@ -55,7 +50,7 @@ export type TimelineEvent =
   | {
       agentToolUse: {
         toolName: string;
-        args: Record<string, any>;
+        args: Record<string, unknown>;
         progress?: Array<[number, string]>;
         result: string;
         status: 'ok' | 'error';
@@ -98,7 +93,7 @@ export interface Assertion {
   json?: {
     file: string;
     pointer: string;
-    equals: any;
+    equals: unknown;
   };
   git?: {
     commit?: {

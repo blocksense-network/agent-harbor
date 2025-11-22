@@ -6,8 +6,7 @@
 import { defineConfig } from '@solidjs/start/config';
 import tailwindcss from '@tailwindcss/vite';
 import solidSvg from 'vite-plugin-solid-svg';
-import checker from 'vite-plugin-checker';
-import * as fs from 'fs';
+import { checker } from 'vite-plugin-checker';
 
 // Suppress specific SolidJS Start warnings in quiet mode
 if (process.env['QUIET_MODE'] === 'true') {
