@@ -13,6 +13,15 @@ if ! mountpoint -q "$mountpoint"; then
   echo "Hint: Mount the filesystem first with: just mount-fuse $mountpoint"
   exit 1
 fi
+
+# Ensure the current user can write inside the mountpoint. Some runners mount the
+# filesystem as root even when allow_other is set, so fix ownership if sudo exists.
+if ! test -w "$mountpoint"; then
+  if command -v sudo >/dev/null 2>&1; then
+    sudo chown "$(id -u)":"$(id -g)" "$mountpoint" 2>/dev/null || true
+  fi
+fi
+
 echo "Running basic filesystem smoke tests against $mountpoint..."
 # Basic smoke tests for FUSE filesystem functionality
 cd "$mountpoint" &&

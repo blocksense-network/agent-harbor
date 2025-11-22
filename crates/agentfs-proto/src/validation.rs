@@ -21,6 +21,7 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
         Request::SnapshotCreate((version, _))
         | Request::BranchCreate((version, _))
         | Request::BranchBind((version, _))
+        | Request::FaultPolicySet((version, _))
         | Request::SnapshotExport((version, _))
         | Request::SnapshotExportRelease((version, _))
         | Request::FdOpen((version, _))
@@ -114,7 +115,7 @@ pub fn validate_request(request: &Request) -> Result<(), ValidationError> {
             }
             Ok(())
         }
-        Request::SnapshotList(version) => {
+        Request::SnapshotList(version) | Request::FaultPolicyClear(version) => {
             if version != b"1" {
                 return Err(ValidationError::Schema("version must be '1'".to_string()));
             }
@@ -138,6 +139,7 @@ pub fn validate_response(response: &Response) -> Result<(), ValidationError> {
         | Response::SnapshotExportRelease(_)
         | Response::BranchCreate(_)
         | Response::BranchBind(_)
+        | Response::FaultPolicyStatus(_)
         | Response::FdOpen(_)
         | Response::FdDup(_)
         | Response::DirOpen(_)

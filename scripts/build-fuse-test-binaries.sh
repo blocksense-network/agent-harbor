@@ -4,6 +4,7 @@
 
 if [ "$(uname)" = "Linux" ]; then
   cargo build --package agentfs-fuse-host --features fuse
+  cargo build --package agentfs-fuse-stress --release
 else
   echo "Skipping FUSE tests on non-Linux platform ($(uname))"
 fi

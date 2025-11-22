@@ -46,18 +46,6 @@ wait_for_mount_state() {
 
 CURRENT_MOUNT_PRIV="none"
 
-unmount_agentfs() {
-  local privileged="$1"
-  if mountpoint -q "$MOUNTPOINT" 2>/dev/null; then
-    if [[ "$privileged" == "sudo" ]]; then
-      sudo just umount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1 || true
-    else
-      just umount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1 || true
-    fi
-    wait_for_mount_state "$MOUNTPOINT" "unmounted"
-  fi
-}
-
 cleanup() {
   unmount_agentfs "$CURRENT_MOUNT_PRIV"
 }
@@ -83,13 +71,27 @@ mount_agentfs() {
   log "FUSE host log: $AGENTFS_FUSE_LOG_FILE"
   if [[ "$privileged" == "sudo" ]]; then
     sudo env AGENTFS_FUSE_ALLOW_OTHER=1 AGENTFS_FUSE_LOG_FILE="$AGENTFS_FUSE_LOG_FILE" \
-      AGENTFS_FUSE_PRIVILEGED=1 just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
+      AGENTFS_FUSE_PRIVILEGED=1 AGENTFS_FUSE_SKIP_AUTO_CHOWN=1 \
+      just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
   else
-    AGENTFS_FUSE_ALLOW_OTHER=1 just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
+    AGENTFS_FUSE_ALLOW_OTHER=1 AGENTFS_FUSE_SKIP_AUTO_CHOWN=1 \
+      just mount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1
   fi
   if ! wait_for_mount_state "$MOUNTPOINT" "mounted"; then
     log "Failed to verify mount at $MOUNTPOINT; aborting pjdfstest run."
     exit 1
+  fi
+}
+
+unmount_agentfs() {
+  local privileged="$1"
+  if mountpoint -q "$MOUNTPOINT" 2>/dev/null; then
+    if [[ "$privileged" == "sudo" ]]; then
+      sudo just umount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1 || true
+    else
+      just umount-fuse "$MOUNTPOINT" >>"$LOG_FILE" 2>&1 || true
+    fi
+    wait_for_mount_state "$MOUNTPOINT" "unmounted"
   fi
 }
 

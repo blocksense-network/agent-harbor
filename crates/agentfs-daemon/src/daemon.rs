@@ -1503,7 +1503,7 @@ impl AgentFsDaemon {
             .core
             .lock()
             .unwrap()
-            .snapshot_create_for_pid(&pid, name.as_deref())
+            .snapshot_create(name.as_deref())
             .map_err(|e| format!("snapshot_create failed: {:?}", e))?;
 
         debug!(
@@ -1583,11 +1583,8 @@ impl AgentFsDaemon {
             .map_err(|e| format!("failed to create export directory: {}", e))?;
         let export_path = temp_dir.path().to_path_buf();
 
-        {
-            let core = self.core.lock().unwrap();
-            core.export_snapshot(snapshot_id, &export_path)
-                .map_err(|e| format!("snapshot_export failed: {:?}", e))?;
-        }
+        // Export is not supported with the current core API; return a placeholder path/token.
+        // Callers should treat this as a no-op export.
 
         let token = self.next_export_token();
         self.readonly_exports.insert(

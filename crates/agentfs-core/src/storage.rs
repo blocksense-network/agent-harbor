@@ -3,9 +3,11 @@
 
 //! Storage backend implementations for AgentFS Core
 
+use libc;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error};
@@ -14,7 +16,8 @@ use tracing::{debug, error};
 
 use crate::config::BackstoreMode;
 use crate::error::FsResult;
-use crate::{Backstore, ContentId, FsError};
+use crate::fault::{FaultInjector, FaultOp};
+use crate::{Backstore, ContentId, FsError, types::FallocateMode};
 
 pub trait StorageBackend: Send + Sync {
     fn read(&self, id: ContentId, offset: u64, buf: &mut [u8]) -> FsResult<usize>;
@@ -24,6 +27,26 @@ pub trait StorageBackend: Send + Sync {
     fn clone_cow(&self, base: ContentId) -> FsResult<ContentId>;
     fn sync(&self, _id: ContentId, _data_only: bool) -> FsResult<()> {
         Ok(())
+    }
+    fn fallocate(
+        &self,
+        _id: ContentId,
+        _mode: FallocateMode,
+        _offset: u64,
+        _len: u64,
+    ) -> FsResult<()> {
+        Err(FsError::Unsupported)
+    }
+
+    fn copy_range(
+        &self,
+        _src: ContentId,
+        _src_offset: u64,
+        _dst: ContentId,
+        _dst_offset: u64,
+        _len: u64,
+    ) -> FsResult<u64> {
+        Err(FsError::Unsupported)
     }
 
     /// Mark content immutable so further writes are prevented.
@@ -161,6 +184,62 @@ impl StorageBackend for InMemoryBackend {
         Ok(id)
     }
 
+    fn fallocate(&self, id: ContentId, mode: FallocateMode, offset: u64, len: u64) -> FsResult<()> {
+        let mut data = self.data.lock().unwrap();
+        let content = data.get_mut(&id).ok_or(FsError::NotFound)?;
+        match mode {
+            FallocateMode::Allocate => {
+                let end = offset.checked_add(len).ok_or(FsError::InvalidArgument)? as usize;
+                if end > content.len() {
+                    Self::ensure_len_within_limit(end as u64)?;
+                    content.resize(end, 0);
+                }
+            }
+            FallocateMode::PunchHole => {
+                if len == 0 {
+                    return Ok(());
+                }
+                let start = std::cmp::min(offset, content.len() as u64) as usize;
+                let end = std::cmp::min(offset.saturating_add(len), content.len() as u64) as usize;
+                if start < end {
+                    content[start..end].fill(0);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn copy_range(
+        &self,
+        src: ContentId,
+        src_offset: u64,
+        dst: ContentId,
+        dst_offset: u64,
+        len: u64,
+    ) -> FsResult<u64> {
+        if len == 0 {
+            return Ok(0);
+        }
+        let mut data = self.data.lock().unwrap();
+        let src_content = data.get(&src).ok_or(FsError::NotFound)?;
+        let start = std::cmp::min(src_offset, src_content.len() as u64) as usize;
+        if start >= src_content.len() {
+            return Ok(0);
+        }
+        let available = src_content.len() - start;
+        let to_copy = std::cmp::min(len as usize, available);
+        let buffer = src_content[start..start + to_copy].to_vec();
+        let dest_content = data.get_mut(&dst).ok_or(FsError::NotFound)?;
+        let end_offset = dst_offset.checked_add(to_copy as u64).ok_or(FsError::InvalidArgument)?;
+        Self::ensure_len_within_limit(end_offset)?;
+        if end_offset as usize > dest_content.len() {
+            dest_content.resize(end_offset as usize, 0);
+        }
+        let start_dst = dst_offset as usize;
+        dest_content[start_dst..start_dst + to_copy].copy_from_slice(&buffer);
+        Ok(to_copy as u64)
+    }
+
     fn seal(&self, id: ContentId) -> FsResult<()> {
         let data = self.data.lock().unwrap();
         if !data.contains_key(&id) {
@@ -176,6 +255,86 @@ impl StorageBackend for InMemoryBackend {
 impl Default for InMemoryBackend {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Wrapper backend that injects configured failures before delegating to the real backend.
+pub struct FaultInjectingBackend {
+    inner: Arc<dyn StorageBackend>,
+    injector: Arc<FaultInjector>,
+}
+
+impl FaultInjectingBackend {
+    pub fn new(inner: Arc<dyn StorageBackend>, injector: Arc<FaultInjector>) -> Self {
+        Self { inner, injector }
+    }
+
+    fn guard(&self, op: FaultOp) -> FsResult<()> {
+        if let Some(err) = self.injector.should_fault(op) {
+            return Err(err);
+        }
+        Ok(())
+    }
+}
+
+impl StorageBackend for FaultInjectingBackend {
+    fn read(&self, id: ContentId, offset: u64, buf: &mut [u8]) -> FsResult<usize> {
+        self.guard(FaultOp::Read)?;
+        self.inner.read(id, offset, buf)
+    }
+
+    fn write(&self, id: ContentId, offset: u64, data: &[u8]) -> FsResult<usize> {
+        self.guard(FaultOp::Write)?;
+        self.inner.write(id, offset, data)
+    }
+
+    fn truncate(&self, id: ContentId, new_len: u64) -> FsResult<()> {
+        self.guard(FaultOp::Truncate)?;
+        self.inner.truncate(id, new_len)
+    }
+
+    fn allocate(&self, initial: &[u8]) -> FsResult<ContentId> {
+        self.guard(FaultOp::Allocate)?;
+        self.inner.allocate(initial)
+    }
+
+    fn clone_cow(&self, base: ContentId) -> FsResult<ContentId> {
+        self.guard(FaultOp::CloneCow)?;
+        self.inner.clone_cow(base)
+    }
+
+    fn sync(&self, id: ContentId, data_only: bool) -> FsResult<()> {
+        self.guard(FaultOp::Sync)?;
+        self.inner.sync(id, data_only)
+    }
+
+    fn fallocate(&self, id: ContentId, mode: FallocateMode, offset: u64, len: u64) -> FsResult<()> {
+        self.guard(FaultOp::Write)?;
+        self.inner.fallocate(id, mode, offset, len)
+    }
+
+    fn copy_range(
+        &self,
+        src: ContentId,
+        src_offset: u64,
+        dst: ContentId,
+        dst_offset: u64,
+        len: u64,
+    ) -> FsResult<u64> {
+        self.guard(FaultOp::Write)?;
+        self.inner.copy_range(src, src_offset, dst, dst_offset, len)
+    }
+
+    fn seal(&self, id: ContentId) -> FsResult<()> {
+        self.inner.seal(id)
+    }
+
+    fn get_content_path(&self, id: ContentId) -> Option<std::path::PathBuf> {
+        self.inner.get_content_path(id)
+    }
+
+    fn seal_content_tree(&self, root_content_id: ContentId) -> FsResult<()> {
+        self.inner.seal_content_tree(root_content_id)
     }
 }
 
@@ -275,10 +434,175 @@ impl HostFsBackend {
         }
 
         let path = self.content_path(id);
-        let file = OpenOptions::new().read(true).write(true).create(false).open(&path)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .map_err(io_to_fs_error)?;
         let arc = Arc::new(Mutex::new(file));
         handles.insert(id, arc.clone());
         Ok(arc)
+    }
+
+    fn punch_hole(&self, file: &mut File, offset: u64, len: u64) -> FsResult<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let res = unsafe {
+                libc::fallocate64(
+                    file.as_raw_fd(),
+                    libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE,
+                    offset as libc::off64_t,
+                    len as libc::off64_t,
+                )
+            };
+            if res == 0 {
+                return Ok(());
+            }
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() != Some(libc::EOPNOTSUPP)
+                && err.raw_os_error() != Some(libc::ENOSYS)
+            {
+                return Err(err.into());
+            }
+        }
+        self.zero_fill_range(file, offset, len)
+    }
+
+    fn zero_fill_range(&self, file: &mut File, offset: u64, len: u64) -> FsResult<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        let file_len = file.metadata()?.len();
+        if offset >= file_len {
+            return Ok(());
+        }
+        let end = std::cmp::min(offset.saturating_add(len), file_len);
+        file.seek(SeekFrom::Start(offset))?;
+        let mut remaining = end - offset;
+        let buffer = vec![0u8; 1 << 16];
+        while remaining > 0 {
+            let chunk = std::cmp::min(remaining, buffer.len() as u64);
+            file.write_all(&buffer[..chunk as usize])?;
+            remaining -= chunk;
+        }
+        Ok(())
+    }
+
+    fn copy_between_files(
+        &self,
+        src: &mut File,
+        src_offset: u64,
+        dst: &mut File,
+        dst_offset: u64,
+        len: u64,
+    ) -> FsResult<u64> {
+        #[cfg(target_os = "linux")]
+        {
+            let mut total = 0u64;
+            let mut remaining = len;
+            let mut src_off = src_offset as libc::off64_t;
+            let mut dst_off = dst_offset as libc::off64_t;
+            while remaining > 0 {
+                let chunk = std::cmp::min(remaining, usize::MAX as u64);
+                let copied = unsafe {
+                    libc::copy_file_range(
+                        src.as_raw_fd(),
+                        &mut src_off,
+                        dst.as_raw_fd(),
+                        &mut dst_off,
+                        chunk as libc::size_t,
+                        0,
+                    )
+                };
+                if copied == -1 {
+                    let err = io::Error::last_os_error();
+                    if err.raw_os_error() == Some(libc::ENOSYS)
+                        || err.raw_os_error() == Some(libc::EOPNOTSUPP)
+                        || err.raw_os_error() == Some(libc::EINVAL)
+                        || err.raw_os_error() == Some(libc::EXDEV)
+                    {
+                        total = 0;
+                        break;
+                    }
+                    return Err(err.into());
+                }
+                if copied == 0 {
+                    break;
+                }
+                remaining -= copied as u64;
+                total += copied as u64;
+            }
+            if total > 0 || remaining == 0 {
+                return Ok(total);
+            }
+        }
+        self.copy_via_buffer(src, src_offset, dst, dst_offset, len)
+    }
+
+    fn copy_via_buffer(
+        &self,
+        src: &mut File,
+        src_offset: u64,
+        dst: &mut File,
+        dst_offset: u64,
+        len: u64,
+    ) -> FsResult<u64> {
+        let mut remaining = len;
+        let mut total = 0u64;
+        let mut buffer = vec![0u8; 1 << 16];
+        let mut current_src = src_offset;
+        let mut current_dst = dst_offset;
+        while remaining > 0 {
+            src.seek(SeekFrom::Start(current_src))?;
+            let chunk = std::cmp::min(remaining, buffer.len() as u64);
+            let read = src.read(&mut buffer[..chunk as usize])?;
+            if read == 0 {
+                break;
+            }
+            dst.seek(SeekFrom::Start(current_dst))?;
+            dst.write_all(&buffer[..read])?;
+            remaining -= read as u64;
+            total += read as u64;
+            current_src += read as u64;
+            current_dst += read as u64;
+        }
+        Ok(total)
+    }
+
+    fn copy_within_file(
+        &self,
+        file: &mut File,
+        src_offset: u64,
+        dst_offset: u64,
+        len: u64,
+    ) -> FsResult<u64> {
+        if len == 0 {
+            return Ok(0);
+        }
+        let mut buffer = vec![0u8; 1 << 16];
+        let mut remaining = len;
+        let mut total = 0u64;
+        let mut current_src = src_offset;
+        let mut current_dst = dst_offset;
+        while remaining > 0 {
+            file.seek(SeekFrom::Start(current_src))?;
+            let chunk = std::cmp::min(remaining, buffer.len() as u64);
+            let read = file.read(&mut buffer[..chunk as usize])?;
+            if read == 0 {
+                break;
+            }
+            file.seek(SeekFrom::Start(current_dst))?;
+            file.write_all(&buffer[..read])?;
+            remaining -= read as u64;
+            total += read as u64;
+            current_src += read as u64;
+            current_dst += read as u64;
+        }
+        Ok(total)
     }
 }
 
@@ -339,7 +663,8 @@ impl StorageBackend for HostFsBackend {
             .write(true)
             .create(true)
             .truncate(true)
-            .open(&path)?;
+            .open(&path)
+            .map_err(io_to_fs_error)?;
         let handle = self.insert_handle(id, file);
         {
             let mut guard = handle.lock().unwrap();
@@ -372,6 +697,47 @@ impl StorageBackend for HostFsBackend {
         Ok(new_id)
     }
 
+    fn fallocate(&self, id: ContentId, mode: FallocateMode, offset: u64, len: u64) -> FsResult<()> {
+        let handle = self.get_or_open_handle(id)?;
+        let mut file = handle.lock().unwrap();
+        match mode {
+            FallocateMode::Allocate => {
+                let target = offset.checked_add(len).ok_or(FsError::InvalidArgument)?;
+                let current = file.metadata()?.len();
+                if target > current {
+                    file.set_len(target)?;
+                }
+            }
+            FallocateMode::PunchHole => {
+                self.punch_hole(&mut file, offset, len)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn copy_range(
+        &self,
+        src: ContentId,
+        src_offset: u64,
+        dst: ContentId,
+        dst_offset: u64,
+        len: u64,
+    ) -> FsResult<u64> {
+        if len == 0 {
+            return Ok(0);
+        }
+        if src == dst {
+            let handle = self.get_or_open_handle(src)?;
+            let mut file = handle.lock().unwrap();
+            return self.copy_within_file(&mut file, src_offset, dst_offset, len);
+        }
+        let src_handle = self.get_or_open_handle(src)?;
+        let dst_handle = self.get_or_open_handle(dst)?;
+        let mut src_file = src_handle.lock().unwrap();
+        let mut dst_file = dst_handle.lock().unwrap();
+        self.copy_between_files(&mut src_file, src_offset, &mut dst_file, dst_offset, len)
+    }
+
     fn seal(&self, id: ContentId) -> FsResult<()> {
         let mut sealed = self.sealed.lock().unwrap();
         sealed.insert(id, true);
@@ -384,6 +750,21 @@ impl HostFsBackend {
         // Simple copy for now - in real implementation would use platform-specific reflink
         fs::copy(from_path, to_path)?;
         Ok(())
+    }
+}
+
+fn io_to_fs_error(err: io::Error) -> FsError {
+    if let Some(code) = err.raw_os_error() {
+        match code {
+            libc::EMFILE | libc::ENFILE => return FsError::TooManyOpenFiles,
+            libc::ENOSPC => return FsError::NoSpace,
+            libc::EACCES => return FsError::AccessDenied,
+            _ => {}
+        }
+    }
+    match err.kind() {
+        io::ErrorKind::PermissionDenied => FsError::AccessDenied,
+        _ => err.into(),
     }
 }
 

@@ -360,12 +360,56 @@ test-fuse-overlay-ops:
 test-fuse-control-plane:
     ./scripts/test-fuse-control-plane.sh
 
+# Extended attributes harness (F8.1)
+test-fuse-xattrs:
+    ./scripts/test-fuse-xattrs.sh
+
+# Special file creation harness (F8.2)
+test-fuse-mknod:
+    ./scripts/test-fuse-mknod.sh
+
+# Mount option harness (F8.3)
+test-fuse-mount-options:
+    ./scripts/test-fuse-mount-options.sh
+
+# Advanced I/O harness (F8.4)
+test-fuse-advanced-io:
+    ./scripts/test-fuse-advanced-io.sh
+
 # Performance benchmarks (F6)
 test-fuse-performance:
     ./scripts/test-fuse-performance.sh
 
 test-fuse-performance-release:
     FUSE_BUILD_PROFILE=release AGENTFS_FUSE_HOST_BIN="target/release/agentfs-fuse-host" ./scripts/test-fuse-performance.sh
+
+# Stress + fault-injection harness (F7)
+test-fuse-stress:
+    ./scripts/test-fuse-stress.sh
+
+# Security permission matrix harness (F10.3)
+test-fuse-security-permissions:
+    ./scripts/test-fuse-security-permissions.sh
+
+# Security privilege escalation harness (F10.1)
+test-fuse-security-privileges:
+    ./scripts/test-fuse-security-privileges.sh
+
+# Security input validation harness (F10.2)
+test-fuse-security-input:
+    ./scripts/test-fuse-security-input.sh
+
+# Security sandbox boundary harness (T10.4)
+test-fuse-security-sandbox:
+    ./scripts/test-fuse-security-sandbox.sh
+
+# Security robustness harness (T10.5)
+test-fuse-security-robustness:
+    ./scripts/test-fuse-security-robustness.sh
+
+# Cross-version compatibility harness (F9)
+test-fuse-compat:
+    ./scripts/test-fuse-compat.sh
 
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite

@@ -158,8 +158,9 @@ jobs:
 
   fuse-harness:
     name: FUSE harness
-    needs: test
-    runs-on: [self-hosted, nixos, x86-64-v3, microvm]
+    runs-on: [self-hosted, nixos, x86-64-v3]
+    env:
+      AGENTFS_FUSE_ALLOW_OTHER: 0
 
     steps:
       - uses: actions/checkout@v5
@@ -179,25 +180,87 @@ jobs:
           direnv allow .
           direnv export gha > "$GITHUB_ENV"
 
+      - name: Verify passwordless sudo
+        run: |
+          if ! command -v sudo >/dev/null 2>&1; then
+            echo "sudo not installed on runner" >&2
+            exit 1
+          fi
+          sudo -n true
+
+      - name: Ensure /dev/fuse is available
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/fuse ]; then
+            if command -v modprobe >/dev/null 2>&1; then
+              sudo modprobe fuse || true
+            fi
+            if [ ! -e /dev/fuse ]; then
+              sudo mknod /dev/fuse c 10 229 || true
+              sudo chmod 666 /dev/fuse || true
+            fi
+          fi
+          if [ ! -e /dev/fuse ]; then
+            echo "/dev/fuse is missing and could not be created" >&2
+            exit 1
+          fi
+
       - name: Build AgentFS FUSE binaries
         run: |
           cargo build -p agentfs-fuse-host --features fuse
           cargo build -p agentfs-control-cli
 
-      - name: Run mount cycle harness
-        run: just test-fuse-mount-cycle
+      - name: Run FUSE verification suites (F1–F7)
         env:
           SKIP_FUSE_BUILD: 1
+        run: |
+          set -euo pipefail
+          MNT="/tmp/agentfs-ci-basic"
+          rm -rf "$MNT"
+          just mount-fuse "$MNT"
+          just test-fuse-basic "$MNT"
+          just umount-fuse "$MNT"
+          just test-fuse-basic-ops
+          just test-fuse-negative-ops
+          just test-fuse-control-plane
+          just test-fuse-overlay-ops
+          just test-fuse-mount-cycle
+          just test-fuse-mount-failures
+          just test-fuse-mount-concurrent
+          just test-fuse-stress
+          just test-pjdfstest-full
 
-      - name: Run mount failure harness
-        run: just test-fuse-mount-failures
+      - name: Run F8 harnesses (xattrs/mknod/mount options/advanced I/O)
         env:
           SKIP_FUSE_BUILD: 1
+        run: |
+          set -euo pipefail
+          just test-fuse-xattrs
+          just test-fuse-mknod
+          just test-fuse-mount-options
+          just test-fuse-advanced-io
 
-      - name: Run concurrent mount harness
-        run: just test-fuse-mount-concurrent
+      - name: Run F10 security harnesses
         env:
           SKIP_FUSE_BUILD: 1
+        run: |
+          set -euo pipefail
+          just test-fuse-security-permissions
+          just test-fuse-security-privileges
+          just test-fuse-security-input
+          just test-fuse-security-sandbox
+          just test-fuse-security-robustness
+
+      - name: Run F9 compatibility harness
+        env:
+          SKIP_FUSE_BUILD: 1
+        run: just test-fuse-compat
+
+      - name: Run FUSE performance harness
+        env:
+          SKIP_FUSE_BUILD: 1
+        run: just test-fuse-performance
+        continue-on-error: true
 
       - name: Run basic ops harness
         run: just test-fuse-basic-ops
@@ -268,11 +331,16 @@ jobs:
   pjdfstest:
     name: pjdfstest suite
     needs: fuse-harness
-    runs-on: [self-hosted, nixos, x86-64-v3, microvm]
+    runs-on: [self-hosted, nixos, x86-64-v3]
 
     steps:
       - name: Test passwordless `sudo`
-        run: sudo true
+        run: |
+          if ! command -v sudo >/dev/null 2>&1; then
+            echo "sudo not installed on runner" >&2
+            exit 1
+          fi
+          sudo -n true
 
       - uses: actions/checkout@v5
         with:

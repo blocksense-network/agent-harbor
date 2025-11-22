@@ -10,6 +10,9 @@ edition = "2021"
 name = "agentfs-daemon"
 path = "src/bin/agentfs-daemon.rs"
 
+[lib]
+doctest = false
+
 [dependencies]
 agentfs-core = { path = "../agentfs-core" }
 agentfs-proto = { path = "../agentfs-proto" }

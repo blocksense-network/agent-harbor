@@ -1,0 +1,25 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "agentfs-fuse-stress"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "AgentFS FUSE stress workload harness"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+rand = { version = "0.8", features = ["std", "small_rng"] }
+walkdir = "2.5"
+blake3 = "1.5"
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -42,6 +42,7 @@ members = [
   "crates/agentfs-control-cli",
   "crates/agentfs-client",
   "crates/agentfs-fuse-host",
+  "crates/agentfs-fuse-stress",
   "crates/agentfs-winfsp-host",
   "crates/agentfs-fskit-host",
   "crates/agentfs-backstore-macos",
