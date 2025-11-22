@@ -90,7 +90,7 @@ class MinimalReporter implements Reporter {
     try {
       const stats = fs.statSync(logFile);
       fileSize = stats.size;
-    } catch (e) {
+    } catch {
       // File might not exist or be accessible
     }
 

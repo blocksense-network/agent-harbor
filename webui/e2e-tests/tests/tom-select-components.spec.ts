@@ -241,12 +241,12 @@ test.describe('TOM Select Components', () => {
 
       // Find Claude 3.5 Sonnet increment button
       const incrementBtn = page.locator(
-        'button[aria-label="Increment Claude 3.5 Sonnet instances"]'
+        'button[aria-label="Increment Claude 3.5 Sonnet instances"]',
       );
 
       // Verify initial count is 0
       const claudeCount = page.locator(
-        '.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display'
+        '.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display',
       );
       await expect(claudeCount).toHaveText('0');
 
@@ -263,20 +263,20 @@ test.describe('TOM Select Components', () => {
 
       // Increment to 2
       const incrementBtn = page.locator(
-        'button[aria-label="Increment Claude 3.5 Sonnet instances"]'
+        'button[aria-label="Increment Claude 3.5 Sonnet instances"]',
       );
       await incrementBtn.click();
       await incrementBtn.click();
 
       // Verify count is 2
       const countDisplay = page.locator(
-        '.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display'
+        '.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display',
       );
       await expect(countDisplay).toHaveText('2');
 
       // Decrement
       const decrementBtn = page.locator(
-        'button[aria-label="Decrease Claude 3.5 Sonnet instances"]'
+        'button[aria-label="Decrease Claude 3.5 Sonnet instances"]',
       );
       await decrementBtn.click();
 
@@ -289,7 +289,7 @@ test.describe('TOM Select Components', () => {
       await modelSelector.click();
 
       const decrementBtn = page.locator(
-        'button[aria-label="Decrease Claude 3.5 Sonnet instances"]'
+        'button[aria-label="Decrease Claude 3.5 Sonnet instances"]',
       );
 
       // Should be disabled when count is 0
@@ -336,10 +336,10 @@ test.describe('TOM Select Components', () => {
 
       // Increment then decrement back to 0
       const incrementBtn = page.locator(
-        'button[aria-label="Increment Claude 3.5 Sonnet instances"]'
+        'button[aria-label="Increment Claude 3.5 Sonnet instances"]',
       );
       const decrementBtn = page.locator(
-        'button[aria-label="Decrease Claude 3.5 Sonnet instances"]'
+        'button[aria-label="Decrease Claude 3.5 Sonnet instances"]',
       );
 
       await incrementBtn.click();
@@ -369,7 +369,7 @@ test.describe('TOM Select Components', () => {
 
       // Verify counts persisted
       const claudeCount = page.locator(
-        '.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display'
+        '.ts-dropdown .option[data-value="Claude 3.5 Sonnet"] .count-display',
       );
       const gptCount = page.locator('.ts-dropdown .option[data-value="GPT-4"] .count-display');
 

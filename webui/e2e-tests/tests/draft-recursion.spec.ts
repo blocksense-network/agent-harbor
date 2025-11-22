@@ -22,7 +22,7 @@ test.describe('Draft Recursion Prevention', () => {
     const consoleMessages: string[] = [];
     const effectRuns: string[] = [];
 
-    page.on('console', (msg) => {
+    page.on('console', msg => {
       const text = msg.text();
       consoleMessages.push(text);
       if (text.includes('[DraftTaskCard] Auto-save scheduled')) {

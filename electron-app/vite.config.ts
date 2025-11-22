@@ -29,7 +29,6 @@ function resolveElectronCli(): string | undefined {
 
   // Fallback for Node >= 20: import.meta.resolve returns a file URL
   try {
-    // @ts-ignore - Node 20+
     const url = import.meta.resolve('electron/cli.js');
     return fileURLToPath(url);
   } catch {}
@@ -81,9 +80,12 @@ export default defineConfig(({ command }) => ({
     }),
   ],
   // Only configure build for development/preview, disable for production build
-  build: command === 'serve' ? {
-    // Allow normal development builds
-  } : undefined,
+  build:
+    command === 'serve'
+      ? {
+          // Allow normal development builds
+        }
+      : undefined,
   server: {
     port: 5173,
   },

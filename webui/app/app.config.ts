@@ -3,18 +3,21 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { defineConfig } from "@solidjs/start/config";
-import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from '@solidjs/start/config';
+import tailwindcss from '@tailwindcss/vite';
 import solidSvg from 'vite-plugin-solid-svg';
-import checker from 'vite-plugin-checker';
-import * as fs from 'fs';
+import { checker } from 'vite-plugin-checker';
 
 // Suppress specific SolidJS Start warnings in quiet mode
 if (process.env['QUIET_MODE'] === 'true') {
   const originalWarn = console.warn;
-  console.warn = function(...args: any[]) {
+  console.warn = function (...args: any[]) {
     // Suppress the "No route matched for preloading js assets" warning
-    if (args.length === 1 && typeof args[0] === 'string' && args[0].includes('No route matched for preloading js assets')) {
+    if (
+      args.length === 1 &&
+      typeof args[0] === 'string' &&
+      args[0].includes('No route matched for preloading js assets')
+    ) {
       return; // Suppress this specific warning
     }
     originalWarn.apply(console, args);
@@ -50,11 +53,11 @@ export default defineConfig({
   //   },
   // }),
   server: {
-    preset: "cloudflare-pages",
+    preset: 'cloudflare-pages',
 
     rollupConfig: {
-      external: ["node:async_hooks"]
-    }
+      external: ['node:async_hooks'],
+    },
   },
   vite: {
     // Define environment variables available at build time
@@ -65,9 +68,14 @@ export default defineConfig({
       tailwindcss(),
       solidSvg({ defaultAsComponent: false }),
       // Disable checker for CSR builds (faster builds, linting happens separately)
-      ...(isStaticBuild ? [] : [
-        checker({ typescript: true, eslint: { lintCommand: 'eslint src --ext .ts,.tsx' } }) as any
-      ]),
+      ...(isStaticBuild
+        ? []
+        : [
+            checker({
+              typescript: true,
+              eslint: { lintCommand: 'eslint src --ext .ts,.tsx' },
+            }) as any,
+          ]),
     ],
     server: {
       proxy: {
@@ -83,7 +91,8 @@ export default defineConfig({
               console.error('[Proxy Error]', err);
             });
             proxy.on('proxyReq', (proxyReq: any, req: any, _res: any) => {
-              const isQuietMode = process.env['QUIET_MODE'] === 'true' || process.env['NODE_ENV'] === 'test';
+              const isQuietMode =
+                process.env['QUIET_MODE'] === 'true' || process.env['NODE_ENV'] === 'test';
               if (!isQuietMode) {
                 console.log(`[Proxy] ${req.method} ${req.url} → ${API_TARGET}${req.url}`);
               }
@@ -92,5 +101,5 @@ export default defineConfig({
         },
       },
     },
-  }
+  },
 });

@@ -2,23 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: testing_workflow_scenario
-initialPrompt: "Test the workflow functionality"
+initialPrompt: 'Test the workflow functionality'
 repo:
   init: true
 timeline:
   - think:
-      - [500, "Processing request for testing_workflow_scenario"]
+      - [500, 'Processing request for testing_workflow_scenario']
   - agentToolUse:
-      toolName: "writeFile"
+      toolName: 'writeFile'
       args:
-        path: "test.txt"
-        text: "Test content for testing_workflow_scenario"
-      result: "File created"
-      status: "ok"
+        path: 'test.txt'
+        text: 'Test content for testing_workflow_scenario'
+      result: 'File created'
+      status: 'ok'
   - assistant:
-      - [300, "Completed testing_workflow_scenario scenario"]
+      - [300, 'Completed testing_workflow_scenario scenario']
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "test.txt"
+    - type: 'taskFile'
+      pattern: 'test.txt'

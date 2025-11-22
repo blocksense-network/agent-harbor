@@ -6,7 +6,15 @@
 import { Browser, BrowserContext, chromium } from 'playwright';
 import { app } from 'electron';
 import { join } from 'path';
-import { existsSync, mkdirSync, readdirSync, statSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+} from 'fs';
 
 export interface BrowserProfile {
   id: string;
@@ -135,7 +143,7 @@ export class PlaywrightManager {
 
           if (existsSync(metadataPath)) {
             try {
-              const metadata = require(metadataPath) as BrowserProfile;
+              const metadata = JSON.parse(readFileSync(metadataPath, 'utf8')) as BrowserProfile;
               profiles.push(metadata);
             } catch (error) {
               console.warn(`Failed to read profile metadata for ${entry}:`, error);
@@ -176,7 +184,7 @@ export class PlaywrightManager {
 
     // Save metadata
     const metadataPath = join(profilePath, 'metadata.json');
-    require('fs').writeFileSync(metadataPath, JSON.stringify(profile, null, 2));
+    writeFileSync(metadataPath, JSON.stringify(profile, null, 2));
 
     return profile;
   }
@@ -186,7 +194,7 @@ export class PlaywrightManager {
 
     if (existsSync(profilePath)) {
       try {
-        require('fs').rmSync(profilePath, { recursive: true, force: true });
+        rmSync(profilePath, { recursive: true, force: true });
         return true;
       } catch (error) {
         console.error(`Failed to delete profile ${profileId}:`, error);

@@ -26,7 +26,7 @@ test.describe('Draft Save Status Debug Tests', () => {
     const initialStatusText = await saveStatus.textContent();
     const initialTextareaValue = await textarea.inputValue();
     console.log(
-      `Initial status: "${initialStatusText}", textarea value: "${initialTextareaValue}"`
+      `Initial status: "${initialStatusText}", textarea value: "${initialTextareaValue}"`,
     );
 
     // Check initial visual styling
@@ -53,7 +53,7 @@ test.describe('Draft Save Status Debug Tests', () => {
       const currentStatus = await saveStatus.textContent();
       const currentClasses = await saveStatus.getAttribute('class');
       console.log(
-        `After typing char ${i + 1}: status="${currentStatus}", classes="${currentClasses}"`
+        `After typing char ${i + 1}: status="${currentStatus}", classes="${currentClasses}"`,
       );
       await page.waitForTimeout(50); // Small delay to see changes
     }
@@ -168,13 +168,13 @@ test.describe('Draft Save Status Debug Tests', () => {
     const consoleMessages: string[] = [];
     const errors: string[] = [];
 
-    page.on('console', (msg) => {
+    page.on('console', msg => {
       const text = msg.text();
       consoleMessages.push(text);
       console.log('CONSOLE:', text);
     });
 
-    page.on('pageerror', (error) => {
+    page.on('pageerror', error => {
       errors.push(error.message);
       console.log('PAGE ERROR:', error.message);
     });
@@ -198,7 +198,7 @@ test.describe('Draft Save Status Debug Tests', () => {
 
     // Check for relevant console messages
     const saveRelatedMessages = consoleMessages.filter(
-      (msg) => msg.includes('save') || msg.includes('Save') || msg.includes('update')
+      msg => msg.includes('save') || msg.includes('Save') || msg.includes('update'),
     );
 
     console.log('Save-related console messages:', saveRelatedMessages);

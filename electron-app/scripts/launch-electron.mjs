@@ -39,7 +39,7 @@ const electronProcess = spawn(electronPath, args, {
   },
 });
 
-electronProcess.on('close', (code) => {
+electronProcess.on('close', code => {
   process.exit(code || 0);
 });
 

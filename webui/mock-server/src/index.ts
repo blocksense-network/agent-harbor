@@ -86,7 +86,7 @@ app.use(
   cors({
     origin: process.env.NODE_ENV === 'production' ? false : true,
     credentials: true,
-  })
+  }),
 );
 // Only use verbose logging when not in quiet mode
 if (!isQuietMode) {
@@ -216,6 +216,6 @@ app
       }
     }
   })
-  .on('error', (err) => {
+  .on('error', err => {
     console.error('Server error:', err);
   });

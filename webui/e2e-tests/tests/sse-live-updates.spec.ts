@@ -88,7 +88,7 @@ test.describe('SSE Live Updates', () => {
 
   test('SSE connection logs are visible in console', async ({ page }) => {
     const consoleMessages: string[] = [];
-    page.on('console', (msg) => consoleMessages.push(msg.text()));
+    page.on('console', msg => consoleMessages.push(msg.text()));
 
     await page.goto('/');
     await page.waitForLoadState('load');
@@ -97,8 +97,8 @@ test.describe('SSE Live Updates', () => {
     await page.waitForTimeout(2000);
 
     // Check for SSE subscription logs
-    const hasSubscriptionLog = consoleMessages.some((msg) =>
-      msg.includes('[SessionCard] Subscribing to SSE')
+    const hasSubscriptionLog = consoleMessages.some(msg =>
+      msg.includes('[SessionCard] Subscribing to SSE'),
     );
 
     expect(hasSubscriptionLog).toBeTruthy();
@@ -110,16 +110,16 @@ test.describe('SSE Live Updates', () => {
 
     // Count active sessions - check aria-labels for active statuses
     const _runningCards = page.locator(
-      '[data-testid="task-card"]:has([aria-label="Status: running"])'
+      '[data-testid="task-card"]:has([aria-label="Status: running"])',
     );
     const _queuedCards = page.locator(
-      '[data-testid="task-card"]:has([aria-label="Status: queued"])'
+      '[data-testid="task-card"]:has([aria-label="Status: queued"])',
     );
     const _provisioningCards = page.locator(
-      '[data-testid="task-card"]:has([aria-label="Status: provisioning"])'
+      '[data-testid="task-card"]:has([aria-label="Status: provisioning"])',
     );
 
-    const activeCards = page.locator('[data-testid="task-card"]').filter(async (card) => {
+    const activeCards = page.locator('[data-testid="task-card"]').filter(async card => {
       const statusEl = card.locator('[aria-label^="Status:"]');
       const label = await statusEl.getAttribute('aria-label');
       return (
@@ -149,7 +149,7 @@ test.describe('SSE Live Updates', () => {
 
   test('No JavaScript errors from SSE connections', async ({ page }) => {
     const errors: string[] = [];
-    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('pageerror', error => errors.push(error.message));
 
     await page.goto('/');
     await page.waitForLoadState('load');
@@ -159,9 +159,9 @@ test.describe('SSE Live Updates', () => {
 
     // Filter out expected/harmless errors
     const criticalErrors = errors.filter(
-      (err) =>
+      err =>
         !err.includes('Failed to parse SSE event') && // Expected if malformed event
-        !err.includes('SSE connection error') // Expected if server closes
+        !err.includes('SSE connection error'), // Expected if server closes
     );
 
     expect(criticalErrors).toHaveLength(0);

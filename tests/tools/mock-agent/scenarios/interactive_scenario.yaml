@@ -6,7 +6,7 @@ initialPrompt: "Hello! I'm ready to help you with coding tasks. What would you l
 repo:
   init: true
   files:
-    - path: "README.md"
+    - path: 'README.md'
       contents: |
         # Interactive Coding Session
 
@@ -16,8 +16,11 @@ repo:
 timeline:
   # Initial setup for interactive testing
   - assistant:
-      - [1000, "Hello! I'm Claude Code, an AI coding assistant. I'm ready to help you with coding tasks."]
+      - [
+          1000,
+          "Hello! I'm Claude Code, an AI coding assistant. I'm ready to help you with coding tasks.",
+        ]
   # Wait for user input - this should keep the session open
   - userInputs:
       - [1000, "Tell me what you'd like to work on."]
-    target: "tui"
+    target: 'tui'

@@ -13,7 +13,7 @@ const router = express.Router();
 // Initial mock sessions for testing - exactly 5 sessions as per PRD:
 // - 3 completed sessions
 // - 2 active (running) sessions with continuous SSE event streams
-let mockSessions: any[] = [
+const mockSessions: any[] = [
   // Completed Session 1
   {
     id: '01HVZ6K9T1N8S6M3V3Q3F0X1',
@@ -237,7 +237,7 @@ router.post('/', (req, res) => {
 
     // Check required fields
     const requiredFields = ['prompt', 'repo', 'agent', 'runtime'];
-    const missingFields = requiredFields.filter((field) => !req.body[field]);
+    const missingFields = requiredFields.filter(field => !req.body[field]);
 
     if (missingFields.length > 0) {
       return res.status(400).json({
@@ -245,7 +245,7 @@ router.post('/', (req, res) => {
         title: 'Validation Error',
         status: 400,
         detail: `Missing required fields: ${missingFields.join(', ')}`,
-        errors: missingFields.map((field) => ({
+        errors: missingFields.map(field => ({
           field,
           message: `${field} is required`,
         })),

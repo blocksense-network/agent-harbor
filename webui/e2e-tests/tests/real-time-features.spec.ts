@@ -32,7 +32,7 @@ test.describe('Real-time Features', () => {
           .or(
             page
               .locator('text=Connecting to event stream...')
-              .or(page.locator('text=Real-time events not available'))
+              .or(page.locator('text=Real-time events not available')),
           );
         await expect(connectionStatus.first()).toBeVisible();
       }
@@ -193,7 +193,7 @@ test.describe('Real-time Features', () => {
 
       // Check if sessions are displayed
       const sessionCards = page.locator(
-        '[class*="bg-white"][class*="border"][class*="rounded-lg"]'
+        '[class*="bg-white"][class*="border"][class*="rounded-lg"]',
       );
 
       // If sessions exist, check that they have status badges
@@ -225,7 +225,7 @@ test.describe('Real-time Features', () => {
       // Create a new session with a test prompt
       const testPrompt = 'Create a simple hello.py file for testing';
 
-      await page.evaluate(async (prompt) => {
+      await page.evaluate(async prompt => {
         const response = await fetch('/api/v1/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -257,7 +257,7 @@ test.describe('Real-time Features', () => {
       const sessionId = sessionIdMatch[1];
 
       // Verify this session has the test scenario
-      const sessionResponse = await page.evaluate(async (id) => {
+      const sessionResponse = await page.evaluate(async id => {
         const response = await fetch(`/api/v1/sessions/${id}`);
         return response.json();
       }, sessionId);
@@ -268,7 +268,7 @@ test.describe('Real-time Features', () => {
       const scenarioPath = path.join(
         process.cwd(),
         '../../../tests/tools/mock-agent/scenarios',
-        'test_scenario.json'
+        'test_scenario.json',
       );
       expect(fs.existsSync(scenarioPath)).toBe(true);
 
@@ -325,7 +325,7 @@ test.describe('Real-time Features', () => {
       let matchedCount = 0;
       for (const expectedMsg of expectedLogMessages) {
         const found = actualLogMessages.some(
-          (actualMsg) => actualMsg.includes(expectedMsg) || expectedMsg.includes(actualMsg)
+          actualMsg => actualMsg.includes(expectedMsg) || expectedMsg.includes(actualMsg),
         );
         if (found) {
           matchedCount++;
@@ -336,7 +336,7 @@ test.describe('Real-time Features', () => {
 
       const matchPercentage = (matchedCount / expectedLogMessages.length) * 100;
       console.log(
-        `Found ${matchedCount}/${expectedLogMessages.length} expected messages (${matchPercentage.toFixed(1)}%)`
+        `Found ${matchedCount}/${expectedLogMessages.length} expected messages (${matchPercentage.toFixed(1)}%)`,
       );
 
       // Should find at least 50% of messages (allowing for timing/race conditions)

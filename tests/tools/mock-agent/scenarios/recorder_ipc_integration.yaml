@@ -2,31 +2,34 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: recorder_ipc_integration
-initialPrompt: "Test IPC integration with the recorder"
-description: "E2E test for ah agent record IPC integration with ah agent fs snapshot"
+initialPrompt: 'Test IPC integration with the recorder'
+description: 'E2E test for ah agent record IPC integration with ah agent fs snapshot'
 repo:
   init: true
 timeline:
   - think:
-      - [500, "I will create a Python file and verify that filesystem snapshots are being captured during recording."]
+      - [
+          500,
+          'I will create a Python file and verify that filesystem snapshots are being captured during recording.',
+        ]
   - agentToolUse:
-      toolName: "Write"
+      toolName: 'Write'
       args:
-        path: "main.py"
+        path: 'main.py'
         text: |
           def greet(name):
               return f"Hello, {name}!"
 
           if __name__ == "__main__":
               print(greet("World"))
-      result: "File created successfully"
-      status: "ok"
+      result: 'File created successfully'
+      status: 'ok'
   - assistant:
-      - [300, "Created main.py. A filesystem snapshot should have been captured via IPC."]
+      - [300, 'Created main.py. A filesystem snapshot should have been captured via IPC.']
   - agentToolUse:
-      toolName: "Write"
+      toolName: 'Write'
       args:
-        path: "test_main.py"
+        path: 'test_main.py'
         text: |
           import main
 
@@ -37,42 +40,45 @@ timeline:
 
           if __name__ == "__main__":
               test_greet()
-      result: "Test file created"
-      status: "ok"
+      result: 'Test file created'
+      status: 'ok'
   - assistant:
-      - [400, "Created test_main.py. Another snapshot should have been captured."]
+      - [400, 'Created test_main.py. Another snapshot should have been captured.']
   - agentToolUse:
-      toolName: "Edit"
+      toolName: 'Edit'
       args:
-        path: "main.py"
+        path: 'main.py'
         text: |
 
           def farewell(name):
               return f"Goodbye, {name}!"
-      result: "Function appended"
-      status: "ok"
+      result: 'Function appended'
+      status: 'ok'
   - assistant:
-      - [300, "Added farewell function to main.py. A third snapshot should be in the recording."]
+      - [300, 'Added farewell function to main.py. A third snapshot should be in the recording.']
   - agentToolUse:
-      toolName: "Edit"
+      toolName: 'Edit'
       args:
-        path: "main.py"
+        path: 'main.py'
         old_str: 'print(greet("World"))'
         new_str: |
           print(greet("World"))
               print(farewell("World"))
-      result: "Code updated"
-      status: "ok"
+      result: 'Code updated'
+      status: 'ok'
   - assistant:
-      - [500, "Updated main.py to call both greeting and farewell. Final snapshot captured. The recording should contain all four snapshots with proper IPC anchoring."]
+      - [
+          500,
+          'Updated main.py to call both greeting and farewell. Final snapshot captured. The recording should contain all four snapshots with proper IPC anchoring.',
+        ]
 expect:
   exitCode: 0
   artifacts:
-    - type: "taskFile"
-      pattern: "main.py"
-    - type: "taskFile"
-      pattern: "test_main.py"
+    - type: 'taskFile'
+      pattern: 'main.py'
+    - type: 'taskFile'
+      pattern: 'test_main.py'
   snapshots:
     count: 4
-    providers: ["zfs", "btrfs", "git"]
-    anchoring: "ipc_verified"
+    providers: ['zfs', 'btrfs', 'git']
+    anchoring: 'ipc_verified'
