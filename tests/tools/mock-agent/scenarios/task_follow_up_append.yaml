@@ -1,0 +1,49 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: task_follow_up_append
+tags: ['cli', 'task', 'follow-up']
+repo:
+  init: true
+timeline:
+  - userCommand:
+      args:
+        - task
+        - create
+        - follow-branch
+        - --prompt
+        - "First follow task"
+        - --non-interactive
+        - --push-to-remote
+        - "false"
+      expect:
+        exitCode: 0
+  - userCommand:
+      program: git
+      args: ["checkout", "follow-branch"]
+      expect:
+        exitCode: 0
+  - userCommand:
+      args:
+        - task
+        - create
+        - --prompt
+        - "Second follow task"
+        - --non-interactive
+        - --push-to-remote
+        - "false"
+      expect:
+        exitCode: 0
+        fs:
+          contains:
+            - path: ".agents/tasks/follow-branch"
+              substring: "First follow task"
+            - path: ".agents/tasks/follow-branch"
+              substring: "Second follow task"
+            - path: ".agents/tasks/follow-branch"
+              substring: "--- FOLLOW UP TASK ---"
+  - assertGit:
+      branch: follow-branch
+      exists: true
+      commitsAheadOf: main
+      commitCount: 2

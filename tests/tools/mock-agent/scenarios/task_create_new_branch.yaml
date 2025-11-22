@@ -1,0 +1,36 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: task_create_new_branch
+tags: ['cli', 'task', 'branch']
+repo:
+  init: true
+timeline:
+  - userCommand:
+      args:
+        - task
+        - create
+        - scenario-new
+        - --prompt
+        - "Scenario new task"
+        - --non-interactive
+        - --push-to-remote
+        - "false"
+      expect:
+        exitCode: 0
+  - userCommand:
+      program: git
+      args: ["checkout", "scenario-new"]
+      expect:
+        exitCode: 0
+        fs:
+          exists:
+            - ".agents/tasks/scenario-new"
+          contains:
+            - path: ".agents/tasks/scenario-new"
+              substring: "Scenario new task"
+  - assertGit:
+      branch: scenario-new
+      exists: true
+      commitsAheadOf: main
+      commitCount: 1

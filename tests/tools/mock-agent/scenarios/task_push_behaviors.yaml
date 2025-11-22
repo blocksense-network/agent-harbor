@@ -1,0 +1,44 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: task_push_behaviors
+tags: ['cli', 'task', 'push']
+repo:
+  init: true
+timeline:
+  - userCommand:
+      args:
+        - task
+        - create
+        - push-no-remote
+        - --prompt
+        - "Push should be skipped when disabled"
+        - --non-interactive
+        - --push-to-remote
+        - "false"
+      expect:
+        exitCode: 0
+  - assertGit:
+      branch: push-no-remote
+      exists: true
+      commitsAheadOf: main
+      commitCount: 1
+      remoteExists: false
+  - userCommand:
+      args:
+        - task
+        - create
+        - push-branch
+        - --prompt
+        - "Explicit push should succeed"
+        - --non-interactive
+        - --push-to-remote
+        - "true"
+      expect:
+        exitCode: 0
+  - assertGit:
+      branch: push-branch
+      exists: true
+      commitsAheadOf: main
+      commitCount: 1
+      remoteExists: true
