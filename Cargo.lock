@@ -352,6 +352,7 @@ dependencies = [
  "sandbox-seccomp",
  "serde",
  "serde_json",
+ "serde_yaml",
  "serial_test 2.0.0",
  "tempfile",
  "thiserror 1.0.69",
