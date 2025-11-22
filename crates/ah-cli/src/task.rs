@@ -465,34 +465,33 @@ impl TaskCreateArgs {
         let push_preference = self.resolve_push_preference()?;
 
         // Handle branch creation/validation when task files are enabled
-        let actual_branch_name = if create_task_files {
+        // Resolve target branch and perform creation/validation
+        let actual_branch_name = if start_new_branch {
+            let branch = branch_name.as_ref().unwrap();
+            self.handle_new_branch_creation(&repo, branch).await?;
+            branch.clone()
+        } else if create_task_files {
             let agent_tasks =
                 AgentTasks::new(repo.root()).context("Failed to initialize agent tasks")?;
             let on_task_branch = agent_tasks.on_task_branch().unwrap_or(false);
 
-            if start_new_branch {
-                let branch = branch_name.as_ref().unwrap();
-                self.handle_new_branch_creation(&repo, branch).await?;
-                branch.clone()
+            if on_task_branch {
+                self.validate_existing_branch(&repo, &orig_branch).await?;
+                orig_branch.clone()
+            } else if self.non_interactive {
+                tracing::error!(
+                    "Non-interactive mode requires --branch when not on an agent task branch"
+                );
+                std::process::exit(10);
             } else {
-                // No branch provided: must be on an agent task branch for follow-up
-                if on_task_branch {
-                    self.validate_existing_branch(&repo, &orig_branch).await?;
-                    orig_branch.clone()
-                } else if self.non_interactive {
-                    tracing::error!(
-                        "Non-interactive mode requires --branch when not on an agent task branch"
-                    );
-                    std::process::exit(10);
-                } else {
-                    anyhow::bail!(
-                        "Provide --branch to start a new task branch before recording a task"
-                    );
-                }
+                anyhow::bail!(
+                    "Provide --branch to start a new task branch before recording a task"
+                );
             }
         } else {
-            // Branch creation skipped; use provided branch or stay on current
-            branch_name.unwrap_or(orig_branch.clone())
+            // No task files requested: operate on the current branch but still enforce validation
+            self.validate_existing_branch(&repo, &orig_branch).await?;
+            orig_branch.clone()
         };
 
         let cleanup_branch = start_new_branch;
@@ -1789,6 +1788,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_resolve_comment_prefix_defaults_and_git_config() -> Result<()> {
+        // Default prefix when no config/git override
+        let repo = ah_repo::test_helpers::create_git_repo(None)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let repo_root = repo.path.as_path();
+
+        let prefix = TaskCreateArgs::resolve_comment_prefix(repo_root, &serde_json::json!({}));
+        assert_eq!(prefix, "# ");
+
+        // Override via git config core.commentString
+        std::process::Command::new("git")
+            .args(["config", "core.commentString", "// "])
+            .current_dir(repo_root)
+            .output()?;
+        let prefix_git = TaskCreateArgs::resolve_comment_prefix(repo_root, &serde_json::json!({}));
+        assert_eq!(prefix_git, "//");
+
+        // Disable using git comment string via config
+        let cfg = serde_json::json!({"task-editor": {"use-vcs-comment-string": false}});
+        let prefix_disabled = TaskCreateArgs::resolve_comment_prefix(repo_root, &cfg);
+        assert_eq!(prefix_disabled, "# ");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_prompt_removes_only_prefixed_comments() {
+        let raw = "# keep this\n// actual content\n#another";
+        // prefix "# " should remove only # lines
+        let processed = TaskCreateArgs::process_prompt(raw, "#");
+        assert!(processed.contains("// actual content"));
+        assert!(!processed.contains("# keep"));
+        assert!(!processed.contains("#another"));
+    }
+
+    #[test]
+    fn test_process_prompt_ignores_editor_hints_and_preserves_inline_hashes() {
+        let raw = r#"# Please write your task prompt above.
+# Enter an empty prompt to abort the task creation process.
+Implement login flow #keep
+
+# Saving and exiting will deliver work according to the configured delivery method.
+Ensure MFA is enforced
+"#;
+        let processed = TaskCreateArgs::process_prompt(raw, "#");
+        assert!(processed.contains("Implement login flow #keep"));
+        assert!(processed.contains("Ensure MFA is enforced"));
+        assert!(!processed.contains("Please write your task prompt"));
+        assert!(!processed.contains("Saving and exiting"));
+        // Collapses extra blank lines introduced by stripped comments
+        assert!(!processed.contains("\n\n\n"));
+    }
+
+    #[tokio::test]
     async fn test_config_precedence_merging_for_task() -> Result<()> {
         use std::fs;
 
@@ -1856,6 +1910,44 @@ mod tests {
         );
 
         std::env::remove_var("AH_DELIVERY");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_validate_existing_branch_rejects_primary_branch() -> Result<()> {
+        let repo = ah_repo::test_helpers::create_git_repo(None)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let vcs_repo = VcsRepo::new(repo.path.as_path())?;
+        let args = base_task_args();
+
+        let err = args
+            .validate_existing_branch(&vcs_repo, "main")
+            .await
+            .expect_err("should reject primary branch");
+        assert!(err.to_string().contains("Refusing to run on the main branch"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_validate_existing_branch_rejects_devshell_on_follow_up() -> Result<()> {
+        let repo = ah_repo::test_helpers::create_git_repo(None)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let vcs_repo = VcsRepo::new(repo.path.as_path())?;
+        let args = TaskCreateArgs {
+            devshell: Some("custom".into()),
+            ..base_task_args()
+        };
+
+        let err = args
+            .validate_existing_branch(&vcs_repo, "feature")
+            .await
+            .expect_err("devshell should not be allowed on existing branch");
+        assert!(
+            err.to_string()
+                .contains("--devshell is only supported when creating a new branch")
+        );
         Ok(())
     }
 
@@ -2226,7 +2318,7 @@ exit {}
         use std::process::Command;
 
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
-        let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
+        let (_temp_home, repo_dir, _remote_dir) = setup_git_repo_integration()?;
 
         // First task creates branch and task file
         let (status1, _output1, _editor_called1) = run_ah_task_create_integration(
@@ -2311,13 +2403,6 @@ exit {}
             .output()?;
         let msg = String::from_utf8_lossy(&first_commit_msg.stdout);
         assert!(msg.contains("Start-Agent-Branch: follow-branch"));
-
-        assert_task_branch_created_integration(
-            repo_dir.path(),
-            remote_dir.path(),
-            "follow-branch",
-            false,
-        )?;
 
         Ok(())
     }

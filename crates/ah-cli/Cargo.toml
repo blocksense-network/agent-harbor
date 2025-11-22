@@ -122,3 +122,4 @@ tempdir = "0.3"
 tui-testing = { path = "../tui-testing" }
 assert_cmd = "2.0"
 serial_test = "3"
+serde_yaml = "0.9"
