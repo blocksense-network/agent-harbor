@@ -130,6 +130,9 @@ OPTIONS:
 Notes:
 
 - Alias: `--crate-metadata-commits` is accepted as a synonym for `--create-metadata-commits` for convenience.
+- Workspace selection flows through `prepare_workspace_with_fallback`, persisting the chosen provider and working-copy mode alongside session metadata. Cloud agents and any browser-automation flags (including `--browser-profile`, `--workspace`, and `--codex-workspace`) are disabled for this release and will return a clear error.
+- Delivery: `--delivery pr` requires `--target-branch` and an explicit push to a configured remote (non-interactive requires `--push-to-remote true`). `--delivery patch` never pushes; branch delivery prompts unless push intent is provided.
+- Notifications default to `yes` and propagate to spawned task managers. `--follow` triggers a monitoring hand-off (TUI/WebUI per `ui` config) focused on the newly created session.
 
 #### Multiple Agent Support
 
