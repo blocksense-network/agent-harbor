@@ -194,8 +194,12 @@ impl TaskManager for MockRestClient {
             };
         }
 
-        // Generate task ID and store task
-        let task_id = self.generate_task_id(&params);
+        // Generate task ID (prefer caller-provided stable ID)
+        let task_id = if params.task_id().is_empty() {
+            self.generate_task_id(&params)
+        } else {
+            params.task_id().to_string()
+        };
         let task_info = TaskInfo {
             id: task_id.clone(),
             title: params.description().to_string(),
@@ -1319,7 +1323,7 @@ mod tests {
         let result = client.launch_task(params).await;
 
         assert!(result.is_success());
-        assert!(result.session_ids().unwrap()[0].starts_with("task_"));
+        assert_eq!(result.session_ids().unwrap()[0], "test-task-id");
     }
 
     #[tokio::test]
