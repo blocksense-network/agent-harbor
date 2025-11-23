@@ -591,6 +591,10 @@ manual-test-agent-start *args:
 manual-test-ah-agent-record *args:
     ./scripts/manual-test-agent-start.py --record {{args}}
 
+# Run manual task workflow (interactive + non-interactive variants)
+manual-test-task:
+    ./scripts/manual-test-task.sh
+
 # Launch manual TUI test script for testing TUI functionality
 # Usage: just manual-test-tui [--repo NAME] [--fs TYPE]
 #   --repo NAME: Repository name to create (default: example-repo)

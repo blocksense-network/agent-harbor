@@ -1,0 +1,48 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: task_multi_agent_follow
+tags: ['cli', 'task', 'multi-agent', 'follow']
+repo:
+  init: true
+timeline:
+  - userCommand:
+      args:
+        - task
+        - create
+        - multi-demo
+        - --prompt
+        - "Coordinate multi-agent test"
+        - --agent
+        - claude
+        - --agent
+        - codex
+        - --instances
+        - "2"
+        - --fleet
+        - qa-team
+        - --notifications
+        - "no"
+        - --follow
+        - --non-interactive
+        - --push-to-remote
+        - "false"
+      expect:
+        exitCode: 0
+        stdoutContains: "Follow requested"
+  - assertGit:
+      branch: multi-demo
+      exists: true
+      commitsAheadOf: main
+      commitCount: 1
+  - userCommand:
+      program: git
+      args: ["checkout", "multi-demo"]
+      expect:
+        exitCode: 0
+        fs:
+          exists:
+            - ".agents/tasks/multi-demo"
+          contains:
+            - path: ".agents/tasks/multi-demo"
+              substring: "Coordinate multi-agent test"
