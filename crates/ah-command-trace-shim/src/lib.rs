@@ -27,6 +27,10 @@ mod unsupported;
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub use unsupported::*;
 
+/// Hook-safe I/O implementation
+#[cfg(target_os = "macos")]
+pub mod hook_safe_io;
+
 /// Shared POSIX functionality
 pub mod posix;
 
@@ -70,6 +74,12 @@ pub mod core {
         fn default() -> Self {
             ShimState::Disabled
         }
+    }
+
+    /// Get or initialize the shim state (thread-safe lazy initialization)
+    pub fn get_or_initialize_shim_state() -> Option<&'static Mutex<ShimState>> {
+        // Use get_or_init for thread-safe lazy initialization
+        Some(SHIM_STATE.get_or_init(|| Mutex::new(initialize_shim_state())))
     }
 
     /// Initialize the shim state from environment variables

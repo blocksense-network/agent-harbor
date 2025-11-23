@@ -29,10 +29,9 @@ use agentfs_proto::messages::{
     AclSetFileRequest, ChflagsRequest, ClonefileRequest, CopyfileRequest, DirEntry,
     FchflagsRequest, FclonefileatRequest, FcopyfileRequest, FgetxattrRequest, FlistxattrRequest,
     FremovexattrRequest, FsEventBroadcastRequest, FsetxattrRequest, GetattrlistRequest,
-    GetattrlistbulkRequest, GetxattrRequest, LchflagsRequest, LgetxattrRequest, ListxattrRequest,
-    LlistxattrRequest, LremovexattrRequest, LsetxattrRequest, RemovexattrRequest, Request,
-    Response, SetattrlistRequest, SetxattrRequest, StatData, StatfsData, SynthesizedKevent,
-    TimespecData, WatchRegisterFSEventsRequest,
+    GetattrlistbulkRequest, GetxattrRequest, LchflagsRequest, ListxattrRequest, RemovexattrRequest,
+    Request, Response, SetattrlistRequest, SetxattrRequest, StatData, StatfsData,
+    SynthesizedKevent, TimespecData, WatchRegisterFSEventsRequest,
 };
 
 // Error codes for interpose forwarding failures
@@ -193,7 +192,6 @@ unsafe impl Sync for CFRunLoopSourceKey {}
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     static kCFAllocatorDefault: CFAllocatorRef;
-    static kCFStringEncodingUTF8: u32;
 
     fn CFMessagePortCreateRunLoopSource(
         allocator: CFAllocatorRef,
@@ -270,6 +268,8 @@ extern "C" {
         encoding: u32,
     ) -> bool;
 }
+
+const KCFSTRINGENCODING_UTF8: u32 = 0x0800_0100;
 
 type CFMessagePortCallBack = extern "C" fn(
     local: CFMessagePortRef,
@@ -1262,6 +1262,8 @@ fn initialize() {
             } else {
                 log_message("STREAM already set in ctor");
             }
+
+            stackable_interpose::enable_hooks();
         }
         Err(err) => {
             log_message(&format!("handshake failed: {err}"));
@@ -2261,8 +2263,8 @@ mod interpose {
     }
 
     /// Interposed open function (fd_open + fd tracking)
-    redhook::hook! {
-        unsafe fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_open {
+    stackable_interpose::hook! {
+        unsafe fn open(stackable_self, path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_open {
             if path.is_null() {
                 return -1;
             }
@@ -2291,7 +2293,19 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("fd_open failed: {}, falling back to original", err));
                     // Fall back to original function and track if it's a directory
-                    let result = redhook::real!(open)(path, flags, mode);
+                    let result = stackable_interpose::call_next!(stackable_self, open, path, flags, mode);
+                    log_message(&format!(
+                        "fallback open({}) returned {}",
+                        c_path.to_string_lossy(),
+                        result
+                    ));
+                    if result < 0 {
+                        log_message(&format!(
+                            "fallback errno after open({}): {}",
+                            c_path.to_string_lossy(),
+                            std::io::Error::last_os_error()
+                        ));
+                    }
                     if result >= 0 && (flags & libc::O_DIRECTORY) != 0 {
                         if let Ok(path_str) = c_path.to_str() {
                             with_dirfd_mapping(|mapping| {
@@ -2309,8 +2323,8 @@ mod interpose {
     }
 
     /// Interposed openat function
-    redhook::hook! {
-        unsafe fn openat(dirfd: c_int, path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_openat {
+    stackable_interpose::hook! {
+        unsafe fn openat(stackable_self, dirfd: c_int, path: *const c_char, flags: c_int, mode: mode_t) -> c_int => my_openat {
             if path.is_null() {
                 return -1;
             }
@@ -2320,13 +2334,13 @@ mod interpose {
             log_message(&format!("interposing openat({}, {}, {:#x}, {:#o})", dirfd, c_path.to_string_lossy(), flags, mode));
 
             // For now, fall back to original - openat forwarding needs more complex path resolution
-            redhook::real!(openat)(dirfd, path, flags, mode)
+            stackable_interpose::call_next!(stackable_self, openat, dirfd, path, flags, mode)
         }
     }
 
     /// Interposed creat function
-    redhook::hook! {
-        unsafe fn creat(path: *const c_char, mode: mode_t) -> c_int => my_creat {
+    stackable_interpose::hook! {
+        unsafe fn creat(stackable_self, path: *const c_char, mode: mode_t) -> c_int => my_creat {
             if path.is_null() {
                 return -1;
             }
@@ -2343,35 +2357,35 @@ mod interpose {
                 }
                 Err(err) => {
                     log_message(&format!("fd_open failed: {}, falling back to original", err));
-                    redhook::real!(creat)(path, mode)
+                    stackable_interpose::call_next!(stackable_self, creat, path, mode)
                 }
             }
         }
     }
 
     /// Interposed fopen function
-    redhook::hook! {
-        unsafe fn fopen(filename: *const c_char, mode: *const c_char) -> *mut libc::FILE => my_fopen {
+    stackable_interpose::hook! {
+        unsafe fn fopen(stackable_self, filename: *const c_char, mode: *const c_char) -> *mut libc::FILE => my_fopen {
             log_message("interposing fopen() - not yet implemented, falling back to original");
 
             // For now, fall back to original
-            redhook::real!(fopen)(filename, mode)
+            stackable_interpose::call_next!(stackable_self, fopen, filename, mode)
         }
     }
 
     /// Interposed freopen function
-    redhook::hook! {
-        unsafe fn freopen(filename: *const c_char, mode: *const c_char, stream: *mut libc::FILE) -> *mut libc::FILE => my_freopen {
+    stackable_interpose::hook! {
+        unsafe fn freopen(stackable_self, filename: *const c_char, mode: *const c_char, stream: *mut libc::FILE) -> *mut libc::FILE => my_freopen {
             log_message("interposing freopen() - not yet implemented, falling back to original");
 
             // For now, fall back to original
-            redhook::real!(freopen)(filename, mode, stream)
+            stackable_interpose::call_next!(stackable_self, freopen, filename, mode, stream)
         }
     }
 
     /// Interposed opendir function
-    redhook::hook! {
-        unsafe fn opendir(dirname: *const c_char) -> *mut libc::DIR => my_opendir {
+    stackable_interpose::hook! {
+        unsafe fn opendir(stackable_self, dirname: *const c_char) -> *mut libc::DIR => my_opendir {
             if dirname.is_null() {
                 return std::ptr::null_mut();
             }
@@ -2392,25 +2406,25 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("failed to create AgentFS directory handle: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(opendir)(dirname)
+                    stackable_interpose::call_next!(stackable_self, opendir, dirname)
                 }
             }
         }
     }
 
     /// Interposed fdopendir function
-    redhook::hook! {
-        unsafe fn fdopendir(fd: c_int) -> *mut libc::DIR => my_fdopendir {
+    stackable_interpose::hook! {
+        unsafe fn fdopendir(stackable_self, fd: c_int) -> *mut libc::DIR => my_fdopendir {
             log_message(&format!("interposing fdopendir({}) - not yet implemented, falling back to original", fd));
 
             // For now, fall back to original
-            redhook::real!(fdopendir)(fd)
+            stackable_interpose::call_next!(stackable_self, fdopendir, fd)
         }
     }
 
     /// Interposed readdir function
-    redhook::hook! {
-        unsafe fn readdir(dirp: *mut libc::DIR) -> *mut libc::dirent => my_readdir {
+    stackable_interpose::hook! {
+        unsafe fn readdir(stackable_self, dirp: *mut libc::DIR) -> *mut libc::dirent => my_readdir {
             log_message(&format!("interposing readdir({:?})", dirp));
 
             // The DIR pointer contains the FsCore handle ID
@@ -2434,15 +2448,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("dir_read failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(readdir)(dirp)
+                    stackable_interpose::call_next!(stackable_self, readdir, dirp)
                 }
             }
         }
     }
 
     /// Interposed closedir function
-    redhook::hook! {
-        unsafe fn closedir(dirp: *mut libc::DIR) -> c_int => my_closedir {
+    stackable_interpose::hook! {
+        unsafe fn closedir(stackable_self, dirp: *mut libc::DIR) -> c_int => my_closedir {
             log_message(&format!("interposing closedir({:?})", dirp));
 
             // The DIR pointer contains the FsCore handle ID
@@ -2457,15 +2471,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("dir_close failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(closedir)(dirp)
+                    stackable_interpose::call_next!(stackable_self, closedir, dirp)
                 }
             }
         }
     }
 
     /// Interposed readlink function
-    redhook::hook! {
-        unsafe fn readlink(pathname: *const c_char, buf: *mut c_char, bufsiz: libc::size_t) -> libc::ssize_t => my_readlink {
+    stackable_interpose::hook! {
+        unsafe fn readlink(stackable_self, pathname: *const c_char, buf: *mut c_char, bufsiz: libc::size_t) -> libc::ssize_t => my_readlink {
             if pathname.is_null() {
                 return -1;
             }
@@ -2489,15 +2503,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("readlink failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(readlink)(pathname, buf, bufsiz)
+                    stackable_interpose::call_next!(stackable_self, readlink, pathname, buf, bufsiz)
                 }
             }
         }
     }
 
     /// Interposed readlinkat function
-    redhook::hook! {
-        unsafe fn readlinkat(dirfd: c_int, pathname: *const c_char, buf: *mut c_char, bufsiz: libc::size_t) -> libc::ssize_t => my_readlinkat {
+    stackable_interpose::hook! {
+        unsafe fn readlinkat(stackable_self, dirfd: c_int, pathname: *const c_char, buf: *mut c_char, bufsiz: libc::size_t) -> libc::ssize_t => my_readlinkat {
             if pathname.is_null() {
                 return -1;
             }
@@ -2506,7 +2520,7 @@ mod interpose {
             log_message(&format!("interposing readlinkat({}, {}, bufsiz={}) - not yet implemented, falling back to original", dirfd, c_path.to_string_lossy(), bufsiz));
 
             // For now, fall back to original
-            redhook::real!(readlinkat)(dirfd, pathname, buf, bufsiz)
+            stackable_interpose::call_next!(stackable_self, readlinkat, dirfd, pathname, buf, bufsiz)
         }
     }
 
@@ -2986,8 +3000,8 @@ mod interpose {
     }
 
     /// Interposed stat function
-    redhook::hook! {
-        unsafe fn stat(path: *const c_char, buf: *mut libc::stat) -> c_int => my_stat {
+    stackable_interpose::hook! {
+        unsafe fn stat(stackable_self, path: *const c_char, buf: *mut libc::stat) -> c_int => my_stat {
             if path.is_null() || buf.is_null() {
                 return -1;
             }
@@ -3036,15 +3050,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("stat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(stat)(path, buf)
+                    stackable_interpose::call_next!(stackable_self, stat, path, buf)
                 }
             }
         }
     }
 
     /// Interposed lstat function
-    redhook::hook! {
-        unsafe fn lstat(path: *const c_char, buf: *mut libc::stat) -> c_int => my_lstat {
+    stackable_interpose::hook! {
+        unsafe fn lstat(stackable_self, path: *const c_char, buf: *mut libc::stat) -> c_int => my_lstat {
             if path.is_null() || buf.is_null() {
                 return -1;
             }
@@ -3093,15 +3107,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("lstat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(lstat)(path, buf)
+                    stackable_interpose::call_next!(stackable_self, lstat, path, buf)
                 }
             }
         }
     }
 
     /// Interposed fstat function
-    redhook::hook! {
-        unsafe fn fstat(fd: c_int, buf: *mut libc::stat) -> c_int => my_fstat {
+    stackable_interpose::hook! {
+        unsafe fn fstat(stackable_self, fd: c_int, buf: *mut libc::stat) -> c_int => my_fstat {
             if buf.is_null() {
                 return -1;
             }
@@ -3149,15 +3163,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("fstat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(fstat)(fd, buf)
+                    stackable_interpose::call_next!(stackable_self, fstat, fd, buf)
                 }
             }
         }
     }
 
     /// Interposed fstatat function
-    redhook::hook! {
-        unsafe fn fstatat(dirfd: c_int, path: *const c_char, buf: *mut libc::stat, flags: c_int) -> c_int => my_fstatat {
+    stackable_interpose::hook! {
+        unsafe fn fstatat(stackable_self, dirfd: c_int, path: *const c_char, buf: *mut libc::stat, flags: c_int) -> c_int => my_fstatat {
             if path.is_null() || buf.is_null() {
                 return -1;
             }
@@ -3206,15 +3220,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("fstatat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(fstatat)(dirfd, path, buf, flags)
+                    stackable_interpose::call_next!(stackable_self, fstatat, dirfd, path, buf, flags)
                 }
             }
         }
     }
 
     /// Interposed statfs function
-    redhook::hook! {
-        unsafe fn statfs(path: *const c_char, buf: *mut libc::statfs) -> c_int => my_statfs {
+    stackable_interpose::hook! {
+        unsafe fn statfs(stackable_self, path: *const c_char, buf: *mut libc::statfs) -> c_int => my_statfs {
             if path.is_null() || buf.is_null() {
                 return -1;
             }
@@ -3252,15 +3266,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("statfs failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(statfs)(path, buf)
+                    stackable_interpose::call_next!(stackable_self, statfs, path, buf)
                 }
             }
         }
     }
 
     /// Interposed fstatfs function
-    redhook::hook! {
-        unsafe fn fstatfs(fd: c_int, buf: *mut libc::statfs) -> c_int => my_fstatfs {
+    stackable_interpose::hook! {
+        unsafe fn fstatfs(stackable_self, fd: c_int, buf: *mut libc::statfs) -> c_int => my_fstatfs {
             if buf.is_null() {
                 return -1;
             }
@@ -3297,15 +3311,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("fstatfs failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(fstatfs)(fd, buf)
+                    stackable_interpose::call_next!(stackable_self, fstatfs, fd, buf)
                 }
             }
         }
     }
 
     /// Interposed truncate function
-    redhook::hook! {
-        unsafe fn truncate(path: *const c_char, length: off_t) -> c_int => my_truncate {
+    stackable_interpose::hook! {
+        unsafe fn truncate(stackable_self, path: *const c_char, length: off_t) -> c_int => my_truncate {
             if path.is_null() {
                 return -1;
             }
@@ -3321,15 +3335,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("truncate failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(truncate)(path, length)
+                    stackable_interpose::call_next!(stackable_self, truncate, path, length)
                 }
             }
         }
     }
 
     /// Interposed ftruncate function
-    redhook::hook! {
-        unsafe fn ftruncate(fd: c_int, length: off_t) -> c_int => my_ftruncate {
+    stackable_interpose::hook! {
+        unsafe fn ftruncate(stackable_self, fd: c_int, length: off_t) -> c_int => my_ftruncate {
             log_message(&format!("interposing ftruncate({}, {})", fd, length));
 
             match send_ftruncate_request(fd, length) {
@@ -3340,15 +3354,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("ftruncate failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(ftruncate)(fd, length)
+                    stackable_interpose::call_next!(stackable_self, ftruncate, fd, length)
                 }
             }
         }
     }
 
     /// Interposed utimes function
-    redhook::hook! {
-        unsafe fn utimes(path: *const c_char, times: *const timespec) -> c_int => my_utimes {
+    stackable_interpose::hook! {
+        unsafe fn utimes(stackable_self, path: *const c_char, times: *const timespec) -> c_int => my_utimes {
             if path.is_null() {
                 return -1;
             }
@@ -3370,15 +3384,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("utimes failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(utimes)(path, times)
+                    stackable_interpose::call_next!(stackable_self, utimes, path, times)
                 }
             }
         }
     }
 
     /// Interposed futimes function
-    redhook::hook! {
-        unsafe fn futimes(fd: c_int, times: *const timespec) -> c_int => my_futimes {
+    stackable_interpose::hook! {
+        unsafe fn futimes(stackable_self, fd: c_int, times: *const timespec) -> c_int => my_futimes {
             let times_opt = if times.is_null() {
                 // Use current time if times is NULL
                 None
@@ -3395,15 +3409,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("futimes failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(futimes)(fd, times)
+                    stackable_interpose::call_next!(stackable_self, futimes, fd, times)
                 }
             }
         }
     }
 
     /// Interposed utimensat function
-    redhook::hook! {
-        unsafe fn utimensat(dirfd: c_int, path: *const c_char, times: *const timespec, flags: c_int) -> c_int => my_utimensat {
+    stackable_interpose::hook! {
+        unsafe fn utimensat(stackable_self, dirfd: c_int, path: *const c_char, times: *const timespec, flags: c_int) -> c_int => my_utimensat {
             if path.is_null() {
                 return -1;
             }
@@ -3425,15 +3439,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("utimensat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(utimensat)(dirfd, path, times, flags)
+                    stackable_interpose::call_next!(stackable_self, utimensat, dirfd, path, times, flags)
                 }
             }
         }
     }
 
     /// Interposed futimens function
-    redhook::hook! {
-        unsafe fn futimens(fd: c_int, times: *const timespec) -> c_int => my_futimens {
+    stackable_interpose::hook! {
+        unsafe fn futimens(stackable_self, fd: c_int, times: *const timespec) -> c_int => my_futimens {
             let times_opt = if times.is_null() {
                 // Use current time if times is NULL
                 None
@@ -3450,15 +3464,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("futimens failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(futimens)(fd, times)
+                    stackable_interpose::call_next!(stackable_self, futimens, fd, times)
                 }
             }
         }
     }
 
     /// Interposed chown function
-    redhook::hook! {
-        unsafe fn chown(path: *const c_char, uid: uid_t, gid: gid_t) -> c_int => my_chown {
+    stackable_interpose::hook! {
+        unsafe fn chown(stackable_self, path: *const c_char, uid: uid_t, gid: gid_t) -> c_int => my_chown {
             if path.is_null() {
                 return -1;
             }
@@ -3474,15 +3488,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("chown failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(chown)(path, uid, gid)
+                    stackable_interpose::call_next!(stackable_self, chown, path, uid, gid)
                 }
             }
         }
     }
 
     /// Interposed lchown function
-    redhook::hook! {
-        unsafe fn lchown(path: *const c_char, uid: uid_t, gid: gid_t) -> c_int => my_lchown {
+    stackable_interpose::hook! {
+        unsafe fn lchown(stackable_self, path: *const c_char, uid: uid_t, gid: gid_t) -> c_int => my_lchown {
             if path.is_null() {
                 return -1;
             }
@@ -3498,15 +3512,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("lchown failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(lchown)(path, uid, gid)
+                    stackable_interpose::call_next!(stackable_self, lchown, path, uid, gid)
                 }
             }
         }
     }
 
     /// Interposed fchown function
-    redhook::hook! {
-        unsafe fn fchown(fd: c_int, uid: uid_t, gid: gid_t) -> c_int => my_fchown {
+    stackable_interpose::hook! {
+        unsafe fn fchown(stackable_self, fd: c_int, uid: uid_t, gid: gid_t) -> c_int => my_fchown {
             log_message(&format!("interposing fchown({}, {}, {})", fd, uid, gid));
 
             match send_fchown_request(fd, uid, gid) {
@@ -3517,15 +3531,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("fchown failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(fchown)(fd, uid, gid)
+                    stackable_interpose::call_next!(stackable_self, fchown, fd, uid, gid)
                 }
             }
         }
     }
 
     /// Interposed fchownat function
-    redhook::hook! {
-        unsafe fn fchownat(dirfd: c_int, path: *const c_char, uid: uid_t, gid: gid_t, flags: c_int) -> c_int => my_fchownat {
+    stackable_interpose::hook! {
+        unsafe fn fchownat(stackable_self, dirfd: c_int, path: *const c_char, uid: uid_t, gid: gid_t, flags: c_int) -> c_int => my_fchownat {
             if path.is_null() {
                 return -1;
             }
@@ -3541,15 +3555,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("fchownat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(fchownat)(dirfd, path, uid, gid, flags)
+                    stackable_interpose::call_next!(stackable_self, fchownat, dirfd, path, uid, gid, flags)
                 }
             }
         }
     }
 
     /// Interposed chmod function
-    redhook::hook! {
-        unsafe fn chmod(path: *const c_char, mode: mode_t) -> c_int => my_chmod {
+    stackable_interpose::hook! {
+        unsafe fn chmod(stackable_self, path: *const c_char, mode: mode_t) -> c_int => my_chmod {
             if path.is_null() {
                 return -1;
             }
@@ -3565,15 +3579,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("chmod failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(chmod)(path, mode)
+                    stackable_interpose::call_next!(stackable_self, chmod, path, mode)
                 }
             }
         }
     }
 
     /// Interposed fchmod function
-    redhook::hook! {
-        unsafe fn fchmod(fd: c_int, mode: mode_t) -> c_int => my_fchmod {
+    stackable_interpose::hook! {
+        unsafe fn fchmod(stackable_self, fd: c_int, mode: mode_t) -> c_int => my_fchmod {
             log_message(&format!("interposing fchmod({}, {:#o})", fd, mode));
 
             match send_fchmod_request(fd, mode) {
@@ -3584,15 +3598,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("fchmod failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(fchmod)(fd, mode)
+                    stackable_interpose::call_next!(stackable_self, fchmod, fd, mode)
                 }
             }
         }
     }
 
     /// Interposed fchmodat function
-    redhook::hook! {
-        unsafe fn fchmodat(dirfd: c_int, path: *const c_char, mode: mode_t, flags: c_int) -> c_int => my_fchmodat {
+    stackable_interpose::hook! {
+        unsafe fn fchmodat(stackable_self, dirfd: c_int, path: *const c_char, mode: mode_t, flags: c_int) -> c_int => my_fchmodat {
             if path.is_null() {
                 return -1;
             }
@@ -3608,7 +3622,7 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("fchmodat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(fchmodat)(dirfd, path, mode, flags)
+                    stackable_interpose::call_next!(stackable_self, fchmodat, dirfd, path, mode, flags)
                 }
             }
         }
@@ -3908,8 +3922,8 @@ mod interpose {
     }
 
     /// Interposed rename function
-    redhook::hook! {
-        unsafe fn rename(old_path: *const c_char, new_path: *const c_char) -> c_int => my_rename {
+    stackable_interpose::hook! {
+        unsafe fn rename(stackable_self, old_path: *const c_char, new_path: *const c_char) -> c_int => my_rename {
             if old_path.is_null() || new_path.is_null() {
                 return -1;
             }
@@ -3926,15 +3940,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("rename failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(rename)(old_path, new_path)
+                    stackable_interpose::call_next!(stackable_self, rename, old_path, new_path)
                 }
             }
         }
     }
 
     /// Interposed renameat function
-    redhook::hook! {
-        unsafe fn renameat(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char) -> c_int => my_renameat {
+    stackable_interpose::hook! {
+        unsafe fn renameat(stackable_self, old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char) -> c_int => my_renameat {
             if old_path.is_null() || new_path.is_null() {
                 return -1;
             }
@@ -3951,15 +3965,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("renameat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(renameat)(old_dirfd, old_path, new_dirfd, new_path)
+                    stackable_interpose::call_next!(stackable_self, renameat, old_dirfd, old_path, new_dirfd, new_path)
                 }
             }
         }
     }
 
     /// Interposed renameatx_np function (macOS-specific)
-    redhook::hook! {
-        unsafe fn renameatx_np(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: libc::c_uint) -> c_int => my_renameatx_np {
+    stackable_interpose::hook! {
+        unsafe fn renameatx_np(stackable_self, old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: libc::c_uint) -> c_int => my_renameatx_np {
             if old_path.is_null() || new_path.is_null() {
                 return -1;
             }
@@ -3976,15 +3990,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("renameatx_np failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(renameatx_np)(old_dirfd, old_path, new_dirfd, new_path, flags)
+                    stackable_interpose::call_next!(stackable_self, renameatx_np, old_dirfd, old_path, new_dirfd, new_path, flags)
                 }
             }
         }
     }
 
     /// Interposed link function
-    redhook::hook! {
-        unsafe fn link(old_path: *const c_char, new_path: *const c_char) -> c_int => my_link {
+    stackable_interpose::hook! {
+        unsafe fn link(stackable_self, old_path: *const c_char, new_path: *const c_char) -> c_int => my_link {
             if old_path.is_null() || new_path.is_null() {
                 return -1;
             }
@@ -4001,15 +4015,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("link failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(link)(old_path, new_path)
+                    stackable_interpose::call_next!(stackable_self, link, old_path, new_path)
                 }
             }
         }
     }
 
     /// Interposed linkat function
-    redhook::hook! {
-        unsafe fn linkat(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: c_int) -> c_int => my_linkat {
+    stackable_interpose::hook! {
+        unsafe fn linkat(stackable_self, old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: c_int) -> c_int => my_linkat {
             if old_path.is_null() || new_path.is_null() {
                 return -1;
             }
@@ -4026,15 +4040,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("linkat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(linkat)(old_dirfd, old_path, new_dirfd, new_path, flags)
+                    stackable_interpose::call_next!(stackable_self, linkat, old_dirfd, old_path, new_dirfd, new_path, flags)
                 }
             }
         }
     }
 
     /// Interposed symlink function
-    redhook::hook! {
-        unsafe fn symlink(target: *const c_char, linkpath: *const c_char) -> c_int => my_symlink {
+    stackable_interpose::hook! {
+        unsafe fn symlink(stackable_self, target: *const c_char, linkpath: *const c_char) -> c_int => my_symlink {
             if target.is_null() || linkpath.is_null() {
                 return -1;
             }
@@ -4051,15 +4065,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("symlink failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(symlink)(target, linkpath)
+                    stackable_interpose::call_next!(stackable_self, symlink, target, linkpath)
                 }
             }
         }
     }
 
     /// Interposed symlinkat function
-    redhook::hook! {
-        unsafe fn symlinkat(target: *const c_char, new_dirfd: c_int, linkpath: *const c_char) -> c_int => my_symlinkat {
+    stackable_interpose::hook! {
+        unsafe fn symlinkat(stackable_self, target: *const c_char, new_dirfd: c_int, linkpath: *const c_char) -> c_int => my_symlinkat {
             if target.is_null() || linkpath.is_null() {
                 return -1;
             }
@@ -4076,15 +4090,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("symlinkat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(symlinkat)(target, new_dirfd, linkpath)
+                    stackable_interpose::call_next!(stackable_self, symlinkat, target, new_dirfd, linkpath)
                 }
             }
         }
     }
 
     /// Interposed unlink function
-    redhook::hook! {
-        unsafe fn unlink(path: *const c_char) -> c_int => my_unlink {
+    stackable_interpose::hook! {
+        unsafe fn unlink(stackable_self, path: *const c_char) -> c_int => my_unlink {
             if path.is_null() {
                 return -1;
             }
@@ -4100,15 +4114,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("unlink failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(unlink)(path)
+                    stackable_interpose::call_next!(stackable_self, unlink, path)
                 }
             }
         }
     }
 
     /// Interposed unlinkat function
-    redhook::hook! {
-        unsafe fn unlinkat(dirfd: c_int, path: *const c_char, flags: c_int) -> c_int => my_unlinkat {
+    stackable_interpose::hook! {
+        unsafe fn unlinkat(stackable_self, dirfd: c_int, path: *const c_char, flags: c_int) -> c_int => my_unlinkat {
             if path.is_null() {
                 return -1;
             }
@@ -4124,15 +4138,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("unlinkat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(unlinkat)(dirfd, path, flags)
+                    stackable_interpose::call_next!(stackable_self, unlinkat, dirfd, path, flags)
                 }
             }
         }
     }
 
     /// Interposed remove function (alias for unlink)
-    redhook::hook! {
-        unsafe fn remove(path: *const c_char) -> c_int => my_remove {
+    stackable_interpose::hook! {
+        unsafe fn remove(stackable_self, path: *const c_char) -> c_int => my_remove {
             if path.is_null() {
                 return -1;
             }
@@ -4148,15 +4162,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("remove failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(remove)(path)
+                    stackable_interpose::call_next!(stackable_self, remove, path)
                 }
             }
         }
     }
 
     /// Interposed mkdir function
-    redhook::hook! {
-        unsafe fn mkdir(path: *const c_char, mode: mode_t) -> c_int => my_mkdir {
+    stackable_interpose::hook! {
+        unsafe fn mkdir(stackable_self, path: *const c_char, mode: mode_t) -> c_int => my_mkdir {
             if path.is_null() {
                 return -1;
             }
@@ -4172,15 +4186,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("mkdir failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(mkdir)(path, mode)
+                    stackable_interpose::call_next!(stackable_self, mkdir, path, mode)
                 }
             }
         }
     }
 
     /// Interposed mkdirat function
-    redhook::hook! {
-        unsafe fn mkdirat(dirfd: c_int, path: *const c_char, mode: mode_t) -> c_int => my_mkdirat {
+    stackable_interpose::hook! {
+        unsafe fn mkdirat(stackable_self, dirfd: c_int, path: *const c_char, mode: mode_t) -> c_int => my_mkdirat {
             if path.is_null() {
                 return -1;
             }
@@ -4196,15 +4210,15 @@ mod interpose {
                 Err(err) => {
                     log_message(&format!("mkdirat failed: {}, falling back to original", err));
                     // Fall back to original function
-                    redhook::real!(mkdirat)(dirfd, path, mode)
+                    stackable_interpose::call_next!(stackable_self, mkdirat, dirfd, path, mode)
                 }
             }
         }
     }
 
     /// Interposed close function (for fd tracking)
-    redhook::hook! {
-        unsafe fn close(fd: c_int) -> c_int => my_close_fd_tracking {
+    stackable_interpose::hook! {
+        unsafe fn close(stackable_self, fd: c_int) -> c_int => my_close_fd_tracking {
             // Check if this fd is a kqueue or being watched by kqueue and notify daemon to unregister
             {
                 let is_kqueue = KQUEUE_FDS.lock().unwrap().contains(&fd);
@@ -4260,14 +4274,14 @@ mod interpose {
                 log_message(&format!("removed fd {} from tracking", fd));
             });
 
-            redhook::real!(close)(fd)
+            stackable_interpose::call_next!(stackable_self, close, fd)
         }
     }
 
     /// Interposed dup function (for fd tracking)
-    redhook::hook! {
-        unsafe fn dup(oldfd: c_int) -> c_int => my_dup_fd_tracking {
-            let result = redhook::real!(dup)(oldfd);
+    stackable_interpose::hook! {
+        unsafe fn dup(stackable_self, oldfd: c_int) -> c_int => my_dup_fd_tracking {
+            let result = stackable_interpose::call_next!(stackable_self, dup, oldfd);
             if result >= 0 {
                 // Duplicate the fd mapping
                 with_dirfd_mapping(|mapping| {
@@ -4280,9 +4294,9 @@ mod interpose {
     }
 
     /// Interposed dup2 function (for fd tracking)
-    redhook::hook! {
-        unsafe fn dup2(oldfd: c_int, newfd: c_int) -> c_int => my_dup2_fd_tracking {
-            let result = redhook::real!(dup2)(oldfd, newfd);
+    stackable_interpose::hook! {
+        unsafe fn dup2(stackable_self, oldfd: c_int, newfd: c_int) -> c_int => my_dup2_fd_tracking {
+            let result = stackable_interpose::call_next!(stackable_self, dup2, oldfd, newfd);
             if result >= 0 {
                 // Duplicate the fd mapping
                 with_dirfd_mapping(|mapping| {
@@ -4294,10 +4308,11 @@ mod interpose {
         }
     }
 
+    #[cfg(target_os = "linux")]
     /// Interposed dup3 function (for fd tracking)
-    redhook::hook! {
-        unsafe fn dup3(oldfd: c_int, newfd: c_int, flags: c_int) -> c_int => my_dup3_fd_tracking {
-            let result = redhook::real!(dup3)(oldfd, newfd, flags);
+    stackable_interpose::hook! {
+        unsafe fn dup3(stackable_self, oldfd: c_int, newfd: c_int, flags: c_int) -> c_int => my_dup3_fd_tracking {
+            let result = stackable_interpose::call_next!(stackable_self, dup3, oldfd, newfd, flags);
             if result >= 0 {
                 // Duplicate the fd mapping
                 with_dirfd_mapping(|mapping| {
@@ -4310,13 +4325,13 @@ mod interpose {
     }
 
     /// Interposed chdir function (for cwd tracking)
-    redhook::hook! {
-        unsafe fn chdir(path: *const c_char) -> c_int => my_chdir_fd_tracking {
+    stackable_interpose::hook! {
+        unsafe fn chdir(stackable_self, path: *const c_char) -> c_int => my_chdir_fd_tracking {
             if path.is_null() {
-                return redhook::real!(chdir)(path);
+                return stackable_interpose::call_next!(stackable_self, chdir, path);
             }
 
-            let result = redhook::real!(chdir)(path);
+            let result = stackable_interpose::call_next!(stackable_self, chdir, path);
             if result == 0 {
                 // Update current working directory
                 let c_path = unsafe { CStr::from_ptr(path) };
@@ -4334,9 +4349,9 @@ mod interpose {
     }
 
     /// Interposed fchdir function (for cwd tracking)
-    redhook::hook! {
-        unsafe fn fchdir(fd: c_int) -> c_int => my_fchdir_fd_tracking {
-            let result = redhook::real!(fchdir)(fd);
+    stackable_interpose::hook! {
+        unsafe fn fchdir(stackable_self, fd: c_int) -> c_int => my_fchdir_fd_tracking {
+            let result = stackable_interpose::call_next!(stackable_self, fchdir, fd);
             if result == 0 {
                 // Update current working directory from fd
                 with_dirfd_mapping(|mapping| {
@@ -4351,8 +4366,8 @@ mod interpose {
     }
 
     /// Interposed getxattr function
-    redhook::hook! {
-        unsafe fn getxattr(path: *const c_char, name: *const c_char, value: *mut c_void, size: size_t) -> ssize_t => my_getxattr {
+    stackable_interpose::hook! {
+        unsafe fn getxattr(stackable_self, path: *const c_char, name: *const c_char, value: *mut c_void, size: size_t) -> ssize_t => my_getxattr {
             if path.is_null() || name.is_null() {
                 return -1;
             }
@@ -4397,15 +4412,16 @@ mod interpose {
                 }
                 Err(_) => {
                     // Fallback to original function
-                    return redhook::real!(getxattr)(path, name, value, size);
+                    return stackable_interpose::call_next!(stackable_self, getxattr, path, name, value, size);
                 }
             }
         }
     }
 
+    #[cfg(target_os = "linux")]
     /// Interposed lgetxattr function
-    redhook::hook! {
-        unsafe fn lgetxattr(path: *const c_char, name: *const c_char, value: *mut c_void, size: size_t, position: u32, options: c_int) -> ssize_t => my_lgetxattr {
+    stackable_interpose::hook! {
+        unsafe fn lgetxattr(stackable_self, path: *const c_char, name: *const c_char, value: *mut c_void, size: size_t, position: u32, options: c_int) -> ssize_t => my_lgetxattr {
             if path.is_null() || name.is_null() {
                 return -1;
             }
@@ -4446,15 +4462,15 @@ mod interpose {
                     }
                 }
                 _ => {
-                    return redhook::real!(lgetxattr)(path, name, value, size, position, options);
+                    return stackable_interpose::call_next!(stackable_self, lgetxattr, path, name, value, size, position, options);
                 }
             }
         }
     }
 
     /// Interposed fgetxattr function
-    redhook::hook! {
-        unsafe fn fgetxattr(fd: c_int, name: *const c_char, value: *mut c_void, size: size_t, position: u32, options: c_int) -> ssize_t => my_fgetxattr {
+    stackable_interpose::hook! {
+        unsafe fn fgetxattr(stackable_self, fd: c_int, name: *const c_char, value: *mut c_void, size: size_t, position: u32, options: c_int) -> ssize_t => my_fgetxattr {
             if name.is_null() {
                 return -1;
             }
@@ -4494,15 +4510,15 @@ mod interpose {
                     }
                 }
                 _ => {
-                    return redhook::real!(fgetxattr)(fd, name, value, size, position, options);
+                    return stackable_interpose::call_next!(stackable_self, fgetxattr, fd, name, value, size, position, options);
                 }
             }
         }
     }
 
     /// Interposed setxattr function
-    redhook::hook! {
-        unsafe fn setxattr(path: *const c_char, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_setxattr {
+    stackable_interpose::hook! {
+        unsafe fn setxattr(stackable_self, path: *const c_char, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_setxattr {
             if path.is_null() || name.is_null() || value.is_null() {
                 return -1;
             }
@@ -4527,15 +4543,16 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 _ => {
-                    return redhook::real!(setxattr)(path, name, value, size, position, options);
+                    return stackable_interpose::call_next!(stackable_self, setxattr, path, name, value, size, position, options);
                 }
             }
         }
     }
 
+    #[cfg(target_os = "linux")]
     /// Interposed lsetxattr function
-    redhook::hook! {
-        unsafe fn lsetxattr(path: *const c_char, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_lsetxattr {
+    stackable_interpose::hook! {
+        unsafe fn lsetxattr(stackable_self, path: *const c_char, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_lsetxattr {
             if path.is_null() || name.is_null() || value.is_null() {
                 return -1;
             }
@@ -4560,15 +4577,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 _ => {
-                    return redhook::real!(lsetxattr)(path, name, value, size, position, options);
+                    return stackable_interpose::call_next!(stackable_self, lsetxattr, path, name, value, size, position, options);
                 }
             }
         }
     }
 
     /// Interposed fsetxattr function
-    redhook::hook! {
-        unsafe fn fsetxattr(fd: c_int, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_fsetxattr {
+    stackable_interpose::hook! {
+        unsafe fn fsetxattr(stackable_self, fd: c_int, name: *const c_char, value: *const c_void, size: size_t, position: u32, options: c_int) -> c_int => my_fsetxattr {
             if name.is_null() || value.is_null() {
                 return -1;
             }
@@ -4592,15 +4609,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 _ => {
-                    return redhook::real!(fsetxattr)(fd, name, value, size, position, options);
+                    return stackable_interpose::call_next!(stackable_self, fsetxattr, fd, name, value, size, position, options);
                 }
             }
         }
     }
 
     /// Interposed listxattr function
-    redhook::hook! {
-        unsafe fn listxattr(path: *const c_char, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_listxattr {
+    stackable_interpose::hook! {
+        unsafe fn listxattr(stackable_self, path: *const c_char, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_listxattr {
             if path.is_null() {
                 return -1;
             }
@@ -4640,15 +4657,16 @@ mod interpose {
                     }
                 }
                 _ => {
-                    return redhook::real!(listxattr)(path, namebuf, size, options);
+                    return stackable_interpose::call_next!(stackable_self, listxattr, path, namebuf, size, options);
                 }
             }
         }
     }
 
+    #[cfg(target_os = "linux")]
     /// Interposed llistxattr function
-    redhook::hook! {
-        unsafe fn llistxattr(path: *const c_char, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_llistxattr {
+    stackable_interpose::hook! {
+        unsafe fn llistxattr(stackable_self, path: *const c_char, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_llistxattr {
             if path.is_null() {
                 return -1;
             }
@@ -4688,15 +4706,15 @@ mod interpose {
                     }
                 }
                 _ => {
-                    return redhook::real!(llistxattr)(path, namebuf, size, options);
+                    return stackable_interpose::call_next!(stackable_self, llistxattr, path, namebuf, size, options);
                 }
             }
         }
     }
 
     /// Interposed flistxattr function
-    redhook::hook! {
-        unsafe fn flistxattr(fd: c_int, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_flistxattr {
+    stackable_interpose::hook! {
+        unsafe fn flistxattr(stackable_self, fd: c_int, namebuf: *mut c_char, size: size_t, options: c_int) -> ssize_t => my_flistxattr {
             log_message(&format!("interposing flistxattr({}, {}, {}, {})",
                 fd, namebuf as usize, size, options));
 
@@ -4730,15 +4748,15 @@ mod interpose {
                     }
                 }
                 _ => {
-                    return redhook::real!(flistxattr)(fd, namebuf, size, options);
+                    return stackable_interpose::call_next!(stackable_self, flistxattr, fd, namebuf, size, options);
                 }
             }
         }
     }
 
     /// Interposed removexattr function
-    redhook::hook! {
-        unsafe fn removexattr(path: *const c_char, name: *const c_char, options: c_int) -> c_int => my_removexattr {
+    stackable_interpose::hook! {
+        unsafe fn removexattr(stackable_self, path: *const c_char, name: *const c_char, options: c_int) -> c_int => my_removexattr {
             if path.is_null() || name.is_null() {
                 return -1;
             }
@@ -4760,15 +4778,16 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 _ => {
-                    return redhook::real!(removexattr)(path, name, options);
+                    return stackable_interpose::call_next!(stackable_self, removexattr, path, name, options);
                 }
             }
         }
     }
 
+    #[cfg(target_os = "linux")]
     /// Interposed lremovexattr function
-    redhook::hook! {
-        unsafe fn lremovexattr(path: *const c_char, name: *const c_char, options: c_int) -> c_int => my_lremovexattr {
+    stackable_interpose::hook! {
+        unsafe fn lremovexattr(stackable_self, path: *const c_char, name: *const c_char, options: c_int) -> c_int => my_lremovexattr {
             if path.is_null() || name.is_null() {
                 return -1;
             }
@@ -4790,15 +4809,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 _ => {
-                    return redhook::real!(lremovexattr)(path, name, options);
+                    return stackable_interpose::call_next!(stackable_self, lremovexattr, path, name, options);
                 }
             }
         }
     }
 
     /// Interposed fremovexattr function
-    redhook::hook! {
-        unsafe fn fremovexattr(fd: c_int, name: *const c_char, options: c_int) -> c_int => my_fremovexattr {
+    stackable_interpose::hook! {
+        unsafe fn fremovexattr(stackable_self, fd: c_int, name: *const c_char, options: c_int) -> c_int => my_fremovexattr {
             if name.is_null() {
                 return -1;
             }
@@ -4819,15 +4838,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(fremovexattr)(fd, name, options);
+                    return stackable_interpose::call_next!(stackable_self, fremovexattr, fd, name, options);
                 }
             }
         }
     }
 
     /// Interposed acl_get_file function
-    redhook::hook! {
-        unsafe fn acl_get_file(path: *const c_char, acl_type: acl_type_t) -> acl_t => my_acl_get_file {
+    stackable_interpose::hook! {
+        unsafe fn acl_get_file(stackable_self, path: *const c_char, acl_type: acl_type_t) -> acl_t => my_acl_get_file {
             if path.is_null() {
                 return std::ptr::null_mut();
             }
@@ -4855,15 +4874,15 @@ mod interpose {
                     }
                 }
                 Err(_) => {
-                    return redhook::real!(acl_get_file)(path, acl_type);
+                    return stackable_interpose::call_next!(stackable_self, acl_get_file, path, acl_type);
                 }
             }
         }
     }
 
     /// Interposed acl_set_file function
-    redhook::hook! {
-        unsafe fn acl_set_file(path: *const c_char, acl_type: acl_type_t, acl: acl_t) -> c_int => my_acl_set_file {
+    stackable_interpose::hook! {
+        unsafe fn acl_set_file(stackable_self, path: *const c_char, acl_type: acl_type_t, acl: acl_t) -> c_int => my_acl_set_file {
             if path.is_null() || acl.is_null() {
                 return -1;
             }
@@ -4892,15 +4911,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(acl_set_file)(path, acl_type, acl);
+                    return stackable_interpose::call_next!(stackable_self, acl_set_file, path, acl_type, acl);
                 }
             }
         }
     }
 
     /// Interposed acl_get_fd function
-    redhook::hook! {
-        unsafe fn acl_get_fd(fd: c_int, acl_type: acl_type_t) -> acl_t => my_acl_get_fd {
+    stackable_interpose::hook! {
+        unsafe fn acl_get_fd(stackable_self, fd: c_int, acl_type: acl_type_t) -> acl_t => my_acl_get_fd {
             log_message(&format!("interposing acl_get_fd({}, {})", fd, acl_type));
 
             let request = AclGetFdRequest {
@@ -4921,15 +4940,15 @@ mod interpose {
                     }
                 }
                 Err(_) => {
-                    return redhook::real!(acl_get_fd)(fd, acl_type);
+                    return stackable_interpose::call_next!(stackable_self, acl_get_fd, fd, acl_type);
                 }
             }
         }
     }
 
     /// Interposed acl_set_fd function
-    redhook::hook! {
-        unsafe fn acl_set_fd(fd: c_int, acl_type: acl_type_t, acl: acl_t) -> c_int => my_acl_set_fd {
+    stackable_interpose::hook! {
+        unsafe fn acl_set_fd(stackable_self, fd: c_int, acl_type: acl_type_t, acl: acl_t) -> c_int => my_acl_set_fd {
             if acl.is_null() {
                 return -1;
             }
@@ -4955,15 +4974,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(acl_set_fd)(fd, acl_type, acl);
+                    return stackable_interpose::call_next!(stackable_self, acl_set_fd, fd, acl_type, acl);
                 }
             }
         }
     }
 
     /// Interposed acl_delete_def_file function
-    redhook::hook! {
-        unsafe fn acl_delete_def_file(path: *const c_char) -> c_int => my_acl_delete_def_file {
+    stackable_interpose::hook! {
+        unsafe fn acl_delete_def_file(stackable_self, path: *const c_char) -> c_int => my_acl_delete_def_file {
             if path.is_null() {
                 return -1;
             }
@@ -4983,15 +5002,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(acl_delete_def_file)(path);
+                    return stackable_interpose::call_next!(stackable_self, acl_delete_def_file, path);
                 }
             }
         }
     }
 
     /// Interposed chflags function
-    redhook::hook! {
-        unsafe fn chflags(path: *const c_char, flags: libc::c_uint) -> c_int => my_chflags {
+    stackable_interpose::hook! {
+        unsafe fn chflags(stackable_self, path: *const c_char, flags: libc::c_uint) -> c_int => my_chflags {
             if path.is_null() {
                 return -1;
             }
@@ -5012,15 +5031,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(chflags)(path, flags);
+                    return stackable_interpose::call_next!(stackable_self, chflags, path, flags);
                 }
             }
         }
     }
 
     /// Interposed lchflags function
-    redhook::hook! {
-        unsafe fn lchflags(path: *const c_char, flags: libc::c_uint) -> c_int => my_lchflags {
+    stackable_interpose::hook! {
+        unsafe fn lchflags(stackable_self, path: *const c_char, flags: libc::c_uint) -> c_int => my_lchflags {
             if path.is_null() {
                 return -1;
             }
@@ -5041,15 +5060,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(lchflags)(path, flags);
+                    return stackable_interpose::call_next!(stackable_self, lchflags, path, flags);
                 }
             }
         }
     }
 
     /// Interposed fchflags function
-    redhook::hook! {
-        unsafe fn fchflags(fd: c_int, flags: libc::c_uint) -> c_int => my_fchflags {
+    stackable_interpose::hook! {
+        unsafe fn fchflags(stackable_self, fd: c_int, flags: libc::c_uint) -> c_int => my_fchflags {
             log_message(&format!("interposing fchflags({}, {:#x})", fd, flags));
 
             let request = FchflagsRequest {
@@ -5063,15 +5082,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(fchflags)(fd, flags);
+                    return stackable_interpose::call_next!(stackable_self, fchflags, fd, flags);
                 }
             }
         }
     }
 
     /// Interposed getattrlist function
-    redhook::hook! {
-        unsafe fn getattrlist(path: *const c_char, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_long) -> c_int => my_getattrlist {
+    stackable_interpose::hook! {
+        unsafe fn getattrlist(stackable_self, path: *const c_char, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_long) -> c_int => my_getattrlist {
             if path.is_null() || attr_list.is_null() {
                 return -1;
             }
@@ -5115,15 +5134,15 @@ mod interpose {
                     }
                 }
                 Err(_) => {
-                    return redhook::real!(getattrlist)(path, attr_list, attr_buf, attr_buf_size, options);
+                    return stackable_interpose::call_next!(stackable_self, getattrlist, path, attr_list, attr_buf, attr_buf_size, options);
                 }
             }
         }
     }
 
     /// Interposed setattrlist function
-    redhook::hook! {
-        unsafe fn setattrlist(path: *const c_char, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_long) -> c_int => my_setattrlist {
+    stackable_interpose::hook! {
+        unsafe fn setattrlist(stackable_self, path: *const c_char, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_long) -> c_int => my_setattrlist {
             if path.is_null() || attr_list.is_null() {
                 return -1;
             }
@@ -5160,15 +5179,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(setattrlist)(path, attr_list, attr_buf, attr_buf_size, options);
+                    return stackable_interpose::call_next!(stackable_self, setattrlist, path, attr_list, attr_buf, attr_buf_size, options);
                 }
             }
         }
     }
 
     /// Interposed getattrlistbulk function
-    redhook::hook! {
-        unsafe fn getattrlistbulk(dirfd: c_int, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_int64_t) -> c_int => my_getattrlistbulk {
+    stackable_interpose::hook! {
+        unsafe fn getattrlistbulk(stackable_self, dirfd: c_int, attr_list: *mut attrlist, attr_buf: *mut c_void, attr_buf_size: size_t, options: u_int64_t) -> c_int => my_getattrlistbulk {
             if attr_list.is_null() {
                 return -1;
             }
@@ -5217,15 +5236,15 @@ mod interpose {
                     }
                 }
                 Err(_) => {
-                    return redhook::real!(getattrlistbulk)(dirfd, attr_list, attr_buf, attr_buf_size, options);
+                    return stackable_interpose::call_next!(stackable_self, getattrlistbulk, dirfd, attr_list, attr_buf, attr_buf_size, options);
                 }
             }
         }
     }
 
     /// Interposed copyfile function
-    redhook::hook! {
-        unsafe fn copyfile(from: *const c_char, to: *const c_char, state: copyfile_state_t, flags: copyfile_flags_t) -> c_int => my_copyfile {
+    stackable_interpose::hook! {
+        unsafe fn copyfile(stackable_self, from: *const c_char, to: *const c_char, state: copyfile_state_t, flags: copyfile_flags_t) -> c_int => my_copyfile {
             if from.is_null() || to.is_null() {
                 return -1;
             }
@@ -5256,15 +5275,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(copyfile)(from, to, state, flags);
+                    return stackable_interpose::call_next!(stackable_self, copyfile, from, to, state, flags);
                 }
             }
         }
     }
 
     /// Interposed fcopyfile function
-    redhook::hook! {
-        unsafe fn fcopyfile(from_fd: c_int, to_fd: c_int, state: copyfile_state_t, flags: copyfile_flags_t) -> c_int => my_fcopyfile {
+    stackable_interpose::hook! {
+        unsafe fn fcopyfile(stackable_self, from_fd: c_int, to_fd: c_int, state: copyfile_state_t, flags: copyfile_flags_t) -> c_int => my_fcopyfile {
             log_message(&format!("interposing fcopyfile({}, {}, state={:p}, flags={:#x})",
                 from_fd, to_fd, state, flags));
 
@@ -5288,15 +5307,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(fcopyfile)(from_fd, to_fd, state, flags);
+                    return stackable_interpose::call_next!(stackable_self, fcopyfile, from_fd, to_fd, state, flags);
                 }
             }
         }
     }
 
     /// Interposed clonefile function
-    redhook::hook! {
-        unsafe fn clonefile(from: *const c_char, to: *const c_char, flags: c_int) -> c_int => my_clonefile {
+    stackable_interpose::hook! {
+        unsafe fn clonefile(stackable_self, from: *const c_char, to: *const c_char, flags: c_int) -> c_int => my_clonefile {
             if from.is_null() || to.is_null() {
                 return -1;
             }
@@ -5319,15 +5338,15 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(clonefile)(from, to, flags);
+                    return stackable_interpose::call_next!(stackable_self, clonefile, from, to, flags);
                 }
             }
         }
     }
 
     /// Interposed fclonefileat function
-    redhook::hook! {
-        unsafe fn fclonefileat(from_fd: c_int, to_fd: c_int, to: *const c_char, flags: c_int) -> c_int => my_fclonefileat {
+    stackable_interpose::hook! {
+        unsafe fn fclonefileat(stackable_self, from_fd: c_int, to_fd: c_int, to: *const c_char, flags: c_int) -> c_int => my_fclonefileat {
             if to.is_null() {
                 return -1;
             }
@@ -5351,7 +5370,7 @@ mod interpose {
             }) {
                 Ok(_) => 0,
                 Err(_) => {
-                    return redhook::real!(fclonefileat)(from_fd, to_fd, to, flags);
+                    return stackable_interpose::call_next!(stackable_self, fclonefileat, from_fd, to_fd, to, flags);
                 }
             }
         }
@@ -5359,8 +5378,8 @@ mod interpose {
 
     /// Interposed FSEventStreamCreate function - translate overlay paths to backstore paths
 
-    redhook::hook! {
-        unsafe fn FSEventStreamCreate(allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, paths_to_watch: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create {
+    stackable_interpose::hook! {
+        unsafe fn FSEventStreamCreate(stackable_self, allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, paths_to_watch: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create {
             log_message(&format!("interposing FSEventStreamCreate(since_when={}, latency={}, flags={:#x})",
                 since_when, latency, flags));
 
@@ -5376,7 +5395,7 @@ mod interpose {
 
             // For in-memory AgentFS, we don't need path translation since there are no physical paths
             // Just create the stream with original paths and register it with the daemon
-            let stream_ref = redhook::real!(FSEventStreamCreate)(allocator, fsevents_replacement_callback, context, paths_to_watch, since_when, latency, flags);
+            let stream_ref = stackable_interpose::call_next!(stackable_self, FSEventStreamCreate, allocator, fsevents_replacement_callback, context, paths_to_watch, since_when, latency, flags);
 
             // Store the callback information keyed by stream reference
             if !stream_ref.is_null() {
@@ -5396,14 +5415,14 @@ mod interpose {
                         if !cf_path.is_null() {
                             // Convert CFString to Rust String
                             let path_str = unsafe {
-                                let c_str = CFStringGetCStringPtr(cf_path, kCFStringEncodingUTF8);
+                                let c_str = CFStringGetCStringPtr(cf_path, KCFSTRINGENCODING_UTF8);
                                 if !c_str.is_null() {
                                     std::ffi::CStr::from_ptr(c_str).to_string_lossy().into_owned()
                                 } else {
                                     // Fallback: try to get the string as bytes
                                     let length = CFStringGetLength(cf_path);
                                     let mut buffer = vec![0u8; (length * 4) as usize]; // UTF-8 worst case
-                                    let success = CFStringGetCString(cf_path, buffer.as_mut_ptr() as *mut c_char, buffer.len() as CFIndex, kCFStringEncodingUTF8);
+                                    let success = CFStringGetCString(cf_path, buffer.as_mut_ptr() as *mut c_char, buffer.len() as CFIndex, KCFSTRINGENCODING_UTF8);
                                     if success {
                                         let c_str = std::ffi::CStr::from_ptr(buffer.as_ptr() as *const c_char);
                                         c_str.to_string_lossy().into_owned()
@@ -5441,8 +5460,8 @@ mod interpose {
 
     /// Interposed FSEventStreamCreateRelativeToDevice function
 
-    redhook::hook! {
-        unsafe fn FSEventStreamCreateRelativeToDevice(allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, device_to_watch: dev_t, paths_to_watch_relative_to_device: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create_relative_to_device {
+    stackable_interpose::hook! {
+        unsafe fn FSEventStreamCreateRelativeToDevice(stackable_self, allocator: CFAllocatorRef, callback: FSEventStreamCallback, context: *const FSEventStreamContext, device_to_watch: dev_t, paths_to_watch_relative_to_device: CFArrayRef, since_when: FSEventStreamEventFlags, latency: CFTimeInterval, flags: FSEventStreamEventFlags) -> FSEventStreamRef => my_fsevent_stream_create_relative_to_device {
             log_message(&format!("interposing FSEventStreamCreateRelativeToDevice(device={}, since_when={}, latency={}, flags={:#x})",
                 device_to_watch, since_when, latency, flags));
 
@@ -5459,7 +5478,7 @@ mod interpose {
             // Device-relative paths don't need translation as they're already relative to a device
             // Just log and pass through with wrapped callback
             log_message("FSEventStreamCreateRelativeToDevice: device-relative paths, no translation needed");
-            let stream_ref = redhook::real!(FSEventStreamCreateRelativeToDevice)(allocator, fsevents_replacement_callback, context, device_to_watch, paths_to_watch_relative_to_device, since_when, latency, flags);
+            let stream_ref = stackable_interpose::call_next!(stackable_self, FSEventStreamCreateRelativeToDevice, allocator, fsevents_replacement_callback, context, device_to_watch, paths_to_watch_relative_to_device, since_when, latency, flags);
 
             // Store the callback information keyed by stream reference
             if !stream_ref.is_null() {
@@ -5491,8 +5510,8 @@ mod interpose {
 
     /// Interposed FSEventStreamScheduleWithRunLoop function
 
-    redhook::hook! {
-        unsafe fn FSEventStreamScheduleWithRunLoop(stream_ref: FSEventStreamRef, run_loop: CFRunLoopRef, run_loop_mode: CFStringRef) -> () => my_fsevent_stream_schedule_with_run_loop {
+    stackable_interpose::hook! {
+        unsafe fn FSEventStreamScheduleWithRunLoop(stackable_self, stream_ref: FSEventStreamRef, run_loop: CFRunLoopRef, run_loop_mode: CFStringRef) -> () => my_fsevent_stream_schedule_with_run_loop {
             log_message(&format!("interposing FSEventStreamScheduleWithRunLoop for stream {:p}", stream_ref));
 
             // Create the message port if this is the first scheduling
@@ -5506,18 +5525,18 @@ mod interpose {
             }
 
             // Call the original function
-            redhook::real!(FSEventStreamScheduleWithRunLoop)(stream_ref, run_loop, run_loop_mode);
+            stackable_interpose::call_next!(stackable_self, FSEventStreamScheduleWithRunLoop, stream_ref, run_loop, run_loop_mode);
         }
     }
 
     /// Interposed FSEventStreamStop function - clean up callback information
 
-    redhook::hook! {
-        unsafe fn FSEventStreamStop(stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_stop {
+    stackable_interpose::hook! {
+        unsafe fn FSEventStreamStop(stackable_self, stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_stop {
             log_message(&format!("interposing FSEventStreamStop for stream {:p}", stream_ref));
 
             // Call the original function first
-            redhook::real!(FSEventStreamStop)(stream_ref);
+            stackable_interpose::call_next!(stackable_self, FSEventStreamStop, stream_ref);
 
             // Clean up our stored callback information
             let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
@@ -5528,12 +5547,12 @@ mod interpose {
 
     /// Interposed FSEventStreamInvalidate function - clean up callback information
 
-    redhook::hook! {
-        unsafe fn FSEventStreamInvalidate(stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_invalidate {
+    stackable_interpose::hook! {
+        unsafe fn FSEventStreamInvalidate(stackable_self, stream_ref: FSEventStreamRef) -> () => my_fsevent_stream_invalidate {
             log_message(&format!("interposing FSEventStreamInvalidate for stream {:p}", stream_ref));
 
             // Call the original function first
-            redhook::real!(FSEventStreamInvalidate)(stream_ref);
+            stackable_interpose::call_next!(stackable_self, FSEventStreamInvalidate, stream_ref);
 
             // Clean up our stored callback information
             let mut callbacks = FSEVENTS_CALLBACKS.lock().unwrap();
@@ -5544,8 +5563,8 @@ mod interpose {
 
     /// Interposed kevent function - filter and inject vnode events based on AgentFS state
 
-    redhook::hook! {
-        unsafe fn kevent(kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, timeout: *const libc::timespec) -> c_int => my_kevent {
+    stackable_interpose::hook! {
+        unsafe fn kevent(stackable_self, kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, timeout: *const libc::timespec) -> c_int => my_kevent {
             log_message(&format!("interposing kevent(kq={}, nchanges={}, nevents={})",
                 kq, nchanges, nevents));
 
@@ -5570,7 +5589,7 @@ mod interpose {
                                     data: 0,
                                     udata: std::ptr::null_mut(),
                                 };
-                                let delete_result = redhook::real!(kevent)(kq, &delete_kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+                                let delete_result = stackable_interpose::call_next!(stackable_self, kevent, kq, &delete_kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
                                 if delete_result == -1 {
                                     log_message(&format!("Failed to delete old doorbell ident {:#x}: {}", current_doorbell_ident, std::io::Error::last_os_error()));
                                 }
@@ -5587,7 +5606,7 @@ mod interpose {
                                     data: 0,
                                     udata: std::ptr::null_mut(),
                                 };
-                                let add_result = redhook::real!(kevent)(kq, &add_kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+                                let add_result = stackable_interpose::call_next!(stackable_self, kevent, kq, &add_kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
                                 if add_result == -1 {
                                     log_message(&format!("Failed to register new doorbell ident {:#x}: {}", new_doorbell_ident, std::io::Error::last_os_error()));
                                 } else {
@@ -5633,7 +5652,7 @@ mod interpose {
             }
 
             // Call the real kevent system call to get pending events
-            let result = redhook::real!(kevent)(kq, changelist, nchanges, eventlist, nevents, timeout);
+            let result = stackable_interpose::call_next!(stackable_self, kevent, kq, changelist, nchanges, eventlist, nevents, timeout);
 
             if result > 0 && !eventlist.is_null() {
                 log_message(&format!("kevent returned {} events, checking for doorbell", result));
@@ -5695,12 +5714,12 @@ mod interpose {
 
     /// Interposed kqueue function - setup doorbell channel to daemon
 
-    redhook::hook! {
-        unsafe fn kqueue() -> c_int => my_kqueue {
+    stackable_interpose::hook! {
+        unsafe fn kqueue(stackable_self) -> c_int => my_kqueue {
             log_message("interposing kqueue() - setting up doorbell channel");
 
             // Call the real kqueue system call first
-            let kq_fd = redhook::real!(kqueue)();
+            let kq_fd = stackable_interpose::call_next!(stackable_self, kqueue);
 
             if kq_fd == -1 {
                 log_message("kqueue() failed");
@@ -5721,7 +5740,7 @@ mod interpose {
                 udata: std::ptr::null_mut(),
             };
 
-            let result = redhook::real!(kevent)(kq_fd, &kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
+            let result = stackable_interpose::call_next!(stackable_self, kevent, kq_fd, &kev as *const _, 1, std::ptr::null_mut(), 0, std::ptr::null());
             if result == -1 {
                 log_message(&format!("failed to register doorbell on kqueue fd {}", kq_fd));
                 // Continue anyway - the kqueue is still valid
@@ -5855,13 +5874,13 @@ mod interpose {
 
     /// Interposed kevent64 function (64-bit variant)
 
-    redhook::hook! {
-        unsafe fn kevent64(kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, flags: c_uint, timeout: *const libc::timespec) -> c_int => my_kevent64 {
+    stackable_interpose::hook! {
+        unsafe fn kevent64(stackable_self, kq: c_int, changelist: *const KeventStruct, nchanges: c_int, eventlist: *mut KeventStruct, nevents: c_int, flags: c_uint, timeout: *const libc::timespec) -> c_int => my_kevent64 {
             log_message(&format!("interposing kevent64(kq={}, nchanges={}, nevents={}, flags={:#x})",
                 kq, nchanges, nevents, flags));
 
             // Call the real kevent64 system call
-            let result = redhook::real!(kevent64)(kq, changelist, nchanges, eventlist, nevents, flags, timeout);
+            let result = stackable_interpose::call_next!(stackable_self, kevent64, kq, changelist, nchanges, eventlist, nevents, flags, timeout);
 
             if result > 0 && !eventlist.is_null() {
                 log_message(&format!("kevent64 returned {} events, filtering EVFILT_VNODE events", result));

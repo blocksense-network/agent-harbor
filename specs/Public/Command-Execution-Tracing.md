@@ -54,6 +54,12 @@ This document captures the design motivations and key implementation decisions t
 - The shim maintains an in-process FD table (stdout/stderr `dup` propagation) so the recorder can attribute every `write`, `writev`, or `sendmsg` payload to the correct logical command stream (`StreamType::Stdout`/`StreamType::Stderr`).
 - To avoid recursive loops when the client itself writes to traced FDs, we guard all send paths with a thread-local `IN_TRACE` flag.
 
+### 5. macOS Interpose Reliability
+
+- macOS builds now emit explicit `__DATA,__interpose` records for every hook and mark them `#[used]` so the linker cannot dead-strip them when `-dead_strip` is in effect. Without this change, hooks compiled successfully but never ran on macOS because the interpose section was empty.
+- To keep the hook definitions portable, we vendored `redhook` into `crates/stackable-interpose` and updated every call site to use that crate. Its macOS implementation now emits deterministic interpose records with `#[used]`, while the Linux path keeps the familiar `LD_PRELOAD` trampoline behavior. This preserved the Linux workflow while guaranteeing macOS chunk capture parity.
+- The macOS build still avoids interposing variadic libc symbols (e.g., `fcntl`) until we can model their call signatures safely; those cases are tracked in the R9 status file as follow-up work.
+
 ## Verification Strategy
 
 - **Unit tests**: `ah-command-trace-client` exercises handshake and SSZ serialization. `ah-command-trace-proto` covers message encoding/decoding.
@@ -72,7 +78,7 @@ We run these scenarios via `cargo test -p ah-command-trace-e2e-tests <test_name>
 
 ## Future Work
 
-- **MacOS parity**: The macOS platform module needs the same self-reporting semantics. Today, the Linux POSIX module carries that responsibility.
+- **MacOS parity**: The self-reporting + chunk-capture stack now runs on macOS via `__interpose` hooks, so Linux/macOS have feature parity through M2. Remaining mac gaps (e.g., safe `fcntl` interception for variadic commands) are tracked in `specs/Public/R9.status.md`.
 - **Command deduplication**: The server currently treats every `CommandStart` as authoritative. Long term we should merge parent- and child-reported metadata (e.g., keep parent-supplied argv when the child fails before self-reporting).
 - **Backpressure-aware streaming**: The shim sends `CommandChunk` messages synchronously. Introducing bounded buffers or batching could reduce syscall overhead without sacrificing attribution fidelity.
 

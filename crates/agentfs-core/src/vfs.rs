@@ -1234,7 +1234,25 @@ impl FsCore {
         // If overlay is enabled and no upper entry, check lower filesystem
         if self.is_overlay_enabled() {
             if let Some(lower_fs) = &self.lower_fs {
-                return lower_fs.stat(path);
+                // For interpose mode, the path might be an absolute host path
+                // If so, check if it's within the lower filesystem
+                let stat_path = if path.is_absolute() {
+                    if let Some(lower_root) = &self.config.overlay.lower_root {
+                        if path.starts_with(lower_root) {
+                            // Path is already an absolute host path within lower filesystem
+                            path
+                        } else {
+                            // Path is outside lower filesystem, can't access
+                            return Err(FsError::NotFound);
+                        }
+                    } else {
+                        path
+                    }
+                } else {
+                    // Path is overlay-relative, let lower_fs handle it
+                    path
+                };
+                return lower_fs.stat(stat_path);
             }
         }
 

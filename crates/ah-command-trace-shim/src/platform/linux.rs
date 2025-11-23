@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Linux implementation using LD_PRELOAD with redhook
+//! Linux implementation using LD_PRELOAD with stackable-interpose
 
 use crate::core::{self, SHIM_STATE, ShimState};
 use crate::posix;
@@ -26,7 +26,7 @@ fn initialize_shim() {
 /// Check if the shim is enabled and ready
 pub fn is_shim_enabled() -> bool {
     matches!(
-        SHIM_STATE.get().and_then(|s| s.lock().ok()),
+        crate::core::get_or_initialize_shim_state().and_then(|s| s.lock().ok()),
         Some(ref state) if matches!(**state, ShimState::Ready { .. })
     )
 }
@@ -37,7 +37,7 @@ pub fn send_keepalive() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Interposition functions for process creation using redhook
+// Interposition functions for process creation using stackable-interpose
 //
 // Notes on edge case handling:
 // - Short-lived commands: All fork/exec sequences are captured, even if the process exits quickly
@@ -46,18 +46,18 @@ pub fn send_keepalive() -> Result<(), Box<dyn std::error::Error>> {
 // - setuid binaries: Shim injection is skipped when AT_SECURE is set (secure execution mode)
 // - Failed exec: CommandStart is sent before exec, so failed execs are still recorded with the intended executable
 
-// Common hooks (fork, execve, execvp, posix_spawn, posix_spawnp) are now defined in posix.rs for redhook compatibility
+// Common hooks (fork, execve, execvp, posix_spawn, posix_spawnp) are now defined in posix.rs for cross-platform compatibility
 
 // Linux-specific hooks for vfork and clone
-redhook::hook! {
-    unsafe fn vfork() -> libc::pid_t => my_vfork {
-        redhook::real!(vfork)()
+stackable_interpose::hook! {
+    unsafe fn vfork(stackable_self) -> libc::pid_t => my_vfork {
+        stackable_interpose::call_next!(stackable_self, vfork)
     }
 }
 
-redhook::hook! {
-    unsafe fn clone(fn_: extern "C" fn(*mut libc::c_void) -> libc::c_int, child_stack: *mut libc::c_void, flags: libc::c_int, arg: *mut libc::c_void, ptid: *mut libc::pid_t, tls: *mut libc::c_void, ctid: *mut libc::pid_t) -> libc::c_int => my_clone {
-        redhook::real!(clone)(fn_, child_stack, flags, arg, ptid, tls, ctid)
+stackable_interpose::hook! {
+    unsafe fn clone(stackable_self, fn_: extern "C" fn(*mut libc::c_void) -> libc::c_int, child_stack: *mut libc::c_void, flags: libc::c_int, arg: *mut libc::c_void, ptid: *mut libc::pid_t, tls: *mut libc::c_void, ctid: *mut libc::pid_t) -> libc::c_int => my_clone {
+        stackable_interpose::call_next!(stackable_self, clone, fn_, child_stack, flags, arg, ptid, tls, ctid)
     }
 }
 
@@ -68,7 +68,7 @@ redhook::hook! {
 // on this system and are causing the shim to fail to load. The clone and vfork
 // fixes should still help with some Python subprocess cases.
 
-// redhook::hook! {
+// stackable_interpose::hook! {
 //     unsafe fn __execve(path: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my___execve {
 //         eprintln!("[ah-command-trace-shim] __execve hook called!");
 //         // Implementation...

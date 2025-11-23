@@ -416,7 +416,7 @@ Acceptance checklist (M-Core.Advanced-Features)
 - **Configuration extensions** added to `FsConfig` with backward compatibility
 - **Cross-crate compatibility** fixes applied to all crates using `FsConfig`
 - **M24.a shim bootstrap** implemented in `crates/agentfs-interpose-shim` with DYLD handshake and allow-list guard tests
-- **M24.b open forwarding** implemented with redhook-based interposition hooks for `open`, `openat`, `creat`, `fopen`, `freopen` and their `_INODE64` variants, SSZ-based control plane communication, and SCM_RIGHTS file descriptor passing
+- **M24.b open forwarding** implemented with `stackable_interpose`-based interposition hooks for `open`, `openat`, `creat`, `fopen`, `freopen` and their `_INODE64` variants, SSZ-based control plane communication, and SCM_RIGHTS file descriptor passing
 - **FsCore handle management refactoring** - FsCore now manages all handles directly using `HandleType` enum for both files and directories, eliminating shim's internal handle mappings
 - **Real AgentFS daemon integration** implemented with production AgentFS core instead of mock filesystem, providing proper process registration and filesystem operations
 - **M24.f eager upperization policy** implemented with fd_open method, reflink/copy fallbacks, and CLI configuration commands
@@ -1058,7 +1058,7 @@ Notes:
 
 - **Open Forwarding (M24.b):**
   - Created dedicated `agentfs-interpose-e2e-tests` crate for isolated end-to-end tests
-  - **Critical breakthrough: Replaced dlsym workarounds with proper redhook hooking** - Added `redhook = "2.0"` dependency and converted all `#[no_mangle]` extern functions to `redhook::hook!` macros with `redhook::real!()` for calling original functions
+- **Critical breakthrough: Replaced dlsym workarounds with proper hook macros** - Added the in-tree `stackable-interpose` dependency and converted all `#[no_mangle]` extern functions to `stackable_interpose::hook!` macros with `stackable_interpose::call_next!()` for chaining to the original functions
   - Implemented SSZ-based control plane communication with UNIX-domain sockets
   - Added SCM_RIGHTS file descriptor passing infrastructure with `libc::`sendmsg`/`recvmsg`
   - Integrated mock AgentFS daemon with real `FsCore` instead of mock filesystem
@@ -1068,8 +1068,8 @@ Notes:
 
 **Key Source Files:**
 
-- `crates/agentfs-interpose-shim/src/lib.rs` - Main interposer implementation with redhook hooks and FsCore handle delegation
-- `crates/agentfs-interpose-shim/Cargo.toml` - cdylib configuration and dependencies including redhook for proper hooking
+- `crates/agentfs-interpose-shim/src/lib.rs` - Main interposer implementation with stackable-interpose macros and FsCore handle delegation
+- `crates/agentfs-interpose-shim/Cargo.toml` - cdylib configuration and dependencies including stackable-interpose for proper interposition
 - `crates/agentfs-interpose-e2e-tests/src/lib.rs` - E2E test harness and integration tests
 - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs` - Test program with direct libc calls
 - `crates/agentfs-daemon/src/bin/agentfs-daemon.rs` - Production daemon executable
@@ -1102,7 +1102,7 @@ Notes:
 **Implementation Details:**
 
 - Added directory-related message types to `agentfs-proto`: `DirOpenRequest/Response`, `DirReadRequest/Response`, `DirCloseRequest/Response`, `ReadlinkRequest/Response`, and `DirEntry` struct
-- **Redhook integration for directory functions** - Implemented `redhook::hook!` macros for `opendir`, `fdopendir`, `readdir`, `closedir`, `readlink`, and `readlinkat`
+- **Redhook integration for directory functions** - Implemented `stackable_interpose::hook!` macros for `opendir`, `fdopendir`, `readdir`, `closedir`, `readlink`, and `readlinkat`
 - **FsCore directory handle management** - FsCore now directly manages directory handles using `HandleType::Directory` with position tracking and cached entries, eliminating shim's internal `DIRECTORY_HANDLES` mapping
 - Created comprehensive end-to-end tests for directory operations and readlink functionality
 - Functions demonstrate interception capability and delegate to FsCore for directory enumeration and symlink resolution
@@ -1136,7 +1136,7 @@ Notes:
 
 - Added comprehensive metadata operation message types to `agentfs-proto`: `StatRequest/Response`, `LstatRequest/Response`, `FstatRequest/Response`, `FstatatRequest/Response`, `ChmodRequest/Response`, `FchmodRequest/Response`, `FchmodatRequest/Response`, `ChownRequest/Response`, `LchownRequest/Response`, `FchownRequest/Response`, `FchownatRequest/Response`, `UtimesRequest/Response`, `FutimesRequest/Response`, `UtimensatRequest/Response`, `FutimensRequest/Response`, `TruncateRequest/Response`, `FtruncateRequest/Response`, `StatfsRequest/Response`, and `FstatfsRequest/Response`
 - **FsCore metadata operations implementation** - Added complete backend logic for all metadata operations with proper copy-up semantics, permission checking, and timestamp updates
-- **Redhook integration for metadata functions** - Implemented `redhook::hook!` macros for all 18 metadata operation functions with proper fallback to original implementations
+- **Redhook integration for metadata functions** - Implemented `stackable_interpose::hook!` macros for all 18 metadata operation functions with proper fallback to original implementations
 - **Generic request utility function** - Extracted common send_request/receive_response logic into a reusable generic utility function to reduce code duplication
 - Created comprehensive unit tests in FsCore covering stat, chmod, chown, truncate, and statfs operations
 - Added comprehensive end-to-end integration tests verifying metadata operations work through the full interposition layer
@@ -1148,7 +1148,7 @@ Notes:
 - `crates/agentfs-proto/src/validation.rs` - Validation logic for all new message types
 - `crates/agentfs-core/src/vfs.rs` - FsCore backend implementation for all metadata operations
 - `crates/agentfs-core/src/types.rs` - StatData, TimespecData, StatfsData structures and mode conversion utilities
-- `crates/agentfs-interpose-shim/src/lib.rs` - Complete redhook interposition for all 18 metadata functions
+- `crates/agentfs-interpose-shim/src/lib.rs` - Complete stackable-interpose interposition for all 18 metadata functions
 - `crates/agentfs-interpose-e2e-tests/src/bin/test_helper.rs` - Comprehensive metadata operations test program
 - `crates/agentfs-interpose-e2e-tests/src/lib.rs` - End-to-end metadata operations integration tests
 - `crates/agentfs-fskit-host/src/xpc_control.rs` - XPC control plane compatibility (todo!() for metadata ops)
@@ -1173,7 +1173,7 @@ Notes:
 
 - Added complete SSZ message types for all 12 namespace mutation operations in `agentfs-proto`: `RenameRequest/Response`, `RenameatRequest/Response`, `RenameatxNpRequest/Response`, `LinkRequest/Response`, `LinkatRequest/Response`, `SymlinkRequest/Response`, `SymlinkatRequest/Response`, `UnlinkRequest/Response`, `UnlinkatRequest/Response`, `RemoveRequest/Response`, `MkdirRequest/Response`, and `MkdiratRequest/Response`
 - Implemented backend logic in `FsCore` for all namespace mutation operations with proper error handling and copy-up semantics
-- Added redhook-based interposition hooks in `agentfs-interpose-shim` for all 12 operations with fallback to original libc functions on error
+- Added stackable-interpose-based interposition hooks in `agentfs-interpose-shim` for all 12 operations with fallback to original libc functions on error
 - Created comprehensive end-to-end integration tests in `agentfs-interpose-e2e-tests` covering file creation, hard links, symlinks, directory operations, renaming, and cleanup
 - Updated protocol validation and XPC control handlers to support new operations
 
@@ -1265,7 +1265,8 @@ Notes:
   - **Bulk Attribute Operations**: Implemented macOS bulk attribute operations (`getattrlist`, `setattrlist`, `getattrlistbulk`) for efficient retrieval and setting of multiple file attributes.
   - **High-Level Copy Operations**: Implemented macOS copyfile/clonefile operations (`copyfile`, `fcopyfile`, `clonefile`, `fclonefileat`) with copy-on-write semantics and proper attribute preservation.
   - **FsCore Integration**: Added xattrs, ACLs, and flags fields to Node structure with proper serialization and copy-up handling.
-  - **Interposition Hooks**: Added comprehensive redhook-based interposition hooks for all operations in the macOS interpose shim.
+
+- **Interposition Hooks**: Added comprehensive stackable-interpose-based interposition hooks for all operations in the macOS interpose shim.
   - **Protocol Messages**: Extended SSZ message types in agentfs-proto to support all new operations with proper request/response structures.
 
   **Key Source Files:**
