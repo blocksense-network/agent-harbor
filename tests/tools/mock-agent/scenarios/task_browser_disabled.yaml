@@ -1,0 +1,23 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: task_browser_disabled
+tags: ['cli', 'task', 'browser']
+repo:
+  init: true
+timeline:
+  - userCommand:
+      args:
+        - task
+        - create
+        - browser-block
+        - --prompt
+        - "browser path disabled"
+        - --browser-automation
+        - "true"
+        - --non-interactive
+        - --push-to-remote
+        - "false"
+      expect:
+        exitCode: 1
+        stderrContains: "Browser automation is disabled"

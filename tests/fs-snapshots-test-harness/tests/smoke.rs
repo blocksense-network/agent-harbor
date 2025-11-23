@@ -120,6 +120,10 @@ fn git_snapshot_scenario_runs_successfully() -> anyhow::Result<()> {
     let driver = assert_driver_exists()?;
     let output = StdCommand::new(driver)
         .arg("git-snapshot")
+        .env("GIT_AUTHOR_NAME", "test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
         .output()
         .context("failed to run harness driver git-snapshot scenario")?;
 
@@ -163,6 +167,10 @@ fn git_provider_matrix_runs_successfully() -> anyhow::Result<()> {
         .arg("provider-matrix")
         .arg("--provider")
         .arg("git")
+        .env("GIT_AUTHOR_NAME", "test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
         .output()
         .context("failed to run harness driver provider-matrix git")?;
 
@@ -194,6 +202,11 @@ fn git_snapshot_scenario_matches_legacy_checks() -> anyhow::Result<()> {
         info!("Skipping Git snapshot scenario: git command not available");
         return Ok(());
     }
+
+    std::env::set_var("GIT_AUTHOR_NAME", "test");
+    std::env::set_var("GIT_AUTHOR_EMAIL", "test@example.com");
+    std::env::set_var("GIT_COMMITTER_NAME", "test");
+    std::env::set_var("GIT_COMMITTER_EMAIL", "test@example.com");
 
     scenarios::git_snapshot_scenario()
 }

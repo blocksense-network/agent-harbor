@@ -126,6 +126,24 @@ fn scenario_task_push_behaviors() -> Result<()> {
     run_task_scenario("task_push_behaviors")
 }
 
+#[test]
+#[serial]
+fn scenario_task_multi_agent_follow() -> Result<()> {
+    run_task_scenario("task_multi_agent_follow")
+}
+
+#[test]
+#[serial]
+fn scenario_task_delivery_pr_requires_push() -> Result<()> {
+    run_task_scenario("task_delivery_pr_requires_push")
+}
+
+#[test]
+#[serial]
+fn scenario_task_browser_disabled() -> Result<()> {
+    run_task_scenario("task_browser_disabled")
+}
+
 fn run_task_scenario(name: &str) -> Result<()> {
     let scenario_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -270,7 +288,8 @@ fn run_user_command(cmd: &UserCommand, ctx: &ScenarioContext) -> Result<()> {
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ASKPASS", "echo")
-        .env("SSH_ASKPASS", "echo");
+        .env("SSH_ASKPASS", "echo")
+        .env("AH_TASK_FORCE_MOCK_MANAGER", "1");
 
     for (k, v) in &cmd.env {
         command.env(k, v);
