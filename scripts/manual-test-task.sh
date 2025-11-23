@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-LOG_DIR="logs"
+ROOT_DIR=$(pwd)
+LOG_DIR="${ROOT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/manual-task-$(date -u +%Y%m%dT%H%M%SZ).log"
 
@@ -30,7 +31,13 @@ log_step() {
 
 # Step 1: interactive editor-based prompt
 log_step "Interactive prompt with editor template"
-export EDITOR="bash -c 'echo \"interactive prompt body\" > \"$1\"'"
+EDITOR_SCRIPT=$(mktemp)
+cat >"${EDITOR_SCRIPT}" <<'EOF'
+#!/usr/bin/env bash
+echo "interactive prompt body" >"$1"
+EOF
+chmod +x "${EDITOR_SCRIPT}"
+export EDITOR="${EDITOR_SCRIPT}"
 ah task create manual-interactive --push-to-remote false >>"${LOG_FILE}" 2>&1
 
 # Step 2: follow-up via prompt file on the task branch
