@@ -6,6 +6,8 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use ah_tui::tui_config::TuiConfig;
+
 use ah_core::{
     BranchesEnumerator, DefaultWorkspaceTermsEnumerator, MockWorkspaceTermsEnumerator,
     RepositoriesEnumerator, WorkspaceFilesEnumerator, WorkspaceTermsEnumerator,
@@ -133,7 +135,7 @@ pub fn build_view_model() -> ViewModel {
     let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
     let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
-    let mut vm = ViewModel::new(
+    let mut vm = ViewModel::new_with_background_loading_and_current_repo(
         workspace_files,
         workspace_workflows,
         workspace_terms,
@@ -142,6 +144,8 @@ pub fn build_view_model() -> ViewModel {
         branches_enumerator,
         agents_enumerator,
         settings,
+        TuiConfig::default(),
+        None,
         ui_tx,
     );
 
@@ -189,7 +193,7 @@ pub fn build_view_model_with_terms_and_settings(
         ));
     let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
-    let mut vm = ViewModel::new(
+    let mut vm = ViewModel::new_with_background_loading_and_current_repo(
         workspace_files,
         workspace_workflows,
         workspace_terms,
@@ -198,6 +202,8 @@ pub fn build_view_model_with_terms_and_settings(
         branches_enumerator,
         agents_enumerator,
         settings,
+        TuiConfig::default(),
+        None,
         ui_tx,
     );
 

@@ -27,6 +27,7 @@ ratatui = "0.29"
 # AH core dependencies
 ah-core = { path = "../ah-core" }
 ah-domain-types = { path = "../ah-domain-types", features = ["clap"] }
+schemars = "0.8"
 ah-logging = { path = "../ah-logging" }
 ah-repo = { path = "../ah-repo" }
 ah-local-db = { path = "../ah-local-db" }
@@ -117,5 +118,6 @@ agentfs = ["ah-fs-snapshots/agentfs"]
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tempfile = { workspace = true }
+tempdir = "0.3"
 tui-testing = { path = "../tui-testing" }
 assert_cmd = "2.0"

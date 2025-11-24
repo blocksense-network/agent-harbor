@@ -27,6 +27,7 @@ pub mod repositories_enumerator;
 pub mod rest_task_manager;
 pub mod session;
 pub mod task;
+pub mod task_config;
 pub mod task_manager;
 pub mod task_manager_init;
 pub mod workspace_files_enumerator;

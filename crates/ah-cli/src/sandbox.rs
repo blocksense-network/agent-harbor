@@ -84,7 +84,8 @@ pub struct SandboxRunArgs {
 
 impl SandboxRunArgs {
     /// Execute the sandbox run command
-    pub async fn run(self, fs_snapshots: FsSnapshotsType) -> Result<()> {
+    pub async fn run(self, fs_snapshots: Option<FsSnapshotsType>) -> Result<()> {
+        let fs_snapshots = fs_snapshots.unwrap_or(FsSnapshotsType::Auto);
         let SandboxRunArgs {
             sandbox_type,
             allow_network,
@@ -675,7 +676,7 @@ pub struct SandboxArgs<'a> {
 
 // New API with single config struct to reduce argument count
 #[cfg(target_os = "linux")]
-#[allow(unexpected_cfgs)] // seccomp feature may not be defined in all configurations  
+#[allow(unexpected_cfgs)] // seccomp feature may not be defined in all configurations
 pub fn create_sandbox(args: SandboxArgs) -> Result<sandbox_core::Sandbox> {
     let mut sandbox = sandbox_core::Sandbox::new();
 

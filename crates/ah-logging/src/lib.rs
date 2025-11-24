@@ -6,6 +6,8 @@
 //! This crate provides standardized logging initialization and utilities
 //! to ensure consistent logging behavior across all Agent Harbor components.
 
+pub mod logging_config;
+
 use std::io;
 use std::path::PathBuf;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};

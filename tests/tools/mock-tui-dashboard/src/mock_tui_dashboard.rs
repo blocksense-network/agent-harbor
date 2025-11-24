@@ -74,6 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agents_enumerator = local_catalog as Arc<dyn ah_core::AgentsEnumerator>;
 
     let deps = TuiDependencies {
+        tui_config: ah_tui::tui_config::TuiConfig::default(),
         workspace_files,
         workspace_workflows,
         workspace_terms,

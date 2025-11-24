@@ -2152,6 +2152,9 @@ pub struct ViewModel {
     // Settings configuration
     pub settings: Settings,
 
+    // TUI configuration
+    pub tui_config: crate::tui_config::TuiConfig,
+
     // UI state (moved from Model)
     pub modal_state: ModalState,
     pub search_mode: SearchMode,
@@ -2257,6 +2260,7 @@ impl ViewModel {
         branches_enumerator: Arc<dyn BranchesEnumerator>,
         agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
         settings: Settings,
+        tui_config: crate::tui_config::TuiConfig,
         ui_tx: UiSender<Msg>,
     ) -> Self {
         Self::new_internal(
@@ -2268,6 +2272,7 @@ impl ViewModel {
             branches_enumerator,
             agents_enumerator,
             settings,
+            tui_config,
             false,
             None,
             ui_tx,
@@ -2285,6 +2290,7 @@ impl ViewModel {
         branches_enumerator: Arc<dyn BranchesEnumerator>,
         agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
         settings: Settings,
+        tui_config: crate::tui_config::TuiConfig,
         current_repository: Option<String>,
         ui_tx: UiSender<Msg>,
     ) -> Self {
@@ -2297,6 +2303,7 @@ impl ViewModel {
             branches_enumerator,
             agents_enumerator,
             settings,
+            tui_config,
             true,
             current_repository,
             ui_tx,
@@ -2313,6 +2320,7 @@ impl ViewModel {
         branches_enumerator: Arc<dyn BranchesEnumerator>,
         agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
         settings: Settings,
+        tui_config: crate::tui_config::TuiConfig,
         with_background_loading: bool,
         current_repository: Option<String>,
         ui_tx: UiSender<Msg>,
@@ -2479,6 +2487,9 @@ impl ViewModel {
 
             // Settings configuration
             settings: settings.clone(),
+
+            // TUI configuration
+            tui_config: tui_config.clone(),
 
             // Initialize UI state with defaults (moved from Model)
             modal_state: ModalState::None,

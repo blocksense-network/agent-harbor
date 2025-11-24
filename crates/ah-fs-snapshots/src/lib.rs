@@ -10,6 +10,8 @@
 pub use ah_fs_snapshots_traits::*;
 use std::path::Path;
 
+pub mod fs_snapshots_config;
+
 #[cfg(feature = "agentfs")]
 mod agentfs;
 
