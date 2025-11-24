@@ -1,0 +1,274 @@
+[
+  {
+    "background_opacity": 1.0,
+    "id": 1,
+    "is_active": true,
+    "is_focused": true,
+    "last_focused": true,
+    "platform_window_id": 54525963,
+    "tabs": [
+      {
+        "active_window_history": [
+          1,
+          3,
+          4
+        ],
+        "enabled_layouts": [
+          "splits"
+        ],
+        "groups": [
+          {
+            "id": 1,
+            "windows": [
+              1
+            ]
+          },
+          {
+            "id": 3,
+            "windows": [
+              3
+            ]
+          },
+          {
+            "id": 4,
+            "windows": [
+              4
+            ]
+          }
+        ],
+        "id": 1,
+        "is_active": true,
+        "is_focused": true,
+        "layout": "splits",
+        "layout_opts": {
+          "default_axis_is_horizontal": true
+        },
+        "layout_state": {
+          "all_windows": {
+            "active_group_history": [
+              1,
+              3,
+              4
+            ],
+            "active_group_idx": 1,
+            "window_groups": [
+              {
+                "id": 1,
+                "window_ids": [
+                  1
+                ]
+              },
+              {
+                "id": 3,
+                "window_ids": [
+                  3
+                ]
+              },
+              {
+                "id": 4,
+                "window_ids": [
+                  4
+                ]
+              }
+            ]
+          },
+          "class": "Splits",
+          "opts": {
+            "default_axis_is_horizontal": true
+          },
+          "pairs": {
+            "one": 1,
+            "two": {
+              "one": 3,
+              "two": 4
+            }
+          }
+        },
+        "title": "~/c/r/m/b/agent-harbor",
+        "windows": [
+          {
+            "at_prompt": false,
+            "cmdline": [
+              "/run/current-system/sw/bin/fish"
+            ],
+            "columns": 213,
+            "created_at": 1764023648164907111,
+            "cwd": "/home/emilivanichkov/code/repos/metacraft-labs/blocksense/agent-harbor",
+            "env": {
+              "KITTY_WINDOW_ID": "1"
+            },
+            "foreground_processes": [
+              {
+                "cmdline": [
+                  "/run/current-system/sw/bin/fish"
+                ],
+                "cwd": "/home/emilivanichkov/code/repos/metacraft-labs/blocksense/agent-harbor",
+                "pid": 269277
+              }
+            ],
+            "id": 1,
+            "in_alternate_screen": false,
+            "is_active": false,
+            "is_focused": false,
+            "is_self": false,
+            "last_cmd_exit_status": 0,
+            "last_reported_cmdline": "",
+            "lines": 115,
+            "pid": 269277,
+            "title": "~/c/r/m/b/agent-harbor",
+            "user_vars": {}
+          },
+          {
+            "at_prompt": false,
+            "cmdline": [
+              "/run/current-system/sw/bin/fish"
+            ],
+            "columns": 106,
+            "created_at": 1764024702716451053,
+            "cwd": "/home/emilivanichkov/code/repos/metacraft-labs/blocksense/agent-harbor",
+            "env": {
+              "KITTY_WINDOW_ID": "3"
+            },
+            "foreground_processes": [
+              {
+                "cmdline": [
+                  "kitten",
+                  "@",
+                  "ls"
+                ],
+                "cwd": "/home/emilivanichkov/code/repos/metacraft-labs/blocksense/agent-harbor",
+                "pid": 283454
+              }
+            ],
+            "id": 3,
+            "in_alternate_screen": false,
+            "is_active": true,
+            "is_focused": true,
+            "is_self": true,
+            "last_cmd_exit_status": 0,
+            "last_reported_cmdline": "",
+            "lines": 115,
+            "pid": 283243,
+            "title": "~/c/r/m/b/agent-harbor",
+            "user_vars": {}
+          },
+          {
+            "at_prompt": false,
+            "cmdline": [
+              "/run/current-system/sw/bin/fish"
+            ],
+            "columns": 106,
+            "created_at": 1764024704613455463,
+            "cwd": "/home/emilivanichkov/code/repos/metacraft-labs/blocksense/agent-harbor",
+            "env": {
+              "KITTY_WINDOW_ID": "4"
+            },
+            "foreground_processes": [
+              {
+                "cmdline": [
+                  "/run/current-system/sw/bin/fish"
+                ],
+                "cwd": "/home/emilivanichkov/code/repos/metacraft-labs/blocksense/agent-harbor",
+                "pid": 283325
+              }
+            ],
+            "id": 4,
+            "in_alternate_screen": false,
+            "is_active": false,
+            "is_focused": false,
+            "is_self": false,
+            "last_cmd_exit_status": 0,
+            "last_reported_cmdline": "",
+            "lines": 115,
+            "pid": 283325,
+            "title": "~/c/r/m/b/agent-harbor",
+            "user_vars": {}
+          }
+        ]
+      },
+      {
+        "active_window_history": [
+          2
+        ],
+        "enabled_layouts": [
+          "splits"
+        ],
+        "groups": [
+          {
+            "id": 2,
+            "windows": [
+              2
+            ]
+          }
+        ],
+        "id": 2,
+        "is_active": false,
+        "is_focused": false,
+        "layout": "splits",
+        "layout_opts": {
+          "default_axis_is_horizontal": true
+        },
+        "layout_state": {
+          "all_windows": {
+            "active_group_history": [
+              2
+            ],
+            "active_group_idx": 0,
+            "window_groups": [
+              {
+                "id": 2,
+                "window_ids": [
+                  2
+                ]
+              }
+            ]
+          },
+          "class": "Splits",
+          "opts": {
+            "default_axis_is_horizontal": true
+          },
+          "pairs": {
+            "one": 2
+          }
+        },
+        "title": "~/c/r/m/b/agent-harbor",
+        "windows": [
+          {
+            "at_prompt": false,
+            "cmdline": [
+              "/run/current-system/sw/bin/fish"
+            ],
+            "columns": 426,
+            "created_at": 1764023653966184069,
+            "cwd": "/home/emilivanichkov/code/repos/metacraft-labs/blocksense/agent-harbor",
+            "env": {
+              "KITTY_WINDOW_ID": "2"
+            },
+            "foreground_processes": [
+              {
+                "cmdline": [
+                  "/run/current-system/sw/bin/fish"
+                ],
+                "cwd": "/home/emilivanichkov/code/repos/metacraft-labs/blocksense/agent-harbor",
+                "pid": 269403
+              }
+            ],
+            "id": 2,
+            "in_alternate_screen": false,
+            "is_active": true,
+            "is_focused": true,
+            "is_self": false,
+            "last_cmd_exit_status": 0,
+            "last_reported_cmdline": "",
+            "lines": 115,
+            "pid": 269403,
+            "title": "~/c/r/m/b/agent-harbor",
+            "user_vars": {}
+          }
+        ]
+      }
+    ],
+    "wm_class": "kitty",
+    "wm_name": "kitty"
+  }
+]
