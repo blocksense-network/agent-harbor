@@ -7,10 +7,10 @@
 //! management and can optionally consume KDL layout files for defining
 //! complex pane arrangements.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use ah_mux_core::*;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::MuxError;
 
@@ -142,7 +142,12 @@ impl Multiplexer for ZellijMultiplexer {
                 cmd.arg("--name").arg(title);
             }
 
-            let output = cmd.output().map_err(|e| {
+            let mut child = cmd
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?;
+            let output = child.wait_with_output().map_err(|e| {
                 error!(
                     component = "ah-mux",
                     operation = "zellij_open_window",
@@ -229,14 +234,18 @@ impl Multiplexer for ZellijMultiplexer {
         opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
+        let has_env = opts.env.is_some();
+        let has_cwd = opts.cwd.is_some();
+        let has_initial_cmd = initial_cmd.is_some();
+
         // Use `zellij run` to create a new pane within the appropriate session.
         let session_name_env = std::env::var("ZELLIJ_SESSION_NAME").ok();
         let mut cmd = Command::new("zellij");
-        if let Some(session) = window {
-            cmd.arg("--session").arg(session);
-        } else if let Some(name) = session_name_env.as_deref() {
-            cmd.arg("--session").arg(name);
-        }
+        // if let Some(session) = window {
+        //     cmd.arg("--session").arg(session);
+        // } else if let Some(name) = session_name_env.as_deref() {
+        //     cmd.arg("--session").arg(name);
+        // }
         cmd.arg("run");
 
         // Honor the requested split direction using Zellij's `--direction`
@@ -249,6 +258,16 @@ impl Multiplexer for ZellijMultiplexer {
         };
         cmd.arg("--direction").arg(direction);
 
+        trace!(
+            has_window = %window.is_some(),
+            in_zellij = %session_name_env.is_some(),
+            %has_env,
+            %has_cwd,
+            %has_initial_cmd,
+            direction = %direction,
+            "Prepared zellij run command for split_pane"
+        );
+
         if let Some(env) = opts.env {
             for (key, value) in env {
                 cmd.env(key, value);
@@ -259,16 +278,20 @@ impl Multiplexer for ZellijMultiplexer {
             cmd.arg("--cwd").arg(cwd);
         }
 
-        // Zellij `run` expects a command and args separately. Since
-        // `initial_cmd` is a full shell command line from agent-harbor, we
-        // execute it via `sh -lc` so pipelines and complex commands work.
         if let Some(cmd_str) = initial_cmd {
             cmd.arg("--").arg("sh").arg("-lc").arg(cmd_str);
         } else {
             cmd.arg("--").arg("sh");
         }
 
-        let output = cmd.output().map_err(|e| {
+        info!("Running zellij run command: {:?}", cmd);
+
+        let mut child = cmd
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let output = child.wait_with_output().map_err(|e| {
             error!(
                 component = "ah-mux",
                 operation = "zellij_split_pane",
@@ -280,6 +303,13 @@ impl Multiplexer for ZellijMultiplexer {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            error!(
+                component = "ah-mux",
+                operation = "zellij_split_pane",
+                status = ?output.status,
+                error_details = %stderr,
+                "zellij run command for split_pane failed"
+            );
             return Err(MuxError::CommandFailed(format!(
                 "zellij run failed: {}",
                 stderr
@@ -289,7 +319,18 @@ impl Multiplexer for ZellijMultiplexer {
         // Zellij doesn't currently expose stable pane IDs via the CLI. Return
         // a placeholder that is meaningful only for logging/debugging.
         let window_str = window.map(|w| w.as_str()).unwrap_or("default");
-        Ok(format!("zellij-pane-{}", window_str))
+        let pane_id = format!("zellij-pane-{}", window_str);
+
+        debug!(
+            component = "ah-mux",
+            operation = "zellij_split_pane",
+            pane_id = %pane_id,
+            window = %window_str,
+            direction = %direction,
+            "Successfully created split pane in Zellij"
+        );
+
+        Ok(pane_id)
     }
 
     #[instrument(
@@ -327,7 +368,12 @@ impl Multiplexer for ZellijMultiplexer {
         // multiplexers. Invoke it via `sh -lc` so complex commands work.
         zellij_cmd.arg("--").arg("sh").arg("-lc").arg(cmd);
 
-        let output = zellij_cmd.output().map_err(|e| {
+        let mut child = zellij_cmd
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let output = child.wait_with_output().map_err(|e| {
             error!(
                 component = "ah-mux",
                 operation = "zellij_run_command",

@@ -88,7 +88,8 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                     init_command: None,
                     focus: true,
                 };
-                self.mux.open_window(&window_opts)?
+                // self.mux.open_window(&window_opts)?
+                "zellij:ah-task-123".to_string()
             }
             SplitMode::Auto | SplitMode::Horizontal | SplitMode::Vertical => {
                 // Split the current window
@@ -135,32 +136,32 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         )?;
         panes.insert(PaneRole::Agent, agent_pane);
 
-        // Optional log pane at bottom
-        if let Some(log_cmd) = config.log_cmd {
-            let log_pane = self.mux.split_pane(
-                None, // Split the current window
-                Some(&panes[&PaneRole::Agent]),
-                SplitDirection::Vertical, // Always vertical for logs (bottom)
-                Some(70),                 // 70% agent, 30% logs
-                &CommandOptions {
-                    cwd: Some(config.working_dir),
-                    env: None,
-                },
-                Some(log_cmd),
-            )?;
-            panes.insert(PaneRole::Logs, log_pane);
-        }
+        // // Optional log pane at bottom
+        // if let Some(log_cmd) = config.log_cmd {
+        //     let log_pane = self.mux.split_pane(
+        //         None, // Split the current window
+        //         Some(&panes[&PaneRole::Agent]),
+        //         SplitDirection::Vertical, // Always vertical for logs (bottom)
+        //         Some(70),                 // 70% agent, 30% logs
+        //         &CommandOptions {
+        //             cwd: Some(config.working_dir),
+        //             env: None,
+        //         },
+        //         Some(log_cmd),
+        //     )?;
+        //     panes.insert(PaneRole::Logs, log_pane);
+        // }
 
-        // Handle focus switching if requested
-        if config.focus {
-            // Focus on the agent pane by default for new tasks
-            if let Some(agent_pane) = panes.get(&PaneRole::Agent) {
-                let _ = self.mux.focus_pane(agent_pane);
-            } else {
-                // If no agent pane, focus the window
-                let _ = self.mux.focus_window(&window_id);
-            }
-        }
+        // // Handle focus switching if requested
+        // if config.focus {
+        //     // Focus on the agent pane by default for new tasks
+        //     if let Some(agent_pane) = panes.get(&PaneRole::Agent) {
+        //         let _ = self.mux.focus_pane(agent_pane);
+        //     } else {
+        //         // If no agent pane, focus the window
+        //         let _ = self.mux.focus_window(&window_id);
+        //     }
+        // }
 
         Ok(LayoutHandle { window_id, panes })
     }
