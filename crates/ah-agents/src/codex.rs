@@ -263,9 +263,12 @@ impl AgentExecutor for CodexAgent {
             cmd.arg("--full-auto");
         }
 
-        if let Some(snapshot_cmd) = &config.snapshot_cmd {
-            cmd.arg("--rollout-hook");
-            cmd.arg(crate::snapshot::build_snapshot_command(snapshot_cmd));
+        // Rollout hooks are unsupported with the current bundled Codex CLI; skip to avoid
+        // passing unknown flags that terminate the process.
+        if config.snapshot_cmd.is_some() {
+            tracing::warn!(
+                "Codex CLI rollout-hook not supported in this build; skipping snapshot hook"
+            );
         }
 
         // Add model specification
