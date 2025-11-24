@@ -958,7 +958,13 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     Request::Stat((_version, stat_req)) => {
                         let path = String::from_utf8_lossy(&stat_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
-                        match daemon.lock().unwrap().core().lock().unwrap().stat(&pid, path.as_ref())
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .core()
+                            .lock()
+                            .unwrap()
+                            .stat(&pid, path.as_ref())
                         {
                             Ok(stat_data) => {
                                 let response = Response::stat(stat_data);
@@ -974,7 +980,13 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     Request::Lstat((_version, lstat_req)) => {
                         let path = String::from_utf8_lossy(&lstat_req.path).to_string();
                         let pid = get_client_pid_helper(&daemon, client_pid);
-                        match daemon.lock().unwrap().core().lock().unwrap().lstat(&pid, path.as_ref())
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .core()
+                            .lock()
+                            .unwrap()
+                            .lstat(&pid, path.as_ref())
                         {
                             Ok(stat_data) => {
                                 let response = Response::lstat(stat_data);

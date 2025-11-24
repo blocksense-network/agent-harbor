@@ -31,13 +31,7 @@ impl HostLowerFs {
 impl LowerFs for HostLowerFs {
     fn stat(&self, abs_path: &Path) -> FsResult<Attributes> {
         // Convert overlay path to host path
-        let host_path = if abs_path.is_absolute() {
-            // abs_path is already an absolute host path
-            abs_path.to_path_buf()
-        } else {
-            // abs_path is an overlay-relative path, join with root
-            self.root.join(abs_path.strip_prefix("/").unwrap_or(abs_path))
-        };
+        let host_path = self.root.join(abs_path.strip_prefix("/").unwrap_or(abs_path));
         let metadata = std::fs::metadata(&host_path)?;
 
         // Convert std::fs::Metadata to our Attributes
