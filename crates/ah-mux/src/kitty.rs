@@ -935,9 +935,25 @@ mod tests {
         let test_config = "# Test kitty configuration\nallow_remote_control yes\nenabled_layouts splits\nlisten_on unix:/tmp/kitty-ah.sock\n";
         let _guard = setup_test_home_with_config(test_config);
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        assert_eq!(kitty.id(), "kitty");
-        assert_eq!(kitty.socket_path, std::env::var("KITTY_LISTEN_ON").ok());
+        {
+            let kitty = KittyMultiplexer::new().unwrap();
+            assert_eq!(kitty.id(), "kitty");
+            assert_eq!(kitty.socket_path, std::env::var("KITTY_LISTEN_ON").ok());
+        }
+
+        {
+            std::env::set_var("KITTY_LISTEN_ON", "/tmp/test-kitty-ah.sock");
+            let kitty = KittyMultiplexer::new().unwrap();
+            assert_eq!(kitty.id(), "kitty");
+            assert_eq!(kitty.socket_path, std::env::var("KITTY_LISTEN_ON").ok());
+        }
+
+        {
+            let test_socket = "/tmp/test-kitty-ah.sock".to_string();
+            let kitty = KittyMultiplexer::with_socket_path(test_socket.clone());
+            assert_eq!(kitty.id(), "kitty");
+            assert_eq!(kitty.socket_path.unwrap(), test_socket);
+        }
     }
 
     #[test]
@@ -1069,12 +1085,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_kitty_with_custom_socket() {
-        let socket_path = "/tmp/test-kitty.sock".to_string();
-        let kitty = KittyMultiplexer::with_socket_path(socket_path.clone());
-        assert_eq!(kitty.socket_path, Some(socket_path));
-    }
+    // #[test]
+    // fn test_kitty_with_custom_socket() {
+    //     let socket_path = "/tmp/test-kitty.sock".to_string();
+    //     let kitty = KittyMultiplexer::with_socket_path(socket_path.clone());
+    //     assert_eq!(kitty.socket_path, Some(socket_path));
+    // }
 
     #[test]
     #[ignore = "TODO: Fix test and re-enable in CI"]
