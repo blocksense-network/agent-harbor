@@ -114,7 +114,8 @@ impl AgentExecutor {
         match working_copy_mode {
             WorkingCopyMode::Snapshots => {
                 agent_args.push("--working-copy".to_string());
-                agent_args.push("snapshots".to_string());
+                // Map snapshot mode to the closest CLI-supported option (worktree)
+                agent_args.push("worktree".to_string());
             }
             WorkingCopyMode::InPlace => {
                 agent_args.push("--working-copy".to_string());
