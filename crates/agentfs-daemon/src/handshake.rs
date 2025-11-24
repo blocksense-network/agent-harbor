@@ -19,6 +19,7 @@ pub struct HandshakeData {
     pub process: ProcessInfo,
     pub allowlist: AllowlistInfo,
     pub timestamp: Vec<u8>,
+    pub session_id: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]

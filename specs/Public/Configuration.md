@@ -54,6 +54,8 @@ To keep things mechanical and predictable:
 - CLI option keys preserve dashes in TOML (e.g., `default-mode`, `task-runner`). The name of the options should be chosen to read well both on the command-line and inside a configuration file.
 - There are options that are available only within configuration files (e.g. `[[fleet]]` as described below).
 - JSON and environment variables replace dashes with underscores. ENV vars keep the `AH_` prefix.
+- CLI options that participate in this precedence chain **must not rely on Clap `default_value`**. Declare them as `Option<T>` and apply defaults manually after configuration has been merged. Otherwise a Clap-supplied default is indistinguishable from an explicit CLI override and will incorrectly stomp on repo/user/system values. Example: `--log-level` is parsed as `Option<CliLogLevel>`; release builds fall back to `info`, while debug builds opt into `debug`, but that decision happens after `load_config` merges every layer.
+- When a flag accepts a filesystem path, store it as a string in the serialized JSON (e.g. `log-dir = "/tmp/logs"`). The CLI layer can still convert the string into a `PathBuf` when it needs to resolve the final log location, but the serialized overrides should remain UTF-8 strings so they round-trip cleanly through JSON/TOML and the precedence engine.
 
 Examples:
 

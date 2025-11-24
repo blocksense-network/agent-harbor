@@ -25,16 +25,15 @@ fn configure_agentfs_env(
     command: &mut StdCommand,
     driver_path: &std::path::Path,
 ) -> tempfile::TempDir {
-    use std::fs;
-    let socket_dir = tempfile::Builder::new()
-        .prefix("agentfs-driver-")
-        .tempdir()
-        .expect("failed to create temporary directory for AgentFS socket");
-    let socket_path = socket_dir.path().join("agentfs.sock");
-    let _ = fs::remove_file(&socket_path);
-    command.env("AGENTFS_INTERPOSE_SOCKET", &socket_path);
+    // Note: We don't pre-set AGENTFS_INTERPOSE_SOCKET here because the
+    // AgentFsProvider in the subprocess will set it to the correct value
+    // returned by the FS snapshots daemon.
     command.env("AGENTFS_INTERPOSE_EXE", driver_path);
-    socket_dir
+    // Return a temp dir for compatibility, but it's not used for socket setup anymore
+    tempfile::Builder::new()
+        .prefix("agentfs-test-")
+        .tempdir()
+        .expect("failed to create temporary directory")
 }
 
 #[cfg(target_os = "macos")]
@@ -173,11 +172,7 @@ fn git_provider_matrix_runs_successfully() -> anyhow::Result<()> {
         .output()
         .context("failed to run harness driver provider-matrix git")?;
 
-    assert!(
-        output.status.success(),
-        "driver exited with status {:?}",
-        output.status.code()
-    );
+    fs_snapshots_test_harness::assert_provider_matrix_success(&output);
 
     let stdout = String::from_utf8(output.stdout)?;
     assert!(
@@ -307,11 +302,7 @@ fn zfs_provider_matrix_runs_successfully() -> anyhow::Result<()> {
         .output()
         .context("failed to run harness driver provider-matrix zfs")?;
 
-    assert!(
-        output.status.success(),
-        "driver exited with status {:?}",
-        output.status.code()
-    );
+    fs_snapshots_test_harness::assert_provider_matrix_success(&output);
 
     let stdout = String::from_utf8(output.stdout)?;
     assert!(
@@ -395,11 +386,7 @@ fn btrfs_provider_matrix_runs_successfully() -> anyhow::Result<()> {
         .output()
         .context("failed to run harness driver provider-matrix btrfs")?;
 
-    assert!(
-        output.status.success(),
-        "driver exited with status {:?}",
-        output.status.code()
-    );
+    fs_snapshots_test_harness::assert_provider_matrix_success(&output);
 
     let stdout = String::from_utf8(output.stdout)?;
     assert!(
@@ -444,11 +431,7 @@ fn agentfs_provider_matrix_runs_successfully() -> anyhow::Result<()> {
         .output()
         .context("failed to run harness driver provider-matrix agentfs")?;
 
-    assert!(
-        output.status.success(),
-        "driver exited with status {:?}",
-        output.status.code()
-    );
+    fs_snapshots_test_harness::assert_provider_matrix_success(&output);
 
     let stdout = String::from_utf8(output.stdout)?;
     assert!(

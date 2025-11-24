@@ -653,6 +653,7 @@ impl TaskGetArgs {
 #[allow(clippy::disallowed_methods, clippy::items_after_test_module)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
 
@@ -1739,6 +1740,7 @@ exit {}
     }
 
     #[test]
+    #[serial]
     fn integration_test_sandbox_basic() -> Result<()> {
         let ah_home_dir = reset_ah_home()?; // Set up isolated AH_HOME for this test
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
@@ -1782,6 +1784,7 @@ exit {}
     }
 
     #[test]
+    #[serial]
     fn integration_test_sandbox_with_network() -> Result<()> {
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
 
@@ -1814,6 +1817,7 @@ exit {}
     }
 
     #[test]
+    #[serial]
     fn integration_test_sandbox_with_seccomp() -> Result<()> {
         let (_temp_home, repo_dir, remote_dir) = setup_git_repo_integration()?;
 

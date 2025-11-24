@@ -62,50 +62,94 @@ struct FuseState {
 
 impl AgentfsFuseManager {
     pub fn new() -> Self {
-        Self {
+        debug!(
+            operation = "fuse_manager_new",
+            "Creating new AgentfsFuseManager"
+        );
+        let manager = Self {
             state: Mutex::new(FuseState { mount: None }),
-        }
+        };
+        debug!(
+            operation = "fuse_manager_created",
+            "AgentfsFuseManager created successfully"
+        );
+        manager
     }
 
     pub async fn mount(
         &self,
         mut request: AgentfsFuseMountRequest,
     ) -> Result<AgentfsFuseStatusData, FuseError> {
+        debug!(operation = "fuse_mount_start", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Starting FUSE mount operation");
+
         if request.mount_timeout_ms == 0 {
+            debug!(operation = "fuse_mount_timeout_default", original_timeout = %request.mount_timeout_ms, default_timeout = %DEFAULT_MOUNT_TIMEOUT_MS, "Setting default mount timeout");
             request.mount_timeout_ms = DEFAULT_MOUNT_TIMEOUT_MS;
         }
 
+        debug!(
+            operation = "fuse_mount_acquire_lock",
+            "Acquiring state lock for mount operation"
+        );
         let mut guard = self.state.lock().await;
+        debug!(
+            operation = "fuse_mount_lock_acquired",
+            "State lock acquired"
+        );
+
         if let Some(existing) = guard.mount.as_ref() {
+            debug!(operation = "fuse_mount_check_existing", existing_mount_point = %existing.mount_point_string(), "Checking against existing mount");
             if existing.matches(&request) {
-                debug!("mount request matches existing AgentFS FUSE mount");
+                debug!(operation = "fuse_mount_reuse_existing", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Mount request matches existing AgentFS FUSE mount, reusing");
                 return Ok(existing.snapshot().await);
             }
 
             let existing_mp = existing.mount_point_string();
+            debug!(operation = "fuse_mount_conflict", existing_mount_point = %existing_mp, requested_mount_point = ?String::from_utf8_lossy(&request.mount_point), "Mount conflict detected");
             return Err(FuseError::AlreadyMounted(existing_mp));
         }
 
-        let runtime = Arc::new(FuseRuntimePaths::prepare(&request)?);
-        let fs_config = Arc::new(build_fs_config(&request)?);
-        runtime.persist_config(&fs_config)?;
+        debug!(operation = "fuse_mount_no_conflict", mount_point = ?String::from_utf8_lossy(&request.mount_point), "No existing mount conflict, proceeding with new mount");
 
+        debug!(operation = "fuse_mount_prepare_runtime", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Preparing FUSE runtime paths");
+        let runtime = Arc::new(FuseRuntimePaths::prepare(&request)?);
+        debug!(operation = "fuse_mount_runtime_prepared", mount_point = ?String::from_utf8_lossy(&request.mount_point), "FUSE runtime paths prepared");
+
+        debug!(operation = "fuse_mount_build_config", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Building filesystem configuration");
+        let fs_config = Arc::new(build_fs_config(&request)?);
+        debug!(operation = "fuse_mount_config_built", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Filesystem configuration built");
+
+        debug!(operation = "fuse_mount_persist_config", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Persisting configuration to runtime directory");
+        runtime.persist_config(&fs_config)?;
+        debug!(operation = "fuse_mount_config_persisted", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Configuration persisted successfully");
+
+        debug!(operation = "fuse_mount_start_process", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Starting managed FUSE mount process");
         let mount = Arc::new(
             ManagedFuseMount::start(request.clone(), runtime.clone(), fs_config.clone())
                 .await
                 .map_err(FuseError::runtime)?,
         );
+        debug!(operation = "fuse_mount_process_started", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Managed FUSE mount process started successfully");
+
         guard.mount = Some(mount.clone());
         drop(guard);
+        debug!(operation = "fuse_mount_state_updated", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Mount state updated in manager");
 
         let timeout = Duration::from_millis(request.mount_timeout_ms as u64);
+        debug!(operation = "fuse_mount_wait_ready", mount_point = ?String::from_utf8_lossy(&request.mount_point), timeout_ms = %request.mount_timeout_ms, "Waiting for mount to become ready");
+
         match mount.wait_until_ready(timeout).await {
-            Ok(status) => Ok(status),
+            Ok(status) => {
+                debug!(operation = "fuse_mount_ready", mount_point = ?String::from_utf8_lossy(&request.mount_point), "FUSE mount is ready and operational");
+                Ok(status)
+            }
             Err(err) => {
-                warn!(error = %err, "AgentFS FUSE mount failed during start-up; shutting down");
+                warn!(error = %err, operation = "fuse_mount_startup_failed", mount_point = ?String::from_utf8_lossy(&request.mount_point), "AgentFS FUSE mount failed during start-up; shutting down");
+                debug!(operation = "fuse_mount_cleanup_failed", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Cleaning up failed mount");
                 mount.shutdown().await.ok();
                 let mut guard = self.state.lock().await;
                 guard.mount = None;
+                debug!(operation = "fuse_mount_state_cleared", mount_point = ?String::from_utf8_lossy(&request.mount_point), "Failed mount cleared from manager state");
                 Err(err)
             }
         }

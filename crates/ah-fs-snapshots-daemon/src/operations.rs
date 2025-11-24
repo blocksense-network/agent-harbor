@@ -1,32 +1,109 @@
+#![allow(dead_code)]
+
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::fuse_manager::AgentfsFuseManager;
-use crate::types::{AgentfsFuseMountRequest, Response};
+use crate::interpose_manager::AgentfsInterposeManager;
+use crate::types::{
+    AgentfsFuseMountRequest, AgentfsInterposeMountHints, AgentfsInterposeMountRequest, Response,
+};
 use libc::geteuid;
 use std::process::{Output, Stdio};
+use std::sync::Arc;
 use tokio::process::Command;
 use tracing::{debug, error, warn};
 
 pub async fn handle_mount_agentfs_fuse(
     manager: &AgentfsFuseManager,
     request: AgentfsFuseMountRequest,
+    session_id: &str,
 ) -> Response {
+    debug!(operation = "handle_mount_agentfs_fuse", session_id = %session_id, mount_point = ?String::from_utf8_lossy(&request.mount_point), timeout_ms = %request.mount_timeout_ms, "Handling FUSE mount request");
+
     match manager.mount(request).await {
-        Ok(status) => Response::agentfs_fuse_status(status),
-        Err(err) => Response::error(err.to_string()),
+        Ok(status) => {
+            debug!(operation = "handle_mount_agentfs_fuse_success", session_id = %session_id, mount_point = ?String::from_utf8_lossy(&status.mount_point), state = ?status.state, "FUSE mount request completed successfully");
+            Response::agentfs_fuse_status(status)
+        }
+        Err(err) => {
+            debug!(operation = "handle_mount_agentfs_fuse_error", session_id = %session_id, error = %err, "FUSE mount request failed");
+            Response::error(err.to_string())
+        }
     }
 }
 
-pub async fn handle_unmount_agentfs_fuse(manager: &AgentfsFuseManager) -> Response {
+pub async fn handle_mount_agentfs_interpose(
+    state: &Arc<crate::server::DaemonState>,
+    request: AgentfsInterposeMountRequest,
+    hints: Option<AgentfsInterposeMountHints>,
+    session_id: &str,
+) -> Response {
+    let manager = state.interpose_manager();
+    debug!(operation = "handle_mount_agentfs_interpose", session_id = %session_id, repo_root_len = %request.repo_root.len(), timeout_ms = %request.mount_timeout_ms, has_hints = %hints.is_some(), "Handling interpose mount request");
+
+    match manager
+        .mount(
+            request,
+            hints,
+            state.log_level(),
+            state.log_to_file(),
+            state.log_dir(),
+            session_id,
+        )
+        .await
+    {
+        Ok(status) => {
+            debug!(operation = "handle_mount_agentfs_interpose_success", session_id = %session_id, socket_path = ?status.socket_path, runtime_dir = ?status.runtime_dir, state = ?status.state, "Interpose mount request completed successfully");
+            Response::agentfs_interpose_status(status)
+        }
+        Err(err) => {
+            debug!(operation = "handle_mount_agentfs_interpose_error", session_id = %session_id, error = %err, "Interpose mount request failed");
+            Response::error(err.to_string())
+        }
+    }
+}
+
+pub async fn handle_unmount_agentfs_interpose(manager: &AgentfsInterposeManager) -> Response {
     match manager.unmount().await {
         Ok(()) => Response::success(),
         Err(err) => Response::error(err.to_string()),
     }
 }
 
-pub async fn handle_status_agentfs_fuse(manager: &AgentfsFuseManager) -> Response {
+pub async fn handle_status_agentfs_interpose(manager: &AgentfsInterposeManager) -> Response {
     let status = manager.status().await;
+    Response::agentfs_interpose_status(status)
+}
+
+pub async fn handle_unmount_agentfs_fuse(manager: &AgentfsFuseManager) -> Response {
+    debug!(
+        operation = "handle_unmount_agentfs_fuse",
+        "Handling FUSE unmount request"
+    );
+
+    match manager.unmount().await {
+        Ok(()) => {
+            debug!(
+                operation = "handle_unmount_agentfs_fuse_success",
+                "FUSE unmount request completed successfully"
+            );
+            Response::success()
+        }
+        Err(err) => {
+            debug!(operation = "handle_unmount_agentfs_fuse_error", error = %err, "FUSE unmount request failed");
+            Response::error(err.to_string())
+        }
+    }
+}
+
+pub async fn handle_status_agentfs_fuse(manager: &AgentfsFuseManager) -> Response {
+    debug!(
+        operation = "handle_status_agentfs_fuse",
+        "Handling FUSE status request"
+    );
+    let status = manager.status().await;
+    debug!(operation = "handle_status_agentfs_fuse_response", mount_point = ?String::from_utf8_lossy(&status.mount_point), state = ?status.state, "FUSE status request completed");
     Response::agentfs_fuse_status(status)
 }
 

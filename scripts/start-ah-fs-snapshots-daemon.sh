@@ -9,6 +9,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DAEMON_BIN="$REPO_ROOT/target/release/ah-fs-snapshots-daemon"
 CLI_BIN="$REPO_ROOT/target/release/ah-fs-snapshots-daemonctl"
 HOST_BIN="${AGENTFS_FUSE_HOST_BIN:-$REPO_ROOT/target/release/agentfs-fuse-host}"
+LOG_DIR="$HOME/Library/Logs/agent-harbor"
 
 if [ -e "$SOCKET_PATH" ]; then
   # Check if socket is actually accepting connections by trying to connect
@@ -25,9 +26,10 @@ echo "Building ah-fs-snapshots-daemon (daemon + ctl) and agentfs-fuse-host (rele
 cargo build --release --package ah-fs-snapshots-daemon --bins
 cargo build --release --package agentfs-fuse-host --features fuse
 
-echo "Launching AH filesystem snapshots daemon with sudo..."
+echo "Launching AH filesystem snapshots daemon with sudo (debug logging to file)..."
 echo "Stop it with: just stop-ah-fs-snapshots-daemon"
-sudo -b AGENTFS_FUSE_HOST_BIN="$HOST_BIN" "$DAEMON_BIN"
+echo "Logs will be written to: $LOG_DIR/ah-fs-snapshots-daemon.log (macOS) or platform-standard location"
+sudo -b AGENTFS_FUSE_HOST_BIN="$HOST_BIN" "$DAEMON_BIN" --log-level debug --log-dir "$LOG_DIR"
 
 echo -n "Waiting for daemon socket $SOCKET_PATH ..."
 for _ in {1..30}; do

@@ -13,6 +13,7 @@ Approach: Build a reusable Rust core (`agentfs-core`) with a strict API and stro
 - crates/agentfs-fuse-host: libfuse high‑level host for Linux dev; The Linux control plane uses `.agentfs/control` ioctl.
 - crates/agentfs-winfsp-host: WinFsp host mapping `FSP_FILE_SYSTEM_INTERFACE` to core; DeviceIoControl control path.
 - xcode/AgentFSKitExtension: FSKit Unary File System extension bridging to core via C ABI; XPC control service.
+- crates/ah-fs-snapshots-daemon: Privileged supervisor that now orchestrates both the Linux FUSE host and the macOS interpose daemon via `mount_agentfs_fuse` / `mount_agentfs_interpose` RPCs consumed by the CLI and harnesses. The macOS RPC accepts optional socket/runtime hints so every workspace or test matrix shard can request an isolated interpose socket without bespoke shell glue, and the CLI exposes the same capability via `ah-fs-snapshots-daemonctl interpose mount --socket-path/--runtime-dir`.
 - tools/agentfs-smoke: Cross‑platform smoke test binary to mount, exercise basic ops, and validate control plane.
 - tests/: Core unit/component/integration suites + adapter acceptance suites.
 

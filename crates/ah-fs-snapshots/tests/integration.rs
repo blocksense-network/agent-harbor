@@ -30,6 +30,15 @@ fn configure_agentfs_env(
     let _ = fs::remove_file(&socket_path);
     command.env("AGENTFS_INTERPOSE_SOCKET", &socket_path);
     command.env("AGENTFS_INTERPOSE_EXE", driver_path);
+
+    // Ensure we use the agentfs-daemon from the same directory as the driver
+    if let Some(parent) = driver_path.parent() {
+        let daemon_path = parent.join("agentfs-daemon");
+        if daemon_path.exists() {
+            command.env("AGENTFS_INTERPOSE_DAEMON_BIN", daemon_path);
+        }
+    }
+
     socket_dir
 }
 
@@ -289,6 +298,7 @@ fn test_btrfs_provider_matrix() {
 }
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[serial_test::file_serial(agentfs)]
 #[test]
 fn test_agentfs_provider_matrix() {
     let shim_path = assert_interpose_shim_exists().expect("interpose shim not found");
@@ -307,8 +317,10 @@ fn test_agentfs_provider_matrix() {
 
     assert!(
         output.status.success(),
-        "provider-matrix agentfs scenario exited with status {:?}",
-        output.status.code()
+        "provider-matrix agentfs scenario exited with status {:?}\nSTDOUT:\n{}\nSTDERR:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout not valid utf-8");

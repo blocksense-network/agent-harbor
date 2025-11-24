@@ -35,13 +35,9 @@ pub struct Cli {
     #[serde(skip)]
     pub config: Option<String>,
 
-    /// Set the log level
-    #[arg(
-        long,
-        help = "Set the log level (default: info in release, debug in debug builds)"
-    )]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub log_level: Option<LogLevel>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub logging: ah_logging::CliLoggingArgs,
 
     /// Target repository (filesystem path in local runs; git URL may be used by some servers). If omitted, AH auto-detects a VCS root by walking parent directories and checking all supported VCS.
     #[arg(long)]
@@ -237,9 +233,7 @@ impl Cli {
             }
         }
     }
-}
 
-impl Cli {
     /// Skip fs_snapshots serialization if it equals the default "auto" value or None
     fn should_skip_fs_snapshots(fs_snapshots: &Option<FsSnapshotsType>) -> bool {
         match fs_snapshots {
@@ -258,5 +252,42 @@ impl Cli {
             None => true,                        // Skip if None
             _ => false,                          // Include if it has values
         }
+    }
+}
+
+#[cfg(test)]
+mod logging_override_tests {
+    use super::*;
+
+    #[test]
+    fn captures_logging_flags_into_overrides() {
+        let cli = Cli::parse_from([
+            "ah",
+            "--log-level",
+            "debug",
+            "--log-format",
+            "json",
+            "--log-dir",
+            "/tmp/logs",
+            "--log-file",
+            "ah-cli.log",
+            "config",
+            "show",
+        ]);
+        let json = serde_json::to_value(&cli).unwrap();
+        assert_eq!(json.get("log-level").unwrap(), "debug");
+        assert_eq!(json.get("log-format").unwrap(), "json");
+        assert_eq!(json.get("log-dir").unwrap(), "/tmp/logs");
+        assert_eq!(json.get("log-file").unwrap(), "ah-cli.log");
+    }
+
+    #[test]
+    fn skips_logging_keys_when_flags_absent() {
+        let cli = Cli::parse_from(["ah", "config", "show"]);
+        let json = serde_json::to_value(&cli).unwrap();
+        assert!(json.get("log-level").is_none());
+        assert!(json.get("log-format").is_none());
+        assert!(json.get("log-dir").is_none());
+        assert!(json.get("log-file").is_none());
     }
 }

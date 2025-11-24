@@ -37,6 +37,7 @@ version = "0.1.0"
 dependencies = [
  "agentfs-daemon",
  "agentfs-proto",
+ "ah-logging",
  "anyhow",
  "libc",
  "tracing",
@@ -353,6 +354,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "serial_test",
  "tempdir",
  "tempfile",
  "thiserror 1.0.69",
@@ -534,9 +536,11 @@ dependencies = [
  "dirs",
  "ethereum_ssz",
  "fs-snapshots-test-harness",
+ "fslock",
  "libc",
  "regex",
  "serde",
+ "serial_test",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -632,6 +636,7 @@ name = "ah-logging"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "dirs",
  "regex",
  "serde",
@@ -3742,6 +3747,16 @@ checksum = "e90520699e70a2008360ae6259fa3474a8c14fcf2e6b067c71b58eb6b1f53625"
 dependencies = [
  "core-foundation 0.10.1",
  "dispatch2",
+]
+
+[[package]]
+name = "fslock"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04412b8935272e3a9bae6f48c7bfff74c2911f60525404edfdd28e49884c3bfb"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]
@@ -7878,6 +7893,7 @@ version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b258109f244e1d6891bf1053a55d63a5cd4f8f4c30cf9a1280989f80e7a1fa9"
 dependencies = [
+ "fslock",
  "futures",
  "log",
  "once_cell",

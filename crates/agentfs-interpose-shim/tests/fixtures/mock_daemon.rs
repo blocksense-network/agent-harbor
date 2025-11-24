@@ -51,6 +51,7 @@ struct HandshakeData {
     process: ProcessInfo,
     allowlist: AllowlistInfo,
     timestamp: Vec<u8>,
+    session_id: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, SSZEncode, SSZDecode)]

@@ -519,6 +519,10 @@ where
         );
     }
     tracing::info!("{} provider matrix completed successfully", provider_name);
+    tracing::info!(
+        "SESSION_ID_LOGGING: Provider matrix completed for {}",
+        provider_name
+    );
     Ok(MatrixOutcome {
         creation_time,
         cleanup_time,

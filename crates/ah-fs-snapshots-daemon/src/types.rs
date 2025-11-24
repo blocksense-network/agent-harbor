@@ -20,6 +20,10 @@ pub enum Request {
     MountAgentfsFuse(AgentfsFuseMountRequest),
     UnmountAgentfsFuse(Vec<u8>),
     StatusAgentfsFuse(Vec<u8>),
+    MountAgentfsInterpose(AgentfsInterposeMountRequest),
+    UnmountAgentfsInterpose(Vec<u8>),
+    StatusAgentfsInterpose(Vec<u8>),
+    MountAgentfsInterposeWithHints((AgentfsInterposeMountRequest, AgentfsInterposeMountHints)),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
@@ -31,6 +35,7 @@ pub enum Response {
     SuccessWithList(Vec<u8>),       // JSON-encoded list
     Error(Vec<u8>),                 // message
     AgentfsFuseStatus(AgentfsFuseStatusData),
+    AgentfsInterposeStatus(AgentfsInterposeStatusData),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
@@ -81,6 +86,32 @@ pub struct AgentfsFuseStatusData {
     pub runtime_dir: Vec<u8>,
     pub last_error: Vec<u8>,
     pub backstore: AgentfsFuseBackstore,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct AgentfsInterposeMountRequest {
+    pub repo_root: Vec<u8>,
+    pub uid: u32,
+    pub gid: u32,
+    pub mount_timeout_ms: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode, Default)]
+pub struct AgentfsInterposeMountHints {
+    pub socket_path: Vec<u8>,
+    pub runtime_dir: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct AgentfsInterposeStatusData {
+    pub state: u8,
+    pub socket_path: Vec<u8>,
+    pub pid: u64,
+    pub restart_count: u32,
+    pub log_path: Vec<u8>,
+    pub runtime_dir: Vec<u8>,
+    pub last_error: Vec<u8>,
+    pub repo_root: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,6 +187,25 @@ impl Request {
     pub fn status_agentfs_fuse() -> Self {
         Self::StatusAgentfsFuse(vec![])
     }
+
+    pub fn mount_agentfs_interpose(request: AgentfsInterposeMountRequest) -> Self {
+        Self::MountAgentfsInterpose(request)
+    }
+
+    pub fn mount_agentfs_interpose_with_hints(
+        request: AgentfsInterposeMountRequest,
+        hints: AgentfsInterposeMountHints,
+    ) -> Self {
+        Self::MountAgentfsInterposeWithHints((request, hints))
+    }
+
+    pub fn unmount_agentfs_interpose() -> Self {
+        Self::UnmountAgentfsInterpose(vec![])
+    }
+
+    pub fn status_agentfs_interpose() -> Self {
+        Self::StatusAgentfsInterpose(vec![])
+    }
 }
 
 impl Response {
@@ -181,5 +231,9 @@ impl Response {
 
     pub fn agentfs_fuse_status(status: AgentfsFuseStatusData) -> Self {
         Self::AgentfsFuseStatus(status)
+    }
+
+    pub fn agentfs_interpose_status(status: AgentfsInterposeStatusData) -> Self {
+        Self::AgentfsInterposeStatus(status)
     }
 }

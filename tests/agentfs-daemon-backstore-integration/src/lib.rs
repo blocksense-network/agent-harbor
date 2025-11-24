@@ -162,6 +162,7 @@ impl BackstoreTestRunner {
                 configured_entries: None,
             },
             timestamp: b"1234567890".to_vec(),
+            session_id: b"test-integration-session".to_vec(),
         });
 
         let message_data = encode_ssz_message(&handshake);

@@ -185,10 +185,26 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
+    /// These tests aim to verify the correctness of our implementation
+    /// against the specification in `specs/Public/Configuration.md`.
     use super::*;
     use crate::ToJsonOverrides;
+    use ah_logging::CliLogLevel;
+    use serial_test::serial;
+
+    fn logging_args() -> ah_logging::CliLoggingArgs {
+        ah_logging::CliLoggingArgs::default()
+    }
+
+    fn logging_with_level(level: ah_logging::CliLogLevel) -> ah_logging::CliLoggingArgs {
+        ah_logging::CliLoggingArgs {
+            log_level: Some(level),
+            ..Default::default()
+        }
+    }
 
     #[test]
+    #[serial]
     fn test_config_deserialization() {
         let json = serde_json::json!({
             "ui": "tui",
@@ -226,10 +242,11 @@ mod tests {
         );
         assert_eq!(config.browser_automation.enabled, Some(true));
         assert_eq!(config.fs_snapshots.provider.as_deref(), Some("auto"));
-        assert_eq!(config.logging.level.as_deref(), Some("info"));
+        assert_eq!(config.logging.level, Some(CliLogLevel::Info));
     }
 
     #[test]
+    #[serial]
     fn test_config_subsystem_access() {
         let config = Config {
             startup: StartupConfig {
@@ -269,7 +286,8 @@ mod tests {
                 task_template: Some("/path/to/template".to_string()),
             },
             logging: LoggingConfig {
-                level: Some("debug".to_string()),
+                level: Some(CliLogLevel::Debug),
+                ..LoggingConfig::default()
             },
         };
 
@@ -291,10 +309,11 @@ mod tests {
             Some("https://service.example.com")
         );
         assert_eq!(config.task().notifications, Some(true));
-        assert_eq!(config.logging().level.as_deref(), Some("debug"));
+        assert_eq!(config.logging().level, Some(CliLogLevel::Debug));
     }
 
     #[test]
+    #[serial]
     fn test_config_toml_loading_and_precedence() {
         use std::fs;
         use tempfile::TempDir;
@@ -369,7 +388,7 @@ log-level = "debug"
         assert_eq!(config.tui.editor.as_deref(), Some("helix"));
 
         // Log level: repo-user "debug" should override user "info" and system "warn"
-        assert_eq!(config.logging.level.as_deref(), Some("debug"));
+        assert_eq!(config.logging.level, Some(CliLogLevel::Debug));
 
         // Repo config should be loaded (nested structure)
         assert!(config.repo.is_some());
@@ -381,6 +400,7 @@ log-level = "debug"
     }
 
     #[test]
+    #[serial]
     fn test_admin_enforcement() {
         use std::fs;
         use tempfile::TempDir;
@@ -442,7 +462,7 @@ terminal-multiplexer = "tmux"
             config.startup.remote_server.as_deref(),
             Some("admin-server")
         );
-        assert_eq!(config.logging.level.as_deref(), Some("warn"));
+        assert_eq!(config.logging.level, Some(CliLogLevel::Warn));
 
         // Non-enforced keys should be overridden by lower scopes
         assert_eq!(config.startup.ui.as_deref(), Some("tui")); // repo overrides user
@@ -456,6 +476,7 @@ terminal-multiplexer = "tmux"
     }
 
     #[test]
+    #[serial]
     fn test_provenance_tracking() {
         use std::fs;
         use tempfile::TempDir;
@@ -552,7 +573,7 @@ log-level = "debug"  # overrides system
         assert_eq!(config.startup.ui.as_deref(), Some("tui")); // env wins
         assert_eq!(config.tui.editor.as_deref(), Some("helix")); // repo-user wins
         assert_eq!(config.tui.terminal_multiplexer.as_deref(), Some("screen")); // env wins
-        assert_eq!(config.logging.level.as_deref(), Some("debug")); // repo-user wins
+        assert_eq!(config.logging.level, Some(CliLogLevel::Debug)); // repo-user wins
 
         // Clean up environment variables
         std::env::remove_var("AH_UI");
@@ -560,13 +581,14 @@ log-level = "debug"  # overrides system
     }
 
     #[test]
+    #[serial]
     fn test_cli_serialization_with_provided_options() {
         use crate::{Cli, Commands};
 
         // Test with all config-relevant options provided
         let cli = Cli {
             config: None,
-            log_level: Some(ah_domain_types::LogLevel::Debug),
+            logging: logging_with_level(ah_logging::CliLogLevel::Debug),
             repo: None,
             fs_snapshots: Some(crate::tui::FsSnapshotsType::Git),
             experimental_features: Some(vec![ah_domain_types::ExperimentalFeature::Gemini]),
@@ -589,13 +611,14 @@ log-level = "debug"  # overrides system
     }
 
     #[test]
+    #[serial]
     fn test_cli_serialization_with_no_options() {
         use crate::{Cli, Commands};
 
         // Test with no config-relevant options provided
         let cli = Cli {
             config: None,
-            log_level: None,
+            logging: logging_args(),
             repo: None,
             fs_snapshots: None,
             experimental_features: None,
@@ -614,13 +637,14 @@ log-level = "debug"  # overrides system
     }
 
     #[test]
+    #[serial]
     fn test_cli_serialization_with_partial_options() {
         use crate::{Cli, Commands};
 
         // Test with only some options provided
         let cli = Cli {
             config: Some("config.toml".to_string()), // This should be skipped
-            log_level: Some(ah_domain_types::LogLevel::Info),
+            logging: logging_with_level(ah_logging::CliLogLevel::Info),
             repo: Some("/path/to/repo".to_string()), // This should be skipped
             fs_snapshots: None,                      // Not provided
             experimental_features: Some(vec![]),     // Empty vec provided
@@ -642,6 +666,7 @@ log-level = "debug"  # overrides system
     }
 
     #[test]
+    #[serial]
     fn test_multi_layer_config_precedence_with_cli() {
         use std::fs;
         use tempfile::TempDir;
@@ -705,7 +730,7 @@ editor = "vim"
 
         // Verify precedence: system < user < repo < env < cli
         assert_eq!(config.startup.ui.as_deref(), Some("tui")); // CLI overrides env
-        assert_eq!(config.logging.level.as_deref(), Some("trace")); // CLI overrides env
+        assert_eq!(config.logging.level, Some(CliLogLevel::Trace)); // CLI overrides env
         assert_eq!(config.fs_snapshots.provider.as_deref(), Some("auto")); // CLI overrides env
         assert_eq!(config.tui.terminal_multiplexer.as_deref(), Some("tmux")); // User overrides system
         assert_eq!(config.tui.editor.as_deref(), Some("vim")); // Repo overrides user
@@ -717,6 +742,7 @@ editor = "vim"
     }
 
     #[test]
+    #[serial]
     fn test_environment_variable_overrides_with_cli() {
         use std::fs;
         use tempfile::TempDir;
@@ -755,7 +781,7 @@ fs-snapshots = "zfs"
         let config: Config = serde_json::from_value(resolved.json).unwrap();
 
         // CLI should override environment
-        assert_eq!(config.logging.level.as_deref(), Some("debug"));
+        assert_eq!(config.logging.level, Some(CliLogLevel::Debug));
         // Environment should override system
         assert_eq!(config.fs_snapshots.provider.as_deref(), Some("btrfs"));
         // CLI should add new values
@@ -767,6 +793,7 @@ fs-snapshots = "zfs"
     }
 
     #[test]
+    #[serial]
     fn test_cli_partial_override_behavior() {
         use std::fs;
         use tempfile::TempDir;
@@ -803,7 +830,7 @@ editor = "nano"
         let config: Config = serde_json::from_value(resolved.json).unwrap();
 
         // CLI override should take effect
-        assert_eq!(config.logging.level.as_deref(), Some("debug"));
+        assert_eq!(config.logging.level, Some(CliLogLevel::Debug));
         // Other settings should remain from user config
         assert_eq!(config.fs_snapshots.provider.as_deref(), Some("zfs"));
         assert_eq!(config.tui.terminal_multiplexer.as_deref(), Some("screen"));
@@ -811,6 +838,7 @@ editor = "nano"
     }
 
     #[test]
+    #[serial]
     fn test_cli_override_with_empty_values() {
         use std::fs;
         use tempfile::TempDir;
@@ -847,6 +875,7 @@ experimental-features = ["codex", "claude"]
     }
 
     #[test]
+    #[serial]
     fn test_full_integration_cli_to_config() {
         use crate::{Cli, Commands};
         use std::fs;
@@ -888,7 +917,7 @@ editor = "vim"
         // Create CLI with some overrides
         let cli = Cli {
             config: None,
-            log_level: Some(ah_domain_types::LogLevel::Debug), // Should override env
+            logging: logging_with_level(ah_logging::CliLogLevel::Debug), // Should override env
             repo: Some(repo_dir.to_string_lossy().to_string()),
             fs_snapshots: Some(crate::tui::FsSnapshotsType::Git), // Should add new setting
             experimental_features: None,
@@ -923,7 +952,7 @@ editor = "vim"
         // Verify final precedence:
         // system < user < repo < env < cli
         assert_eq!(config.startup.ui.as_deref(), Some("webui")); // User overrides system
-        assert_eq!(config.logging.level.as_deref(), Some("debug")); // CLI overrides env
+        assert_eq!(config.logging.level, Some(CliLogLevel::Debug)); // CLI overrides env
         assert_eq!(config.fs_snapshots.provider.as_deref(), Some("git")); // CLI adds new
         assert_eq!(config.tui.terminal_multiplexer.as_deref(), Some("tmux")); // User config
         assert_eq!(config.tui.editor.as_deref(), Some("vim")); // Repo config
@@ -938,6 +967,7 @@ editor = "vim"
     }
 
     #[test]
+    #[serial]
     fn test_subcommand_override_structure() {
         use crate::{Cli, Commands};
 
@@ -946,7 +976,7 @@ editor = "vim"
 
         let cli = Cli {
             config: None,
-            log_level: Some(ah_domain_types::LogLevel::Info),
+            logging: logging_with_level(ah_logging::CliLogLevel::Info),
             repo: None,
             fs_snapshots: None,
             experimental_features: None,
@@ -981,6 +1011,7 @@ editor = "vim"
     }
 
     #[test]
+    #[serial]
     fn test_tui_subcommand_overrides() {
         use crate::tui::{CliMultiplexerArg, TuiArgs};
         use crate::{Cli, Commands};
@@ -996,7 +1027,7 @@ editor = "vim"
 
         let cli = Cli {
             config: None,
-            log_level: Some(ah_domain_types::LogLevel::Debug),
+            logging: logging_with_level(ah_logging::CliLogLevel::Debug),
             repo: None,
             fs_snapshots: None,
             experimental_features: None,
@@ -1019,6 +1050,7 @@ editor = "vim"
     }
 
     #[test]
+    #[serial]
     fn test_health_subcommand_overrides() {
         use crate::health::HealthArgs;
         use crate::{Cli, Commands};
@@ -1033,7 +1065,7 @@ editor = "vim"
 
         let cli = Cli {
             config: None,
-            log_level: Some(ah_domain_types::LogLevel::Info),
+            logging: logging_with_level(ah_logging::CliLogLevel::Info),
             repo: None,
             fs_snapshots: None,
             experimental_features: None,
@@ -1054,6 +1086,7 @@ editor = "vim"
     }
 
     #[test]
+    #[serial]
     fn test_subcommand_with_no_config_options() {
         use crate::tui::TuiArgs;
         use crate::{Cli, Commands};
@@ -1069,7 +1102,7 @@ editor = "vim"
 
         let cli = Cli {
             config: None,
-            log_level: Some(ah_domain_types::LogLevel::Warn),
+            logging: logging_with_level(ah_logging::CliLogLevel::Warn),
             repo: None,
             fs_snapshots: None,
             experimental_features: None,

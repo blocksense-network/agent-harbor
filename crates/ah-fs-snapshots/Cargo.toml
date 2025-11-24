@@ -18,6 +18,7 @@ async-trait = "0.1"
 tempfile.workspace = true
 libc = "0.2"
 ssz = { package = "ethereum_ssz", version = "0.8" }
+fslock = "0.2"
 
 agentfs-daemon = { path = "../agentfs-daemon", optional = true }
 agentfs-interpose-e2e-tests = { path = "../agentfs-interpose-e2e-tests", optional = true }
@@ -35,6 +36,7 @@ regex = "1.10"
 libc = "0.2"
 ah-repo = { path = "../ah-repo" }
 ah-logging = { path = "../ah-logging", features = ["test-utils"] }
+serial_test = { version = "3", features = ["file_locks"] }
 fs-snapshots-test-harness = { path = "../../tests/fs-snapshots-test-harness", default-features = false, features = [
   "git",
   "zfs",

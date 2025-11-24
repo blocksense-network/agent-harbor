@@ -370,13 +370,20 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] T12.2 Crash/Restart Harness – `scripts/test-fs-daemon-mount.sh` kills the live `agentfs-fuse-host` PID via the new status RPC, waits for the daemon’s exponential-backoff restart, and fails with log excerpts when the PID never changes.
   - [x] T12.3 Status CLI – `scripts/check-ah-fs-snapshots-daemon.sh` shells out to `ah-fs-snapshots-daemonctl fuse status --json`, verifies the reported `state=running`/PID/log path, and fails fast (with hints) when the daemon isn’t healthy.
 
-**F13. AgentFS Daemon Orchestration for macOS Interpose Mounts** (3–4d)
+**F13. AgentFS Daemon Orchestration for macOS Interpose Mounts** - COMPLETE
 
 - **Deliverables**:
   - Reuse the same `ah-fs-snapshots-daemon` control plane to optionally launch `crates/agentfs-daemon` on macOS (driven by a new `mount_agentfs_interpose` RPC) so the CLI/harness can request process-isolated mounts without re-implementing shim plumbing.
-  - Bridge the daemon’s configuration to the Swift/FSKit host by generating socket paths compatible with `agentfs_interpose_e2e_tests`, copying the behavior currently hard-coded in `tests/fs-snapshots-test-harness/src/bin/driver.rs`.
-  - Provide per-platform policy: Linux requests `agentfs-fuse-host`, macOS requests `agentfs-daemon`; both share the same SSZ API surface so higher layers don’t need #cfg soup.
-  - Document the new macOS path in `specs/Public/AgentFS/FUSE.status.md` and `specs/Public/AgentFS/AgentFS.status.md`, explaining how interpose + daemon-managed mounts relate to the FUSE/Linux flow.
+  - Bridge the daemon’s configuration to the Swift/FSKit host by generating per-request socket paths/runtime directories compatible with `agentfs_interpose_e2e_tests`, copying the behavior currently hard-coded in `tests/fs-snapshots-test-harness/src/bin/driver.rs`.
+  - Provide per-platform policy: Linux requests `agentfs-fuse-host`, macOS requests `agentfs-daemon`; both share the same SSZ API surface so higher layers don’t need #cfg soup while enabling macOS callers to request unique sockets for every workspace/matrix shard.
+  - Document the new macOS path in `specs/Public/AgentFS/FUSE.status.md` and `specs/Public/AgentFS/AgentFS.status.md`, explaining how interpose + daemon-managed mounts relate to the FUSE/Linux flow and how the CLI drives the new hints.
+
+- **Implementation details**:
+  - Added an `AgentfsInterposeManager` supervisor plus new SSZ request/response types, allowing the daemon to spawn and monitor `agentfs-daemon` via the shared control plane with restart/backoff semantics and JSON status persistence under `/tmp/agentfs-interpose`.
+  - Introduced optional interpose hint payloads (socket path + runtime dir) so each daemon RPC can request its own control socket/log sandbox; callers transparently fall back to the legacy behavior when talking to older daemons.
+  - `ah-fs-snapshots-daemonctl` now exposes `interpose {mount,unmount,status}` with `--socket-path/--runtime-dir` flags; the status printer mirrors the FUSE JSON schema so `scripts/check-ah-fs-snapshots-daemon.sh` can auto-detect whether it is running on Linux (FUSE) or macOS (interpose) before gating CI.
+  - `AgentFsHarness::start` switched from spawning `agentfs-daemon` directly to calling the new RPC, consuming the returned socket path and wiring the shim env vars + reconnect hook so the FS snapshots harness no longer shells out to bespoke scripts. The provider also forwards `AGENTFS_INTERPOSE_SOCKET`/`AGENTFS_INTERPOSE_RUNTIME_DIR` env overrides as hints so every matrix shard gets an isolated socket.
+  - `specs/Public/AgentFS/FUSE.status.md`, `specs/Public/AgentFS/AgentFS.status.md`, and the AgentFS harness runbook now describe the unified workflow, and macOS interpose sockets are surfaced through `DaemonClient` APIs used by the provider and CLI.
 
 - **Success criteria (automated integration tests)**:
   - `just start-ah-fs-snapshots-daemon` on macOS spawns `agentfs-daemon`. Tests confirm clients can bind to the daemon over the exported Unix socket thought the interpose shim mechanism.
@@ -387,8 +394,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T13.2 Harness Regression**: Update `tests/fs-snapshots-test-harness/tests/smoke.rs` to run once with daemon-managed interpose and assert the same readiness logs appear as before.
 
 - **Verification Results**:
-  - [ ] T13.1 Interpose RPC Test – pending
-  - [ ] T13.2 Harness Regression – pending
+  - [x] T13.1 Interpose RPC Test – `cargo test -p ah-fs-snapshots-daemon interpose_manager::tests::mount_and_unmount_stub_daemon` now boots the daemon via the new RPC, waits for the reported socket, kills the stub `agentfs-daemon`, and confirms the supervisor tears it down cleanly.
+  - [x] T13.1b Interpose Hint Test – `cargo test -p ah-fs-snapshots-daemon interpose_manager::tests::mount_respects_socket_hint` proves the supervisor honours per-request socket/runtime overrides and persists the metadata for status consumers.
+  - [x] T13.2 Harness Regression – `cargo test -p ah-fs-snapshots --lib --features agentfs` exercises the updated `AgentFsHarness::start` path, proving the provider prepares workspaces using the daemon-managed interpose mount with the same readiness logs consumed by `tests/fs-snapshots-test-harness`.
 
 **F14. AgentFS FUSE Provider Validation in FS Snapshots Harness** (3–4d)
 

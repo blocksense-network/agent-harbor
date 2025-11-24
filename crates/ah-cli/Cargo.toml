@@ -121,3 +121,4 @@ tempfile = { workspace = true }
 tempdir = "0.3"
 tui-testing = { path = "../tui-testing" }
 assert_cmd = "2.0"
+serial_test = "3"

@@ -164,28 +164,296 @@ info!(api_key = %redact(api_key), "API key configured");
 
 - `AH_LOG`: Agent Harbor specific log configuration (deprecated, prefer `RUST_LOG`)
 
-### CLI Arguments
+## Command-Line Interface Policy
 
-Most binaries accept a `--log-level` argument to control verbosity. When using clap's `ValueEnum`, it automatically provides help and validation:
+All Agent Harbor binaries MUST follow a consistent logging CLI interface. This ensures users can reliably control logging behavior across the entire software suite.
 
-```bash
-# Run with debug logging
-ah --log-level debug tui
+### Required CLI Parameters
 
-# Run server with warning-only logging
-ah-rest-server --log-level warn
+Every Agent Harbor binary MUST support these logging parameters:
 
-# Get help for available log levels
-ah --help  # Shows: --log-level <LOG_LEVEL>    [possible values: error, warn, info, debug, trace]
+#### `--log-level <LEVEL>`
+
+Controls the verbosity of log output.
+
+**Required Values:**
+
+- `error` - Only error conditions
+- `warn` - Errors and warnings
+- `info` - Errors, warnings, and informational messages (default for release builds)
+- `debug` - All above plus debug information
+- `trace` - All above plus detailed tracing
+
+**Default Values by Binary Type:**
+
+- **CLI tools** (`ah`, `ah-cli`): `info`
+- **Servers/daemons** (`ah-rest-server`, `fs-snapshots-daemon`): `info`
+- **TUI applications** (`ah-tui`): `info`
+- **Agent binaries**: `info`
+- **Test/development binaries**: `debug`
+
+**Implementation:**
+
+```rust
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum CliLogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl From<CliLogLevel> for tracing::Level {
+    fn from(level: CliLogLevel) -> Self {
+        match level {
+            CliLogLevel::Error => Level::ERROR,
+            CliLogLevel::Warn => Level::WARN,
+            CliLogLevel::Info => Level::INFO,
+            CliLogLevel::Debug => Level::DEBUG,
+            CliLogLevel::Trace => Level::TRACE,
+        }
+    }
+}
 ```
 
-Available levels: `error`, `warn`, `info`, `debug`, `trace`
+### Automatic Output Destination Selection
+
+Log output destination is determined automatically based on binary type and provided options:
+
+#### **TUI Binaries (Interactive Applications)**
+
+- **Always log to file** - No console output to avoid cluttering the interface
+- Use `--log-file` and `--log-dir` to customize the log location
+- Default to platform-standard log location if no file options provided
+
+#### **Non-TUI Binaries (Servers, CLI Tools, Daemons)**
+
+- **Log to console by default** - Output goes to stderr in plaintext format
+- **Log to file when file options provided** - When `--log-file` or `--log-dir` (or both) are specified, output goes to file in JSON format
+
+**Platform-Specific Log Locations:**
+
+- **macOS**: `~/Library/Logs/agent-harbor/{binary-name}.log`
+- **Linux**: `~/.local/share/agent-harbor/{binary-name}.log`
+- **Windows**: `%APPDATA%\agent-harbor\{binary-name}.log`
+
+#### Optional CLI Parameters
+
+These parameters control log output format and file location:
+
+#### `--log-format <FORMAT>`
+
+Controls the output format for log messages.
+
+**Values:**
+
+- `plaintext` - Human-readable format (default)
+- `json` - Structured JSON format
+
+#### `--log-file <PATH>`
+
+Specifies a custom log file path.
+
+**Behavior:**
+
+- For TUI binaries: Customizes the log file location (always logs to file)
+- For other binaries: Enables file logging and specifies the filename
+- Supports absolute and relative paths
+- Directory components are resolved relative to `--log-dir` if specified
+
+#### `--log-dir <DIRECTORY>`
+
+Specifies the directory for log files.
+
+**Behavior:**
+
+- For TUI binaries: Customizes the log directory (always logs to file)
+- For other binaries: Enables file logging and specifies the directory
+- Used as the base directory when `--log-file` contains relative paths
+- Defaults to platform-specific log directory when file logging is enabled
+
+### CLI Usage Examples
+
+#### **TUI Applications (Always log to file)**
+
+```bash
+# Basic usage - logs to platform-standard location
+./ah-tui
+
+# Debug logging to default file location
+./ah-tui --log-level debug
+
+# Custom log file location
+./ah-tui --log-dir /var/log --log-file ah-tui.log
+```
+
+#### **CLI Tools (Log to console by default)**
+
+```bash
+# Basic usage - console output with info level
+./ah-cli command
+
+# Debug logging to console
+./ah-cli --log-level debug command
+
+# Enable file logging
+./ah-cli --log-file ah-cli.log command
+
+# File logging with custom directory
+./ah-cli --log-dir /tmp/logs --log-file debug.log command
+```
+
+#### **Servers/Daemons (Log to console by default)**
+
+```bash
+# Basic usage - console output
+./ah-rest-server
+
+# Enable file logging
+./ah-rest-server --log-file server.log
+
+# JSON logging for production
+./ah-rest-server --log-file server.log --log-format json
+```
+
+### Implementation Requirements
+
+All binaries MUST use the standardized logging initialization helpers from `ah_logging`:
+
+#### For Basic CLI Tools (Console logging by default)
+
+```rust
+use ah_logging::CliLoggingArgs;
+use clap::Parser;
+
+#[derive(Parser)]
+struct Args {
+    #[command(flatten)]
+    logging: CliLoggingArgs,
+
+    // ... other args
+}
+
+fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+    args.logging.init("my-binary", false)?;  // false = not a TUI binary
+    // ... application logic
+}
+```
+
+#### For TUI Applications (File logging by default)
+
+```rust
+use ah_logging::CliLoggingArgs;
+use clap::Parser;
+
+#[derive(Parser)]
+struct Args {
+    #[command(flatten)]
+    logging: CliLoggingArgs,
+
+    // ... other args
+}
+
+fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+    args.logging.init("my-tui", true)?;  // true = TUI binary, always logs to file
+    // ... application logic
+}
+```
+
+#### For Advanced Control
+
+```rust
+use ah_logging::{CliLoggingArgs, CliLogLevel, LogFormat};
+use clap::Parser;
+
+#[derive(Parser)]
+struct Args {
+    /// Log level
+    #[arg(long, default_value = "info")]
+    log_level: CliLogLevel,
+
+    /// Log to file instead of console
+    #[arg(long)]
+    log_to_file: bool,
+
+    /// Log format
+    #[arg(long, default_value = "plaintext")]
+    log_format: LogFormat,
+
+    // ... other args
+}
+
+fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
+    if args.log_to_file {
+        ah_logging::init_to_standard_file("my-binary", args.log_level.into(), args.log_format)?;
+    } else {
+        ah_logging::init("my-binary", args.log_level.into(), args.log_format)?;
+    }
+
+    // ... application logic
+}
+```
+
+### Help Text Standards
+
+CLI help text MUST follow these conventions:
+
+```bash
+$ binary --help
+Usage: binary [OPTIONS] [ARGS...]
+
+Options:
+      --log-level <LEVEL>     Log verbosity level [default: info] [possible values: error, warn, info, debug, trace]
+      --log-format <FORMAT>   Log output format [default: plaintext] [possible values: plaintext, json]
+      --log-dir <DIR>         Directory for log files
+      --log-file <FILE>       Log filename
+```
+
+### Environment Variable Integration
+
+CLI arguments MUST work alongside `RUST_LOG` environment variable:
+
+```bash
+# CLI takes precedence over RUST_LOG
+RUST_LOG=debug ./binary --log-level info  # Uses INFO level
+
+# RUST_LOG provides component-specific control
+./binary --log-level debug RUST_LOG=my_binary=trace,other_crate=off
+```
+
+### Testing Requirements
+
+All binaries MUST include tests for logging configuration:
+
+```rust
+#[test]
+fn test_log_level_parsing() {
+    let args = vec!["--log-level", "debug"];
+    let config = parse_args(args);
+    assert!(matches!(config.log_level, CliLogLevel::Debug));
+}
+
+#[test]
+fn test_file_logging() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let log_path = temp_dir.path().join("test.log");
+
+    // Test that file logging creates the expected file
+    init_to_file("test", Level::INFO, LogFormat::Plaintext, &log_path).unwrap();
+    assert!(log_path.exists());
+}
+```
 
 ### Configuration File
 
 ```toml
 log-level = "info"
-log-format = "json"  # "json" or "text"
+log-format = "json"  # "json" or "plaintext"
 log-file-sources = false  # Include file:line in development
 
 [log-level-by-component]

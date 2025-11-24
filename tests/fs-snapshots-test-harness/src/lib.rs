@@ -8,7 +8,7 @@
 
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use tracing::debug;
+use tracing::{debug, error};
 
 pub mod agentfs;
 pub mod scenarios;
@@ -100,4 +100,20 @@ pub fn assert_interpose_shim_exists() -> Result<PathBuf> {
 #[cfg(not(target_os = "macos"))]
 pub fn assert_interpose_shim_exists() -> Result<PathBuf> {
     anyhow::bail!("AgentFS interpose shim is only available on macOS");
+}
+
+/// Helper function to check provider-matrix success and print output when it fails.
+/// This helps with debugging by showing the session IDs and daemon output.
+/// Returns true if successful, panics with diagnostic info if failed.
+pub fn assert_provider_matrix_success(output: &std::process::Output) -> bool {
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        error!("Provider-matrix program output:");
+        error!("Exit status: {:?}", output.status.code());
+        error!("STDOUT:\n{}", stdout);
+        error!("STDERR:\n{}", stderr);
+        panic!("driver exited with status {:?}", output.status.code());
+    }
+    true
 }
