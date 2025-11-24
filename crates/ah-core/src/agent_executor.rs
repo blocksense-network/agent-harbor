@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 /// Working copy mode for agent execution
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum WorkingCopyMode {
     /// Use snapshots for efficient workspace management
     Snapshots,

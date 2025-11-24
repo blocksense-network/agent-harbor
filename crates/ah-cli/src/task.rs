@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::sandbox::{parse_bool_flag, prepare_workspace_with_fallback};
+use crate::tui::FsSnapshotsType;
 use ah_core::agent_executor::WorkingCopyMode;
 use ah_core::editor::edit_content_interactive_with_hint;
 use ah_core::task_manager::StartingPoint;
+use ah_core::task_manager_dto::{DaemonRequest, DaemonResponse, LaunchTaskRequest};
 use ah_core::task_manager_init::create_task_manager_no_recording;
 use ah_core::{
     AgentTasks, DatabaseManager, EditorError, PushHandler, PushOptions, TaskLaunchParams,
@@ -24,6 +26,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixStream;
+use tokio::time::Duration;
 #[cfg(test)]
 use tui_testing::TestedTerminalProgram;
 
@@ -211,6 +216,52 @@ impl TestExecutionContext {
         }
 
         Ok(())
+    }
+}
+
+async fn try_launch_via_daemon(params: &TaskLaunchParams) -> Option<Vec<String>> {
+    let socket_path = "/tmp/ah/task-manager-daemon.sock";
+
+    // Attempt to connect; if missing, try to spawn the daemon once.
+    if !std::path::Path::new(socket_path).exists() {
+        let _ = std::process::Command::new("ah-task-manager-daemon")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    let stream = UnixStream::connect(socket_path).await.ok()?;
+
+    // Serialize request with length prefix
+    let req = DaemonRequest::LaunchTask(Box::new(LaunchTaskRequest {
+        params: params.clone(),
+    }));
+    let bytes = serde_json::to_vec(&req).ok()?;
+    let len = (bytes.len() as u32).to_le_bytes();
+
+    let mut stream = stream;
+    stream.write_all(&len).await.ok()?;
+    stream.write_all(&bytes).await.ok()?;
+
+    // Read response
+    let mut len_buf = [0u8; 4];
+    stream.read_exact(&mut len_buf).await.ok()?;
+    let resp_len = u32::from_le_bytes(len_buf) as usize;
+    let mut resp_buf = vec![0u8; resp_len];
+    stream.read_exact(&mut resp_buf).await.ok()?;
+
+    let resp: DaemonResponse = serde_json::from_slice(&resp_buf).ok()?;
+    match resp {
+        DaemonResponse::LaunchTaskResult(res) => {
+            if res.error.is_none() && !res.session_ids.is_empty() {
+                Some(res.session_ids)
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
@@ -416,7 +467,7 @@ impl TaskCommands {
         self,
         global_config: Option<&str>,
         repo_override: Option<String>,
-        fs_snapshots: crate::tui::FsSnapshotsType,
+        fs_snapshots: FsSnapshotsType,
     ) -> Result<()> {
         match self {
             TaskCommands::Create(args) => {
@@ -668,37 +719,49 @@ impl TaskCreateArgs {
                 .build()
                 .map_err(|e| anyhow::anyhow!("Invalid launch parameters: {}", e))?;
 
-            // Launch task via task manager (local with mock fallback)
+            // Try daemon IPC first, then fall back to local task manager
             let force_mock = std::env::var("AH_TASK_FORCE_MOCK_MANAGER")
                 .map(|v| v.eq_ignore_ascii_case("true") || v == "1" || v.eq_ignore_ascii_case("yes"))
                 .unwrap_or(false);
-            let mut manager: Arc<dyn CoreTaskManager> = if force_mock {
-                Arc::new(MockRestClient::new())
-            } else {
-                create_task_manager_no_recording()
-                    .map_err(|e| anyhow::anyhow!(e))
-                    .unwrap_or_else(|err| {
-                        tracing::warn!(error = %err, "Falling back to mock task manager");
-                        Arc::new(MockRestClient::new()) as Arc<dyn CoreTaskManager>
-                    })
-            };
 
-            let mut launch_result = manager.launch_task(launch_params.clone()).await;
-            if matches!(launch_result, TaskLaunchResult::Failure { .. }) && !force_mock {
-                let fallback = Arc::new(MockRestClient::new()) as Arc<dyn CoreTaskManager>;
-                launch_result = fallback.launch_task(launch_params.clone()).await;
-                manager = fallback;
+            let mut session_ids: Vec<String> = Vec::new();
+            if !force_mock {
+                if let Some(sids) = try_launch_via_daemon(&launch_params).await {
+                    session_ids = sids;
+                }
             }
 
-            let session_ids = match launch_result {
-                TaskLaunchResult::Success { ref session_ids } if !session_ids.is_empty() => {
-                    session_ids.clone()
+            let mut manager: Arc<dyn CoreTaskManager> = Arc::new(MockRestClient::new());
+            if session_ids.is_empty() {
+                manager = if force_mock {
+                    Arc::new(MockRestClient::new())
+                } else {
+                    create_task_manager_no_recording()
+                        .map_err(|e| anyhow::anyhow!(e))
+                        .unwrap_or_else(|err| {
+                            tracing::warn!(error = %err, "Falling back to mock task manager");
+                            Arc::new(MockRestClient::new()) as Arc<dyn CoreTaskManager>
+                        })
+                };
+
+                let mut launch_result = manager.launch_task(launch_params.clone()).await;
+                if matches!(launch_result, TaskLaunchResult::Failure { .. }) && !force_mock {
+                    let fallback = Arc::new(MockRestClient::new()) as Arc<dyn CoreTaskManager>;
+                    launch_result = fallback.launch_task(launch_params.clone()).await;
+                    manager = fallback;
                 }
-                TaskLaunchResult::Success { .. } => vec![session_id.clone()],
-                TaskLaunchResult::Failure { ref error } => {
-                    anyhow::bail!("Failed to launch task via task manager: {}", error);
-                }
-            };
+
+                session_ids = match launch_result {
+                    TaskLaunchResult::Success { ref session_ids } if !session_ids.is_empty() => {
+                        session_ids.clone()
+                    }
+                    TaskLaunchResult::Success { .. } => vec![session_id.clone()],
+                    TaskLaunchResult::Failure { ref error } => {
+                        anyhow::bail!("Failed to launch task via task manager: {}", error);
+                    }
+                };
+            }
+
             let effective_session_id = session_ids.first().cloned().unwrap_or_else(|| session_id.clone());
 
             // Create session record

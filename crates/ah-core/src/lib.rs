@@ -72,9 +72,10 @@ pub use task_manager_init::{
     create_local_task_manager_with_multiplexer, create_session_viewer_task_manager,
     create_task_manager_no_recording, determine_multiplexer_choice,
 };
-
 /// Task manager daemon entry point (keeps LocalTaskManager alive).
 pub mod task_manager_daemon;
+/// Serializable DTOs for task manager IPC.
+pub mod task_manager_dto;
 
 /// Local task manager for direct execution on the local machine.
 /// Uses a dynamic multiplexer implementation.

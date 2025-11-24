@@ -75,7 +75,7 @@ pub enum SaveDraftResult {
 }
 
 /// Starting point for task execution - defines where to start the task from
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StartingPoint {
     /// Start from a repository branch (traditional approach)
     RepositoryBranch { repository: String, branch: String },
@@ -86,13 +86,15 @@ pub enum StartingPoint {
 }
 
 /// Parameters for launching a task
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TaskLaunchParams {
     starting_point: StartingPoint,
+    #[serde(with = "working_copy_mode_serde")]
     working_copy_mode: crate::WorkingCopyMode,
     description: String,
     models: Vec<AgentChoice>,
     agent_type: AgentSoftware,
+    #[serde(with = "split_mode_serde")]
     split_mode: SplitMode,
     focus: bool,
     record: bool,
@@ -119,6 +121,72 @@ pub struct TaskLaunchParams {
     notifications: Option<bool>,
     labels: Option<Vec<(String, String)>>,
     fleet: Option<String>,
+}
+
+mod working_copy_mode_serde {
+    use crate::WorkingCopyMode;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(mode: &WorkingCopyMode, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = match mode {
+            WorkingCopyMode::Snapshots => "snapshots",
+            WorkingCopyMode::InPlace => "in-place",
+        };
+        serializer.serialize_str(s)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<WorkingCopyMode, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "snapshots" => Ok(WorkingCopyMode::Snapshots),
+            "in-place" => Ok(WorkingCopyMode::InPlace),
+            other => Err(serde::de::Error::custom(format!(
+                "invalid working_copy_mode {}",
+                other
+            ))),
+        }
+    }
+}
+
+mod split_mode_serde {
+    use ah_mux_core::SplitMode;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(mode: &SplitMode, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = match mode {
+            SplitMode::Auto => "auto",
+            SplitMode::Horizontal => "horizontal",
+            SplitMode::Vertical => "vertical",
+            SplitMode::None => "none",
+        };
+        serializer.serialize_str(s)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<SplitMode, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "auto" => Ok(SplitMode::Auto),
+            "horizontal" => Ok(SplitMode::Horizontal),
+            "vertical" => Ok(SplitMode::Vertical),
+            "none" => Ok(SplitMode::None),
+            other => Err(serde::de::Error::custom(format!(
+                "invalid split_mode {}",
+                other
+            ))),
+        }
+    }
 }
 
 /// Builder for TaskLaunchParams
