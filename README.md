@@ -1,250 +1,139 @@
-## Overview
+# Agent Harbor
 
-This repository provides a highly-opinionated workflow for working
-with cloud and local coding agents, such as Claude Code, Codex, GitHub
-Copilot, Jules, Gemini, Goose, OpenHands and others.
+[![CI Status](https://img.shields.io/github/actions/workflow/status/blocksense/agent-harbor/ci.yml?branch=main&style=for-the-badge)](https://github.com/blocksense/agent-harbor/actions)
+[![License](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=for-the-badge)](https://opensource.org/license/agpl-v3)
+[![Latest Release](https://img.shields.io/github/v/release/blocksense/agent-harbor?style=for-the-badge)](https://github.com/blocksense/agent-harbor/releases)
+[![Docs](https://img.shields.io/badge/Docs-Docusaurus-blue?style=for-the-badge)](https://blocksense.network/agent-harbor)
 
-## Goals
+**Instantly spawn dozens of YOLO agents in the most advanced local sandbox for macOS and Linux. Steer them with precision with agent session forking.**
 
-The workflow adheres to the following principles, which are implemented
-both when working with local agents and when working with remote agents:
+---
 
-1. **The developer provides a coding task through a convenient command-line interface**
+## What is Agent Harbor?
 
-2. **The agent works in a secure sandbox environment, without asking for confirmation when using tools**
+Agent Harbor is a **sandboxed execution environment and orchestration layer for AI coding agents**.
 
-3. **The agent presents a complete patch/PR once it reaches a stage where all tests and linters are green**
+It lets you:
 
-4. **It's easy to start multiple tasks in parallel from the current state of your working tree**
+- **Launch many agents in parallel** — each in its own isolated workspace — so they can autonomously refactor, test, and ship changes while you stay focused on higher-level work. Agent Harbor can drive **Claude Code**, **Codex** and most other agent types and acts as a bridge that makes them **accessible remotely** from mobile and Web UIs.
 
-5. **All tasks are recorded as commits/files in the history of the project**
+- **Start tasks instantly** — tasks start in milliseconds by using **copy-on-write filesystem** snapshots (ZFS, Btrfs or own cross-platform **AgentFS**). Agents get fast **incremental builds** with much **lower disk usage** and **zero configuration hassles** caused by path differences in git worktrees.
 
-Pushing to git becomes the primary interface for starting cloud agents.
-All other interactions with the web UIs of the agents are automated.
+- **Enjoy secure YOLO mode that can keep going for hours** - We asked ourselves the question "What would be the properties of the ideal sandbox for parallel agents?". Then we set out to build it across all major operating systems in an uncompromising way using advanced system programming techniques and modern kernel APIs.
 
-Committing all task descriptions in git creates an auditable trail and
-a knowledge base demonstrating how tasks are approached and solved.
+  The Agent Harbor sandbox ensures that the **agents cannot harm your computer or access your sensitive files**, while making sure that all common developer activities are still possible in the worldview of the agent - installing dependencies, launching containers and VMs, working with low-level diagnostic tools and debuggers.
 
-This allows team members to learn from each other's practices and makes
-`git blame` an effective tool for understanding the intention behind all
-code. The workflow injects instructions that teach the agents how to
-leverage this.
+  Our sandbox is able to emulate the **strong isolation** of Linux namespaces on all major operating systems, ensuring that concurrent agents don't run into issues like **port conflicts** or **cross-session process killing**.
 
-Local agents are started is devcontainers with rich support for different
-interaction patterns:
+  We detect common agent halting patterns, such as launching processes that never return or wait for user input. We mitigate them by delivering precise feedback to the agent that avoids repeating the same mistake. This extends to **automatic analysis and diagnosis of stuck processes** that help the agent overcome conditions like deadlocks, infinite loops and connection failures in test suites.
 
-- Start one Editor/IDE instance per task to observe the work of the agent
-  and review the final
+  Given the right development plan, our **supervisor agent** can drive the completion of multiple milestones by **taking the place of the developer** in demanding quality, helping the agent overcome difficulties through **targeted web research** and providing simple "Please continue" prompts when they are necessary.
 
-- Push to a designated branch automatically or create a PR.
+- **Time-travel and fork sessions** — rewind any agent’s timeline, inspect the exact filesystem state, and branch off with new instructions when it goes off-course. These actions are non-destructive — a supervisor agent can examine all created alternatives to arrive at the best possible solution.
 
-## Other Practical Benefits
+- **Test cross-platform code effectively** — let agents run the project test suite on all targeted operating systems in parallel through our advanced leader/follower orchestration that redefines the role of the CI in the agentic world.
+- **Keep everything auditable** — every task, command, and transcript can be recorded for later review, debugging, and compliance. This enables everyone in your organization to learn from the tricks and practices of your best engineers.
 
-- Local agents can leverage ZFS and Btrfs snapshots to provide the best
-  possible agent-start up time. The agent takes advantage of incremental
-  compilation when building the project and its test suite.
+You can run Agent Harbor fully locally or connect it to an **on-prem execution cluster**. You can also use our unified UI to launch tasks with your favorite cloud agents (Codex, Claude, Cursor, etc.) via browser and API automations.
 
-- The same start-up time and incremental compilations are possible when
-  you dispatch the coding tasks to a cluster of self-managed machines in
-  an office environment or a private cloud.
+## Getting Started (Quick Start)
 
-- The workflow smooths out the differences between different agent tools
-  and cloud environments. Everything can be handled through shared config
-  and user interfaces.
+Here is the fastest way to get an agent working on your project.
 
-  The behavior of the cloud agents is modified through prompt engineering
-  and automation to implement new workflows such as automatically creating
-  PRs, automatically pushing to specific branches, etc.
+### 1\. Install Agent Harbor
 
-- The workflow provides a helpful framework for automatically downloading
-  relevant internet resources before coding tasks start for agents that
-  need to operate offline.
-
-- The workflow provides a framework for working in big monorepos that speeds
-  up agent start-up times (both locally and it the cloud) and helps with
-  managing the context of the agent in such repositories.
-
-## Using the Workflow
-
-1. **Starting a Task (Developer):**
-
-   When a developer needs to assign a task to the agent, they run
-   the `agent-task` command. If a branch name is provided it starts a
-   new branch, otherwise it appends a follow-up task on the current
-   branch.
-
-   ```bash
-   agent-task [branch-name]
-   ```
-
-   This script will:
-   - When a branch name is supplied, create the branch first and abort
-     early with the VCS error message if the name is invalid.
-   - Prompt the developer to enter the task description in an editor.
-   - Commit the task description to a file within a `.agents/tasks/`
-     directory on the new branch or append it as a follow-up task if
-     no branch was given.
-   - Push the branch to the default remote.
-
-   The command accepts a few options for non-interactive use:
-   - `--push-to-remote=BOOL` – automatically push to the default remote without prompting.
-   - `--prompt=STRING` – use `STRING` as the task description instead of launching an editor.
-   - `--prompt-file=FILE` – read the task description from `FILE`.
-   - `--devshell=NAME` (`-s`) – record the given Nix dev shell in the initial commit message.
-
-   The command also provides a `setup` subcommand that prints the versions of `codex` and `goose` available in the current `PATH`.
-
-2. **Retrieving a Task (Coding Agent):**
-
-   Once the developer has set up the task, they instruct the agent to
-   switch to the right branch and retrieve its instructions.
-   A typical prompt for an agent would be:
-
-   ```
-   Run the `get-task` command and follow the provided instructions.
-   ```
-
-   The `get-task` script will print the task description for the agent,
-   along with instructions for accessing the downloaded internet resources
-   and working with the git history.
-   It also supports a `--get-setup-env` option which prints only the
-   environment variable assignments gathered from `@agents-setup` lines.
-
-### Workflow Commands
-
-Task descriptions may include lines beginning with `/` (e.g. `/front-end-task`).
-
-When `get-task` is executed, these lines are replaced with the output of a
-matching programs or text files in the `.agents/workflows` folder of your
-repository.
-
-In other words, in the example above, `get-task` will look either for an
-executable stored in `.agents/workflows/front-end-task` or for a text file
-located at `.agents/workflows/front-end-task.txt` (the contents of this file
-will take the place of the workflow command in the task description, like a
-macro in a programming language).
-
-Executables are typically used when the workflow command has parameters.
-
-Lines starting with `@agents-setup` in either the task file or the workflow
-output are stripped from the final message and interpreted as environment
-variable assignments for the `*-setup` scripts described below.
-
-```shell
-@agent-setup DEV_SHELL=csharp TESTED_COMPONENTS+=backend,db
-```
-
-A directive may either assign a value (`VAR=value`) or append entries to a
-comma‑separated set using the `VAR+=val1,val2` syntax. When multiple directives
-affect the same variable, the following rules apply:
-
-1. Conflicting direct assignments (different values for the same variable)
-   result in an error.
-2. A direct assignment can be combined with one or more appends. The final value
-   contains the assigned value plus all appended entries, regardless of their
-   order.
-3. One or more append operations without a direct assignment simply combine
-   their entries.
-
-Duplicate directives or values are ignored.
-
-## Supported Agent Systems
-
-This workflow supports setup for multiple AI coding agent systems:
-
-- **[Codex](https://openai.com/codex)** - OpenAI's code generation model
-- **[Jules](https://jules.google.com/)** - AI pair programming assistant
-- **[Goose](https://github.com/square/goose)** - AI-powered development tool
-- **[Open Hands](https://github.com/All-Hands-AI/OpenHands)** - Open-source AI coding assistant
-- **[GitHub Copilot](https://github.com/features/copilot)** - GitHub's AI pair programmer
-
-## Setup Script Architecture
-
-Each agent system has a dedicated setup script (e.g., `codex-setup`, `jules-setup`) that follows a three-phase setup process:
-
-1. `.agents/common-pre-setup` runs first (if it exists in your project)
-2. `.agents/{agent}-setup` runs for agent-specific configuration (if it exists)
-3. `.agents/common-post-setup` runs last for finalization tasks (if it exists)
-
-This architecture allows you to share common setup logic across all agent systems while customizing setup for specific agents when needed.
-
-## Usage by Agent System
-
-### Codex
-
-In your Codex environment's Advanced settings, enter the following setup script:
-
-```
-git clone https://github.com/blocksense-network/agent-harbor
-agent-harbor/codex-setup
-```
-
-### Jules
-
-In the Jules web-interface, select a codebase in the left-hand-side panel, click
-"Configuration" and enter the following Initial Script:
-
-```
-git clone https://github.com/blocksense-network/agent-harbor
-agent-harbor/codex-setup
-```
-
-### Goose
-
-**TBD** - Usage instructions for Goose will be added once integration is tested.
-
-### Open Hands
-
-**TBD** - Usage instructions for Open Hands will be added once integration is tested.
-
-### GitHub Copilot
-
-**TBD** - Usage instructions for GitHub Copilot will be added once integration is tested.
-
-## Environment Variables
-
-- `NIX=1` - Set this to enable Nix installation during common-pre-setup
-
-### Installing as a Ruby gem
-
-The scripts can be installed as a gem for easier reuse:
+#### macOS
 
 ```bash
-gem install --local agent-harbor.gem
+# Via Homebrew
+brew install blocksense/tap/agent-harbor
 ```
 
-This will provide the `agent-task`, `get-task`, and `download-internet-resources` executables in your `PATH`.
-
-To enable bash completion for `agent-task`, source the script `scripts/agent-task-completion.bash` in your shell profile.
-
-### Installing with Nix
-
-This repository also provides a Nix flake. The default package installs the `agent-task` binary with `codex` and `goose` available in its `PATH`. An additional `agent-utils` package bundles the `get-task` and `start-work` binaries.
+#### Linux
 
 ```bash
-nix run github:blocksense-network/agent-harbor
+# Via cURL/bash (installs to /usr/local/bin)
+curl -sL https://install.agent-harbor.com | bash
 ```
 
-Or install the utilities package:
+#### Windows
+
+Coming Soon
+
+#### Building from Source (with Nix)
+
+If you have [Nix](https://nixos.org/) installed, you can build and run the latest version from source:
 
 ```bash
-nix profile install github:blocksense-network/agent-harbor#agent-utils
+# Build and run the TUI
+nix run github:blocksense/agent-harbor
+
+# Or, enter a dev shell to get all commands
+nix develop github:blocksense/agent-harbor
 ```
 
-### What's included?
+### 2\. Launch the TUI Dashboard
 
-The core components include:
+The main entry point for Agent Harbor is the Terminal User Interface (TUI). Just run `ah` in your repo:
 
-- `codex-setup`: A script to initialize the workspace, download necessary internet resources, and run project-specific setup.
-- `agent-task`: A script for developers to begin a new task, automatically creating a dedicated branch and storing the task description.
-- `agent-task setup`: Prints the versions of `codex` and `goose` available in `PATH`.
-- `get-task`: A script for the coding agent to retrieve its current task instructions.
-- `start-work`: A helper that configures a freshly checked-out repository for development.
-- `download-internet-resources`: A helper script that scans task descriptions for URLs and downloads them (or clones Git repositories) for offline access.
+```bash
+ah
+```
 
-## Future Direction
+This opens a dashboard where you can write a new task prompt, select your agent, and launch it.
 
-We envision that the manual step of prompting the agent to run `get-task` could be automated in the future through:
+### 3\. Run a Task (CLI)
 
-- An API integration with Codex.
-- (interim) A browser extension that drives the Codex WebUI.
+You can also launch tasks directly from the command line. Agent Harbor will automatically create a new, isolated branch for the task.
+
+```bash
+# Example: Have Claude create a new file
+ah task --agent claude --prompt "Create a new file 'hello.py' that prints 'Hello, Agent Harbor!'"
+```
+
+### 3\. Monitor and Intervene
+
+If an agent makes a mistake, don't restart. **Intervene.**
+
+1. Open the TUI: `ah tui`
+2. Navigate the timeline to the moment before the error.
+3. Provide a correcting instruction (e.g., _"Don't use that deprecated API, use X instead"_).
+4. A new parallel timeline is created, and the agent resumes from that exact filesystem state.
+
+---
+
+## Documentation
+
+- **[User Documentation](https://blocksense.network/agent-harbor)**: Comprehensive guides on every feature of Agent Harbor.
+- **[Project Specifications](./specs)**: Agent Harbor follows a rigorous **spec-driven development** process. You can read the engineering specifications for every component (AgentFS, Protocol designs, etc.) in the `specs/` directory.
+
+## Supported Agents and TUI environments
+
+Agent Harbor unifies the interface for the most popular coding agents. You can swap agents without changing your workflow. We use the automation protocols of many terminal emulators and multiplexers to provide variety of options for arranging the agents and supporting tools in the best possible way, depending on your screen real estate.
+
+<table>
+<tr><th> Supported Agents </th><th> Supported Terminal Environments </th></tr>
+<tr><td>
+
+- **Claude Code**: CLI
+- **OpenAI Codex**: CLI / Cloud
+- **GitHub Copilot**: CLI
+- **Google Gemini**: CLI
+- **Cursor** : CLI / IDE
+
+</td><td>
+
+- **Tmux**
+- **Zellij**
+- **iTerm2**
+- **Kitty**
+- **WezTerm**
+- **Tilix**
+
+</td></tr></table>
+
+## 🤝 Contributing & License
+
+We welcome contributions\! Please see our `CONTRIBUTING.md` guide for details on how to submit issues, features, and pull requests.
+
+This project is licensed under the **AGPL-3.0-only** license. You can find the full license text in the `LICENSE` file.
