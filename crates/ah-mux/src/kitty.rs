@@ -1058,7 +1058,6 @@ mod tests {
     // }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
     fn test_kitty_availability() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1066,9 +1065,24 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::default();
-        let _available = kitty.is_available();
-        // Note: We can't assert availability since kitty might not be installed or configured
+        {
+            // When kitty is configured correctly is should be available
+            let complete_config = "# Complete kitty configuration\nallow_remote_control yes\nlisten_on unix:/tmp/kitty-ah.sock\nenabled_layouts splits\n";
+            let _guard = setup_test_home_with_config(complete_config);
+
+            let kitty = KittyMultiplexer::default();
+            let available = kitty.is_available();
+            assert!(available);
+        }
+
+        {
+            // When kitty is not configured it is NOT available
+            let _guard = setup_test_home_without_config();
+
+            let kitty = KittyMultiplexer::default();
+            let available = kitty.is_available();
+            assert!(!available);
+        }
     }
 
     #[test]
@@ -1885,21 +1899,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_kitty_not_available() {
-        // Test behavior when using a non-existent socket
-        let kitty = KittyMultiplexer::with_socket_path("/nonexistent/socket".to_string());
-
-        // With a non-existent socket, kitty should not be available
-        // or operations should fail
-        let result = kitty.open_window(&WindowOptions::default());
-
-        // Accept any error type - the important thing is that it fails
-        assert!(
-            result.is_err(),
-            "Opening window with invalid socket should fail"
-        );
-    }
 
     #[test]
     #[serial_test::serial(env)]
