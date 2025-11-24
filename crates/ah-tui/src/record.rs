@@ -64,6 +64,52 @@ fn cli_gutter_to_viewer_gutter(
     }
 }
 
+/// Connect to the task manager socket with retries and send the session ID prefix.
+async fn connect_task_manager_socket(
+    task_manager_socket: &str,
+    session_id: &str,
+) -> Option<UnixStream> {
+    let mut last_err = None;
+
+    for attempt in 0..5 {
+        match UnixStream::connect(task_manager_socket).await {
+            Ok(mut stream) => {
+                let session_id_bytes = session_id.as_bytes();
+                let session_id_len = session_id_bytes.len() as u32;
+                let len_bytes = session_id_len.to_le_bytes();
+
+                if let Err(e) = stream.write_all(&len_bytes).await {
+                    last_err = Some(e);
+                } else if let Err(e) = stream.write_all(session_id_bytes).await {
+                    last_err = Some(e);
+                } else {
+                    info!("Task manager event streaming socket established");
+                    return Some(stream);
+                }
+            }
+            Err(e) => {
+                last_err = Some(e);
+            }
+        }
+
+        // Give the daemon time to start its listener
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        debug!(
+            attempt = attempt + 1,
+            "Retrying connection to task manager socket"
+        );
+    }
+
+    if let Some(err) = last_err {
+        warn!(
+            "Failed to connect to task manager socket {} after retries: {}",
+            task_manager_socket, err
+        );
+    }
+
+    None
+}
+
 /// Record an agent session with PTY capture
 #[derive(Parser, Debug, Clone)]
 pub struct RecordArgs {
@@ -466,37 +512,8 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
             "Setting up task manager socket for event streaming, path: {}",
             task_manager_socket
         );
-        // Connect to the task manager socket
-        match UnixStream::connect(task_manager_socket).await {
-            Ok(mut stream) => {
-                // First, send the session ID (length-prefixed)
-                let session_id = args.session_id.as_ref().unwrap_or(&"unknown".to_string()).clone();
-                let session_id_bytes = session_id.as_bytes();
-                let session_id_len = session_id_bytes.len() as u32;
-                let len_bytes = session_id_len.to_le_bytes();
-
-                if let Err(e) = stream.write_all(&len_bytes).await {
-                    warn!(
-                        "Failed to send session ID length to task manager socket: {}",
-                        e
-                    );
-                    None
-                } else if let Err(e) = stream.write_all(session_id_bytes).await {
-                    warn!("Failed to send session ID to task manager socket: {}", e);
-                    None
-                } else {
-                    info!("Task manager event streaming socket established");
-                    Some(stream)
-                }
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to connect to task manager socket {}: {}",
-                    task_manager_socket, e
-                );
-                None
-            }
-        }
+        let session_id = args.session_id.as_ref().unwrap_or(&"unknown".to_string()).clone();
+        connect_task_manager_socket(task_manager_socket, &session_id).await
     } else {
         debug!("No task manager socket requested");
         None

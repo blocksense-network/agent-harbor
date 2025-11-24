@@ -28,6 +28,10 @@ pub mod rest_task_manager;
 pub mod session;
 pub mod task;
 pub mod task_manager;
+/// Task manager daemon entry point (keeps LocalTaskManager alive).
+pub mod task_manager_daemon;
+/// Serializable DTOs for task manager IPC.
+pub mod task_manager_dto;
 pub mod task_manager_init;
 pub mod workspace_files_enumerator;
 pub mod workspace_terms_enumerator;
@@ -72,10 +76,6 @@ pub use task_manager_init::{
     create_local_task_manager_with_multiplexer, create_session_viewer_task_manager,
     create_task_manager_no_recording, determine_multiplexer_choice,
 };
-/// Task manager daemon entry point (keeps LocalTaskManager alive).
-pub mod task_manager_daemon;
-/// Serializable DTOs for task manager IPC.
-pub mod task_manager_dto;
 
 /// Local task manager for direct execution on the local machine.
 /// Uses a dynamic multiplexer implementation.

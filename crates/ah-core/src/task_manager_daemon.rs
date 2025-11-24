@@ -5,7 +5,7 @@
 
 use crate::{
     task_manager_dto::{DaemonRequest, DaemonResponse, LaunchTaskResponse},
-    task_manager_init::create_task_manager_no_recording,
+    task_manager_init::create_dashboard_task_manager,
 };
 use anyhow::{Context, Result};
 use serde_json;
@@ -15,7 +15,8 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
-fn daemon_socket_path() -> PathBuf {
+/// Location of the daemon control socket (JSON/length-prefixed IPC)
+pub fn daemon_socket_path() -> PathBuf {
     PathBuf::from("/tmp/ah/task-manager-daemon.sock")
 }
 
@@ -68,7 +69,9 @@ pub async fn run_task_manager_daemon() -> Result<()> {
     let listener = UnixListener::bind(&socket_path)
         .with_context(|| format!("Failed to bind daemon socket at {}", socket_path.display()))?;
 
-    let manager = create_task_manager_no_recording().map_err(anyhow::Error::msg)?;
+    // Keep a LocalTaskManager alive for the session lifetime so record/follow can
+    // connect to its task-manager socket even after the launching CLI exits.
+    let manager = create_dashboard_task_manager().map_err(anyhow::Error::msg)?;
     let manager = std::sync::Arc::new(Mutex::new(manager));
 
     info!("Task manager daemon listening at {}", socket_path.display());

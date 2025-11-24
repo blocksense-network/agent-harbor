@@ -7,7 +7,7 @@ use ah_core::agent_executor::WorkingCopyMode;
 use ah_core::editor::edit_content_interactive_with_hint;
 use ah_core::task_manager::StartingPoint;
 use ah_core::task_manager_dto::{DaemonRequest, DaemonResponse, LaunchTaskRequest};
-use ah_core::task_manager_init::create_task_manager_no_recording;
+use ah_core::task_manager_init::create_dashboard_task_manager;
 use ah_core::{
     AgentTasks, DatabaseManager, EditorError, PushHandler, PushOptions, TaskLaunchParams,
     TaskLaunchResult, TaskManager as CoreTaskManager, devshell_names, parse_push_to_remote_flag,
@@ -220,10 +220,10 @@ impl TestExecutionContext {
 }
 
 async fn try_launch_via_daemon(params: &TaskLaunchParams) -> Option<Vec<String>> {
-    let socket_path = "/tmp/ah/task-manager-daemon.sock";
+    let socket_path = ah_core::task_manager_daemon::daemon_socket_path();
 
     // Attempt to connect; if missing, try to spawn the daemon once.
-    if !std::path::Path::new(socket_path).exists() {
+    if !socket_path.exists() {
         let _ = std::process::Command::new("ah-task-manager-daemon")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -232,7 +232,34 @@ async fn try_launch_via_daemon(params: &TaskLaunchParams) -> Option<Vec<String>>
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 
-    let stream = UnixStream::connect(socket_path).await.ok()?;
+    // Connect with a few retries to tolerate daemon startup
+    let mut last_err = None;
+    let mut stream = None;
+    for _ in 0..5 {
+        match UnixStream::connect(&socket_path).await {
+            Ok(s) => {
+                stream = Some(s);
+                break;
+            }
+            Err(e) => {
+                last_err = Some(e);
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        }
+    }
+
+    let stream = match stream {
+        Some(s) => s,
+        None => {
+            if let Some(err) = last_err {
+                tracing::debug!(
+                    error = %err,
+                    "Failed to reach task manager daemon socket after retries"
+                );
+            }
+            return None;
+        }
+    };
 
     // Serialize request with length prefix
     let req = DaemonRequest::LaunchTask(Box::new(LaunchTaskRequest {
@@ -725,23 +752,28 @@ impl TaskCreateArgs {
                 .unwrap_or(false);
 
             let mut session_ids: Vec<String> = Vec::new();
+            let mut manager_description =
+                "Task Manager Daemon (local execution)".to_string();
+
             if !force_mock {
                 if let Some(sids) = try_launch_via_daemon(&launch_params).await {
                     session_ids = sids;
                 }
             }
 
-            let mut manager: Arc<dyn CoreTaskManager> = Arc::new(MockRestClient::new());
             if session_ids.is_empty() {
-                manager = if force_mock {
+                let mut manager: Arc<dyn CoreTaskManager> = if force_mock {
                     Arc::new(MockRestClient::new())
                 } else {
-                    create_task_manager_no_recording()
-                        .map_err(|e| anyhow::anyhow!(e))
-                        .unwrap_or_else(|err| {
-                            tracing::warn!(error = %err, "Falling back to mock task manager");
+                    create_dashboard_task_manager().map_err(|e| anyhow::anyhow!(e)).unwrap_or_else(
+                        |err| {
+                            tracing::warn!(
+                                error = %err,
+                                "Falling back to mock task manager"
+                            );
                             Arc::new(MockRestClient::new()) as Arc<dyn CoreTaskManager>
-                        })
+                        },
+                    )
                 };
 
                 let mut launch_result = manager.launch_task(launch_params.clone()).await;
@@ -760,9 +792,12 @@ impl TaskCreateArgs {
                         anyhow::bail!("Failed to launch task via task manager: {}", error);
                     }
                 };
+
+                manager_description = manager.description().to_string();
             }
 
-            let effective_session_id = session_ids.first().cloned().unwrap_or_else(|| session_id.clone());
+            let effective_session_id =
+                session_ids.first().cloned().unwrap_or_else(|| session_id.clone());
 
             // Create session record
             let workspace_meta = serde_json::json!({
@@ -845,7 +880,7 @@ impl TaskCreateArgs {
 
             // Follow UI hand-off (best-effort)
             if self.follow {
-                self.print_follow_message(&effective_session_id, manager.as_ref());
+                self.print_follow_message(&effective_session_id, &manager_description);
             }
 
             Ok(())
@@ -1132,11 +1167,10 @@ impl TaskCreateArgs {
     }
 
     #[allow(clippy::disallowed_methods)]
-    fn print_follow_message(&self, session_id: &str, manager: &dyn CoreTaskManager) {
+    fn print_follow_message(&self, session_id: &str, manager_description: &str) {
         println!(
             "Follow requested: attach UI to session {} (task manager: {})",
-            session_id,
-            manager.description()
+            session_id, manager_description
         );
     }
 
