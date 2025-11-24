@@ -107,7 +107,7 @@
 pub mod tool_profiles;
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -119,6 +119,11 @@ use crate::{
     error::{Error, Result},
     proxy::{ProxyRequest, ProxyResponse},
 };
+use ah_scenario_format::{
+    AssistantStep, ErrorData, FileEditData, ResponseElement, Scenario, ScenarioLoader,
+    ScenarioMatcher, ScenarioRecord, ScenarioSource, ThinkingStep, TimelineEvent, ToolResultData,
+    ToolUseData,
+};
 
 // Add missing dependencies for timeline processing
 use chrono::Utc;
@@ -127,31 +132,87 @@ use uuid::Uuid;
 /// Scenario player for deterministic playback
 pub struct ScenarioPlayer {
     config: Arc<RwLock<ProxyConfig>>,
-    pub scenarios: HashMap<String, Scenario>,
+    pub scenarios: Vec<ScenarioRecord>,
     active_sessions: HashMap<String, ScenarioSession>,
     tool_profiles: Arc<tool_profiles::ToolProfiles>,
+}
+
+fn extract_prompt_from_request(request: &ProxyRequest) -> Option<String> {
+    if let Some(prompt) = request.headers.get("x-scenario-prompt") {
+        return Some(prompt.clone());
+    }
+    extract_prompt_from_payload(&request.payload)
+}
+
+fn extract_prompt_from_payload(payload: &JsonValue) -> Option<String> {
+    if let Some(value) = payload.get("initialPrompt").and_then(|v| v.as_str()) {
+        return Some(value.to_string());
+    }
+    if let Some(value) = payload.get("prompt").and_then(|v| v.as_str()) {
+        return Some(value.to_string());
+    }
+    if let Some(messages) = payload.get("messages").and_then(|v| v.as_array()) {
+        for message in messages.iter().rev() {
+            if message.get("role").and_then(|role| role.as_str()) == Some("user") {
+                if let Some(content) = message.get("content") {
+                    if let Some(text) = extract_text_from_content(content) {
+                        return Some(text);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_text_from_content(content: &JsonValue) -> Option<String> {
+    if let Some(text) = content.as_str() {
+        return Some(text.to_string());
+    }
+    if let Some(parts) = content.as_array() {
+        for part in parts {
+            if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                return Some(text.to_string());
+            }
+            if let Some(value) = part.get("content").and_then(|t| t.as_str()) {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 impl ScenarioPlayer {
     /// Create a new scenario player
     pub async fn new(config: Arc<RwLock<ProxyConfig>>) -> Result<Self> {
-        let mut scenarios = HashMap::new();
-        let tool_profiles = Arc::new(tool_profiles::ToolProfiles::new());
-
-        // Load scenarios if scenario directory or file is configured
-        {
+        let scenario_records = {
             let config_guard = config.read().await;
+            let mut sources = Vec::new();
             if let Some(scenario_dir) = &config_guard.scenario.scenario_dir {
-                Self::load_scenarios_from_dir(&mut scenarios, Path::new(scenario_dir)).await?;
-            } else if let Some(scenario_file) = &config_guard.scenario.scenario_file {
-                let scenario = Self::load_scenario_from_file(Path::new(scenario_file)).await?;
-                scenarios.insert("test".to_string(), scenario);
+                sources.push(ScenarioSource::Directory(PathBuf::from(scenario_dir)));
             }
+            if let Some(scenario_file) = &config_guard.scenario.scenario_file {
+                sources.push(ScenarioSource::File(PathBuf::from(scenario_file)));
+            }
+            drop(config_guard);
+            if sources.is_empty() {
+                Vec::new()
+            } else {
+                ScenarioLoader::from_sources(sources)
+                    .map_err(|e| Error::Scenario {
+                        message: format!("Failed to load scenarios: {}", e),
+                    })?
+                    .into_records()
+            }
+        };
+        for record in &scenario_records {
+            Self::validate_scenario(&record.scenario)?;
         }
+        let tool_profiles = Arc::new(tool_profiles::ToolProfiles::new());
 
         Ok(Self {
             config,
-            scenarios,
+            scenarios: scenario_records,
             active_sessions: HashMap::new(),
             tool_profiles,
         })
@@ -619,51 +680,6 @@ impl ScenarioPlayer {
         Ok(())
     }
 
-    /// Load scenarios from a directory
-    async fn load_scenarios_from_dir(
-        scenarios: &mut HashMap<String, Scenario>,
-        dir: &Path,
-    ) -> Result<()> {
-        if !dir.exists() {
-            return Ok(());
-        }
-
-        // Load all YAML files in the directory
-        let mut dir_entries = tokio::fs::read_dir(dir).await.map_err(|e| Error::Scenario {
-            message: format!("Failed to read scenario directory: {}", e),
-        })?;
-
-        while let Some(entry) = dir_entries.next_entry().await.map_err(|e| Error::Scenario {
-            message: format!("Failed to read directory entry: {}", e),
-        })? {
-            let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("yaml")
-                || path.extension().and_then(|s| s.to_str()) == Some("yml")
-            {
-                let scenario = Self::load_scenario_from_file(&path).await?;
-                scenarios.insert(scenario.name.clone(), scenario);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Load a single scenario from a YAML file
-    async fn load_scenario_from_file(path: &Path) -> Result<Scenario> {
-        let content = tokio::fs::read_to_string(path).await.map_err(|e| Error::Scenario {
-            message: format!("Failed to read scenario file {}: {}", path.display(), e),
-        })?;
-
-        let scenario: Scenario = serde_yaml::from_str(&content).map_err(|e| Error::Scenario {
-            message: format!("Failed to parse scenario file {}: {}", path.display(), e),
-        })?;
-
-        // Validate the scenario structure
-        Self::validate_scenario(&scenario)?;
-
-        Ok(scenario)
-    }
-
     /// Validate scenario structure and constraints
     fn validate_scenario(scenario: &Scenario) -> Result<()> {
         for event in &scenario.timeline {
@@ -693,27 +709,23 @@ impl ScenarioPlayer {
                         });
                     }
                 }
-                TimelineEvent::Event(data) => {
-                    // Also validate llmResponse in Event variant
+                TimelineEvent::Legacy(data) => {
                     if let Some(serde_yaml::Value::Sequence(elements)) = data.get("llmResponse") {
                         let mut has_thinking = false;
                         let mut has_assistant = false;
 
                         for element_value in elements {
-                            let element: ResponseElement =
-                                serde_yaml::from_value(element_value.clone()).map_err(|e| {
-                                    Error::Scenario {
-                                        message: format!("Failed to parse response element: {}", e),
-                                    }
-                                })?;
-                            match element {
-                                ResponseElement::Think { .. } => {
+                            if let serde_yaml::Value::Mapping(map) = element_value {
+                                if map.keys().any(|key| {
+                                    matches!(key, serde_yaml::Value::String(s) if s == "think")
+                                }) {
                                     has_thinking = true;
                                 }
-                                ResponseElement::Assistant { .. } => {
+                                if map.keys().any(|key| {
+                                    matches!(key, serde_yaml::Value::String(s) if s == "assistant")
+                                }) {
                                     has_assistant = true;
                                 }
-                                _ => {}
                             }
                         }
 
@@ -735,8 +747,10 @@ impl ScenarioPlayer {
     async fn find_scenario_for_request(&self, request: &ProxyRequest) -> Result<&Scenario> {
         // Try to get scenario name from headers first
         if let Some(scenario_name) = request.headers.get("x-scenario-name") {
-            if let Some(scenario) = self.scenarios.get(scenario_name) {
-                return Ok(scenario);
+            if let Some(record) =
+                self.scenarios.iter().find(|record| record.scenario.name == *scenario_name)
+            {
+                return Ok(&record.scenario);
             }
         }
 
@@ -747,74 +761,16 @@ impl ScenarioPlayer {
             });
         }
 
-        // For now, return the first scenario as default
-        // TODO: Implement smarter scenario selection based on request content
-        let first_scenario = self.scenarios.values().next().unwrap();
-        Ok(first_scenario)
+        if let Some(prompt) = extract_prompt_from_request(request) {
+            let matcher = ScenarioMatcher::new(&self.scenarios);
+            if let Some(matched) = matcher.best_match(&prompt) {
+                return Ok(matched.scenario);
+            }
+        }
+
+        // Fall back to the first scenario
+        Ok(&self.scenarios[0].scenario)
     }
-}
-
-/// Scenario data structure based on Scenario-Format.md
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct Scenario {
-    /// Scenario name
-    pub name: String,
-    /// Scenario tags
-    #[serde(default)]
-    pub tags: Vec<String>,
-    /// Terminal configuration reference
-    pub terminal_ref: Option<String>,
-    /// Compatibility flags
-    pub compat: Option<CompatibilityFlags>,
-    /// Repository setup
-    pub repo: Option<RepoConfig>,
-    /// AH command configuration
-    pub ah: Option<AhConfig>,
-    /// Server configuration
-    pub server: Option<ServerConfig>,
-    /// Timeline of events
-    pub timeline: Vec<TimelineEvent>,
-    /// Expected results
-    pub expect: Option<ExpectConfig>,
-}
-
-/// Compatibility flags
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct CompatibilityFlags {
-    pub allow_inline_terminal: Option<bool>,
-    pub allow_type_steps: Option<bool>,
-}
-
-/// Repository configuration
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct RepoConfig {
-    pub init: Option<bool>,
-    pub branch: Option<String>,
-    pub dir: Option<String>,
-    pub files: Option<Vec<FileConfig>>,
-}
-
-/// File configuration for seeding repository
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct FileConfig {
-    pub path: String,
-    pub contents: serde_yaml::Value,
-}
-
-/// AH command configuration
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct AhConfig {
-    pub cmd: String,
-    pub flags: Vec<String>,
-    pub env: Option<HashMap<String, String>>,
-}
-
-/// Server configuration
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ServerConfig {
-    pub mode: Option<String>,
-    pub llm_api_style: Option<String>,
-    pub coalesce_thinking_with_tool_use: Option<bool>,
 }
 
 /// What the agent is currently expecting based on conversation history
@@ -828,171 +784,6 @@ pub enum AgentExpectation {
     AssistantResponse,
     /// Agent expects next response (after tool result - could be assistant or user)
     NextResponse,
-}
-
-/// Timeline event (unified event sequence)
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(untagged)]
-pub enum TimelineEvent {
-    /// LLM response event (groups multiple response elements)
-    LlmResponse { llm_response: Vec<ResponseElement> },
-    /// Individual events for backward compatibility
-    Event(HashMap<String, serde_yaml::Value>),
-    /// Control events
-    Control {
-        #[serde(rename = "type")]
-        event_type: String,
-        #[serde(flatten)]
-        data: HashMap<String, serde_yaml::Value>,
-    },
-    /// Assertion event for verifying filesystem state and other conditions
-    Assert { assert: AssertionData },
-    /// Error event for modeling error conditions (rate limiting, invalid requests, etc.)
-    Error { error: ErrorData },
-}
-
-/// Response element in an LLM response
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(untagged)]
-pub enum ResponseElement {
-    /// Thinking event
-    #[serde(rename = "think")]
-    Think { think: Vec<ThinkingStep> },
-    /// Tool use event
-    AgentToolUse {
-        #[serde(rename = "agentToolUse")]
-        agent_tool_use: ToolUseData,
-    },
-    /// Tool result event (for multi-turn conversations)
-    #[serde(rename = "toolResult")]
-    ToolResult { tool_result: ToolResultData },
-    /// Error event (generates LLM API error response)
-    #[serde(rename = "error")]
-    Error { error: ErrorData },
-    /// File edits event
-    AgentEdits {
-        #[serde(rename = "agentEdits")]
-        agent_edits: FileEditData,
-    },
-    /// Assistant response event
-    #[serde(rename = "assistant")]
-    Assistant { assistant: Vec<AssistantStep> },
-}
-
-/// Thinking step
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ThinkingStep(pub u64, pub String); // (milliseconds, text)
-
-/// Tool use data
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ToolUseData {
-    #[serde(rename = "toolName")]
-    pub tool_name: String,
-    pub args: HashMap<String, serde_yaml::Value>,
-    pub progress: Option<Vec<ProgressStep>>,
-    pub result: Option<serde_yaml::Value>,
-    pub status: Option<String>,
-}
-
-/// Tool result data (for multi-turn conversations)
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ToolResultData {
-    #[serde(rename = "toolCallId")]
-    pub tool_call_id: String,
-    pub content: serde_yaml::Value,
-    #[serde(default)]
-    pub is_error: bool,
-}
-
-/// Progress step
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ProgressStep(pub u64, pub String); // (milliseconds, message)
-
-/// File edit data
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileEditData {
-    pub path: String,
-    pub lines_added: u32,
-    pub lines_removed: u32,
-}
-
-/// Assistant response step
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct AssistantStep(pub u64, pub String); // (milliseconds, text)
-
-/// Expected results configuration
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ExpectConfig {
-    pub exit_code: Option<i32>,
-    pub artifacts: Option<Vec<ArtifactExpectation>>,
-}
-
-/// Artifact expectation
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ArtifactExpectation {
-    #[serde(rename = "type")]
-    pub artifact_type: String,
-    pub pattern: Option<String>,
-}
-
-/// Assertion data for verifying filesystem state and other conditions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct AssertionData {
-    pub fs: Option<FilesystemAssertions>,
-    pub text: Option<TextAssertions>,
-    pub json: Option<JsonAssertions>,
-    pub git: Option<GitAssertions>,
-}
-
-/// Filesystem assertions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct FilesystemAssertions {
-    pub exists: Option<Vec<String>>,
-    pub not_exists: Option<Vec<String>>,
-}
-
-/// Text assertions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct TextAssertions {
-    pub contains: Option<Vec<String>>,
-}
-
-/// JSON assertions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct JsonAssertions {
-    pub file: Option<Vec<JsonFileAssertion>>,
-}
-
-/// JSON file assertion
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct JsonFileAssertion {
-    pub path: String,
-    pub pointer: String,
-    pub equals: serde_yaml::Value,
-}
-
-/// Git assertions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct GitAssertions {
-    pub commit: Option<Vec<GitCommitAssertion>>,
-}
-
-/// Git commit assertion
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct GitCommitAssertion {
-    pub message_contains: Option<String>,
-}
-
-/// Error data for modeling error conditions
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ErrorData {
-    #[serde(rename = "errorType")]
-    pub error_type: String,
-    pub status_code: Option<u16>,
-    pub message: String,
-    pub details: Option<serde_yaml::Value>,
-    pub retry_after_seconds: Option<u32>,
 }
 
 /// Tool call generated from scenario events
@@ -1133,7 +924,7 @@ impl ScenarioSession {
 
         // Scan timeline from beginning to find matching userInput and its following llmResponse
         for (idx, event) in scenario.timeline.iter().enumerate() {
-            if let TimelineEvent::Event(data) = event {
+            if let TimelineEvent::Legacy(data) = event {
                 if let Some(user_inputs) = data.get("userInputs") {
                     // Check if this userInputs event matches our user content
                     if self.user_input_matches(user_inputs, &user_content)? {
@@ -1165,7 +956,7 @@ impl ScenarioSession {
                                         self.generate_api_response(aggregated, client_format)
                                     };
                                 }
-                                TimelineEvent::Event(data) => {
+                                TimelineEvent::Legacy(data) => {
                                     if let Some(llm_response_value) = data.get("llmResponse") {
                                         let llm_response: Vec<ResponseElement> =
                                             serde_yaml::from_value(llm_response_value.clone())
@@ -1235,7 +1026,7 @@ impl ScenarioSession {
 
         // Scan timeline to find matching agentToolUse and its following llmResponse
         for (idx, event) in scenario.timeline.iter().enumerate() {
-            if let TimelineEvent::Event(data) = event {
+            if let TimelineEvent::Legacy(data) = event {
                 if let Some(agent_tool_use) = data.get("agentToolUse") {
                     // Check if this tool use matches our tool result
                     if self.tool_execution_matches(agent_tool_use, &tool_content)? {
@@ -1267,7 +1058,7 @@ impl ScenarioSession {
                                         self.generate_api_response(aggregated, client_format)
                                     };
                                 }
-                                TimelineEvent::Event(data) => {
+                                TimelineEvent::Legacy(data) => {
                                     if let Some(llm_response_value) = data.get("llmResponse") {
                                         let llm_response: Vec<ResponseElement> =
                                             serde_yaml::from_value(llm_response_value.clone())
@@ -1509,7 +1300,7 @@ impl ScenarioSession {
                         self.generate_api_response(aggregated, client_format)
                     };
                 }
-                TimelineEvent::Event(data) => {
+                TimelineEvent::Legacy(data) => {
                     // Check for llmResponse events
                     if let Some(llm_response_value) = data.get("llmResponse") {
                         let llm_response: Vec<ResponseElement> =

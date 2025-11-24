@@ -179,6 +179,7 @@ impl FsSnapshotProvider for AgentFsProvider {
 
                     #[cfg(not(all(feature = "agentfs", target_os = "linux")))]
                     {
+                        let _ = repo;
                         score = 70;
                     }
                 }

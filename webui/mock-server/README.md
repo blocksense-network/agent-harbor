@@ -36,6 +36,8 @@ just webui-install
 ```bash
 # From the project root
 just webui-mock-server
+# or use the manual test harness
+just manual-test-tui-remote-typescript-mock
 ```
 
 The server will start on `http://localhost:3001` by default in **development mode with hot reloading**.

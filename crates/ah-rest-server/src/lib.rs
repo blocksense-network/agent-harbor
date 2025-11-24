@@ -9,10 +9,12 @@
 
 pub mod auth;
 pub mod config;
+pub mod dependencies;
 pub mod error;
 pub mod executor;
 pub mod handlers;
 pub mod middleware;
+pub mod mock_dependencies;
 pub mod models;
 pub mod server;
 pub mod services;

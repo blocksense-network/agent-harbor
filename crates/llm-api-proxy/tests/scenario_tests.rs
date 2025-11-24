@@ -160,7 +160,7 @@ expect:
 
     // Should have loaded one scenario
     assert_eq!(player.scenarios.len(), 1);
-    assert!(player.scenarios.contains_key("test_scenario"));
+    assert!(player.scenarios.iter().any(|record| record.scenario.name == "test_scenario"));
 }
 
 #[tokio::test]
@@ -687,7 +687,12 @@ expect:
         .expect("Request log entry should be present");
 
     assert_eq!(request_entry["method"], "POST");
-    assert_eq!(request_entry["path"], "/v1/chat/completions");
+    let expected_path = match request.client_format {
+        ApiFormat::OpenAI => "/v1/chat/completions",
+        ApiFormat::OpenAIResponses => "/v1/responses",
+        ApiFormat::Anthropic => "/v1/messages",
+    };
+    assert_eq!(request_entry["path"], expected_path);
     assert_eq!(request_entry["request_id"], "test-request-id");
     assert!(request_entry.get("timestamp").is_some());
     assert!(request_entry.get("body").is_some());

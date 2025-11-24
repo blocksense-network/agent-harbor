@@ -810,6 +810,9 @@ dependencies = [
  "ah-logging",
  "ah-repo",
  "ah-rest-api-contract",
+ "ah-rest-client",
+ "ah-rest-mock-client",
+ "ah-scenario-format",
  "anyhow",
  "async-trait",
  "axum 0.7.9",
@@ -876,6 +879,19 @@ dependencies = [
  "nix 0.30.1",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "ah-scenario-format"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "strsim",
+ "tempfile",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5019,6 +5035,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 name = "llm-api-proxy"
 version = "0.1.0"
 dependencies = [
+ "ah-scenario-format",
  "anthropic-ai-sdk",
  "anyhow",
  "async-openai",
@@ -8532,6 +8549,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

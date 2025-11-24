@@ -643,3 +643,17 @@ timeline:
 - CLI E2E plan: [Testing-Architecture.md](Testing-Architecture.md)
 - Terminal config format: [Terminal-Config.md](Terminal-Config.md)
 - Existing example scenario: `tests/tools/mock-agent/scenarios/realistic_development_scenario.yaml` (comprehensive timeline-based scenario with ~30-second execution)
+- REST API behavior: [REST-Service/API.md](REST-Service/API.md)
+- Shared playback crate: [`crates/ah-scenario-format`](../../crates/ah-scenario-format)
+
+### Reference Implementations
+
+- `crates/ah-scenario-format/` – Rust crate with the Scenario-Format structs, YAML loader, Levenshtein matcher, and playback iterator reused by the TUI mock dashboard, the Rust mock REST server, and the LLM API proxy.
+- `crates/ah-rest-server/src/bin/mock_server.rs` – Native mock REST server that accepts `--scenario <file|dir>` (repeatable) and `--scenario-speed <float>` to select fixtures and scale their playback timelines.
+- `crates/llm-api-proxy/` – Uses the same crate to drive deterministic Anthropic/OpenAI mock responses, ensuring parity with the REST mock server.
+
+### Scenario Selection & Playback Controls
+
+- **Scenario discovery:** When multiple Scenario-Format files are provided (via `--scenario DIR` or configuration), the runtime uses Levenshtein distance between the incoming task prompt (or any `x-scenario-prompt` header for LLM proxy requests) and each scenario’s `initialPrompt`. The closest match is selected automatically. Explicit `x-scenario-name` headers or CLI overrides still take precedence.
+- **Speed scaling:** Every timeline delay (`think`, `assistant`, `progress`, `toolExecution`, and `advanceMs` entries) is multiplied by the `scenario-speed` factor (defaults to `1.0`). Values < 1.0 speed up playback; values > 1.0 slow it down. Current implementations clamp the multiplier to a minimum of `0.01` to avoid zero-duration events.
+- **SSE catch-up:** The Rust mock REST server persists emitted events and replays the complete history to new SSE subscribers before streaming live updates, so clients that connect mid-scenario still receive a consistent timeline.

@@ -205,7 +205,7 @@
 
 **Deliverables:**
 
-- [ ] Create a `just manual-test-tui-remote` and `just manual-test-tui-remote-mock` targets that starts the REST server (or the mock server) in the background and the TUI in the foreground (similarly to the existing `just manual-test-agent-start` target) with seeded repositories with example files and workflows (or a mock server configuration with active tasks, executing specific scenarios)
+- [ ] Create a `just manual-test-tui-remote` and `just manual-test-tui-remote-rust-mock` targets that starts the REST server (or the mock server) in the background and the TUI in the foreground (similarly to the existing `just manual-test-agent-start` target) with seeded repositories with example files and workflows (or a mock server configuration with active tasks, executing specific scenarios)
 - [ ] Add a companion script (e.g., `scripts/manual-test-remote.py`) that orchestrates the lifecycle: spawns server, waits for health endpoint, launches `ah tui --remote-server <url>` or `ah webui --remote`, and tears everything down cleanly on Ctrl+C.
 - [ ] Provide sample credentials/API tokens with clear rotation instructions, storing secrets in `.env.example` and using nix/yarn to provision dependencies.
 - [ ] Document remote manual testing in `docs/Component-Architecture.md` and add a dedicated troubleshooting section (ports in use, missing dependencies, multiplexer focus).

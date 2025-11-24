@@ -20,7 +20,7 @@ This document provides an overview of the major components in the Agent Harbor s
 
 - `just run-mock-tui-dashboard` - Run the TUI dashboard with fully synthetic data, produced by a mock task manager.
 - `just manual-test-tui [--repo NAME] [--fs TYPE]` - Run a manual test of the full TUI launched over the selected example repo, placed in the test filesystem.
-- `just manual-test-tui-remote [--mode {rest,mock}] [--scenario NAME]` - Launch the remote-mode harness that boots a REST or mock server, seeds demo data, and attaches the dashboard via `ah tui --remote-server ...`. Mock mode now reuses the Rust REST server with an embedded dataset that includes active/running sessions, so the TUI always has live activity to display. Any `--scenario` flag is copied alongside the run for reference, but the curated dataset is available out of the box. Copy `manual-tests/env.remote-example` to `.env` to pre-populate sample API keys and tenant metadata if you need authentication flags.
+- `just manual-test-tui-remote [--mode {rest,mock,typescript-mock}] [--scenario NAME] [--scenario-speed 0.5]` - Launch the remote-mode harness that boots a REST or mock server, seeds demo data, and attaches the dashboard via `ah tui --remote-server ...`. `--mode mock` (and the shortcut `just manual-test-tui-remote-rust-mock`) launches the Rust mock server with Scenario-Format playback; the optional `--scenario` argument points at a YAML scenario directory/file and `--scenario-speed` scales the playback timeline.
 
 **Log Files:** See the [Log Files and Debugging](#log-files-and-debugging) section above for comprehensive logging information.
 
@@ -138,6 +138,13 @@ This document provides an overview of the major components in the Agent Harbor s
 - `crates/ah-rest-server/` - REST API implementation
 - `crates/ah-rest-client/` - Client library for API communication
 - `crates/ah-core/` - Shared business logic
+
+**Mock Implementations (for manual/integration testing):**
+
+- `webui/mock-server/` – TypeScript/Express mock that powers `just manual-test-tui-remote-typescript-mock` plus the WebUI API contract tests.
+- `crates/ah-rest-server/src/bin/mock_server.rs` – Rust binary that wires the REST stack to the scenario-driven mock backend (see `mock_dependencies.rs`). It is launched via `just manual-test-tui-remote-rust-mock`, accepts `--scenario`/`--scenario-speed`, and is exercised by the new protocol-level regression tests.
+- `crates/ah-scenario-format/` – Shared Scenario-Format parser + playback crate consumed by the TUI mock dashboard, the Rust mock server, and the LLM API proxy for deterministic scenario selection (Levenshtein matching on `initialPrompt`) and speed-controlled playback.
+- `crates/ah-rest-server/tests/mock_server.rs` – Runs end-to-end checks by spinning up the Rust mock server and driving it through `ah-rest-client` and `GenericRestTaskManager`.
 
 **Communication:**
 

@@ -55,6 +55,8 @@ rusqlite = { workspace = true }
 # API contracts
 ah-rest-api-contract = { path = "../ah-rest-api-contract" }
 ah-domain-types = { path = "../ah-domain-types", features = ["clap"] }
+ah-rest-mock-client = { path = "../ah-rest-mock-client" }
+ah-scenario-format = { path = "../ah-scenario-format" }
 
 # Core functionality
 ah-core = { path = "../ah-core" }
@@ -74,7 +76,7 @@ tower_governor = "0.4"
 
 # SSE streaming
 futures = { workspace = true }
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # URL handling
 url = { workspace = true }
@@ -110,3 +112,4 @@ agentfs = ["ah-fs-snapshots/agentfs"]
 [dev-dependencies]
 tempfile = { workspace = true }
 mockall = { workspace = true }
+ah-rest-client = { path = "../ah-rest-client" }
