@@ -299,28 +299,12 @@ impl KittyMultiplexer {
             });
 
         if !check_remote_control_from_config {
-            debug!("Fallback to remote control dynamic check");
-            let check_remote_control_dynamic =
-                self.check_remote_control_dynamic().unwrap_or_else(|e| {
-                    debug!("Error checking remote control dynamically: {}", e);
-                    false
-                });
+            warn!("Kitty remote control is not enabled.");
 
-            if !check_remote_control_dynamic {
-                warn!("Kitty remote control is not enabled.");
-                config_errors.push(
+            config_errors.push(
                     "Remote control is disabled. Add 'allow_remote_control yes' to ~/.config/kitty/kitty.conf"
                         .to_string()
                 );
-            } else {
-                // Even if dynamic check passes, if config file doesn't have explicit setting,
-                // we should warn about the missing configuration for consistency
-                warn!("Kitty remote control works but not explicitly configured in config file.");
-                config_errors.push(
-                    "Remote control is not explicitly configured. Add 'allow_remote_control yes' to ~/.config/kitty/kitty.conf"
-                        .to_string()
-                );
-            }
         }
 
         // Check socket configuration
@@ -487,25 +471,6 @@ impl KittyMultiplexer {
         }
         warn!("enabled_layouts is not enabled in default config");
         Ok(false)
-    }
-
-    pub fn check_remote_control_dynamic(&self) -> Result<bool, MuxError> {
-        // Try to check if remote control is enabled by attempting a simple command
-        match self.run_kitty_command(&["ls"]) {
-            Ok(_) => Ok(true),
-            Err(MuxError::CommandFailed(msg)) if msg.contains("Remote control is disabled") => {
-                warn!("Kitty remote control is disabled");
-                Ok(false)
-            }
-            Err(MuxError::CommandFailed(msg)) if msg.contains("Could not connect") => {
-                warn!("Could not connect to kitty socket");
-                Ok(false)
-            }
-            Err(e) => {
-                warn!("Failed to determine kitty remote control status dynamically");
-                Err(MuxError::Other(format!("Unexpected error occurred: {}", e)))
-            }
-        }
     }
 }
 
