@@ -4,7 +4,6 @@
 //! Task management endpoints
 
 use crate::ServerResult;
-use crate::models::SessionStore;
 use crate::state::AppState;
 use ah_rest_api_contract::{CreateTaskRequest, CreateTaskResponse};
 use axum::{Json, extract::State};

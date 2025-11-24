@@ -517,7 +517,10 @@ manual-test-tui-remote *args:
     ./scripts/manual-test-remote.py {{args}}
 
 # Convenience wrapper for mock server remote testing (loads default scenario)
-manual-test-tui-remote-mock *args:
+manual-test-tui-remote-typescript-mock *args:
+    ./scripts/manual-test-remote.py --mode typescript-mock {{args}}
+
+manual-test-tui-remote-rust-mock *args:
     ./scripts/manual-test-remote.py --mode mock {{args}}
 
 # Automated smoke test used by CI to validate remote manual-test harness

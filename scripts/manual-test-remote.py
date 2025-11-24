@@ -79,9 +79,9 @@ Examples:
 
     parser.add_argument(
         "--mode",
-        choices=("rest", "mock"),
+        choices=("rest", "mock", "typescript-mock"),
         default="rest",
-        help="Server type to launch (default: rest)",
+        help="Server type to launch (rest, rust mock, or TypeScript mock)",
     )
     parser.add_argument(
         "--port",
@@ -97,6 +97,12 @@ Examples:
         "--scenario",
         help="Scenario file (YAML) to load when running in mock mode. "
         "If relative, it is resolved against known scenario directories.",
+    )
+    parser.add_argument(
+        "--scenario-speed",
+        type=float,
+        default=1.0,
+        help="Playback speed multiplier for mock scenarios (Rust mock server only).",
     )
     parser.add_argument(
         "--api-key",
@@ -403,11 +409,18 @@ def create_sample_task(base_url: str) -> None:
         "runtime": {
             "type": "local",
         },
-        "agent": {
-            "type": "claude-code",
-            "version": "latest",
-            "settings": {},
-        },
+        "agents": [
+            {
+                "agent": {
+                    "software": "Claude",
+                    "version": "latest",
+                },
+                "model": "claude-3.5-sonnet",
+                "count": 1,
+                "settings": {},
+                "display_name": "Claude (Mock)",
+            }
+        ],
         "labels": {
             "origin": "manual-test-remote",
         },
@@ -541,6 +554,13 @@ def start_rest_mode(
         dry_run=dry_run,
     )
     if dry_run:
+        return {
+            "port": port,
+            "base_url": base_url,
+            "server_handle": handle,
+            "server_type": "Mock REST (Rust)",
+        }
+    if dry_run:
         print(f"[dry-run] Would seed REST database at {db_path}")
         print(f"[dry-run] Would submit sample task to {base_url}/tasks")
         return {
@@ -569,7 +589,7 @@ def start_rest_mode(
     }
 
 
-def start_mock_mode(
+def start_rust_mock_mode(
     project_root: Path,
     run_dir: Path,
     log_dir: Path,
@@ -579,37 +599,47 @@ def start_mock_mode(
 ) -> Dict[str, object]:
     port = args.port or 38180
     base_url = f"http://127.0.0.1:{port}/api/v1"
-    db_path = run_dir / "mock-rest-server.sqlite"
     rest_log_path = log_dir / "rest-server.log"
-    repo_dir = run_dir / f"{args.repo}-mock"
 
-    if dry_run:
-        print(f"[dry-run] Would initialise mock example repository at {repo_dir}")
+    scenario_paths: List[Path] = []
+    if args.scenario:
+        try:
+            scenario_paths.append(resolve_scenario_path(project_root, args.scenario))
+        except FileNotFoundError:
+            logging.warning(
+                "Scenario file '%s' not found; the mock server will fall back to default data",
+                args.scenario,
+            )
     else:
-        initialize_example_git_repo(
-            repo_dir,
-            commit_message="Initial commit for remote demo",
-        )
+        default_dir = project_root / "test_scenarios"
+        if default_dir.exists():
+            scenario_paths.append(default_dir)
+        else:
+            logging.warning(
+                "No --scenario provided and %s does not exist; mock server will use in-memory data",
+                default_dir,
+            )
+
+    def append_common_args(cmd: List[str]) -> None:
+        cmd.extend(["--bind", f"127.0.0.1:{port}", "--cors"])
+        for path in scenario_paths:
+            cmd.extend(["--scenario", str(path)])
+        if args.scenario_speed and args.scenario_speed != 1.0:
+            cmd.extend(["--scenario-speed", f"{args.scenario_speed:.3f}"])
 
     if args.no_build:
         binary = (
             project_root
             / "target"
             / ("release" if os.environ.get("AH_BUILD_RELEASE") else "debug")
-            / "ah-rest-server"
+            / "mock_server"
         )
         if binary.exists():
-            cmd = [
-                str(binary),
-                "--bind",
-                f"127.0.0.1:{port}",
-                "--database",
-                str(db_path),
-                "--cors",
-            ]
+            cmd = [str(binary)]
+            append_common_args(cmd)
         else:
             logging.debug(
-                "ah-rest-server binary not found at %s, falling back to cargo run",
+                "mock_server binary not found at %s, falling back to cargo run",
                 binary,
             )
             cmd = [
@@ -617,26 +647,22 @@ def start_mock_mode(
                 "run",
                 "-p",
                 "ah-rest-server",
+                "--bin",
+                "mock_server",
                 "--",
-                "--bind",
-                f"127.0.0.1:{port}",
-                "--database",
-                str(db_path),
-                "--cors",
             ]
+            append_common_args(cmd)
     else:
         cmd = [
             "cargo",
             "run",
             "-p",
             "ah-rest-server",
+            "--bin",
+            "mock_server",
             "--",
-            "--bind",
-            f"127.0.0.1:{port}",
-            "--database",
-            str(db_path),
-            "--cors",
         ]
+        append_common_args(cmd)
 
     env = os.environ.copy()
     env.setdefault("RUST_LOG", "info,ah_rest_server=info")
@@ -648,59 +674,90 @@ def start_mock_mode(
         log_path=rest_log_path,
         dry_run=dry_run,
     )
-    if dry_run:
-        print(f"[dry-run] Would seed mock data into {db_path}")
-        return {
-            "port": port,
-            "base_url": base_url,
-            "scenario": None,
-            "database": db_path,
-            "server_handle": handle,
-            "server_type": "Mock REST",
-        }
     wait_for_http_health(
         f"{base_url}/healthz",
         timeout=args.timeout,
         process_handle=handle,
     )
 
-    demo_remote_url = "https://github.com/agent-harbor/mock-demo.git"
-    seed_rest_database(
-        db_path,
-        repo_dir,
-        repo_name=f"{args.repo}-mock",
-        remote_url=demo_remote_url,
-    )
-    seed_mock_sessions(db_path, run_dir)
-
-    scenario_path: Optional[Path] = None
-    if args.scenario:
-        try:
-            scenario_path = resolve_scenario_path(project_root, args.scenario)
-            scenarios_dir = run_dir / "scenarios"
-            destination = scenarios_dir / scenario_path.name
-            if dry_run:
-                print(f"[dry-run] Would copy scenario {scenario_path} -> {destination}")
-            else:
-                scenarios_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(scenario_path, destination)
-                logging.info(
-                    "Stored scenario reference at %s (mock dataset is built-in)",
-                    destination,
-                )
-        except FileNotFoundError:
-            logging.warning(
-                "Scenario file '%s' not found; continuing with built-in mock dataset",
-                args.scenario,
-            )
+    if not dry_run:
+        logging.info("Submitting sample task to mock REST server for smoke validation")
+        create_sample_task(base_url)
 
     return {
         "port": port,
         "base_url": base_url,
-        "scenario": scenario_path,
-        "database": db_path,
         "server_handle": handle,
-        "server_type": "Mock REST",
+        "server_type": "Mock REST (Rust)",
+    }
+
+
+def start_typescript_mock_mode(
+    project_root: Path,
+    run_dir: Path,
+    log_dir: Path,
+    args: argparse.Namespace,
+    *,
+    dry_run: bool,
+) -> Dict[str, object]:
+    port = args.port or 3001
+    base_url = f"http://127.0.0.1:{port}/api/v1"
+    rest_log_path = log_dir / "typescript-mock-server.log"
+
+    scenario_args: List[str] = []
+    if args.scenario:
+        try:
+            scenario_path = resolve_scenario_path(project_root, args.scenario)
+            scenario_args = ["--", "--scenario", str(scenario_path)]
+        except FileNotFoundError:
+            logging.warning("Scenario file '%s' not found; continuing without it", args.scenario)
+    if args.scenario_speed and args.scenario_speed != 1.0:
+        logging.warning(
+            "--scenario-speed is ignored for the TypeScript mock server (value %.2f)",
+            args.scenario_speed,
+        )
+
+    cmd = [
+        "yarn",
+        "workspace",
+        "ah-webui-mock-server",
+        "run",
+        "dev",
+    ]
+    if scenario_args:
+        cmd.extend(scenario_args)
+
+    env = os.environ.copy()
+    env.setdefault("PORT", str(port))
+    env.setdefault("SERVER_LOG_FILE", str(rest_log_path))
+
+    handle = launch_process(
+        cmd,
+        cwd=project_root,
+        env=env,
+        log_path=rest_log_path,
+        dry_run=dry_run,
+    )
+
+    if dry_run:
+        return {
+            "port": port,
+            "base_url": base_url,
+            "server_handle": handle,
+            "server_type": "Mock REST (TypeScript)",
+        }
+
+    wait_for_http_health(
+        f"http://127.0.0.1:{port}/health",
+        timeout=args.timeout,
+        process_handle=handle,
+    )
+
+    return {
+        "port": port,
+        "base_url": base_url,
+        "server_handle": handle,
+        "server_type": "Mock REST (TypeScript)",
     }
 
 
@@ -832,8 +889,14 @@ def main() -> None:
     try:
         if args.mode == "rest":
             remote_info = start_rest_mode(project_root, run_dir, log_dir, args, dry_run=args.dry_run)
+        elif args.mode == "mock":
+            remote_info = start_rust_mock_mode(
+                project_root, run_dir, log_dir, args, dry_run=args.dry_run
+            )
         else:
-            remote_info = start_mock_mode(project_root, run_dir, log_dir, args, dry_run=args.dry_run)
+            remote_info = start_typescript_mock_mode(
+                project_root, run_dir, log_dir, args, dry_run=args.dry_run
+            )
 
         if not args.dry_run:
             active_processes.append(remote_info["server_handle"])

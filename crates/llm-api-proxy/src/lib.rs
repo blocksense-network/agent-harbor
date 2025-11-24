@@ -16,7 +16,8 @@ pub use proxy::LlmApiProxy;
 /// Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub use ah_scenario_format::Scenario;
 pub use config::ProviderConfig;
 /// Re-export commonly used types
 pub use converters::{ApiFormat, ConversionRequest, ConversionResponse};
-pub use scenario::{Scenario, ScenarioPlayer};
+pub use scenario::ScenarioPlayer;

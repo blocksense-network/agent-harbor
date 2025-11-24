@@ -14,12 +14,12 @@ use futures::StreamExt;
 use std::sync::Arc;
 
 /// Session service for managing session lifecycle
-pub struct SessionService<S: SessionStore> {
-    store: Arc<S>,
+pub struct SessionService {
+    store: Arc<dyn SessionStore>,
 }
 
-impl<S: SessionStore> SessionService<S> {
-    pub fn new(store: Arc<S>) -> Self {
+impl SessionService {
+    pub fn new(store: Arc<dyn SessionStore>) -> Self {
         Self { store }
     }
 

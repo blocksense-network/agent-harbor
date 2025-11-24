@@ -13,6 +13,8 @@ The REST service implementation spans multiple Rust crates as defined in [Reposi
 - **ah-rest-client**: Type-safe production client library implementing TaskManager trait
 - **ah-rest-mock-client**: Mock client with simulated tokio time for MVVM-style testing
 - **ah-rest-server**: Production server with SQLite backend and task orchestration
+- **Server dependency injection**: `crates/ah-rest-server/src/dependencies.rs` wires SQLite-backed services while `crates/ah-rest-server/src/mock_dependencies.rs` reuses the TUI mock TaskManager inside the HTTP handlers.
+- **Rust mock server binary**: `crates/ah-rest-server/src/bin/mock_server.rs` launches the dependency-injected mock backend for `just manual-test-tui-remote-rust-mock`, while the TypeScript server remains available via `just manual-test-tui-remote-typescript-mock`.
 - **ah-cli integration**: `ah webui` and `ah agent access-point` commands
 
 **Note**: The mock REST server already exists in `webui/mock-server/` and will be used for testing the production client.
@@ -245,6 +247,7 @@ The MockRestClient has been implemented in `crates/ah-rest-mock-client/src/lib.r
 - [x] All integration tests pass against existing webui/mock-server
 - [x] Identified mock-server improvements documented and implemented
 - [x] TaskManager trait implementation matches mock client behavior (Milestone 3)
+- [x] Regression tests in `crates/ah-rest-server/tests/mock_server.rs` spin up the Rust mock server via dependency injection and drive it through `ah-rest-client` + `GenericRestTaskManager`.
 
 ### Implementation Details
 
@@ -393,6 +396,8 @@ The production server task lifecycle has been fully implemented with comprehensi
 - **Database Migrations**: Versioned schema migrations including drafts table, task metadata, and repository tracking
 - **Local Task Manager**: Complete implementation with database-backed draft storage and repository/branch enumeration
 - **Configuration System**: Layered configuration support with `--config` parameter forwarding to agent processes
+- **Dependency injection hooks**: `state.rs` now stores trait objects supplied by `dependencies.rs`, enabling alternative backends such as `mock_dependencies.rs` which reuses `ah-rest-mock-client` behind the HTTP surface.
+- **Rust mock server binary**: `src/bin/mock_server.rs` exposes the injected mock backend for local workflows; `just manual-test-tui-remote-rust-mock` boots this binary while `just manual-test-tui-remote-typescript-mock` continues to exercise the Express-based server.
 
 ### Key Source Files
 

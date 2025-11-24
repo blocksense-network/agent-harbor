@@ -4,6 +4,7 @@
 //! Main server implementation
 
 use crate::config::ServerConfig;
+use crate::dependencies::DefaultServerDependencies;
 use crate::error::ServerResult;
 use crate::handlers;
 use crate::middleware::{RateLimitState, rate_limit_middleware};
@@ -33,14 +34,13 @@ pub struct Server {
 impl Server {
     /// Create a new server instance
     pub async fn new(config: ServerConfig) -> ServerResult<Self> {
-        let state = AppState::new(config.clone()).await?;
+        let state = DefaultServerDependencies::new(config.clone()).await?.into_state();
+        Self::with_state(config, state)
+    }
 
-        // Start the task executor
-        state.task_executor.start();
-
-        // Build the application with all routes and middleware
+    /// Construct a server from an already-built app state (used for custom dependencies)
+    pub fn with_state(config: ServerConfig, state: AppState) -> ServerResult<Self> {
         let app = Self::build_app(state, &config);
-
         Ok(Self { config, app })
     }
 

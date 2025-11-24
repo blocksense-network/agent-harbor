@@ -10,6 +10,7 @@ use fs_snapshots_test_harness::{assert_driver_exists, scenarios};
 use fs_snapshots_test_harness::{btrfs_available, btrfs_is_root};
 #[cfg(feature = "zfs")]
 use fs_snapshots_test_harness::{zfs_available, zfs_is_root};
+#[cfg(all(feature = "agentfs", target_os = "linux"))]
 use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use tracing::info;

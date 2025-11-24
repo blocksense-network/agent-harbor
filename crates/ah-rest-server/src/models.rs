@@ -12,6 +12,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::broadcast;
 
 /// Internal session model with additional fields
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +44,14 @@ pub trait SessionStore: Send + Sync {
         query: &LogQuery,
     ) -> anyhow::Result<Vec<LogEntry>>;
     async fn get_session_events(&self, session_id: &str) -> anyhow::Result<Vec<SessionEvent>>;
+
+    /// Optional subscription for live session events (used by mock implementations).
+    fn subscribe_session_events(
+        &self,
+        _session_id: &str,
+    ) -> Option<broadcast::Receiver<SessionEvent>> {
+        None
+    }
 }
 
 /// In-memory session store implementation (for development/testing)

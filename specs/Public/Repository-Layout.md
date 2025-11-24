@@ -110,8 +110,8 @@ agent-harbor/
 │  ├─ ah-repo/                 # VCS operations (Git/Hg/Bzr/Fossil)
 │  ├─ ah-rest-api-contract/    # Schema types, input validation, etc (shared between mock servers and production server)
 │  ├─ ah-rest-client/          # Client for remote REST mode
-│  ├─ ah-rest-mock-server/     # Mock REST API server for development and testing
-│  ├─ ah-rest-server/          # Agent Harbor REST service (lib)
+│  ├─ ah-rest-server/          # Agent Harbor REST service (lib + mock_server binary)
+│  ├─ ah-scenario-format/      # Scenario-Format.md parser and playback utilities
 │  ├─ ah-connectivity/         # SSH, relays, followers, rendezvous
 │  ├─ ah-notify/               # Cross-platform notifications
 │  ├─ ah-fleet/                # Multi-OS fleet orchestration primitives
@@ -210,7 +210,7 @@ The `apps/macos/AgentHarbor/` directory contains a separate **native macOS host 
 
 ### Crate mapping (selected)
 
-- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `ah-domain-types`, `ah-logging`, `config-core`, `ah-config-types`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-notify`, `ah-fleet`, `ah-agents`, `ah-agent-claude`, `ah-agent-codex`, `ah-schemas`.
+- CLI/TUI: `ah-cli`, `ah-tui`, `tui-testing`, `ah-core`, `ah-domain-types`, `ah-logging`, `config-core`, `ah-config-types`, `ah-state`, `ah-repo`, `ah-workflows`, `ah-rest-client`, `ah-rest-server`, `ah-scenario-format`, `ah-notify`, `ah-fleet`, `ah-agents`, `ah-agent-claude`, `ah-agent-codex`, `ah-schemas`.
 - GUI (Electron native addons): `ah-gui-core`, `ah-gui-webui-manager`.
 - AgentFS: `agentfs-core`, `agentfs-proto`, `agentfs-fuse-host`, `agentfs-winfsp-host`, `agentfs-ffi`.
 - Sandbox (Local profile): `sandbox-core`, `sandbox-fs`, `sandbox-seccomp`, `sandbox-cgroups`, `sandbox-net`, `sandbox-proto`, `sbx-helper`.
@@ -232,7 +232,7 @@ The `apps/macos/AgentHarbor/` directory contains a separate **native macOS host 
 ### WebUI structure
 
 - `webui/app/` — Main SolidJS application with server-side rendering support through SolidStart
-- `webui/mock-server/` — Mock REST API server implementing the full [REST-Service/API.md](REST-Service/API.md) specification for development and testing
+- `webui/mock-server/` — Legacy TypeScript mock REST API server (deprecated in favor of Rust mock_server binary)
 - `webui/e2e-tests/` — Playwright E2E test suite with pre-scripted scenarios controlling both mock server and UI interactions
 - `webui/shared/` — Shared TypeScript utilities, API client code, and type definitions used across WebUI components
 

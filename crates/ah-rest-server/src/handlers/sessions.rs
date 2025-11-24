@@ -5,7 +5,6 @@
 
 use crate::ServerResult;
 use crate::error::ServerError;
-use crate::models::SessionStore;
 use crate::state::AppState;
 use ah_rest_api_contract::*;
 use axum::{
@@ -13,9 +12,11 @@ use axum::{
     extract::{Path, Query, State},
     response::sse::{Event, KeepAlive, Sse},
 };
-use futures::stream::{self, Stream};
-use std::convert::Infallible;
+use futures::{Stream, StreamExt, stream};
+use serde_json;
 use std::time::Duration;
+use std::{convert::Infallible, pin::Pin};
+use tokio_stream::wrappers::BroadcastStream;
 
 /// List sessions with optional filtering
 pub async fn list_sessions(
@@ -62,7 +63,9 @@ pub async fn delete_session(
     Path(session_id): Path<String>,
 ) -> ServerResult<()> {
     // Stop the task if it's running
-    let _ = state.task_executor.stop_task(&session_id).await;
+    if let Some(controller) = state.task_controller.as_ref() {
+        let _ = controller.stop_task(&session_id).await;
+    }
 
     // Delete from database
     state.session_store.delete_session(&session_id).await?;
@@ -124,23 +127,42 @@ pub async fn get_session_logs(
     }))
 }
 
+type SessionSseStream = Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>>;
+
 /// Stream session events via SSE
 pub async fn stream_session_events(
-    State(_state): State<AppState>,
-    Path(_session_id): Path<String>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    // Create a simple heartbeat stream (placeholder - in real implementation,
-    // this would stream actual session events)
-    let stream = stream::unfold(0, |count| async move {
-        tokio::time::sleep(Duration::from_secs(30)).await;
-        Some((
-            Ok(Event::default().event("heartbeat").data(format!("heartbeat-{}", count))),
-            count + 1,
-        ))
-    });
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ServerResult<Sse<SessionSseStream>> {
+    let stream: SessionSseStream =
+        if let Some(receiver) = state.session_store.subscribe_session_events(&session_id) {
+            let history = state.session_store.get_session_events(&session_id).await?;
+            let history_stream = stream::iter(history.into_iter().map(session_event_to_sse));
+            let live_stream = BroadcastStream::new(receiver).filter_map(|result| async move {
+                match result {
+                    Ok(event) => Some(session_event_to_sse(event)),
+                    Err(_) => None,
+                }
+            });
+            Box::pin(history_stream.chain(live_stream))
+        } else {
+            let heartbeat = stream::unfold(0, |count| async move {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                Some((
+                    Ok(Event::default().event("heartbeat").data(format!("heartbeat-{}", count))),
+                    count + 1,
+                ))
+            });
+            Box::pin(heartbeat)
+        };
 
-    Sse::new(stream)
-        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("keep-alive"))
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("keep-alive")))
+}
+
+fn session_event_to_sse(event: SessionEvent) -> Result<Event, Infallible> {
+    let payload = serde_json::to_string(&event).unwrap_or_else(|_| "{}".into());
+    Ok(Event::default().event("session").data(payload))
 }
 
 /// Get session info (fleet and endpoints)
