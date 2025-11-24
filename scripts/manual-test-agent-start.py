@@ -248,12 +248,12 @@ def needs_supporting_processes(args):
     return not args.interactive and args.agent_type not in ["mock", "mock-simple"]
 
 
-def run_with_process_compose(args, repo_dir, user_home_dir, agent_version):
+def run_with_process_compose(args, repo_dir, user_home_dir, agent_version, initial_prompt=None):
     """Run the core command with process-compose and supporting processes."""
     project_root = find_project_root()
 
     # Determine the core ah command and wrap with recording if needed
-    core_cmd = determine_core_command(args, repo_dir, user_home_dir, None)  # No prompt needed for process-compose case
+    core_cmd = determine_core_command(args, repo_dir, user_home_dir, initial_prompt)
     final_ah_cmd = wrap_with_record_if_needed(args, core_cmd, user_home_dir)
 
     # Build the command string for process-compose
@@ -1192,6 +1192,7 @@ Examples:
 
     parser.add_argument(
         "--prompt",
+        nargs='+',
         help="Custom prompt text to pass to the agent (overrides scenario prompt)"
     )
 
@@ -1291,13 +1292,17 @@ Examples:
     else:
         initial_prompt = args.prompt
 
+    # Handle prompt as list (from nargs='+') - join back into string
+    if initial_prompt and isinstance(initial_prompt, list):
+        initial_prompt = ' '.join(initial_prompt)
+
     # Setup working directory for all agent types
     repo_dir, user_home_dir = setup_working_directory(scenario_name, working_dir, agent_version)
 
     if needs_supporting_processes(args):
         # For real agents, run with supporting processes (llm-api-proxy)
         # The --process-compose flag controls orchestration method (process-compose vs manual)
-        run_with_process_compose(args, repo_dir, user_home_dir, agent_version)
+        run_with_process_compose(args, repo_dir, user_home_dir, agent_version, initial_prompt)
     else:
         # For mock agents or interactive mode, run directly
         # Determine the core command and wrap with recording if needed
