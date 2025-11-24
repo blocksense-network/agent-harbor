@@ -1726,7 +1726,7 @@ impl Settings {
 
         // Load configuration
         let paths = config_core::paths::discover_paths(None);
-        let config = config_core::load_all(&paths, &[])?;
+        let config = config_core::load_all(&paths, None)?;
 
         // Extract default agents if configured
         if let Some(default_agents_config) = config.json.get("default-agents") {

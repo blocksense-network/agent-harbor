@@ -353,3 +353,357 @@ Once the config-core crate skeleton and schema generation are complete, multiple
 - **Generic JSON Operations**: Mitigated by comprehensive testing of merge properties and provenance tracking
 - **Distributed Types**: Mitigated by path-based extraction with clear error messages for type mismatches
 - **TOML Round-trip**: Mitigated by validation that ensures TOML -> JSON preserves all information and types
+
+## Subsystem Configuration Type Implementation
+
+Now that the core configuration system is complete, we need to implement the distributed configuration types for each subsystem. Each milestone focuses on one subsystem's configuration, ensuring proper ownership and type safety.
+
+### Milestone: Setup Configuration Loading in ah-cli
+
+**Deliverables:**
+
+- Integrate `config-core` and `ah-config-types` into `ah-cli` crate
+- Implement configuration loading at application startup
+- Create the root `Config` struct that composes all subsystem configs
+- Add Serde attributes for proper flattening and field renaming
+- Implement configuration distribution to subsystems during initialization
+- Add error handling for configuration loading failures
+- Create integration tests for end-to-end config loading
+
+**Implementation Details:**
+
+- The `ah-cli` crate becomes the central point for configuration loading
+- Configuration is loaded once at startup and distributed as typed objects to subsystems
+- Uses the distributed composition pattern with `#[serde(flatten)]` for subsystem configs
+- Handles CLI flag overrides and environment variable processing
+- Provides clear error messages for configuration issues
+
+**Key Source Files:**
+
+- `crates/ah-cli/src/config.rs` - Root Config struct and loading logic
+- `crates/ah-cli/src/main.rs` - Configuration loading integration
+- `crates/ah-config-types/src/lib.rs` - Root config composition
+
+**Verification:**
+
+- [x] Configuration loads correctly from all layers (system, user, repo, repo-user, env, CLI)
+- [x] Subsystem configs are properly extracted and distributed
+- [x] CLI flags override configuration correctly
+- [x] Environment variables are processed correctly (inherited from config-core)
+- [x] Error messages are clear for configuration failures
+- [x] Integration tests pass for full config loading workflow
+
+### Milestone: Startup Configuration (ah-cli crate)
+
+**Subsystem**: Early application startup decisions
+**Primary Crate**: `ah-cli`
+
+**Deliverables:**
+
+- Define `StartupConfig` struct for early application decisions
+- Implement configuration for UI selection and remote server mode
+- Integrate startup config into root Config struct with flattening
+- Add accessor methods for startup configuration
+
+**Configuration Keys:**
+
+- `ui` - Default UI selection (tui/webui)
+- `remote-server` - Remote server name/URL (determines local vs remote mode)
+
+**Sources**: Configuration.md, CLI.md, Handling-AH-URL-Scheme.md
+
+**Key Source Files:**
+
+- `crates/ah-cli/src/config.rs` - Startup configuration type and root Config struct
+
+**Implementation Details:**
+
+- StartupConfig struct implemented with UI selection and remote server settings
+- Serde serialization with proper field renaming
+- Integration with root Config struct via flattening
+- Accessor methods provided for subsystem extraction
+
+**Verification:**
+
+- [x] StartupConfig struct defined with required configuration options
+- [x] Configuration integrated into root Config struct
+- [x] Serde serialization with proper field naming
+- [ ] Application selects correct UI based on startup config (pending UI selection logic)
+- [ ] UI decision is made before UI subsystem initialization (pending application startup logic)
+- [ ] Configuration validation rejects invalid UI values (pending validation implementation)
+
+### Milestone: UI/Interface Configuration (ah-tui crate)
+
+**Subsystem**: TUI-specific interface configuration
+**Primary Crate**: `ah-tui`
+
+**Deliverables:**
+
+- Define `TuiConfig` struct in `ah-tui/src/tui_config.rs`
+- Implement configuration for TUI settings, terminal multiplexer, editor
+- Add validation for TUI configuration values
+- Create unit tests for TUI config parsing
+- Update root Config struct with TUI subsystem composition
+
+**Configuration Keys:**
+
+- `terminal-multiplexer` - Terminal multiplexer choice
+- `editor` - Default editor command
+- `tui-font-style` - TUI symbol style
+- `tui-font` - TUI font name
+
+**Sources**: Configuration.md, CLI.md, TUI-PRD.md
+
+**Key Source Files:**
+
+- `crates/ah-tui/src/tui_config.rs` - TUI configuration type
+- `crates/ah-config-types/src/ui.rs` - UI config definitions
+
+**Implementation Details:**
+
+- TuiConfig struct implemented with comprehensive TUI configuration options from TUI-PRD.md
+- Includes keyboard keymap configuration with all TUI operations
+- Serde serialization with kebab-case naming convention
+- Integration with root Config struct via flattening
+
+**Verification:**
+
+- [x] TuiConfig struct defined with comprehensive TUI settings
+- [x] Keyboard keymap configuration implemented
+- [x] Configuration integrated into root Config struct
+- [x] Serde serialization with kebab-case naming
+- [ ] Terminal multiplexer selection works (pending TUI integration)
+- [ ] Editor configuration is respected (pending TUI integration)
+- [ ] TUI font settings are applied correctly (pending TUI integration)
+- [ ] Configuration validation rejects invalid values (pending validation implementation)
+
+### Milestone: Repository Configuration (ah-cli crate)
+
+**Subsystem**: Repository initialization behavior
+**Primary Crate**: `ah-cli`
+
+**Configuration Keys:**
+
+- `repo.supported-agents` - Supported agent types
+- `repo.init.vcs` - Version control system
+- `repo.init.devenv` - Development environment
+- `repo.init.devcontainer` - Devcontainer enablement
+- `repo.init.direnv` - Direnv enablement
+- `repo.init.task-runner` - Task runner tool
+
+**Sources**: Configuration.md
+
+**Key Source Files:**
+
+- `crates/ah-cli/src/config.rs` - Repository configuration type and root Config struct
+
+**Implementation Details:**
+
+- RepoConfig and RepoInitConfig structs implemented with repository initialization settings
+- Serde serialization with kebab-case naming convention
+- Integration with root Config struct as optional field
+
+**Verification:**
+
+- [x] RepoConfig struct defined with required configuration options
+- [x] Configuration integrated into root Config struct
+- [x] Serde serialization with proper field naming
+- [ ] VCS detection uses configured default VCS (pending repository initialization logic)
+- [ ] Development environment setup respects config (pending repository initialization logic)
+- [ ] Task runner commands use configured tool (pending repository initialization logic)
+- [ ] Repository initialization applies config defaults (pending repository initialization logic)
+- [ ] Configuration validation rejects invalid VCS/devenv values (pending validation implementation)
+
+### Milestone: Browser Automation Configuration
+
+**Subsystem**: Browser automation for cloud agents
+**Primary Crate**: `ah-cli`
+
+**Configuration Keys:**
+
+- `browser-automation` - Enable/disable browser automation
+- `browser-profile` - Browser profile name
+- `chatgpt-username` - ChatGPT username
+- `codex-workspace` - Codex workspace identifier
+
+**Sources**: Configuration.md, CLI.md
+
+**Key Source Files:**
+
+- `crates/ah-cli/src/config.rs` - Browser automation config type and root Config struct
+
+**Implementation Details:**
+
+- BrowserAutomationConfig struct implemented with browser automation settings
+- Serde serialization with proper field renaming
+- Integration with root Config struct via flattening
+
+**Verification:**
+
+- [x] BrowserAutomationConfig struct defined with required configuration options
+- [x] Configuration integrated into root Config struct
+- [x] Serde serialization with proper field naming
+- [ ] Browser automation enables/disables based on config (pending browser automation integration)
+- [ ] Browser profile selection works correctly (pending browser automation integration)
+- [ ] ChatGPT username is used for profile discovery (pending browser automation integration)
+- [ ] Codex workspace configuration is applied (pending browser automation integration)
+
+### Milestone: Filesystem/Sandbox Configuration
+
+**Subsystem**: Filesystem snapshots and sandboxing
+**Primary Crate**: `ah-fs-snapshots`
+
+**Deliverables:**
+
+- Define `FsSnapshotsConfig` struct for filesystem snapshot settings
+- Define `SandboxConfig` struct for sandbox profile defaults
+- Implement configuration for snapshot providers and working copy strategies
+- Add validation for filesystem configuration values
+- Create unit tests for FS/sandbox config parsing
+- Update root Config struct with FS/sandbox composition
+
+**Configuration Keys:**
+
+- `fs-snapshots` - Filesystem snapshot provider
+- `working-copy` - Working copy strategy
+
+**Sources**: Configuration.md, CLI.md
+
+**Key Source Files:**
+
+- `crates/ah-fs-snapshots/src/fs_snapshots_config.rs` - Filesystem snapshots config type
+
+**Implementation Details:**
+
+- FsSnapshotsConfig struct implemented with filesystem snapshot provider and working copy strategy settings
+- Serde serialization with proper field renaming
+- Integration with root Config struct via flattening
+
+**Verification:**
+
+- [x] FsSnapshotsConfig struct defined with required configuration options
+- [x] Configuration integrated into root Config struct
+- [x] Serde serialization with proper field naming
+- [ ] Filesystem snapshot provider selection works (pending filesystem integration)
+- [ ] Working copy strategy is applied correctly (pending working copy system)
+- [ ] Configuration validation rejects invalid providers/strategies (pending validation implementation)
+
+### Milestone: Network/Remote Configuration
+
+**Subsystem**: REST API client and remote server connections
+**Primary Crate**: `ah-rest-client`
+
+**Deliverables:**
+
+- Define `NetworkConfig` struct for network and API settings
+- Implement configuration for WebUI service URL
+- Add validation for network configuration values
+- Create unit tests for network config parsing
+- Update root Config struct with network composition
+
+**Configuration Keys:**
+
+- `service-base-url` - WebUI service base URL
+
+**Sources**: Configuration.md
+
+**Key Source Files:**
+
+- `crates/ah-rest-client/src/network_config.rs` - Network config type
+- `crates/ah-config-types/src/network.rs` - Network config definitions
+
+**Implementation Details:**
+
+- NetworkConfig struct implemented with WebUI service base URL setting
+- Serde serialization with proper field renaming
+- Integration with root Config struct via flattening
+
+**Verification:**
+
+- [x] NetworkConfig struct defined with required configuration options
+- [x] Configuration integrated into root Config struct
+- [x] Serde serialization with proper field naming
+- [ ] WebUI service URL is applied correctly (pending REST client integration)
+- [ ] Configuration validation rejects invalid URLs (pending validation implementation)
+
+### Milestone: Task/Execution Configuration
+
+**Subsystem**: Task execution and agent running
+**Primary Crate**: `ah-core`
+
+**Deliverables:**
+
+- Define `TaskConfig` struct for task execution settings
+- Implement configuration for notifications, editor behavior
+- Add validation for task configuration values
+- Create unit tests for task config parsing
+- Update root Config struct with task composition
+
+**Configuration Keys:**
+
+- `notifications` - Enable OS notifications on completion
+- `task-editor.use-vcs-comment-string` - Use VCS comment strings
+- `task-template` - Path to task template file
+
+**Sources**: CLI.md, TUI-PRD.md
+
+**Key Source Files:**
+
+- `crates/ah-core/src/task_config.rs` - Task config type
+- `crates/ah-config-types/src/task.rs` - Task config definitions
+
+**Implementation Details:**
+
+- TaskConfig struct implemented with notifications, editor behavior, and task template settings
+- Serde serialization with proper field renaming for nested keys
+- Integration with root Config struct via flattening
+
+**Verification:**
+
+- [x] TaskConfig struct defined with required configuration options
+- [x] Configuration integrated into root Config struct
+- [x] Serde serialization with proper field naming
+- [ ] Task completion notifications work based on config (pending task execution integration)
+- [ ] Editor behavior respects VCS comment string settings (pending editor integration)
+- [ ] Task template files are loaded correctly (pending template system)
+- [ ] Configuration validation works for all task settings (pending validation implementation)
+
+### Milestone: Logging Configuration
+
+**Subsystem**: Centralized logging system
+**Primary Crate**: `ah-logging`
+
+**Deliverables:**
+
+- Define `LoggingConfig` struct for logging verbosity
+- Implement configuration for log levels and formatting
+- Add validation for logging configuration values
+- Create unit tests for logging config parsing
+- Update root Config struct with logging composition
+
+**Configuration Keys:**
+
+- `log-level` - Logging verbosity level
+
+**Sources**: Configuration.md, CLI.md
+
+**Key Source Files:**
+
+- `crates/ah-logging/src/logging_config.rs` - Logging config type
+- `crates/ah-config-types/src/logging.rs` - Logging config definitions
+
+**Implementation Details:**
+
+- LoggingConfig struct implemented with log level verbosity setting
+- Serde serialization with proper field renaming
+- Integration with root Config struct via flattening
+
+**Verification:**
+
+- [x] LoggingConfig struct defined with required configuration options
+- [x] Configuration integrated into root Config struct
+- [x] Serde serialization with proper field naming
+- [ ] Log level filtering works correctly (pending logging system integration)
+- [ ] Log output respects configuration settings (pending logging system integration)
+- [ ] Configuration validation rejects invalid log levels (pending validation implementation)
+- [ ] Different log levels produce appropriate output (pending logging system integration)

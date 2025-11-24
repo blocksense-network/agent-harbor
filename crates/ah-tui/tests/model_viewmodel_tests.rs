@@ -10,6 +10,8 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use ah_tui::tui_config::TuiConfig;
+
 use ah_core::{
     BranchesEnumerator, DefaultWorkspaceTermsEnumerator, RepositoriesEnumerator, TaskManager,
     WorkspaceFilesEnumerator, WorkspaceTermsEnumerator, task_manager::SaveDraftResult,
@@ -57,7 +59,7 @@ fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Recei
     let (ui_tx, ui_rx) = crossbeam_channel::unbounded();
 
     (
-        ViewModel::new(
+        ViewModel::new_with_background_loading_and_current_repo(
             workspace_files,
             workspace_workflows,
             workspace_terms,
@@ -66,6 +68,8 @@ fn create_test_view_model_with_channel() -> (ViewModel, crossbeam_channel::Recei
             branches_enumerator,
             agents_enumerator,
             settings,
+            TuiConfig::default(),
+            None,
             ui_tx,
         ),
         ui_rx,
@@ -845,18 +849,223 @@ mod viewmodel_tests {
             CardFocusElement::TaskDescription,
         );
 
-        // Focus on repository selector
+        // Focus on the draft task
         vm.focus_element = DashboardFocusState::DraftTask(0);
-        if let Some(card) = vm.draft_cards.get_mut(0) {
-            card.focus_element = CardFocusElement::RepositorySelector;
+
+        // Test RepositorySelector - opens RepositorySearch modal
+        {
+            // Set focus on repository selector
+            if let Some(card) = vm.draft_cards.get_mut(0) {
+                card.focus_element = CardFocusElement::RepositorySelector;
+            }
+
+            // Verify focus is set correctly
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::RepositorySelector
+            );
+
+            // Press ENTER to open repository search modal
+            let enter_result =
+                vm.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
+            assert!(
+                enter_result,
+                "ENTER should be handled for RepositorySelector"
+            );
+            assert_eq!(
+                vm.modal_state,
+                ModalState::RepositorySearch,
+                "Repository search modal should be open"
+            );
+
+            // Press ESC to dismiss the modal
+            let esc_result =
+                vm.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
+            assert!(esc_result, "ESC should be handled to dismiss modal");
+            assert_eq!(
+                vm.modal_state,
+                ModalState::None,
+                "Modal should be dismissed"
+            );
+
+            // Focus should return to the repository selector
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::RepositorySelector
+            );
         }
 
-        // Verify the focus was set correctly
-        assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
-        assert_eq!(
-            vm.draft_cards[0].focus_element,
-            CardFocusElement::RepositorySelector
-        );
+        // Test BranchSelector - opens BranchSearch modal
+        {
+            // Set focus on branch selector
+            if let Some(card) = vm.draft_cards.get_mut(0) {
+                card.focus_element = CardFocusElement::BranchSelector;
+            }
+
+            // Verify focus is set correctly
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::BranchSelector
+            );
+
+            // Press ENTER to open branch search modal
+            let enter_result =
+                vm.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
+            assert!(enter_result, "ENTER should be handled for BranchSelector");
+            assert_eq!(
+                vm.modal_state,
+                ModalState::BranchSearch,
+                "Branch search modal should be open"
+            );
+
+            // Press ESC to dismiss the modal
+            let esc_result =
+                vm.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
+            assert!(esc_result, "ESC should be handled to dismiss modal");
+            assert_eq!(
+                vm.modal_state,
+                ModalState::None,
+                "Modal should be dismissed"
+            );
+
+            // Focus should return to the branch selector
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::BranchSelector
+            );
+        }
+
+        // Test ModelSelector - opens ModelSearch modal
+        {
+            // Set focus on model selector
+            if let Some(card) = vm.draft_cards.get_mut(0) {
+                card.focus_element = CardFocusElement::ModelSelector;
+            }
+
+            // Verify focus is set correctly
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::ModelSelector
+            );
+
+            // Press ENTER to open model search modal
+            let enter_result =
+                vm.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
+            assert!(enter_result, "ENTER should be handled for ModelSelector");
+            assert_eq!(
+                vm.modal_state,
+                ModalState::ModelSearch,
+                "Model search modal should be open"
+            );
+
+            // Press ESC to dismiss the modal
+            let esc_result =
+                vm.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
+            assert!(esc_result, "ESC should be handled to dismiss modal");
+            assert_eq!(
+                vm.modal_state,
+                ModalState::None,
+                "Modal should be dismissed"
+            );
+
+            // Focus should return to the model selector
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::ModelSelector
+            );
+        }
+
+        // Test GoButton - launches task (no modal)
+        {
+            // Set focus on go button
+            if let Some(card) = vm.draft_cards.get_mut(0) {
+                card.focus_element = CardFocusElement::GoButton;
+            }
+
+            // Verify focus is set correctly
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(vm.draft_cards[0].focus_element, CardFocusElement::GoButton);
+
+            // Go button doesn't open a modal, just verify no modal is open
+            assert_eq!(
+                vm.modal_state,
+                ModalState::None,
+                "No modal should be open for GoButton"
+            );
+        }
+
+        // Test AdvancedOptionsButton - opens LaunchOptions modal
+        {
+            // Set focus on advanced options button
+            if let Some(card) = vm.draft_cards.get_mut(0) {
+                card.focus_element = CardFocusElement::AdvancedOptionsButton;
+            }
+
+            // Verify focus is set correctly
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::AdvancedOptionsButton
+            );
+
+            // Press ENTER to open launch options modal
+            let enter_result =
+                vm.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
+            assert!(
+                enter_result,
+                "ENTER should be handled for AdvancedOptionsButton"
+            );
+            assert_eq!(
+                vm.modal_state,
+                ModalState::LaunchOptions,
+                "Launch options modal should be open"
+            );
+
+            // Press ESC to dismiss the modal
+            let esc_result =
+                vm.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
+            assert!(esc_result, "ESC should be handled to dismiss modal");
+            assert_eq!(
+                vm.modal_state,
+                ModalState::None,
+                "Modal should be dismissed"
+            );
+
+            // Focus should return to the advanced options button
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::AdvancedOptionsButton
+            );
+        }
+
+        // Test TaskDescription - no modal (back to start)
+        {
+            // Set focus on task description
+            if let Some(card) = vm.draft_cards.get_mut(0) {
+                card.focus_element = CardFocusElement::TaskDescription;
+            }
+
+            // Verify focus is set correctly
+            assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
+            assert_eq!(
+                vm.draft_cards[0].focus_element,
+                CardFocusElement::TaskDescription
+            );
+
+            // Task description doesn't open a modal, just verify no modal is open
+            assert_eq!(
+                vm.modal_state,
+                ModalState::None,
+                "No modal should be open for TaskDescription"
+            );
+        }
     }
 
     #[test]

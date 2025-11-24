@@ -3,6 +3,7 @@
 
 //! TUI command handling for the CLI
 
+use crate::SubcommandOverrides;
 use ah_core::{
     DefaultWorkspaceTermsEnumerator, MultiplexerChoice, RemoteWorkspaceFilesEnumerator,
     WorkspaceFilesEnumerator, WorkspaceTermsEnumerator, determine_multiplexer_choice,
@@ -14,6 +15,7 @@ use ah_repo::VcsRepo;
 use ah_rest_client::AuthConfig;
 use ah_tui::dashboard_loop::run_dashboard;
 use ah_tui::settings::Settings;
+use ah_tui::tui_config::TuiConfig;
 use ah_tui::view::TuiDependencies;
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
 use anyhow::Result;
@@ -52,7 +54,17 @@ pub enum CliMultiplexerArg {
 }
 
 /// Filesystem snapshot provider type
-#[derive(Clone, Debug, clap::ValueEnum)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    clap::ValueEnum,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum FsSnapshotsType {
     /// Auto-detect the best available snapshot provider
     Auto,
@@ -71,6 +83,20 @@ pub enum FsSnapshotsType {
 impl Default for FsSnapshotsType {
     fn default() -> Self {
         Self::Auto
+    }
+}
+
+impl FsSnapshotsType {
+    /// Convert to string representation that matches configuration keys
+    pub fn as_config_str(&self) -> &'static str {
+        match self {
+            FsSnapshotsType::Auto => "auto",
+            FsSnapshotsType::Zfs => "zfs",
+            FsSnapshotsType::Btrfs => "btrfs",
+            FsSnapshotsType::Agentfs => "agentfs",
+            FsSnapshotsType::Git => "git",
+            FsSnapshotsType::Disable => "disable",
+        }
     }
 }
 
@@ -128,22 +154,22 @@ fn multiplexer_display_name(mux_type: &ah_domain_types::MultiplexerType) -> &'st
 pub struct TuiArgs {
     /// Remote server URL for REST API connectivity
     #[arg(long, help = "URL of the remote agent-harbor REST service")]
-    remote_server: Option<String>,
+    pub(crate) remote_server: Option<String>,
 
     /// API key for authentication with remote server
     #[arg(long, help = "API key for authenticating with the remote server")]
-    api_key: Option<String>,
+    pub(crate) api_key: Option<String>,
 
     /// Bearer token for authentication with remote server
     #[arg(
         long,
         help = "JWT bearer token for authenticating with the remote server"
     )]
-    bearer_token: Option<String>,
+    pub(crate) bearer_token: Option<String>,
 
     /// Which multiplexer to use
     #[arg(long, help = "Multiplexer to use for session management")]
-    multiplexer: Option<CliMultiplexerArg>,
+    pub(crate) multiplexer: Option<CliMultiplexerArg>,
 
     #[command(subcommand)]
     pub subcommand: Option<TuiSubcommands>,
@@ -171,13 +197,104 @@ pub enum TuiSubcommands {
     },
 }
 
+impl SubcommandOverrides for TuiArgs {
+    fn config_path(&self) -> &'static str {
+        "tui"
+    }
+
+    fn to_config_json(&self) -> serde_json::Value {
+        let mut config = serde_json::Map::new();
+
+        // Only include options that were explicitly provided
+        if let Some(ref remote_server) = self.remote_server {
+            config.insert(
+                "remote-server".to_string(),
+                serde_json::Value::String(remote_server.clone()),
+            );
+        }
+
+        if let Some(ref api_key) = self.api_key {
+            config.insert(
+                "api-key".to_string(),
+                serde_json::Value::String(api_key.clone()),
+            );
+        }
+
+        if let Some(ref bearer_token) = self.bearer_token {
+            config.insert(
+                "bearer-token".to_string(),
+                serde_json::Value::String(bearer_token.clone()),
+            );
+        }
+
+        if let Some(ref multiplexer) = self.multiplexer {
+            // Convert CliMultiplexerArg to string
+            let multiplexer_str = match multiplexer {
+                CliMultiplexerArg::Auto => "auto",
+                CliMultiplexerArg::Tmux => "tmux",
+                CliMultiplexerArg::Kitty => "kitty",
+                CliMultiplexerArg::ITerm2 => "iterm2",
+                CliMultiplexerArg::Wezterm => "wezterm",
+                CliMultiplexerArg::Zellij => "zellij",
+                CliMultiplexerArg::Screen => "screen",
+                CliMultiplexerArg::Tilix => "tilix",
+                CliMultiplexerArg::WindowsTerminal => "windows-terminal",
+                CliMultiplexerArg::Ghostty => "ghostty",
+                CliMultiplexerArg::Neovim => "neovim",
+                CliMultiplexerArg::Vim => "vim",
+                CliMultiplexerArg::Emacs => "emacs",
+            };
+            config.insert(
+                "multiplexer".to_string(),
+                serde_json::Value::String(multiplexer_str.to_string()),
+            );
+        }
+
+        // Handle subcommand options if present
+        if let Some(ref subcommand) = self.subcommand {
+            match subcommand {
+                TuiSubcommands::Dashboard {
+                    remote_server,
+                    api_key,
+                    bearer_token,
+                } => {
+                    // Dashboard subcommand inherits TUI config path
+                    if let Some(ref rs) = remote_server {
+                        config.insert(
+                            "remote-server".to_string(),
+                            serde_json::Value::String(rs.clone()),
+                        );
+                    }
+                    if let Some(ref ak) = api_key {
+                        config.insert("api-key".to_string(), serde_json::Value::String(ak.clone()));
+                    }
+                    if let Some(ref bt) = bearer_token {
+                        config.insert(
+                            "bearer-token".to_string(),
+                            serde_json::Value::String(bt.clone()),
+                        );
+                    }
+                }
+            }
+        }
+
+        if config.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::Object(config)
+        }
+    }
+}
+
 impl TuiArgs {
     /// Run the TUI command
     pub async fn run(
         self,
-        fs_snapshots: FsSnapshotsType,
-        experimental_features: Vec<ExperimentalFeature>,
+        fs_snapshots: Option<FsSnapshotsType>,
+        experimental_features: Option<Vec<ExperimentalFeature>>,
+        config: &crate::config::Config,
     ) -> Result<()> {
+        let tui_config = config.tui().clone();
         match self.subcommand {
             Some(TuiSubcommands::Dashboard {
                 ref remote_server,
@@ -192,12 +309,13 @@ impl TuiArgs {
                     None,
                     fs_snapshots,
                     experimental_features,
+                    tui_config,
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
             None => {
                 // Main TUI command - handle multiplexer session management
-                self.run_with_multiplexer(fs_snapshots, experimental_features).await
+                self.run_with_multiplexer(fs_snapshots, experimental_features, tui_config).await
             }
         }
     }
@@ -205,9 +323,13 @@ impl TuiArgs {
     /// Run the main TUI command with multiplexer session management
     async fn run_with_multiplexer(
         &self,
-        fs_snapshots: FsSnapshotsType,
-        experimental_features: Vec<ExperimentalFeature>,
+        fs_snapshots: Option<FsSnapshotsType>,
+        experimental_features: Option<Vec<ExperimentalFeature>>,
+        tui_config: TuiConfig,
     ) -> Result<()> {
+        let fs_snapshots = fs_snapshots.unwrap_or(FsSnapshotsType::Auto);
+        let experimental_features = experimental_features.unwrap_or_default();
+
         // Detect the current terminal environment stack
         let terminal_envs = detection::detect_terminal_environments();
 
@@ -232,8 +354,9 @@ impl TuiArgs {
                     self.api_key.clone(),
                     self.bearer_token.clone(),
                     multiplexer_type,
-                    fs_snapshots,
-                    experimental_features,
+                    Some(fs_snapshots),
+                    Some(experimental_features),
+                    tui_config,
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
@@ -247,8 +370,9 @@ impl TuiArgs {
                     self.api_key.clone(),
                     self.bearer_token.clone(),
                     self.multiplexer.as_ref().and_then(|m| m.to_core_type()),
-                    fs_snapshots,
-                    experimental_features,
+                    Some(fs_snapshots),
+                    Some(experimental_features),
+                    tui_config,
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
             }
@@ -256,12 +380,22 @@ impl TuiArgs {
             | (None, MultiplexerChoice::UnsupportedEnvironment) => {
                 // Not in a supported environment, create a multiplexer session
                 let multiplexer = self.create_multiplexer()?;
-                self.create_and_enter_multiplexer_session(&*multiplexer, fs_snapshots).await
+                self.create_and_enter_multiplexer_session(
+                    &*multiplexer,
+                    fs_snapshots,
+                    tui_config.clone(),
+                )
+                .await
             }
             // Explicit multiplexer type specified - always create/manage session
             (Some(_multiplexer_type), _) => {
                 let multiplexer = self.create_multiplexer()?;
-                self.create_and_enter_multiplexer_session(&*multiplexer, fs_snapshots).await
+                self.create_and_enter_multiplexer_session(
+                    &*multiplexer,
+                    fs_snapshots,
+                    tui_config.clone(),
+                )
+                .await
             }
         }
     }
@@ -323,6 +457,7 @@ impl TuiArgs {
         &self,
         multiplexer: &dyn Multiplexer,
         fs_snapshots: FsSnapshotsType,
+        tui_config: TuiConfig,
     ) -> Result<()> {
         if !multiplexer.is_available() {
             anyhow::bail!(
@@ -369,8 +504,9 @@ impl TuiArgs {
             self.api_key.clone(),
             self.bearer_token.clone(),
             self.multiplexer.as_ref().and_then(|m| m.to_core_type()),
-            fs_snapshots,
-            vec![], // Default to no experimental features for development mode
+            Some(fs_snapshots),
+            Some(vec![]), // Default to no experimental features for development mode
+            tui_config.clone(),
         )?;
         run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
     }
@@ -416,15 +552,20 @@ impl TuiArgs {
         cmd
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn get_tui_dependencies(
         repo: Option<String>,
         remote_server: Option<String>,
         api_key: Option<String>,
         bearer_token: Option<String>,
         multiplexer: Option<ah_domain_types::MultiplexerType>,
-        fs_snapshots: FsSnapshotsType,
-        experimental_features: Vec<ExperimentalFeature>,
+        fs_snapshots: Option<FsSnapshotsType>,
+        experimental_features: Option<Vec<ExperimentalFeature>>,
+        tui_config: ah_tui::tui_config::TuiConfig,
     ) -> Result<TuiDependencies> {
+        let fs_snapshots = fs_snapshots.unwrap_or(FsSnapshotsType::Auto);
+        let experimental_features = experimental_features.unwrap_or_default();
+
         // Validate arguments
         if api_key.is_some() && bearer_token.is_some() {
             anyhow::bail!("Cannot specify both --api-key and --bearer-token");
@@ -535,6 +676,7 @@ impl TuiArgs {
                 branches_enumerator,
                 agents_enumerator: agents_enumerator.clone(),
                 settings: Settings::from_config().unwrap_or_else(|_| Settings::default()),
+                tui_config,
                 current_repository,
                 experimental_features,
             })
@@ -632,6 +774,7 @@ impl TuiArgs {
                 branches_enumerator,
                 agents_enumerator: agents_enumerator.clone(),
                 settings: Settings::from_config().unwrap_or_else(|_| Settings::default()),
+                tui_config,
                 current_repository,
                 experimental_features,
             })
@@ -645,8 +788,9 @@ impl TuiArgs {
         api_key: Option<String>,
         bearer_token: Option<String>,
         multiplexer: Option<ah_domain_types::MultiplexerType>,
-        fs_snapshots: FsSnapshotsType,
-        experimental_features: Vec<ExperimentalFeature>,
+        fs_snapshots: Option<FsSnapshotsType>,
+        experimental_features: Option<Vec<ExperimentalFeature>>,
+        tui_config: ah_tui::tui_config::TuiConfig,
     ) -> Result<TuiDependencies> {
         Self::get_tui_dependencies(
             None,
@@ -656,6 +800,7 @@ impl TuiArgs {
             multiplexer,
             fs_snapshots,
             experimental_features,
+            tui_config,
         )
     }
 }

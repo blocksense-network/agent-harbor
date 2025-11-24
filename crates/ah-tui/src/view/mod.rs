@@ -61,6 +61,7 @@ pub struct TuiDependencies {
     pub branches_enumerator: Arc<dyn ah_core::BranchesEnumerator>,
     pub agents_enumerator: Arc<dyn ah_core::AgentsEnumerator>,
     pub settings: Settings,
+    pub tui_config: crate::tui_config::TuiConfig,
     /// Currently detected repository (if any) to be selected by default
     pub current_repository: Option<String>,
     /// Whether experimental features are enabled

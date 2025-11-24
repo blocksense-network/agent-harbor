@@ -5,6 +5,7 @@
 //! Health check commands
 mod types;
 
+use crate::SubcommandOverrides;
 use ah_mux::TmuxMultiplexer;
 use ah_mux::detection::detect_terminal_environments;
 use ah_mux_core::Multiplexer;
@@ -23,22 +24,22 @@ pub struct HealthArgs {
         value_delimiter = ',',
         help = "Supported agent types (default: all)"
     )]
-    supported_agents: Option<Vec<String>>,
+    pub(crate) supported_agents: Option<Vec<String>>,
 
     /// Output in JSON format
     #[arg(long, help = "Output in JSON format")]
-    json: bool,
+    pub(crate) json: bool,
 
     /// Suppress warnings, only show errors
     #[arg(long, help = "Suppress warnings, only show errors")]
-    quiet: bool,
+    pub(crate) quiet: bool,
 
     /// Show credential paths and related info in output (does NOT expose actual tokens/secrets yet)
     #[arg(
         long,
         help = "Show credential paths and related info in output (does NOT expose actual tokens/secrets yet; planned for future)"
     )]
-    with_credentials: bool,
+    pub(crate) with_credentials: bool,
 }
 
 impl HealthArgs {
@@ -413,5 +414,29 @@ impl HealthArgs {
         }
 
         Some(status)
+    }
+}
+
+impl SubcommandOverrides for HealthArgs {
+    fn config_path(&self) -> &'static str {
+        "health"
+    }
+
+    fn to_config_json(&self) -> serde_json::Value {
+        let mut config = serde_json::Map::new();
+
+        // Only include options that were explicitly provided and are config-relevant
+        if let Some(ref supported_agents) = self.supported_agents {
+            config.insert(
+                "supported-agents".to_string(),
+                serde_json::to_value(supported_agents).unwrap_or_default(),
+            );
+        }
+
+        if config.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::Object(config)
+        }
     }
 }

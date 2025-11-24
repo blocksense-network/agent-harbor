@@ -50,6 +50,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
         deps.branches_enumerator,
         deps.agents_enumerator,
         deps.settings,
+        deps.tui_config,
         deps.current_repository,
         tx_ui.clone(),
     );

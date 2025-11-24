@@ -323,3 +323,120 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #### Default Configuration Values
 
 To promote maximum flexibility, crates should avoid providing default configuration values that are highly-specific to agent harbor. Instead, the default agent harbor configuration is provided in the `ah-configuration-types` module, which is referenced only in the `ah-cli` crate. This simplifies the creation of alternative CLI tools and entry points for the functionality of the crates for testing purposes.
+
+### Subcommand Configuration Patterns
+
+Subcommands that accept configuration-relevant options follow a structured pattern to automatically integrate with the CLI override system. This enables commands like `ah repo init --vcs git --devenv nix` to properly override configuration values.
+
+#### SubcommandOverrides Trait
+
+Subcommand argument structs that contain configuration options implement the `SubcommandOverrides` trait:
+
+```rust
+pub trait SubcommandOverrides {
+    /// The configuration path where this subcommand's options should be placed
+    /// (e.g., "tui" for TUI options, "repo.init" for repo init options)
+    fn config_path(&self) -> &'static str;
+
+    /// Convert this subcommand's config-relevant options to JSON
+    /// Only include fields that were explicitly provided by the user
+    fn to_config_json(&self) -> serde_json::Value;
+}
+```
+
+#### Automatic CLI Override Integration
+
+The main CLI structure automatically detects and integrates subcommand overrides:
+
+```rust
+impl ToJsonOverrides for Cli {
+    fn to_json_overrides(&self) -> serde_json::Value {
+        // Start with global options
+        let mut global_json = serde_json::to_value(self).unwrap_or_default();
+
+        // Extract subcommand options and merge them
+        if let serde_json::Value::Object(ref mut map) = global_json {
+            self.add_subcommand_overrides(map);
+        }
+
+        global_json
+    }
+}
+
+impl Cli {
+    fn add_subcommand_overrides(&self, json_map: &mut serde_json::Map<String, serde_json::Value>) {
+        match &self.command {
+            Commands::Tui(tui_args) => {
+                self.merge_subcommand_config(json_map, tui_args);
+            }
+            Commands::Health(health_args) => {
+                self.merge_subcommand_config(json_map, health_args);
+            }
+            // Add more subcommands as they implement SubcommandOverrides
+            _ => {}
+        }
+    }
+}
+```
+
+#### Subcommand Implementation Pattern
+
+Subcommand argument structs implement the trait to specify their configuration mapping:
+
+```rust
+impl SubcommandOverrides for TuiArgs {
+    fn config_path(&self) -> &'static str {
+        "tui"  // Maps to [tui] section in TOML
+    }
+
+    fn to_config_json(&self) -> serde_json::Value {
+        let mut config = serde_json::Map::new();
+
+        // Only include options that were explicitly provided
+        if let Some(ref remote_server) = self.remote_server {
+            config.insert("remote-server".to_string(), serde_json::Value::String(remote_server.clone()));
+        }
+
+        if config.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::Object(config)
+        }
+    }
+}
+```
+
+#### Nested Path Support
+
+For subcommands that map to nested configuration paths (like `repo.init`), the `config_path()` method returns dot-separated paths:
+
+```rust
+impl SubcommandOverrides for RepoInitArgs {
+    fn config_path(&self) -> &'static str {
+        "repo.init"  // Maps to [repo.init] section in TOML
+    }
+    // ... implementation
+}
+```
+
+This automatically creates the nested JSON structure:
+
+```json
+{
+  "repo": {
+    "init": {
+      "vcs": "git",
+      "devenv": "nix"
+    }
+  }
+}
+```
+
+#### Benefits of This Pattern
+
+- **Automatic Integration**: Subcommands automatically participate in CLI override precedence
+- **Type Safety**: Compile-time guarantees of correct field mapping
+- **Selective Inclusion**: Only explicitly provided options override configuration
+- **Extensible**: Easy to add configuration support to new subcommands
+- **Testable**: Subcommand overrides can be tested in isolation
+- **Future-Proof**: Works with any subcommand structure via the trait pattern

@@ -57,6 +57,7 @@
 
 pub mod agents_selector_model;
 pub mod autocomplete;
+pub mod dashboard_model;
 pub mod input;
 pub mod session_viewer_model;
 pub mod task_entry;

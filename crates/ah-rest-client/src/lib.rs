@@ -17,6 +17,7 @@
 pub mod auth;
 pub mod client;
 pub mod error;
+pub mod network_config;
 pub mod sse;
 
 pub use auth::*;

@@ -34,7 +34,7 @@ pub struct Resolved {
 /// Load and merge all configuration layers according to precedence rules
 ///
 /// Precedence order: system < user < repo < repo-user < env < cli-config < flags
-pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Resolved> {
+pub fn load_all(paths: &paths::Paths, cli_layer: Option<&J>) -> Result<Resolved> {
     use Scope::*;
 
     let mut prov = provenance::Provenance::default();
@@ -76,7 +76,6 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
         .as_ref()
         .and_then(|p| p.exists().then(|| loader::read_layer_from_file(p, CliConfig).ok()))
         .flatten();
-    let flags_layer = env::flags_overlay(flag_sets);
 
     // Define layers in precedence order
     let layers = vec![
@@ -86,7 +85,7 @@ pub fn load_all(paths: &paths::Paths, flag_sets: &[(&str, &str)]) -> Result<Reso
         (repo_user_layer.as_ref().map(|l| &l.json), RepoUser),
         (Some(&env_layer), Env),
         (cli_config_layer.as_ref().map(|l| &l.json), CliConfig),
-        (Some(&flags_layer), Flags),
+        (cli_layer, Flags),
     ];
 
     // Merge layers in precedence order
@@ -351,7 +350,7 @@ mod tests {
             cli_config: None,
         };
 
-        let resolved = load_all(&paths, &[]).unwrap();
+        let resolved = load_all(&paths, None).unwrap();
 
         // Check that values were merged correctly
         assert_eq!(resolved.json["ui"], "tui"); // UI field is now flattened to root

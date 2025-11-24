@@ -19,6 +19,8 @@ use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerat
 use chrono::Utc;
 use std::sync::Arc;
 
+use ah_tui::tui_config::TuiConfig;
+
 #[cfg(test)]
 mod event_processing_tests {
     use super::*;
@@ -53,7 +55,7 @@ mod event_processing_tests {
 
         let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
-        let mut vm = ViewModel::new(
+        let mut vm = ViewModel::new_with_background_loading_and_current_repo(
             workspace_files,
             workspace_workflows,
             workspace_terms,
@@ -62,6 +64,8 @@ mod event_processing_tests {
             branches_enumerator,
             agents_enumerator,
             settings,
+            TuiConfig::default(),
+            None,
             ui_tx,
         );
 
@@ -532,7 +536,7 @@ mod event_processing_tests {
 
         let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
-        let mut vm = ViewModel::new(
+        let mut vm = ViewModel::new_with_background_loading_and_current_repo(
             workspace_files,
             workspace_workflows,
             workspace_terms,
@@ -541,6 +545,8 @@ mod event_processing_tests {
             branches_enumerator,
             agents_enumerator,
             settings,
+            TuiConfig::default(),
+            None,
             ui_tx,
         );
 

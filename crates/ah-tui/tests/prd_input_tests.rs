@@ -22,8 +22,10 @@ use ah_core::{
 use ah_domain_types::{
     AgentChoice, AgentSoftware, AgentSoftwareBuild, DeliveryStatus, TaskExecution, TaskState,
 };
+
 use ah_rest_mock_client::MockRestClient;
 use ah_tui::settings::{KeyboardOperation, Settings};
+use ah_tui::tui_config::TuiConfig;
 use ah_tui::view_model::DashboardFocusState;
 use ah_tui::view_model::task_entry::CardFocusElement;
 use ah_tui::view_model::{
@@ -75,7 +77,7 @@ fn new_view_model_with_mock_client() -> (ViewModel, MockRestClient) {
     let settings = Settings::from_config().unwrap_or_else(|_| Settings::default());
     let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
 
-    let vm = ViewModel::new(
+    let vm = ViewModel::new_with_background_loading_and_current_repo(
         workspace_files,
         workspace_workflows,
         workspace_terms,
@@ -84,6 +86,8 @@ fn new_view_model_with_mock_client() -> (ViewModel, MockRestClient) {
         branches_enumerator,
         agents_enumerator,
         settings,
+        TuiConfig::default(),
+        None,
         ui_tx,
     );
 
