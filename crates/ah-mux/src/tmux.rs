@@ -178,7 +178,20 @@ impl Multiplexer for TmuxMultiplexer {
 
         // Run the command and capture output
         debug!(args = ?args_str, "Running tmux new-window command");
-        let output = self.run_tmux_command(&args_str)?;
+        let output = match self.run_tmux_command(&args_str) {
+            Ok(out) => out,
+            Err(err) => {
+                // Retry with -a (append) to avoid index collisions when tmux chooses a busy slot
+                debug!(
+                    error = %err,
+                    "tmux new-window failed, retrying with -a to pick next available index"
+                );
+                let mut retry_args = args.clone();
+                retry_args.insert(1, "-a".to_string());
+                let retry_args_str: Vec<&str> = retry_args.iter().map(|s| s.as_str()).collect();
+                self.run_tmux_command(&retry_args_str)?
+            }
+        };
 
         // new-window -P returns session:window.pane, but we need session:window as WindowId
         let pane_id = output.trim();
