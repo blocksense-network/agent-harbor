@@ -218,11 +218,41 @@ impl KittyMultiplexer {
         ))
     }
 
-    /// Get the title of a specific window
-    pub fn get_window_title(&self, window_id: &str) -> Result<String, MuxError> {
-        let output =
-            self.run_kitty_command(&["get-window-title", "--match", &format!("id:{}", window_id)])?;
-        Ok(output.trim().to_string())
+    /// Get the currently focused window title
+    pub fn get_window_title(&self, window_id: String) -> Result<String, MuxError> {
+        let output = self.run_kitty_command(&["ls"])?;
+
+        // Parse JSON to find the focused window
+        let json: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            MuxError::CommandFailed(format!("Failed to parse kitty @ ls JSON: {}", e))
+        })?;
+
+        // The structure is: array of OS windows -> tabs -> windows
+        if let Some(os_windows) = json.as_array() {
+            for os_window in os_windows {
+                if let Some(tabs) = os_window.get("tabs").and_then(|t| t.as_array()) {
+                    for tab in tabs {
+                        if let Some(windows) = tab.get("windows").and_then(|w| w.as_array()) {
+                            for window in windows {
+                                if window.get("id").and_then(|f| f.as_u64()).unwrap_or(0)
+                                    == window_id.parse::<u64>().unwrap_or(0)
+                                {
+                                    if let Some(title) =
+                                        window.get("title").and_then(|i| i.as_str())
+                                    {
+                                        return Ok(title.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(MuxError::CommandFailed(
+            "Could not find focused window in kitty @ ls output".to_string(),
+        ))
     }
 
     /// Get detailed window information
@@ -1112,7 +1142,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
     fn test_open_window_with_title_and_cwd() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1120,22 +1149,9 @@ mod tests {
             return;
         }
 
-        // Try to start a test Kitty instance
-        if let Err(e) = start_test_kitty() {
-            tracing::info!(error = %e, "Skipping Kitty test: Cannot start Kitty instance in this environment");
-            return; // Skip test if Kitty can't be started
-        }
-
-        // Create Kitty multiplexer with the test socket
+        let _ = start_test_kitty();
         let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
 
-        // Skip test if Kitty is not available
-        if !kitty.is_available() {
-            tracing::info!("Skipping Kitty test: Kitty instance not available for remote control");
-            return;
-        }
-
-        // Now run the actual test logic
         let opts = WindowOptions {
             title: Some("my-test-window-001"),
             cwd: Some(Path::new("/tmp")),
@@ -1144,35 +1160,28 @@ mod tests {
             init_command: None,
         };
 
-        let result = kitty.open_window(&opts);
-        match result {
-            Ok(window_id) => {
-                // Verify the window ID is numeric
-                assert!(window_id.parse::<u32>().is_ok());
+        let window_id = kitty.open_window(&opts).unwrap();
 
-                // Verify the window actually exists in kitty
-                assert!(
-                    kitty.window_exists(&window_id).unwrap_or(false),
-                    "Window {} should exist after creation",
-                    window_id
-                );
+        // Verify the window ID is numeric
+        assert!(window_id.parse::<u32>().is_ok());
 
-                // Verify the window has the correct title
-                let title = kitty.get_window_title(&window_id).unwrap_or_default();
-                assert_eq!(
-                    title, "my-test-window-001",
-                    "Window should have the correct title"
-                );
-            }
-            Err(MuxError::CommandFailed(_)) => {
-                // Expected when kitty remote control is not available
-            }
-            Err(e) => panic!("Unexpected error: {:?}", e),
-        }
+        // Verify the window actually exists in kitty
+        assert!(
+            kitty.window_exists(&window_id).unwrap_or(false),
+            "Window {} should exist after creation",
+            window_id
+        );
+
+        // Verify the window has the correct title
+        let title = kitty.get_window_title(window_id).unwrap_or_default();
+        assert_eq!(
+            title, "my-test-window-001",
+            "Window should have the correct title"
+        );
+        stop_test_kitty();
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
     fn test_open_window_focus() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1180,7 +1189,7 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
         if kitty.is_available() {
             let opts = WindowOptions {
                 title: Some("focus-test-002"),
@@ -1796,7 +1805,7 @@ mod tests {
                     // Verify main window was created
                     assert!(kitty.window_exists(&window_id).unwrap_or(false));
                     assert_eq!(
-                        kitty.get_window_title(&window_id).unwrap_or_default(),
+                        kitty.get_window_title(window_id.clone()).unwrap_or_default(),
                         "complex-layout-008"
                     );
 
