@@ -181,8 +181,8 @@ impl KittyMultiplexer {
         self.parse_window_id_from_output(output)
     }
 
-    /// Get the currently focused window ID
-    pub fn get_focused_window_id(&self) -> Result<String, MuxError> {
+    /// Get the currently focused tab window ID
+    pub fn get_focused_tab_window_id(&self) -> Result<String, MuxError> {
         let output = self.run_kitty_command(&["ls"])?;
 
         // Parse JSON to find the focused window
@@ -191,19 +191,53 @@ impl KittyMultiplexer {
         })?;
 
         // The structure is: array of OS windows -> tabs -> windows
+        // We are interested of the focused tab
         if let Some(os_windows) = json.as_array() {
             for os_window in os_windows {
                 if let Some(tabs) = os_window.get("tabs").and_then(|t| t.as_array()) {
                     for tab in tabs {
-                        if let Some(windows) = tab.get("windows").and_then(|w| w.as_array()) {
-                            for window in windows {
-                                if window
-                                    .get("is_focused")
-                                    .and_then(|f| f.as_bool())
-                                    .unwrap_or(false)
-                                {
-                                    if let Some(id) = window.get("id").and_then(|i| i.as_u64()) {
-                                        return Ok(id.to_string());
+                        if tab.get("is_focused").and_then(|f| f.as_bool()).unwrap_or(false) {
+                            if let Some(id) = tab.get("id").and_then(|i| i.as_u64()) {
+                                println!("Found focused window: {}", id);
+                                return Ok(id.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(MuxError::CommandFailed(
+            "Could not find focused window in kitty @ ls output".to_string(),
+        ))
+    }
+    /// Get the currently focused window ID
+    pub fn get_focused_pane_window_id(&self) -> Result<String, MuxError> {
+        let output = self.run_kitty_command(&["ls"])?;
+
+        // Parse JSON to find the focused window
+        let json: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            MuxError::CommandFailed(format!("Failed to parse kitty @ ls JSON: {}", e))
+        })?;
+
+        // The structure is: array of OS windows -> tabs -> windows (panes)
+        // We are interested of the focused pane in the focused tab
+        if let Some(os_windows) = json.as_array() {
+            for os_window in os_windows {
+                if let Some(tabs) = os_window.get("tabs").and_then(|t| t.as_array()) {
+                    for tab in tabs {
+                        if tab.get("is_focused").and_then(|f| f.as_bool()).unwrap_or(false) {
+                            if let Some(windows) = tab.get("windows").and_then(|w| w.as_array()) {
+                                for window in windows {
+                                    if window
+                                        .get("is_focused")
+                                        .and_then(|f| f.as_bool())
+                                        .unwrap_or(false)
+                                    {
+                                        if let Some(id) = window.get("id").and_then(|i| i.as_u64())
+                                        {
+                                            return Ok(id.to_string());
+                                        }
                                     }
                                 }
                             }
@@ -689,8 +723,8 @@ impl Multiplexer for KittyMultiplexer {
     }
 
     fn current_window(&self) -> Result<Option<WindowId>, MuxError> {
-        // First try using kitty's get-focused-window-id command
-        match self.get_focused_window_id() {
+        // We are interested in the focused pane in the focused tab
+        match self.get_focused_pane_window_id() {
             Ok(window_id) if !window_id.is_empty() => {
                 debug!(?window_id, "current_window: got from get_focused_window_id");
                 return Ok(Some(window_id));
@@ -1189,36 +1223,37 @@ mod tests {
             return;
         }
 
+        let _ = start_test_kitty();
         let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
-        if kitty.is_available() {
-            let opts = WindowOptions {
-                title: Some("focus-test-002"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: true, // Should focus the window
-                init_command: None,
-            };
 
-            let result = kitty.open_window(&opts);
-            match result {
-                Ok(window_id) => {
-                    // Verify the window was created
-                    assert!(kitty.window_exists(&window_id).unwrap_or(false));
+        let opts = WindowOptions {
+            title: Some("focus-test-002"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: true, // Should focus the window
+            init_command: None,
+        };
 
-                    // Verify the window is now focused
-                    let focused_id = kitty.get_focused_window_id().unwrap_or_default();
-                    assert_eq!(
-                        focused_id, window_id,
-                        "Window {} should be focused after creation with focus=true",
-                        window_id
-                    );
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Expected when kitty remote control is not available
-                }
-                Err(e) => panic!("Unexpected error: {:?}", e),
-            }
-        }
+        // This will open new tab and focus it
+        let window_id = kitty.open_window(&opts).unwrap();
+        println!("Created window: {}", window_id);
+        // Verify the window was created
+        assert!(kitty.window_exists(&window_id).unwrap_or(false));
+
+        // Verify the window is now focused
+        let focused_id = kitty.get_focused_tab_window_id().unwrap_or_default();
+        assert_eq!(
+            focused_id, window_id,
+            "Window {} should be focused after creation with focus=true",
+            window_id
+        );
+
+        let current_window = kitty.current_window().unwrap();
+        assert_eq!(
+            current_window,
+            Some(window_id),
+            "Window should be focused after creation with focus=true",
+        );
     }
 
     #[test]
