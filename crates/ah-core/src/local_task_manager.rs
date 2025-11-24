@@ -14,7 +14,9 @@ use crate::db::DatabaseManager;
 use crate::task_manager::{
     SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
 };
-use ah_domain_types::{AgentChoice, LogLevel, TaskExecution, TaskInfo, TaskState, ToolStatus};
+use ah_domain_types::{
+    AgentChoice, AgentSoftware, LogLevel, TaskExecution, TaskInfo, TaskState, ToolStatus,
+};
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::Multiplexer;
 use ah_tui_multiplexer::{AwMultiplexer, LayoutConfig};
@@ -68,6 +70,17 @@ where
             accept_loop_running,
             accept_loop_handle,
         })
+    }
+
+    /// Wrap Codex launches to emit a clear hint when the binary exits immediately
+    /// (e.g., missing rollout-hook support or invalid auth). This keeps the tmux pane
+    /// informative instead of closing silently.
+    fn wrap_codex_with_hint(agent_cmd_inner: &str) -> String {
+        let escaped = agent_cmd_inner.replace('\'', "'\"'\"'");
+        format!(
+            "sh -c '{cmd} || {{ echo \"Codex exited immediately; ensure patched CLI (rollout-hook support) and valid auth.\"; sleep 2; }}'",
+            cmd = escaped
+        )
     }
 
     /// Get a clone of the database manager
@@ -513,11 +526,15 @@ where
                     }
                 };
 
-                let agent_cmd_inner = agent_cmd_args
+                let mut agent_cmd_inner = agent_cmd_args
                     .iter()
                     .map(|arg| crate::agent_executor::AgentExecutor::shell_escape(arg))
                     .collect::<Vec<_>>()
                     .join(" ");
+
+                if matches!(params.agent_type(), AgentSoftware::Codex) {
+                    agent_cmd_inner = Self::wrap_codex_with_hint(&agent_cmd_inner);
+                }
 
                 tracing::info!(
                     "Generated agent command for {}: {}",
