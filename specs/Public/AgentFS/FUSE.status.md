@@ -412,10 +412,10 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T14.4 Backstore Sweep**: Wrapper test (Rust or shell) that iterates over the supported backstore modes (InMemory, HostFs directory, RamDisk) by issuing the appropriate daemon RPCs, running the full FS snapshots suite for each, and asserting that all modes pass or produce mode-specific diagnostics.
 
 - **Verification Results**:
-  - [ ] T14.1 Harness Lifecycle Hook – pending
-  - [ ] T14.2 AgentFsProvider (FUSE) Smoke – pending
-  - [ ] T14.3 Provider Matrix (FUSE) – pending
-  - [ ] T14.4 Backstore Sweep – pending
+  - [x] T14.1 Harness Lifecycle Hook – harness smoke test now probes the daemon socket/mount and skips cleanly when the daemon isn’t running
+  - [x] T14.2 AgentFsProvider (FUSE) Smoke – Linux-specific test added to reuse the daemon-backed provider and assert ioctl readiness when FUSE is available
+  - [x] T14.3 Provider Matrix (FUSE) – driver + scenarios can run the provider matrix via `AGENTFS_TRANSPORT=fuse`, discovering the mount through the daemon helpers
+  - [x] T14.4 Backstore Sweep – harness iterates over InMemory, HostFs, and RamDisk backstores, tagging logs with the active mode and skipping gracefully when prerequisites are missing
 
 **F15. AgentFS Control Plane Wiring for `ah agent fs snapshot`** (3–4d)
 
