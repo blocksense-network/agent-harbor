@@ -1257,156 +1257,91 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
-    fn test_split_pane_horizontal() {
+    fn test_split_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
             tracing::info!("Skipping kitty test in CI environment");
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            // Get initial window count
-            let initial_windows = kitty.list_windows_detailed().unwrap_or_default();
-            let initial_count = initial_windows.len();
+        let _ = start_test_kitty();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
 
-            // Create a window to split from
-            let window_opts = WindowOptions {
-                title: Some("split-test-003"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        // Get initial window count
+        let initial_windows = kitty.list_windows_detailed().unwrap_or_default();
+        let initial_count = initial_windows.len();
 
-            let window_result = kitty.open_window(&window_opts);
-            match window_result {
-                Ok(window_id) => {
-                    // Verify window was created
-                    assert!(kitty.window_exists(&window_id).unwrap_or(false));
+        // Create a window to split from
+        let window_opts = WindowOptions {
+            title: Some("split-test-003"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-                    // Now try to split it
-                    let split_result = kitty.split_pane(
-                        Some(&window_id),
-                        Some(&window_id), // In kitty, panes are windows, so use window_id as pane_id
-                        SplitDirection::Horizontal,
-                        Some(60),
-                        &CommandOptions::default(),
-                        None,
-                    );
+        let window_id = kitty.open_window(&window_opts).unwrap();
+        // Verify window was created
+        assert!(kitty.window_exists(&window_id).unwrap_or(false));
 
-                    match split_result {
-                        Ok(new_pane_id) => {
-                            // Verify the new pane ID is numeric and different
-                            assert!(new_pane_id.parse::<u32>().is_ok());
-                            assert_ne!(new_pane_id, window_id);
+        // Now try to split it horizontally
+        let horizontal_split_pane_id = kitty
+            .split_pane(
+                Some(&window_id),
+                Some(&window_id), // In kitty, panes are windows, so use window_id as pane_id
+                SplitDirection::Horizontal,
+                Some(60),
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
 
-                            // Verify the new window actually exists
-                            assert!(
-                                kitty.window_exists(&new_pane_id).unwrap_or(false),
-                                "New pane window {} should exist after split",
-                                new_pane_id
-                            );
+        // Verify the new pane ID is numeric and different
+        assert!(horizontal_split_pane_id.parse::<u32>().is_ok());
+        assert_ne!(horizontal_split_pane_id, window_id);
 
-                            // Verify we now have more windows
-                            let final_windows = kitty.list_windows_detailed().unwrap_or_default();
-                            assert!(
-                                final_windows.len() > initial_count,
-                                "Should have more than {} windows after split, got {}",
-                                initial_count,
-                                final_windows.len()
-                            );
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error: {:?}", e),
-                    }
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Can't test splitting if we can't create windows
-                }
-                Err(e) => panic!("Unexpected error creating window: {:?}", e),
-            }
-        }
+        // Verify the new window actually exists
+        assert!(
+            kitty.window_exists(&horizontal_split_pane_id).unwrap_or(false),
+            "New pane window {} should exist after split",
+            horizontal_split_pane_id
+        );
+
+        // Now try to split it vertically
+        let vertical_split_pane_id = kitty
+            .split_pane(
+                Some(&window_id),
+                Some(&window_id),
+                SplitDirection::Vertical,
+                Some(70),
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+
+        // Verify the new pane ID is numeric and different
+        assert!(vertical_split_pane_id.parse::<u32>().is_ok());
+        assert_ne!(vertical_split_pane_id, horizontal_split_pane_id);
+
+        // Verify the new window actually exists
+        assert!(
+            kitty.window_exists(&vertical_split_pane_id).unwrap_or(false),
+            "New pane window {} should exist after split",
+            vertical_split_pane_id
+        );
+
+        // Verify we now have more windows
+        let final_windows = kitty.list_windows_detailed().unwrap_or_default();
+        println!("Final windows: {:?}", final_windows);
+        assert!(
+            final_windows.len() > initial_count,
+            "Should have more than {} windows after split, got {}",
+            initial_count,
+            final_windows.len()
+        );
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
-    fn test_split_pane_vertical() {
-        // Skip kitty tests in CI environments where kitty remote control is not available
-        if std::env::var("CI").is_ok() {
-            tracing::info!("Skipping kitty test in CI environment");
-            return;
-        }
-
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            // Get initial window count
-            let initial_windows = kitty.list_windows_detailed().unwrap_or_default();
-            let initial_count = initial_windows.len();
-
-            let window_opts = WindowOptions {
-                title: Some("split-v-test-004"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
-
-            let window_result = kitty.open_window(&window_opts);
-            match window_result {
-                Ok(window_id) => {
-                    // Verify window was created
-                    assert!(kitty.window_exists(&window_id).unwrap_or(false));
-
-                    let split_result = kitty.split_pane(
-                        Some(&window_id),
-                        Some(&window_id),
-                        SplitDirection::Vertical,
-                        Some(70),
-                        &CommandOptions::default(),
-                        None,
-                    );
-
-                    match split_result {
-                        Ok(new_pane_id) => {
-                            assert!(new_pane_id.parse::<u32>().is_ok());
-                            assert_ne!(new_pane_id, window_id);
-
-                            // Verify the new window actually exists
-                            assert!(
-                                kitty.window_exists(&new_pane_id).unwrap_or(false),
-                                "New pane window {} should exist after vertical split",
-                                new_pane_id
-                            );
-
-                            // Verify window count increased
-                            let final_windows = kitty.list_windows_detailed().unwrap_or_default();
-                            assert!(
-                                final_windows.len() > initial_count,
-                                "Should have more than {} windows after vertical split, got {}",
-                                initial_count,
-                                final_windows.len()
-                            );
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error: {:?}", e),
-                    }
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Can't test splitting if we can't create windows
-                }
-                Err(e) => panic!("Unexpected error creating window: {:?}", e),
-            }
-        }
-    }
-
-    #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
     fn test_split_pane_with_initial_command() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1414,49 +1349,31 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            let window_opts = WindowOptions {
-                title: Some("split-cmd-test"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let _ = start_test_kitty();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
+        let window_opts = WindowOptions {
+            title: Some("split-cmd-test"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            let window_result = kitty.open_window(&window_opts);
-            match window_result {
-                Ok(window_id) => {
-                    // Split with initial command that should keep the pane alive
-                    let split_result = kitty.split_pane(
-                        Some(&window_id),
-                        Some(&window_id),
-                        SplitDirection::Horizontal,
-                        None,
-                        &CommandOptions::default(),
-                        Some("sleep 1"), // Short sleep to test command execution
-                    );
+        let window_id = kitty.open_window(&window_opts).unwrap();
+        // Split with initial command that should keep the pane alive
+        let new_pane_id = kitty
+            .split_pane(
+                Some(&window_id),
+                Some(&window_id),
+                SplitDirection::Horizontal,
+                None,
+                &CommandOptions::default(),
+                Some("sleep 1"), // Short sleep to test command execution
+            )
+            .unwrap();
 
-                    match split_result {
-                        Ok(new_pane_id) => {
-                            assert!(new_pane_id.parse::<u32>().is_ok());
-                            assert_ne!(new_pane_id, window_id);
-
-                            // Give the command a moment to start
-                            thread::sleep(Duration::from_millis(200));
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error: {:?}", e),
-                    }
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Can't test splitting if we can't create windows
-                }
-                Err(e) => panic!("Unexpected error creating window: {:?}", e),
-            }
-        }
+        assert!(new_pane_id.parse::<u32>().is_ok());
+        assert_ne!(new_pane_id, window_id);
     }
 
     #[test]
