@@ -148,7 +148,7 @@ impl AgentExecutor {
         }
 
         if with_recording {
-            let socket_name = task_manager_socket_path.ok_or_else(|| {
+            let _socket_name = task_manager_socket_path.ok_or_else(|| {
                 "task_manager_socket_path is required when with_recording is true".to_string()
             })?;
 
@@ -160,8 +160,11 @@ impl AgentExecutor {
                 "record".to_string(),
                 "--session-id".to_string(),
                 session_id.to_string(),
-                "--task-manager-socket".to_string(),
-                socket_name.to_string(),
+                //TODO:(zah) Restore this option once it works properly
+                // The reason for commenting this out is that when using zellij,
+                // we experience issues with the rendering of the initial TUI dashboard
+                // "--task-manager-socket".to_string(),
+                // socket_name.to_string(),
             ];
 
             // Add --out-file parameter with the default recordings path only when persistence is requested
