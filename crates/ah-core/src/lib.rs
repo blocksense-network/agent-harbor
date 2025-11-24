@@ -73,6 +73,9 @@ pub use task_manager_init::{
     create_task_manager_no_recording, determine_multiplexer_choice,
 };
 
+/// Task manager daemon entry point (keeps LocalTaskManager alive).
+pub mod task_manager_daemon;
+
 /// Local task manager for direct execution on the local machine.
 /// Uses a dynamic multiplexer implementation.
 pub use local_task_manager::LocalTaskManager;
