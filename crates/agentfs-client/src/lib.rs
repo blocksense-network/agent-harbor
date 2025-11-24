@@ -34,6 +34,7 @@ pub struct ClientConfig {
     features: Vec<String>,
     process: ProcessConfig,
     allowlist: Option<AllowlistConfig>,
+    session_id: String,
     read_timeout: Option<Duration>,
     write_timeout: Option<Duration>,
 }
@@ -51,6 +52,7 @@ impl ClientConfig {
             features: Vec::new(),
             process: None,
             allowlist: None,
+            session_id: None,
             read_timeout: None,
             write_timeout: None,
         }
@@ -65,6 +67,7 @@ pub struct ClientConfigBuilder {
     features: Vec<String>,
     process: Option<ProcessConfig>,
     allowlist: Option<AllowlistConfig>,
+    session_id: Option<String>,
     read_timeout: Option<Duration>,
     write_timeout: Option<Duration>,
 }
@@ -129,6 +132,8 @@ impl ClientConfigBuilder {
                 .context("failed to gather current process metadata")?,
         };
 
+        let session_id = self.session_id.unwrap_or_else(ah_logging::correlation_id);
+
         Ok(ClientConfig {
             handshake_version,
             shim_name,
@@ -136,6 +141,7 @@ impl ClientConfigBuilder {
             features: self.features,
             process,
             allowlist: self.allowlist,
+            session_id,
             read_timeout: self.read_timeout,
             write_timeout: self.write_timeout,
         })
@@ -565,6 +571,7 @@ fn build_handshake(config: &ClientConfig) -> Result<HandshakeMessage> {
         },
         allowlist,
         timestamp,
+        session_id: config.session_id.as_bytes().to_vec(),
     }))
 }
 

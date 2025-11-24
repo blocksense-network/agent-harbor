@@ -13,6 +13,7 @@ use fs_snapshots_test_harness::agentfs;
 use tracing::info;
 
 #[cfg(all(feature = "agentfs", target_os = "macos"))]
+#[serial_test::file_serial(agentfs)]
 #[test]
 fn agentfs_prepare_snapshot_and_cleanup_cycle() -> Result<()> {
     std::env::set_var("AH_ENABLE_AGENTFS_PROVIDER", "1");
@@ -108,6 +109,22 @@ fn agentfs_prepare_snapshot_and_cleanup_cycle_fuse() -> Result<()> {
 
     provider.cleanup(&workspace.cleanup_token)?;
     provider.cleanup(&branch_workspace.cleanup_token)?;
+
+    Ok(())
+}
+
+#[serial_test::file_serial(agentfs)]
+#[test]
+fn agentfs_invalid_repo_path_rejected() -> Result<()> {
+    std::env::set_var("AH_ENABLE_AGENTFS_PROVIDER", "1");
+
+    let provider = AgentFsProvider::new();
+    let invalid_repo = std::path::Path::new("/nonexistent/provider-matrix-invalid-repo");
+    let result = provider.prepare_writable_workspace(invalid_repo, WorkingCopyMode::Auto);
+    assert!(
+        result.is_err(),
+        "AgentFS provider should reject invalid repository paths"
+    );
 
     Ok(())
 }

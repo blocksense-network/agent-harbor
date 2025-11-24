@@ -41,7 +41,7 @@ cargo build --release --bin agentfs-daemon
 
 ## Configuration
 
-The daemon supports overlay filesystem configuration:
+The daemon supports overlay filesystem configuration and logging:
 
 ```bash
 # Basic daemon
@@ -50,6 +50,39 @@ The daemon supports overlay filesystem configuration:
 # With overlay filesystem
 ./agentfs-daemon /tmp/agentfs.sock --lower-dir /path/to/lower --upper-dir /path/to/upper
 ```
+
+### Logging Options
+
+The daemon supports configurable logging output:
+
+```bash
+# Log to console (default)
+./agentfs-daemon /tmp/agentfs.sock
+
+# Set log level
+./agentfs-daemon /tmp/agentfs.sock --log-level debug
+
+# Log to file
+./agentfs-daemon /tmp/agentfs.sock --log-dir /var/log --log-file agentfs-daemon.log
+
+# Combined options
+./agentfs-daemon /tmp/agentfs.sock --log-level info --log-dir /tmp --log-file agentfs.log
+```
+
+#### Log Level Options
+
+- `error`: Only error messages
+- `warn`: Warnings and errors (default)
+- `info`: Informational messages, warnings, and errors
+- `debug`: Debug information, plus all above levels
+- `trace`: Detailed tracing, plus all above levels
+
+#### Log Output Options
+
+- `--log-dir <path>`: Directory to write log files to
+- `--log-file <filename>`: Log filename within the log directory
+
+If `--log-file` contains directory components, they are appended to `--log-dir`. If `--log-file` is an absolute path, the directory from `--log-file` takes precedence over `--log-dir`.
 
 ## Protocol
 

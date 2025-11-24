@@ -72,6 +72,8 @@ exclude = [
   "http://man7.org/.*",
   "https://man7.org/.*",
   "https://formulae.brew.sh/.*",
+  "https://www.electronjs.org/.*",
+  "https://microvm-nix.github.io/.*",
 ]
 max_concurrency = 8
 timeout = 20

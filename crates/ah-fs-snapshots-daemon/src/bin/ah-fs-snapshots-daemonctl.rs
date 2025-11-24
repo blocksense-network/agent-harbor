@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use ah_fs_snapshots_daemon::client::{
     AgentfsFuseBackstore, AgentfsFuseMountRequest, AgentfsFuseState, AgentfsFuseStatusData,
-    AgentfsHostFsBackstore, AgentfsRamDiskBackstore, DEFAULT_SOCKET_PATH, DaemonClient,
+    AgentfsHostFsBackstore, AgentfsInterposeMountHints, AgentfsInterposeMountRequest,
+    AgentfsInterposeStatusData, AgentfsRamDiskBackstore, DEFAULT_SOCKET_PATH, DaemonClient,
 };
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -32,6 +33,9 @@ enum Command {
     /// Manage the AgentFS FUSE mount lifecycle
     #[command(subcommand)]
     Fuse(FuseCommand),
+    /// Manage the AgentFS macOS interpose daemon lifecycle
+    #[command(subcommand)]
+    Interpose(InterposeCommand),
 }
 
 #[derive(Subcommand, Debug)]
@@ -42,6 +46,16 @@ enum FuseCommand {
     Unmount,
     /// Show the current mount status
     Status(StatusArgs),
+}
+
+#[derive(Subcommand, Debug)]
+enum InterposeCommand {
+    /// Mount the AgentFS interpose daemon via the supervisor
+    Mount(InterposeMountArgs),
+    /// Stop the AgentFS interpose daemon
+    Unmount,
+    /// Show the current interpose daemon status
+    Status(InterposeStatusArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -110,6 +124,40 @@ struct StatusArgs {
     allow_not_ready: bool,
 }
 
+#[derive(Parser, Debug)]
+struct InterposeMountArgs {
+    /// Repository root exposed through AgentFS
+    #[arg(long, default_value = ".")]
+    repo_root: PathBuf,
+
+    /// Optional fully-qualified socket path for daemon-managed sessions
+    #[arg(long)]
+    socket_path: Option<PathBuf>,
+
+    /// Runtime directory for pid/log/status metadata
+    #[arg(long)]
+    runtime_dir: Option<PathBuf>,
+
+    /// Timeout (milliseconds) to wait for the daemon socket
+    #[arg(long, default_value_t = 5_000)]
+    mount_timeout_ms: u32,
+
+    /// Print JSON status output
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Parser, Debug)]
+struct InterposeStatusArgs {
+    /// Print JSON status output
+    #[arg(long)]
+    json: bool,
+
+    /// Do not exit with an error when the daemon is not running
+    #[arg(long)]
+    allow_not_ready: bool,
+}
+
 #[derive(Copy, Clone, Debug, ValueEnum, Eq, PartialEq)]
 enum BackstoreKind {
     #[value(name = "in-memory")]
@@ -134,6 +182,20 @@ struct StatusPrint<'a> {
     last_error: Option<String>,
 }
 
+#[derive(Serialize)]
+struct InterposeStatusPrint {
+    state: &'static str,
+    healthy: bool,
+    socket_path: String,
+    pid: u64,
+    restart_count: u32,
+    log_path: String,
+    runtime_dir: String,
+    repo_root: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
+}
+
 fn main() {
     if let Err(err) = run() {
         let _ = writeln!(io::stderr(), "{err}");
@@ -151,6 +213,13 @@ fn run() -> Result<()> {
             FuseCommand::Unmount => do_unmount(&client)?,
             FuseCommand::Status(args) => do_status(&client, args.json, args.allow_not_ready)?,
         },
+        Command::Interpose(cmd) => match cmd {
+            InterposeCommand::Mount(args) => do_interpose_mount(&client, args)?,
+            InterposeCommand::Unmount => do_interpose_unmount(&client)?,
+            InterposeCommand::Status(args) => {
+                do_interpose_status(&client, args.json, args.allow_not_ready)?
+            }
+        },
     }
 
     Ok(())
@@ -161,7 +230,7 @@ fn do_mount(client: &DaemonClient, args: MountArgs) -> Result<()> {
     let status = client
         .mount_agentfs_fuse(request)
         .map_err(|e| anyhow::anyhow!("daemon mount failed: {e}"))?;
-    print_status(&status, args.json)?;
+    print_fuse_status(&status, args.json)?;
     Ok(())
 }
 
@@ -177,10 +246,47 @@ fn do_status(client: &DaemonClient, json: bool, allow_not_ready: bool) -> Result
     let status = client
         .status_agentfs_fuse()
         .map_err(|e| anyhow::anyhow!("daemon status failed: {e}"))?;
-    let state = print_status(&status, json)?;
+    let state = print_fuse_status(&status, json)?;
     if state != AgentfsFuseState::Running && !allow_not_ready {
         anyhow::bail!(
             "AgentFS FUSE mount is not running (state: {})",
+            state_name(state)
+        );
+    }
+    Ok(())
+}
+
+fn do_interpose_mount(client: &DaemonClient, args: InterposeMountArgs) -> Result<()> {
+    let request = to_interpose_request(&args)?;
+    let hints = to_interpose_hints(&args);
+    let status = match hints {
+        Some(hints) => client
+            .mount_agentfs_interpose_with_hints(request, hints)
+            .map_err(|e| anyhow::anyhow!("daemon interpose mount failed: {e}"))?,
+        None => client
+            .mount_agentfs_interpose(request)
+            .map_err(|e| anyhow::anyhow!("daemon interpose mount failed: {e}"))?,
+    };
+    print_interpose_status(&status, args.json)?;
+    Ok(())
+}
+
+fn do_interpose_unmount(client: &DaemonClient) -> Result<()> {
+    client
+        .unmount_agentfs_interpose()
+        .map_err(|e| anyhow::anyhow!("daemon interpose unmount failed: {e}"))?;
+    writeln!(io::stdout(), "AgentFS interpose daemon stopped")?;
+    Ok(())
+}
+
+fn do_interpose_status(client: &DaemonClient, json: bool, allow_not_ready: bool) -> Result<()> {
+    let status = client
+        .status_agentfs_interpose()
+        .map_err(|e| anyhow::anyhow!("daemon interpose status failed: {e}"))?;
+    let state = print_interpose_status(&status, json)?;
+    if state != AgentfsFuseState::Running && !allow_not_ready {
+        anyhow::bail!(
+            "AgentFS interpose daemon is not running (state: {})",
             state_name(state)
         );
     }
@@ -204,6 +310,37 @@ fn to_mount_request(args: &MountArgs) -> Result<AgentfsFuseMountRequest> {
         mount_timeout_ms: args.mount_timeout_ms,
         backstore,
     })
+}
+
+fn to_interpose_request(args: &InterposeMountArgs) -> Result<AgentfsInterposeMountRequest> {
+    Ok(AgentfsInterposeMountRequest {
+        repo_root: args.repo_root.to_string_lossy().into_owned().into_bytes(),
+        uid: current_uid(),
+        gid: current_gid(),
+        mount_timeout_ms: args.mount_timeout_ms,
+    })
+}
+
+fn to_interpose_hints(args: &InterposeMountArgs) -> Option<AgentfsInterposeMountHints> {
+    let socket_path = args
+        .socket_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned().into_bytes())
+        .unwrap_or_default();
+    let runtime_dir = args
+        .runtime_dir
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned().into_bytes())
+        .unwrap_or_default();
+
+    if socket_path.is_empty() && runtime_dir.is_empty() {
+        None
+    } else {
+        Some(AgentfsInterposeMountHints {
+            socket_path,
+            runtime_dir,
+        })
+    }
 }
 
 fn build_backstore(args: &MountArgs) -> Result<AgentfsFuseBackstore> {
@@ -238,11 +375,22 @@ fn default_gid() -> u32 {
     sudo_override("SUDO_GID").unwrap_or_else(|| unsafe { libc::getegid() })
 }
 
+fn current_uid() -> u32 {
+    unsafe { libc::geteuid() }
+}
+
+fn current_gid() -> u32 {
+    unsafe { libc::getegid() }
+}
+
 fn sudo_override(var: &str) -> Option<u32> {
     env::var(var).ok().and_then(|value| value.parse::<u32>().ok())
 }
 
-fn print_status(status: &AgentfsFuseStatusData, json: bool) -> anyhow::Result<AgentfsFuseState> {
+fn print_fuse_status(
+    status: &AgentfsFuseStatusData,
+    json: bool,
+) -> anyhow::Result<AgentfsFuseState> {
     let state = AgentfsFuseState::from_code(status.state);
     let output = StatusPrint {
         state: state_name(state),
@@ -278,6 +426,46 @@ fn print_status(status: &AgentfsFuseStatusData, json: bool) -> anyhow::Result<Ag
         writeln!(stdout, "backstore: {}", output.backstore)?;
         if let Some(err) = output.last_error.as_deref() {
             writeln!(stdout, "last_error: {}", err)?;
+        }
+    }
+
+    Ok(state)
+}
+
+fn print_interpose_status(
+    status: &AgentfsInterposeStatusData,
+    json: bool,
+) -> anyhow::Result<AgentfsFuseState> {
+    let state = AgentfsFuseState::from_code(status.state);
+    let output = InterposeStatusPrint {
+        state: state_name(state),
+        healthy: state == AgentfsFuseState::Running,
+        socket_path: String::from_utf8_lossy(&status.socket_path).into_owned(),
+        pid: status.pid,
+        restart_count: status.restart_count,
+        log_path: String::from_utf8_lossy(&status.log_path).into_owned(),
+        runtime_dir: String::from_utf8_lossy(&status.runtime_dir).into_owned(),
+        repo_root: String::from_utf8_lossy(&status.repo_root).into_owned(),
+        last_error: if status.last_error.is_empty() {
+            None
+        } else {
+            Some(String::from_utf8_lossy(&status.last_error).into_owned())
+        },
+    };
+
+    if json {
+        writeln!(io::stdout(), "{}", serde_json::to_string_pretty(&output)?)?;
+    } else {
+        writeln!(io::stdout(), "AgentFS interpose daemon status:")?;
+        writeln!(io::stdout(), "  state       : {}", output.state)?;
+        writeln!(io::stdout(), "  socket_path : {}", output.socket_path)?;
+        writeln!(io::stdout(), "  pid         : {}", output.pid)?;
+        writeln!(io::stdout(), "  restart_cnt : {}", output.restart_count)?;
+        writeln!(io::stdout(), "  log_path    : {}", output.log_path)?;
+        writeln!(io::stdout(), "  runtime_dir : {}", output.runtime_dir)?;
+        writeln!(io::stdout(), "  repo_root   : {}", output.repo_root)?;
+        if let Some(err) = &output.last_error {
+            writeln!(io::stdout(), "  last_error  : {}", err)?;
         }
     }
 

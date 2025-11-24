@@ -15,7 +15,10 @@ use tracing::{debug, error, info};
 use agentfs_daemon::{AgentFsDaemon, decode_ssz_message, encode_ssz_message};
 
 // Logging
-use ah_logging::{Level, LogFormat, init};
+use ah_logging::{CliLogLevel, CliLoggingArgs};
+
+// CLI argument parsing
+use clap::Parser;
 
 // AgentFS proto imports
 use agentfs_proto::*;
@@ -35,6 +38,50 @@ use agentfs_core::{BranchId, PID, SnapshotId};
 use agentfs_daemon::HandshakeMessage;
 
 const COMPONENT: &str = "agentfs-daemon";
+
+#[derive(Parser)]
+#[command(name = "agentfs-daemon")]
+#[command(about = "AgentFS Daemon - Production-ready filesystem daemon with interpose support")]
+#[command(version, author, long_about = None)]
+struct Cli {
+    /// Unix socket path for client connections
+    socket_path: String,
+
+    /// Lower directory for overlay filesystem
+    #[arg(long)]
+    lower_dir: Option<String>,
+
+    /// Upper directory for overlay filesystem
+    #[arg(long)]
+    upper_dir: Option<String>,
+
+    /// Work directory for overlay filesystem
+    #[arg(long)]
+    work_dir: Option<String>,
+
+    /// Backstore mode for data persistence
+    #[arg(long, default_value = "InMemory")]
+    backstore_mode: String,
+
+    /// Root directory for HostFs backstore mode
+    #[arg(long)]
+    backstore_root: Option<String>,
+
+    /// Size in MB for RamDisk backstore mode
+    #[arg(long, default_value = "64")]
+    backstore_size_mb: u64,
+
+    /// Owner UID for filesystem operations
+    #[arg(long)]
+    owner_uid: Option<u32>,
+
+    /// Owner GID for filesystem operations
+    #[arg(long)]
+    owner_gid: Option<u32>,
+
+    #[command(flatten)]
+    logging: CliLoggingArgs,
+}
 
 fn decode_string(bytes: &[u8]) -> Result<String, String> {
     std::str::from_utf8(bytes)
@@ -65,150 +112,43 @@ fn get_client_pid_helper(daemon: &Arc<Mutex<AgentFsDaemon>>, client_pid: u32) ->
 }
 
 fn main() {
+    let cli = Cli::parse();
+
     // Initialize logging
-    if let Err(e) = init("agentfs-daemon", Level::WARN, LogFormat::Plaintext) {
-        error!(component = COMPONENT, "Failed to initialize logging: {}", e);
+    if let Err(e) = cli.logging.init_with_default_level("agentfs-daemon", false, CliLogLevel::Info)
+    {
+        let _ = writeln!(std::io::stderr(), "Failed to initialize logging: {}", e);
         std::process::exit(1);
     }
 
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        error!(
-            component = COMPONENT,
-            "Usage: {} <socket_path> [--backstore-mode <mode> [--backstore-root <path>] [--backstore-size-mb <mb>]] [--lower-dir <path>] [--upper-dir <path>] [--work-dir <path>]",
-            args[0]
-        );
-        error!(
-            component = COMPONENT,
-            "Backstore modes: InMemory, HostFs, RamDisk"
-        );
-        std::process::exit(1);
-    }
-
-    // Parse overlay and backstore arguments
-    let mut socket_path = None;
-    let mut lower_dir = None;
-    let mut upper_dir = None;
-    let mut work_dir = None;
-    let mut backstore_mode = agentfs_core::config::BackstoreMode::InMemory;
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--lower-dir" => {
-                if i + 1 < args.len() {
-                    lower_dir = Some(PathBuf::from(&args[i + 1]));
-                    i += 2;
-                } else {
-                    error!(component = COMPONENT, "--lower-dir requires an argument");
-                    std::process::exit(1);
-                }
-            }
-            "--upper-dir" => {
-                if i + 1 < args.len() {
-                    upper_dir = Some(PathBuf::from(&args[i + 1]));
-                    i += 2;
-                } else {
-                    error!(component = COMPONENT, "--upper-dir requires an argument");
-                    std::process::exit(1);
-                }
-            }
-            "--work-dir" => {
-                if i + 1 < args.len() {
-                    work_dir = Some(PathBuf::from(&args[i + 1]));
-                    i += 2;
-                } else {
-                    error!(component = COMPONENT, "--work-dir requires an argument");
-                    std::process::exit(1);
-                }
-            }
-            "--backstore-mode" => {
-                if i + 1 < args.len() {
-                    backstore_mode = match args[i + 1].as_str() {
-                        "InMemory" => agentfs_core::config::BackstoreMode::InMemory,
-                        "HostFs" => agentfs_core::config::BackstoreMode::HostFs {
-                            root: PathBuf::from("/tmp/agentfs-backstore"),
-                            prefer_native_snapshots: true,
-                        },
-                        "RamDisk" => agentfs_core::config::BackstoreMode::RamDisk { size_mb: 64 },
-                        _ => {
-                            error!(
-                                component = COMPONENT,
-                                "Invalid backstore mode: {}",
-                                args[i + 1]
-                            );
-                            std::process::exit(1);
-                        }
-                    };
-                    i += 2;
-                } else {
-                    error!(
-                        component = COMPONENT,
-                        "--backstore-mode requires an argument"
-                    );
-                    std::process::exit(1);
-                }
-            }
-            "--backstore-root" => {
-                if i + 1 < args.len() {
-                    // Update the backstore mode to HostFs with the specified root
-                    if let agentfs_core::config::BackstoreMode::HostFs { ref mut root, .. } =
-                        backstore_mode
-                    {
-                        *root = PathBuf::from(&args[i + 1]);
-                    } else {
-                        error!(
-                            component = COMPONENT,
-                            "--backstore-root can only be used with --backstore-mode HostFs"
-                        );
-                        std::process::exit(1);
-                    }
-                    i += 2;
-                } else {
-                    error!(
-                        component = COMPONENT,
-                        "--backstore-root requires an argument"
-                    );
-                    std::process::exit(1);
-                }
-            }
-            "--backstore-size-mb" => {
-                if i + 1 < args.len() {
-                    // Update the backstore mode to RamDisk with the specified size
-                    if let agentfs_core::config::BackstoreMode::RamDisk { ref mut size_mb } =
-                        backstore_mode
-                    {
-                        *size_mb = args[i + 1].parse().unwrap_or(64);
-                    } else {
-                        error!(
-                            component = COMPONENT,
-                            "--backstore-size-mb can only be used with --backstore-mode RamDisk"
-                        );
-                        std::process::exit(1);
-                    }
-                    i += 2;
-                } else {
-                    error!(
-                        component = COMPONENT,
-                        "--backstore-size-mb requires an argument"
-                    );
-                    std::process::exit(1);
-                }
-            }
-            arg => {
-                // Assume this is the socket path if we haven't found it yet
-                if socket_path.is_none() {
-                    socket_path = Some(arg.to_string());
-                    i += 1;
-                } else {
-                    error!(component = COMPONENT, "Unknown argument: {}", arg);
-                    std::process::exit(1);
-                }
+    // Parse backstore mode and handle special options
+    let backstore_mode = match cli.backstore_mode.as_str() {
+        "InMemory" => agentfs_core::config::BackstoreMode::InMemory,
+        "HostFs" => {
+            let root = cli
+                .backstore_root
+                .as_ref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("/tmp/agentfs-backstore"));
+            agentfs_core::config::BackstoreMode::HostFs {
+                root,
+                prefer_native_snapshots: true,
             }
         }
-    }
+        "RamDisk" => {
+            let size_mb = cli.backstore_size_mb as u32;
+            agentfs_core::config::BackstoreMode::RamDisk { size_mb }
+        }
+        _ => {
+            error!(
+                component = COMPONENT,
+                "Invalid backstore mode: {}", cli.backstore_mode
+            );
+            std::process::exit(1);
+        }
+    };
 
-    let socket_path = socket_path.expect("Socket path is required");
+    let socket_path = cli.socket_path.clone();
 
     // Clean up any existing socket
     let _ = std::fs::remove_file(&socket_path);
@@ -220,17 +160,22 @@ fn main() {
     );
 
     // Create the daemon instance (this will use the library implementation)
-    let daemon =
-        match AgentFsDaemon::new_with_backstore(lower_dir, upper_dir, work_dir, backstore_mode) {
-            Ok(daemon) => Arc::new(Mutex::new(daemon)),
-            Err(e) => {
-                error!(
-                    component = COMPONENT,
-                    "Failed to create AgentFS daemon: {:?}", e
-                );
-                std::process::exit(1);
-            }
-        };
+    let daemon = match AgentFsDaemon::new_with_backstore(
+        cli.lower_dir.as_ref().map(PathBuf::from),
+        cli.upper_dir.as_ref().map(PathBuf::from),
+        cli.work_dir.as_ref().map(PathBuf::from),
+        backstore_mode,
+        cli.owner_uid.zip(cli.owner_gid),
+    ) {
+        Ok(daemon) => Arc::new(Mutex::new(daemon)),
+        Err(e) => {
+            error!(
+                component = COMPONENT,
+                "Failed to create AgentFS daemon: {:?}", e
+            );
+            std::process::exit(1);
+        }
+    };
 
     info!(
         component = COMPONENT,
@@ -240,13 +185,57 @@ fn main() {
     // Handle incoming connections
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
-                // For testing, we'll use a dummy client PID since we don't have a way to get it from the Unix socket
-                // In production, this would need to be passed through the handshake or connection
-                let client_pid = 12345; // Dummy PID for testing
+            Ok(mut stream) => {
+                // Perform handshake to get session information
+                let mut len_buf = [0u8; 4];
+                if stream.read_exact(&mut len_buf).is_err() {
+                    continue;
+                }
+
+                let msg_len = u32::from_le_bytes(len_buf) as usize;
+                let mut msg_buf = vec![0u8; msg_len];
+
+                if stream.read_exact(&mut msg_buf).is_err() {
+                    continue;
+                }
+
+                let handshake = match decode_ssz_message::<HandshakeMessage>(&msg_buf) {
+                    Ok(HandshakeMessage::Handshake(data)) => data,
+                    _ => {
+                        continue;
+                    }
+                };
+
+                let client_pid = handshake.process.pid;
+                let client_ppid = handshake.process.ppid;
+                let client_uid = handshake.process.uid;
+                let client_gid = handshake.process.gid;
+                let session_id = String::from_utf8_lossy(&handshake.session_id).to_string();
+                info!(
+                    component = COMPONENT,
+                    "SESSION_ID_LOGGING: agentfs-daemon received session_id={}", session_id
+                );
+
+                // TODO: Why are we returning a non-SSZ value here?
+                // Send back a simple acknowledgment
+                if stream.write_all(b"OK\n").is_err() {
+                    continue;
+                }
+                if stream.flush().is_err() {
+                    continue;
+                }
+
                 let daemon_clone = daemon.clone();
                 thread::spawn(move || {
-                    handle_client(stream, daemon_clone, client_pid);
+                    handle_client_after_handshake(
+                        stream,
+                        daemon_clone,
+                        client_pid,
+                        client_ppid,
+                        client_uid,
+                        client_gid,
+                        session_id,
+                    );
                 });
             }
             Err(e) => {
@@ -261,18 +250,25 @@ fn main() {
 
 /// Handle a client connection with the daemon
 /// This function is moved from the daemon.rs module to here as it's specific to the executable
-fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, client_pid: u32) {
-    // Register the process with the daemon
+fn handle_client_after_handshake(
+    mut stream: UnixStream,
+    daemon: Arc<Mutex<AgentFsDaemon>>,
+    client_pid: u32,
+    client_ppid: u32,
+    client_uid: u32,
+    client_gid: u32,
+    session_id: String,
+) {
+    // Register the process with the daemon now that we know its identity
     {
         let mut daemon = daemon.lock().unwrap();
-        if let Err(err) = daemon.register_process(client_pid, 0, 0, 0) {
+        if let Err(err) = daemon.register_process(client_pid, client_ppid, client_uid, client_gid) {
             error!(
                 component = COMPONENT,
                 "AgentFS Daemon: register_process failed for pid {}: {}", client_pid, err
             );
             return;
         }
-        // Register the connection for sending unsolicited messages
         daemon.register_connection(
             client_pid,
             stream.try_clone().expect("Failed to clone stream"),
@@ -280,37 +276,13 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
     }
 
     // Ensure cleanup happens when function exits
-    let cleanup = || {
-        let mut daemon = daemon.lock().unwrap();
+    let daemon_clone = daemon.clone();
+    let session_id_clone = session_id.clone();
+    let cleanup = move || {
+        let mut daemon = daemon_clone.lock().unwrap();
         daemon.unregister_connection(client_pid);
-        // Clean up all watch registrations for this process
-        daemon.cleanup_process_watches(client_pid);
+        daemon.cleanup_process_watches(client_pid, &session_id_clone);
     };
-
-    // Handle handshake
-    let mut len_buf = [0u8; 4];
-    if stream.read_exact(&mut len_buf).is_err() {
-        cleanup();
-        return;
-    }
-
-    let msg_len = u32::from_le_bytes(len_buf) as usize;
-    let mut msg_buf = vec![0u8; msg_len];
-
-    if stream.read_exact(&mut msg_buf).is_err() {
-        cleanup();
-        return;
-    }
-
-    if let Ok(_handshake) = decode_ssz_message::<HandshakeMessage>(&msg_buf) {
-        // Send back a simple text acknowledgment
-        let ack = b"OK\n";
-        let _ = stream.write_all(ack);
-        let _ = stream.flush();
-    } else {
-        cleanup();
-        return;
-    }
 
     loop {
         let mut len_buf = [0u8; 4];
@@ -337,6 +309,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
             Ok(request) => {
                 debug!(
                     component = COMPONENT,
+                    session_id = %session_id,
                     "AgentFS Daemon (bin): received request: {:?}", request
                 );
                 match request {
@@ -353,7 +326,11 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         };
 
-                        match daemon.lock().unwrap().handle_snapshot_export(snapshot_id) {
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .handle_snapshot_export(snapshot_id, Some(client_pid))
+                        {
                             Ok((path, token)) => {
                                 let response = Response::snapshot_export(
                                     path.to_string_lossy().to_string(),
@@ -364,6 +341,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             Err(err) => {
                                 debug!(
                                     component = COMPONENT,
+                                    session_id = %session_id,
                                     "AgentFS Daemon: snapshot_export error: {}", err
                                 );
                                 let response = Response::error(err, Some(5));
@@ -392,6 +370,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             Err(err) => {
                                 debug!(
                                     component = COMPONENT,
+                                    session_id = %session_id,
                                     "AgentFS Daemon: snapshot_export_release error: {}", err
                                 );
                                 let response = Response::error(err, Some(5));
@@ -416,7 +395,11 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             None => None,
                         };
 
-                        match daemon.lock().unwrap().handle_snapshot_create(pid.as_u32(), name) {
+                        match daemon.lock().unwrap().handle_snapshot_create(
+                            pid.as_u32(),
+                            name,
+                            &session_id,
+                        ) {
                             Ok(snapshot_info) => {
                                 let response = Response::snapshot_create(snapshot_info);
                                 send_response(&mut stream, &response);
@@ -464,7 +447,11 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             None => None,
                         };
 
-                        match daemon.lock().unwrap().handle_branch_create(snapshot_id, name) {
+                        match daemon.lock().unwrap().handle_branch_create(
+                            snapshot_id,
+                            name,
+                            &session_id,
+                        ) {
                             Ok(branch_info) => {
                                 let response = Response::branch_create(branch_info);
                                 send_response(&mut stream, &response);
@@ -508,6 +495,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             fd_open_req.flags,
                             fd_open_req.mode,
                             client_pid,
+                            &session_id,
                         ) {
                             Ok(fd) => {
                                 // For now, send a simple success response with the fd number
@@ -529,7 +517,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     Request::DirOpen((_version, dir_open_req)) => {
                         let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
                         let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_dir_open(path, client_pid) {
+                        match daemon.handle_dir_open(path, client_pid, &session_id) {
                             Ok(handle) => {
                                 let response = Response::dir_open(handle);
                                 send_response(&mut stream, &response);
@@ -579,13 +567,15 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                         let path = String::from_utf8_lossy(&readlink_req.path).to_string();
                         debug!(
                             component = COMPONENT,
+                            session_id = %session_id,
                             "AgentFS Daemon: readlink({}, pid={})", path, client_pid
                         );
                         let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_readlink(path, client_pid) {
+                        match daemon.handle_readlink(path, client_pid, &session_id) {
                             Ok(target) => {
                                 debug!(
                                     component = COMPONENT,
+                                    session_id = %session_id,
                                     "AgentFS Daemon: readlink succeeded, target: {}", target
                                 );
                                 let response = Response::readlink(target);
@@ -594,6 +584,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             Err(e) => {
                                 debug!(
                                     component = COMPONENT,
+                                    session_id = %session_id,
                                     "AgentFS Daemon: readlink failed: {}", e
                                 );
                                 let response =

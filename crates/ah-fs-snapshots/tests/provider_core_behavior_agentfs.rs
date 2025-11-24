@@ -52,6 +52,12 @@ fn provider_core_behavior_agentfs() {
         .arg("--provider")
         .arg("agentfs")
         .env("DYLD_INSERT_LIBRARIES", &shim_path);
+    if let Ok(socket_path) = env::var("AH_FS_SNAPSHOTS_DAEMON_SOCKET") {
+        command.env("AH_FS_SNAPSHOTS_DAEMON_SOCKET", socket_path);
+    }
+    if let Ok(runtime_dir) = env::var("AGENTFS_INTERPOSE_RUNTIME_DIR") {
+        command.env("AGENTFS_INTERPOSE_RUNTIME_DIR", runtime_dir);
+    }
     let _socket_dir = configure_agentfs_env(&mut command, driver.as_path());
 
     let output = command

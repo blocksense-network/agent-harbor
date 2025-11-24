@@ -63,20 +63,34 @@ single-line status report to stdout while detailed traces go to
 ## 5. AgentFS-specific setup (macOS)
 
 The AgentFS provider requires the interpose shim to be preloaded so file system
-calls are routed through the daemon. The `agentfs` feature paths automate this
-inside the Rust tests, but manual runs must provide the following environment:
+calls are routed through `agentfs-daemon`. The daemon supervisor now exposes a
+`mount_agentfs_interpose` RPC, so the macOS workflow is:
 
 ```bash
-SOCKET_DIR=$(mktemp -d)
-export AGENTFS_INTERPOSE_SOCKET=\"$SOCKET_DIR/agentfs.sock\"
+just start-ah-fs-snapshots-daemon
+
+# Launch (or reconfigure) the interpose daemon via the supervisor and pin a
+# per-run socket/runtime directory so every workspace/matrix shard is isolated
+SOCKET_DIR="$(mktemp -d /tmp/agentfs-interpose.XXXXXX)"
+SOCKET_PATH="$SOCKET_DIR/agentfs.sock"
+target/debug/ah-fs-snapshots-daemonctl \
+  interpose mount \
+  --repo-root "$(pwd)/tests/fixtures/repos/provider-agentfs" \
+  --socket-path "$SOCKET_PATH" \
+  --runtime-dir "$SOCKET_DIR" \
+  --json
+
+# Export the shim variables using the reported socket path (which should match
+# the hint passed above)
+export AGENTFS_INTERPOSE_SOCKET="$SOCKET_PATH"
 export AH_ENABLE_AGENTFS_PROVIDER=1
-export DYLD_INSERT_LIBRARIES=\"$(pwd)/target/debug/libagentfs_interpose_shim.dylib\"
+export DYLD_INSERT_LIBRARIES="$(pwd)/target/debug/libagentfs_interpose_shim.dylib"
 
 target/debug/fs-snapshots-harness-driver provider-matrix --provider agentfs
 ```
 
-> **Note:** Linux and Windows parity for the AgentFS shim is tracked in later
-> milestones. The macOS workflow above is the supported configuration for M1.
+Use `ah-fs-snapshots-daemonctl interpose status --json` to verify PID/socket
+details (the CLI prints the same schema consumed by `scripts/check-ah-fs-snapshots-daemon.sh`).
 
 ## 6. Log locations and cleanup
 

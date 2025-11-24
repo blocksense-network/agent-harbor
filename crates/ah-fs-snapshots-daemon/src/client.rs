@@ -11,8 +11,10 @@ use std::path::Path;
 
 pub use crate::types::{
     AgentfsFuseBackstore, AgentfsFuseMountRequest, AgentfsFuseState, AgentfsFuseStatusData,
-    AgentfsHostFsBackstore, AgentfsRamDiskBackstore,
+    AgentfsHostFsBackstore, AgentfsInterposeMountHints, AgentfsInterposeMountRequest,
+    AgentfsInterposeStatusData, AgentfsRamDiskBackstore,
 };
+use tracing::warn;
 
 /// Default path to the daemon socket.
 pub const DEFAULT_SOCKET_PATH: &str = "/tmp/agent-harbor/ah-fs-snapshots-daemon";
@@ -27,7 +29,8 @@ impl DaemonClient {
     /// Create a new daemon client with the default socket path.
     pub fn new() -> Self {
         Self {
-            socket_path: DEFAULT_SOCKET_PATH.to_string(),
+            socket_path: std::env::var("AH_FS_SNAPSHOTS_DAEMON_SOCKET")
+                .unwrap_or_else(|_| DEFAULT_SOCKET_PATH.to_string()),
         }
     }
 
@@ -46,7 +49,10 @@ impl DaemonClient {
     /// Send a request to the daemon and wait for a response.
     pub fn send_request(&self, request: Request) -> Result<Response, DaemonError> {
         let mut stream = UnixStream::connect(&self.socket_path).map_err(|e| {
-            DaemonError::ConnectionError(format!("Failed to connect to daemon socket: {}", e))
+            DaemonError::ConnectionError(format!(
+                "Failed to connect to daemon socket {}: {}",
+                self.socket_path, e
+            ))
         })?;
 
         // Encode request as SSZ bytes and hex
@@ -264,6 +270,90 @@ impl DaemonClient {
             )),
         }
     }
+
+    pub fn mount_agentfs_interpose(
+        &self,
+        request: AgentfsInterposeMountRequest,
+    ) -> Result<AgentfsInterposeStatusData, DaemonError> {
+        self.mount_agentfs_interpose_internal(request, None)
+    }
+
+    pub fn mount_agentfs_interpose_with_hints(
+        &self,
+        request: AgentfsInterposeMountRequest,
+        hints: AgentfsInterposeMountHints,
+    ) -> Result<AgentfsInterposeStatusData, DaemonError> {
+        self.mount_agentfs_interpose_internal(request, Some(hints))
+    }
+
+    fn mount_agentfs_interpose_internal(
+        &self,
+        request: AgentfsInterposeMountRequest,
+        hints: Option<AgentfsInterposeMountHints>,
+    ) -> Result<AgentfsInterposeStatusData, DaemonError> {
+        if let Some(hints) = hints {
+            match self.send_request(Request::mount_agentfs_interpose_with_hints(
+                request.clone(),
+                hints,
+            )) {
+                Ok(Response::AgentfsInterposeStatus(status)) => return Ok(status),
+                Ok(Response::Error(msg)) => {
+                    return Err(DaemonError::DaemonError(
+                        String::from_utf8_lossy(&msg).to_string(),
+                    ));
+                }
+                Ok(_) => {
+                    return Err(DaemonError::ProtocolError(
+                        "Unexpected response to AgentFS interpose mount".to_string(),
+                    ));
+                }
+                Err(err @ DaemonError::ProtocolError(_))
+                | Err(err @ DaemonError::CommunicationError(_))
+                | Err(err @ DaemonError::ConnectionError(_)) => {
+                    warn!(
+                        target: "ah_fs_snapshots_daemon::client",
+                        "interpose hints unsupported by daemon, falling back: {}",
+                        err
+                    );
+                }
+                Err(other) => return Err(other),
+            }
+        }
+
+        match self.send_request(Request::mount_agentfs_interpose(request))? {
+            Response::AgentfsInterposeStatus(status) => Ok(status),
+            Response::Error(msg) => Err(DaemonError::DaemonError(
+                String::from_utf8_lossy(&msg).to_string(),
+            )),
+            _ => Err(DaemonError::ProtocolError(
+                "Unexpected response to AgentFS interpose mount".to_string(),
+            )),
+        }
+    }
+
+    pub fn unmount_agentfs_interpose(&self) -> Result<(), DaemonError> {
+        match self.send_request(Request::unmount_agentfs_interpose())? {
+            Response::Success(_) => Ok(()),
+            Response::Error(msg) => Err(DaemonError::DaemonError(
+                String::from_utf8_lossy(&msg).to_string(),
+            )),
+            _ => Err(DaemonError::ProtocolError(
+                "Unexpected response to AgentFS interpose unmount".to_string(),
+            )),
+        }
+    }
+
+    pub fn status_agentfs_interpose(&self) -> Result<AgentfsInterposeStatusData, DaemonError> {
+        match self.send_request(Request::status_agentfs_interpose())? {
+            Response::AgentfsInterposeStatus(status) => Ok(status),
+            Response::Error(msg) => Err(DaemonError::DaemonError(
+                String::from_utf8_lossy(&msg).to_string(),
+            )),
+            _ => Err(DaemonError::ProtocolError(
+                "Unexpected response to AgentFS interpose status".to_string(),
+            )),
+        }
+    }
 }
 
 impl Default for DaemonClient {
@@ -294,8 +384,14 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
+        std::env::remove_var("AH_FS_SNAPSHOTS_DAEMON_SOCKET");
         let client = DaemonClient::new();
         assert_eq!(client.socket_path, DEFAULT_SOCKET_PATH);
+
+        std::env::set_var("AH_FS_SNAPSHOTS_DAEMON_SOCKET", "/tmp/custom.sock");
+        let override_client = DaemonClient::new();
+        assert_eq!(override_client.socket_path, "/tmp/custom.sock");
+        std::env::remove_var("AH_FS_SNAPSHOTS_DAEMON_SOCKET");
 
         let custom_path = "/tmp/custom/socket";
         let custom_client = DaemonClient::with_socket_path(custom_path);

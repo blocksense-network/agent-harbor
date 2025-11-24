@@ -197,6 +197,7 @@ fn query_daemon_state_structured(
             configured_entries: None,
         },
         timestamp: b"1234567890".to_vec(),
+        session_id: b"test-session-123".to_vec(),
     });
 
     let handshake_bytes = encode_ssz_message(&handshake);
@@ -390,6 +391,7 @@ mod tests {
                             configured_entries: None,
                         },
                         timestamp: b"1234567890".to_vec(),
+                        session_id: b"server-session-456".to_vec(),
                     });
                     let response_bytes = encode_ssz_message(&response);
                     let response_len = response_bytes.len() as u32;

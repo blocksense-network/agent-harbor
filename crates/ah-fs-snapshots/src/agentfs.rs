@@ -206,10 +206,36 @@ impl FsSnapshotProvider for AgentFsProvider {
         repo: &Path,
         mode: WorkingCopyMode,
     ) -> Result<PreparedWorkspace> {
+        tracing::debug!(
+            repo = %repo.display(),
+            mode = ?mode,
+            "AgentFS prepare_writable_workspace invoked"
+        );
         if !Self::experimental_flag_enabled() {
             return Err(Error::provider(
                 "AgentFS provider is experimental; set AH_ENABLE_AGENTFS_PROVIDER=1 to enable it",
             ));
+        }
+
+        if !repo.exists() {
+            tracing::debug!(
+                repo = %repo.display(),
+                "AgentFS prepare_writable_workspace: repository path missing"
+            );
+            return Err(Error::provider(format!(
+                "AgentFS repository path does not exist: {}",
+                repo.display()
+            )));
+        }
+        if !repo.is_dir() {
+            tracing::debug!(
+                repo = %repo.display(),
+                "AgentFS prepare_writable_workspace: repository path not a directory"
+            );
+            return Err(Error::provider(format!(
+                "AgentFS repository path is not a directory: {}",
+                repo.display()
+            )));
         }
 
         match self.platform {
@@ -795,6 +821,27 @@ impl AgentFsProvider {
             ));
         }
 
+        if !repo.exists() {
+            tracing::debug!(
+                repo = %repo.display(),
+                "AgentFS prepare_writable_workspace_with_socket: repository path missing"
+            );
+            return Err(Error::provider(format!(
+                "AgentFS repository path does not exist: {}",
+                repo.display()
+            )));
+        }
+        if !repo.is_dir() {
+            tracing::debug!(
+                repo = %repo.display(),
+                "AgentFS prepare_writable_workspace_with_socket: repository path not a directory"
+            );
+            return Err(Error::provider(format!(
+                "AgentFS repository path is not a directory: {}",
+                repo.display()
+            )));
+        }
+
         match self.platform {
             PlatformSupport::Supported => {}
             PlatformSupport::Unsupported(reason) => {
@@ -1127,11 +1174,15 @@ struct FuseSession {
 mod runtime {
     use super::*;
     use agentfs_client::{AgentFsClient, ClientConfig};
-    use agentfs_interpose_e2e_tests::find_daemon_path;
+    use ah_fs_snapshots_daemon::client::{
+        AgentfsInterposeMountHints, AgentfsInterposeMountRequest, DaemonClient,
+    };
     use anyhow::{Context, Result, anyhow};
+    use fslock::LockFile;
+    use libc::{getegid, geteuid};
     use std::ffi::{CString, OsString};
     use std::path::{Path, PathBuf};
-    use std::process::{Child, Command, Stdio};
+    use std::process::Child;
     use std::time::{Duration, Instant};
     use tempfile::TempDir;
 
@@ -1142,6 +1193,8 @@ mod runtime {
 
     struct AgentFsHarnessInner {
         _temp_dir: Mutex<Option<TempDir>>,
+        // Holds the process-wide AgentFS lock so no other test can reuse the daemon socket.
+        _lock: Mutex<Option<LockFile>>,
         socket_path: PathBuf,
         daemon: Mutex<Option<Child>>,
         workspace_path: PathBuf,
@@ -1162,8 +1215,18 @@ mod runtime {
                 }
             }
 
-            if let Some(socket) = self.socket_path.to_str() {
-                let _ = std::fs::remove_file(socket);
+            let owns_runtime = self._temp_dir.lock().map(|guard| guard.is_some()).unwrap_or(false);
+
+            if owns_runtime {
+                if let Some(socket) = self.socket_path.to_str() {
+                    let _ = std::fs::remove_file(socket);
+                }
+            }
+
+            if let Ok(mut guard) = self._lock.lock() {
+                if let Some(mut lock) = guard.take() {
+                    let _ = lock.unlock();
+                }
             }
 
             let current_socket = std::env::var_os("AGENTFS_INTERPOSE_SOCKET");
@@ -1204,69 +1267,104 @@ mod runtime {
 
     impl AgentFsHarness {
         pub fn start(repo: &Path) -> Result<Self> {
-            let previous_socket = std::env::var_os("AGENTFS_INTERPOSE_SOCKET");
-            let previous_branch_id = std::env::var_os("AGENTFS_BRANCH_ID");
+            let client = DaemonClient::new();
+            let harness_lock = acquire_global_lock()?;
+            let mut lock_slot = Some(harness_lock);
+            let mut owned_runtime_dir: Option<tempfile::TempDir> = None;
+            let mut socket_hint = std::env::var_os("AGENTFS_INTERPOSE_SOCKET")
+                .filter(|val| !val.is_empty())
+                .map(|val| val.to_string_lossy().into_owned().into_bytes())
+                .unwrap_or_default();
+            let mut runtime_hint = std::env::var_os("AGENTFS_INTERPOSE_RUNTIME_DIR")
+                .filter(|val| !val.is_empty())
+                .map(|val| val.to_string_lossy().into_owned().into_bytes())
+                .unwrap_or_default();
 
-            let temp_dir = TempDir::new().context("failed to create AgentFS harness temp dir")?;
-            let socket_path = temp_dir.path().join("agentfs.sock");
-            if let Some(parent) = socket_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .context("failed to create socket directory for AgentFS harness")?;
+            if socket_hint.is_empty() && runtime_hint.is_empty() {
+                let temp_dir = tempfile::Builder::new()
+                    .prefix("agentfs-driver-")
+                    .tempdir()
+                    .context("failed to create AgentFS runtime directory")?;
+                let socket_path = temp_dir.path().join("agentfs.sock");
+                socket_hint = socket_path.to_string_lossy().into_owned().into_bytes();
+                runtime_hint = temp_dir.path().to_string_lossy().into_owned().into_bytes();
+                owned_runtime_dir = Some(temp_dir);
             }
-            if socket_path.exists() {
-                let _ = std::fs::remove_file(&socket_path);
-            }
 
-            let daemon_path = find_daemon_path();
-            let mut command = Command::new(daemon_path);
-            command
-                .arg(socket_path.to_string_lossy().to_string())
-                .arg("--lower-dir")
-                .arg(repo.to_string_lossy().to_string());
-
-            if std::env::var("AGENTFS_HARNESS_DEBUG").is_ok() {
-                command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+            let hints = if socket_hint.is_empty() && runtime_hint.is_empty() {
+                None
             } else {
-                command.stdout(Stdio::null()).stderr(Stdio::null());
-            }
+                Some(AgentfsInterposeMountHints {
+                    socket_path: socket_hint.clone(),
+                    runtime_dir: runtime_hint.clone(),
+                })
+            };
 
-            let child = command.spawn().context("failed to spawn agentfs-daemon process")?;
+            let request = AgentfsInterposeMountRequest {
+                repo_root: repo.to_string_lossy().into_owned().into_bytes(),
+                uid: unsafe { geteuid() },
+                gid: unsafe { getegid() },
+                mount_timeout_ms: 5_000,
+            };
 
-            let client_config =
-                ClientConfig::builder("ah-fs-snapshots-provider", env!("CARGO_PKG_VERSION"))
-                    .feature("control-plane-only")
-                    .build()
-                    .context("failed to construct AgentFS client configuration")?;
+            let status = match hints {
+                Some(hints) => client
+                    .mount_agentfs_interpose_with_hints(request.clone(), hints)
+                    .map_err(|err| {
+                        anyhow!("failed to launch AgentFS interpose daemon via supervisor: {err}")
+                    })?,
+                None => client.mount_agentfs_interpose(request.clone()).map_err(|err| {
+                    anyhow!("failed to launch AgentFS interpose daemon via supervisor: {err}")
+                })?,
+            };
+            let socket_path =
+                PathBuf::from(String::from_utf8_lossy(&status.socket_path).into_owned());
 
             wait_for_socket(&socket_path, Duration::from_secs(3)).with_context(|| {
                 format!(
-                    "agentfs-daemon did not create socket {}",
+                    "agentfs-daemon did not expose socket {}",
                     socket_path.display()
                 )
             })?;
 
-            std::env::set_var("AGENTFS_INTERPOSE_SOCKET", &socket_path);
+            // Allow up to ~12s for heavily loaded CI environments (120 * 100ms sleeps).
+            const MAX_ATTEMPTS: usize = 120;
+            let mut attempts = 0;
+            let harness = loop {
+                match Self::connect_to_socket(&socket_path, repo) {
+                    Ok(handle) => break handle,
+                    Err(err) => {
+                        attempts += 1;
+                        if attempts >= MAX_ATTEMPTS {
+                            return Err(anyhow!(
+                                "failed to connect to managed AgentFS daemon after retries: {}",
+                                err
+                            ));
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                }
+            };
 
-            let previous_exe = std::env::var_os("AGENTFS_INTERPOSE_EXE");
+            std::env::set_var("AGENTFS_INTERPOSE_SOCKET", &socket_path);
             let current_exe =
                 std::env::current_exe().context("failed to resolve current executable")?;
             std::env::set_var("AGENTFS_INTERPOSE_EXE", &current_exe);
             trigger_interpose_reconnect();
 
-            Ok(Self {
-                inner: Arc::new(AgentFsHarnessInner {
-                    _temp_dir: Mutex::new(Some(temp_dir)),
-                    socket_path,
-                    daemon: Mutex::new(Some(child)),
-                    workspace_path: repo.to_path_buf(),
-                    source_repo: repo.to_path_buf(),
-                    client_config,
-                    previous_socket,
-                    previous_exe,
-                    previous_branch_id,
-                    exe_path: current_exe,
-                }),
-            })
+            if let Some(temp_dir) = owned_runtime_dir {
+                if let Ok(mut guard) = harness.inner._temp_dir.lock() {
+                    *guard = Some(temp_dir);
+                }
+            }
+
+            if let Some(lock) = lock_slot.take() {
+                if let Ok(mut guard) = harness.inner._lock.lock() {
+                    *guard = Some(lock);
+                }
+            }
+
+            Ok(harness)
         }
 
         /// Connect to an existing AgentFS daemon at the specified socket path
@@ -1283,6 +1381,14 @@ mod runtime {
 
             // Test the connection
             let _client = AgentFsClient::connect(socket_path, &client_config)
+                .map_err(|err| {
+                    tracing::warn!(
+                        socket = %socket_path.display(),
+                        error = %err,
+                        "AgentFS harness could not connect to daemon socket"
+                    );
+                    err
+                })
                 .context("failed to connect to existing AgentFS daemon")?;
 
             let current_exe =
@@ -1300,6 +1406,7 @@ mod runtime {
                     previous_exe,
                     previous_branch_id,
                     exe_path: current_exe,
+                    _lock: Mutex::new(None),
                 }),
             })
         }
@@ -1327,6 +1434,29 @@ mod runtime {
         }
     }
 
+    /// Serialize AgentFS harness usage across the entire test process.
+    ///
+    /// Multiple binaries (unit + integration tests) all speak to the same privileged daemon.
+    /// Requiring a global lock prevents one test from tearing down the daemon socket while
+    /// another is still waiting to connect, eliminating the flakiness we saw when `nextest`
+    /// ran AgentFS scenarios in parallel across crates.
+    fn acquire_global_lock() -> Result<LockFile> {
+        let lock_path = std::env::temp_dir().join("agentfs-provider.lock");
+        let mut lock = LockFile::open(&lock_path).with_context(|| {
+            format!(
+                "failed to open AgentFS global lock file at {}",
+                lock_path.display()
+            )
+        })?;
+        lock.lock().with_context(|| {
+            format!(
+                "failed to acquire AgentFS global lock at {}",
+                lock_path.display()
+            )
+        })?;
+        Ok(lock)
+    }
+
     fn trigger_interpose_reconnect() {
         unsafe {
             tracing::debug!("AgentFsHarness: attempting to trigger interpose reconnect");
@@ -1342,6 +1472,7 @@ mod runtime {
         }
     }
 
+    #[allow(dead_code)]
     fn wait_for_socket(path: &Path, timeout: Duration) -> Result<()> {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {

@@ -16,8 +16,8 @@ slow-timeout = { period = "30s", terminate-after = 2, grace-period = "10s" }
 global-timeout = "5m"
 
 [profile.single]
-status-level = "leak"
-final-status-level = "leak"
+status-level = "fail"
+final-status-level = "fail"
 success-output = "immediate"
 retries = 0
 global-timeout = "1m"

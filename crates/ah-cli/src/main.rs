@@ -1,15 +1,17 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_cli::{AgentCommands, Cli, Commands, Parser, config};
-use ah_domain_types::LogLevel;
-use ah_logging::{Level, LogFormat, init_to_standard_file};
+use ah_cli::{AgentCommands, Cli, Commands, config};
+use ah_logging::CliLogLevel;
 use ah_tui::view::TuiDependencies;
 use anyhow::Result;
+use clap::{CommandFactory, FromArgMatches};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let command = Cli::command();
+    let matches = command.clone().get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     // Load configuration from all sources (system, user, repo, repo-user, env, CLI)
     // Convert CLI arguments to JSON overrides following TOML naming conventions
@@ -20,26 +22,17 @@ async fn main() -> Result<()> {
         Some(&cli_overrides),
     )?;
 
-    // Use configuration for application behavior
-    tracing::debug!("Configuration loaded successfully");
-
-    // Set up centralized logging to file with platform-specific path
-    let log_level = cli.log_level.as_ref().unwrap_or({
-        // Default log level (same as clap default)
-        if cfg!(debug_assertions) {
-            &LogLevel::Debug
-        } else {
-            &LogLevel::Info
-        }
-    });
-    let default_level = match *log_level {
-        LogLevel::Error => Level::ERROR,
-        LogLevel::Warn => Level::WARN,
-        LogLevel::Info => Level::INFO,
-        LogLevel::Debug => Level::DEBUG,
-        LogLevel::Trace => Level::TRACE,
+    // Set up centralized logging using the merged configuration
+    let default_level = if cfg!(debug_assertions) {
+        CliLogLevel::Debug
+    } else {
+        CliLogLevel::Info
     };
-    init_to_standard_file("ah-cli", default_level, LogFormat::Plaintext)?;
+    config_result.config.logging().to_cli_logging_args().init_with_default_level(
+        "ah-cli",
+        false,
+        default_level,
+    )?;
 
     // Helper function to get TUI dependencies for record/replay commands
     fn get_record_tui_dependencies(

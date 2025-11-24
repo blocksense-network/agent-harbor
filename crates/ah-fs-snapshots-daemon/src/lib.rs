@@ -8,6 +8,7 @@
 
 pub mod client;
 pub mod fuse_manager;
+pub mod interpose_manager;
 pub mod operations;
 pub mod server;
 pub mod types;
@@ -29,8 +30,9 @@ mod tests {
     #[test]
     fn test_ping_response() {
         let request = Request::ping();
-        let state = DaemonState::new();
-        let response = tokio_test::block_on(state.process_request(request));
+        let state = DaemonState::default();
+        let response =
+            tokio_test::block_on(state.process_request(request, "test-session".to_string()));
         match response {
             Response::Success(_) => {} // Expected
             _ => panic!("Expected Success response"),

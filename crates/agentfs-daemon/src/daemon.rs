@@ -93,6 +93,7 @@
 //! - Event delivery is asynchronous and doesn't block client operations
 
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
@@ -187,6 +188,8 @@ pub struct AgentFsDaemon {
     fsevents_ports: HashMap<u32, CFMessagePortWrapper>, // pid -> CFMessagePort for FSEvents
     readonly_exports: HashMap<String, ReadonlyExport>,
     export_counter: u64,
+    process_owners: HashMap<u32, (u32, u32)>,
+    default_owner: Option<(u32, u32)>,
 }
 
 impl AgentFsDaemon {
@@ -253,6 +256,8 @@ impl AgentFsDaemon {
             fsevents_ports: HashMap::new(),
             readonly_exports: HashMap::new(),
             export_counter: 0,
+            process_owners: HashMap::new(),
+            default_owner: None,
         };
 
         // Subscribe the watch service to FsCore events
@@ -288,6 +293,7 @@ impl AgentFsDaemon {
         _upper_dir: Option<PathBuf>,
         _work_dir: Option<PathBuf>,
         backstore_mode: agentfs_core::config::BackstoreMode,
+        owner_override: Option<(u32, u32)>,
     ) -> FsResult<Self> {
         // Configure FsCore based on overlay and backstore settings
         let config = if let Some(lower) = lower_dir {
@@ -344,6 +350,8 @@ impl AgentFsDaemon {
             fsevents_ports: HashMap::new(),
             readonly_exports: HashMap::new(),
             export_counter: 0,
+            process_owners: HashMap::new(),
+            default_owner: owner_override,
         };
 
         // Subscribe the watch service to FsCore events
@@ -377,6 +385,7 @@ impl AgentFsDaemon {
     pub fn register_process(&mut self, pid: u32, ppid: u32, uid: u32, gid: u32) -> FsResult<PID> {
         let registered_pid = self.core.lock().unwrap().register_process(pid, ppid, uid, gid);
         self.processes.insert(pid, registered_pid);
+        self.process_owners.insert(pid, (uid, gid));
         Ok(registered_pid)
     }
 
@@ -388,12 +397,14 @@ impl AgentFsDaemon {
     /// Unregister a connection
     pub fn unregister_connection(&mut self, pid: u32) {
         self.connections.remove(&pid);
+        self.process_owners.remove(&pid);
     }
 
     /// Clean up all watch registrations for a process (called when process exits)
-    pub fn cleanup_process_watches(&mut self, pid: u32) {
+    pub fn cleanup_process_watches(&mut self, pid: u32, session_id: &str) {
         debug!(
             component = COMPONENT,
+            session_id = %session_id,
             operation = "cleanup_process_watches",
             pid,
             "cleaning up watches for process"
@@ -416,6 +427,7 @@ impl AgentFsDaemon {
 
         debug!(
             component = COMPONENT,
+            session_id = %session_id,
             operation = "cleanup_process_watches",
             pid,
             "finished cleaning up watches for process"
@@ -512,9 +524,11 @@ impl AgentFsDaemon {
         flags: u32,
         mode: u32,
         os_pid: u32,
+        session_id: &str,
     ) -> Result<RawFd, String> {
         debug!(
             component = COMPONENT,
+            session_id = %session_id,
             "AgentFsDaemon: fd_open({}, flags={:#x}, mode={:#o}, pid={})",
             path,
             flags,
@@ -532,6 +546,7 @@ impl AgentFsDaemon {
             Ok(fd) => {
                 debug!(
                     component = COMPONENT,
+                    session_id = %session_id,
                     "AgentFsDaemon: fd_open succeeded '{}' -> fd {}", path, fd
                 );
                 // Record the file open for testing state tracking
@@ -552,9 +567,15 @@ impl AgentFsDaemon {
     }
 
     /// Handle a dir_open request
-    pub fn handle_dir_open(&mut self, path: String, client_pid: u32) -> Result<u64, String> {
+    pub fn handle_dir_open(
+        &mut self,
+        path: String,
+        client_pid: u32,
+        session_id: &str,
+    ) -> Result<u64, String> {
         debug!(
             component = COMPONENT,
+            session_id = %session_id,
             "AgentFsDaemon: dir_open({}, pid={})", path, client_pid
         );
 
@@ -566,6 +587,7 @@ impl AgentFsDaemon {
             Ok(handle_id) => {
                 debug!(
                     component = COMPONENT,
+                    session_id = %session_id,
                     "AgentFsDaemon: FsCore opendir succeeded for {}, handle_id={}",
                     path,
                     handle_id.0
@@ -588,9 +610,15 @@ impl AgentFsDaemon {
     }
 
     /// Handle a readlink request
-    pub fn handle_readlink(&mut self, path: String, client_pid: u32) -> Result<String, String> {
+    pub fn handle_readlink(
+        &mut self,
+        path: String,
+        client_pid: u32,
+        session_id: &str,
+    ) -> Result<String, String> {
         debug!(
             component = COMPONENT,
+            session_id = %session_id,
             "AgentFsDaemon: readlink({}, pid={})", path, client_pid
         );
 
@@ -602,6 +630,7 @@ impl AgentFsDaemon {
             Ok(target) => {
                 debug!(
                     component = COMPONENT,
+                    session_id = %session_id,
                     "AgentFsDaemon: FsCore readlink succeeded for {}, target: {}", path, target
                 );
                 Ok(target)
@@ -827,7 +856,7 @@ impl AgentFsDaemon {
     pub fn handle_request(
         &mut self,
         request: Request,
-        _client_pid: u32,
+        client_pid: u32,
     ) -> Result<Response, String> {
         match request {
             Request::DaemonStateProcesses(_) => {
@@ -844,7 +873,7 @@ impl AgentFsDaemon {
             }
             Request::SnapshotExport((_, export_req)) => {
                 let snapshot_id = parse_snapshot_id_bytes(&export_req.snapshot)?;
-                self.handle_snapshot_export(snapshot_id).map(|(path, token)| {
+                self.handle_snapshot_export(snapshot_id, Some(client_pid)).map(|(path, token)| {
                     Response::snapshot_export(path.to_string_lossy().to_string(), token)
                 })
             }
@@ -1495,6 +1524,7 @@ impl AgentFsDaemon {
         &mut self,
         pid: u32,
         name: Option<String>,
+        session_id: &str,
     ) -> Result<ProtoSnapshotInfo, String> {
         let pid = PID::new(pid);
         let name_bytes = name.as_ref().map(|s| s.as_bytes().to_vec());
@@ -1508,6 +1538,7 @@ impl AgentFsDaemon {
 
         debug!(
             component = COMPONENT,
+            session_id = %session_id,
             operation = "snapshot_create",
             pid = pid.as_u32(),
             snapshot_id = %snapshot_id,
@@ -1535,6 +1566,7 @@ impl AgentFsDaemon {
         &mut self,
         snapshot_id: SnapshotId,
         name: Option<String>,
+        session_id: &str,
     ) -> Result<ProtoBranchInfo, String> {
         let name_bytes = name.as_ref().map(|s| s.as_bytes().to_vec());
 
@@ -1547,6 +1579,7 @@ impl AgentFsDaemon {
 
         debug!(
             component = COMPONENT,
+            session_id = %session_id,
             operation = "branch_create",
             snapshot_id = %snapshot_id,
             branch_id = %branch_id,
@@ -1576,10 +1609,11 @@ impl AgentFsDaemon {
     pub fn handle_snapshot_export(
         &mut self,
         snapshot_id: SnapshotId,
+        requester_pid: Option<u32>,
     ) -> Result<(PathBuf, String), String> {
         let temp_dir = tempfile::Builder::new()
             .prefix("agentfs_ro_")
-            .tempdir()
+            .tempdir_in("/tmp")
             .map_err(|e| format!("failed to create export directory: {}", e))?;
         let export_path = temp_dir.path().to_path_buf();
 
@@ -1599,19 +1633,65 @@ impl AgentFsDaemon {
             },
         );
 
+        if let Some((uid, gid)) = self.owner_for_pid(requester_pid) {
+            if let Err(err) = fix_export_permissions(&export_path, uid, gid) {
+                warn!(
+                    component = COMPONENT,
+                    path = %export_path.display(),
+                    error = %err,
+                    "failed to adjust readonly export permissions"
+                );
+            }
+        }
+
         Ok((export_path, token))
     }
 
     pub fn handle_snapshot_export_release(&mut self, cleanup_token: String) -> Result<(), String> {
-        if self.readonly_exports.remove(&cleanup_token).is_some() {
+        if let Some(export) = self.readonly_exports.remove(&cleanup_token) {
+            // TempDir is dropped here, removing the directory
+            let _ = export;
             Ok(())
         } else {
-            Err(format!(
-                "snapshot_export_release failed: unknown token {}",
-                cleanup_token
-            ))
+            Err(format!("unknown cleanup token: {}", cleanup_token))
         }
     }
+
+    fn owner_for_pid(&self, pid: Option<u32>) -> Option<(u32, u32)> {
+        if let Some(pid) = pid {
+            if let Some(owner) = self.process_owners.get(&pid) {
+                return Some(*owner);
+            }
+        }
+        self.default_owner
+    }
+}
+
+fn fix_export_permissions(path: &Path, uid: u32, gid: u32) -> std::io::Result<()> {
+    set_owner_and_mode(path, uid, gid, path.is_dir())?;
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            fix_export_permissions(&entry.path(), uid, gid)?;
+        }
+    }
+    Ok(())
+}
+
+fn set_owner_and_mode(path: &Path, uid: u32, gid: u32, is_dir: bool) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::PermissionsExt;
+        let c_path = CString::new(path.as_os_str().as_bytes())?;
+        unsafe {
+            libc::chown(c_path.as_ptr(), uid, gid);
+        }
+        let mut perms = std::fs::metadata(path)?.permissions();
+        perms.set_mode(if is_dir { 0o755 } else { 0o644 });
+        std::fs::set_permissions(path, perms)?;
+    }
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -1638,7 +1718,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
         let mut daemon = daemon.lock().unwrap();
         daemon.unregister_connection(client_pid);
         // Clean up all watch registrations for this process
-        daemon.cleanup_process_watches(client_pid);
+        daemon.cleanup_process_watches(client_pid, "unused-session");
     };
 
     // Handle handshake
@@ -1709,7 +1789,11 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             }
                         };
 
-                        match daemon.lock().unwrap().handle_snapshot_export(snapshot_id) {
+                        match daemon
+                            .lock()
+                            .unwrap()
+                            .handle_snapshot_export(snapshot_id, Some(client_pid))
+                        {
                             Ok((path, token)) => {
                                 let response = Response::snapshot_export(
                                     path.to_string_lossy().to_string(),
@@ -1776,7 +1860,11 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             None => None,
                         };
 
-                        match daemon.lock().unwrap().handle_snapshot_create(pid.as_u32(), name) {
+                        match daemon.lock().unwrap().handle_snapshot_create(
+                            pid.as_u32(),
+                            name,
+                            "unused-session",
+                        ) {
                             Ok(snapshot_info) => {
                                 let response = Response::snapshot_create(snapshot_info);
                                 send_response(&mut stream, &response);
@@ -1801,6 +1889,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             fd_open_req.flags,
                             fd_open_req.mode,
                             client_pid,
+                            "unused-session",
                         ) {
                             Ok(fd) => {
                                 // For now, send a simple success response with the fd number
@@ -1822,7 +1911,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                     Request::DirOpen((_version, dir_open_req)) => {
                         let path = String::from_utf8_lossy(&dir_open_req.path).to_string();
                         let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_dir_open(path, client_pid) {
+                        match daemon.handle_dir_open(path, client_pid, "unused-session") {
                             Ok(handle) => {
                                 let response = Response::dir_open(handle);
                                 send_response(&mut stream, &response);
@@ -1871,7 +1960,7 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             "AgentFsDaemon: readlink({}, pid={})", path, client_pid
                         );
                         let mut daemon = daemon.lock().unwrap();
-                        match daemon.handle_readlink(path, client_pid) {
+                        match daemon.handle_readlink(path, client_pid, "unused-session") {
                             Ok(target) => {
                                 debug!(
                                     component = COMPONENT,
@@ -2695,7 +2784,11 @@ fn handle_client(mut stream: UnixStream, daemon: Arc<Mutex<AgentFsDaemon>>, clie
                             None => None,
                         };
 
-                        match daemon.lock().unwrap().handle_branch_create(snapshot_id, name) {
+                        match daemon.lock().unwrap().handle_branch_create(
+                            snapshot_id,
+                            name,
+                            "unused-session",
+                        ) {
                             Ok(branch_info) => {
                                 let response = Response::branch_create(branch_info);
                                 send_response(&mut stream, &response);

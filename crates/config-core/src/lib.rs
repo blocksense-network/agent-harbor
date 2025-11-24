@@ -270,9 +270,14 @@ mod tests {
     #[test]
     fn test_env_overlay() {
         // Test that env overlay handles AH_ prefix correctly
+        let original_socket = std::env::var_os("AH_FS_SNAPSHOTS_DAEMON_SOCKET");
+        std::env::remove_var("AH_FS_SNAPSHOTS_DAEMON_SOCKET");
         let overlay = env::env_overlay().unwrap();
         // Should be empty in test environment without AH_ vars
         assert!(overlay.as_object().unwrap().is_empty());
+        if let Some(value) = original_socket {
+            std::env::set_var("AH_FS_SNAPSHOTS_DAEMON_SOCKET", value);
+        }
     }
 
     #[test]
