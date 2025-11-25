@@ -160,7 +160,7 @@ impl AgentExecutor {
                 "record".to_string(),
                 "--session-id".to_string(),
                 session_id.to_string(),
-                //TODO:(zah) Restore this option once it works properly
+                // TODO(zah): Restore this option once it works properly
                 // The reason for commenting this out is that when using zellij,
                 // we experience issues with the rendering of the initial TUI dashboard
                 // "--task-manager-socket".to_string(),
