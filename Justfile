@@ -44,7 +44,7 @@ check:
     cargo check --workspace
 
 # Build all test binaries needed for Rust workspace tests
-build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries build-command-trace-shim build-fuse-test-binaries build-fs-snapshots-harness
+build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries build-stackable-interpose-test-binaries build-command-trace-shim build-fuse-test-binaries build-fs-snapshots-harness
 
 # Run Rust tests
 test-rust *args: build-rust-test-binaries
@@ -233,10 +233,6 @@ stop-ah-fs-snapshots-daemon:
 check-ah-fs-snapshots-daemon:
     scripts/check-ah-fs-snapshots-daemon.sh
 
-# Crash/restart harness for the daemon-managed AgentFS FUSE mount
-test-fs-daemon-mount:
-    scripts/test-fs-daemon-mount.sh
-
 # Run comprehensive daemon integration tests (requires test filesystems)
 test-daemon-integration: build-daemon-tests
     cargo test --package ah-fs-snapshots-daemon -- --nocapture integration
@@ -265,6 +261,13 @@ build-overlay-test-binaries:
 build-interpose-test-binaries:
     cargo build --bin agentfs-interpose-test-helper --bin agentfs-daemon
     cargo build -p agentfs-interpose-shim
+
+# Build stackable-interpose e2e test binaries (test-program, call_real_demo) and shim libraries
+build-stackable-interpose-test-binaries:
+    cargo build -p e2e-call-real-shim
+    cargo build -p e2e-shim-a
+    cargo build -p e2e-shim-b
+    cargo build -p e2e-stackable-hooks --bins
 
 # Build command trace shim library needed for e2e tests
 build-command-trace-shim:
@@ -313,9 +316,6 @@ build-fuse-test-binaries:
 build-fuse-host:
     ./scripts/build-fuse-host.sh
 
-build-fuse-host-release:
-    FUSE_BUILD_PROFILE=release ./scripts/build-fuse-host.sh
-
 # Run basic filesystem smoke tests against a mounted FUSE filesystem
 # Usage: just test-fuse-basic /mnt/agentfs
 # Note: Mount the filesystem first with: just mount-fuse /mnt/agentfs
@@ -360,13 +360,6 @@ test-fuse-overlay-ops:
 test-fuse-control-plane:
     ./scripts/test-fuse-control-plane.sh
 
-# Performance benchmarks (F6)
-test-fuse-performance:
-    ./scripts/test-fuse-performance.sh
-
-test-fuse-performance-release:
-    FUSE_BUILD_PROFILE=release AGENTFS_FUSE_HOST_BIN="target/release/agentfs-fuse-host" ./scripts/test-fuse-performance.sh
-
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 # See docs/PJDFSTest-Guide.md for detailed usage instructions
@@ -406,12 +399,6 @@ pjdfs-file test_file mountpoint="/tmp/agentfs":
 # Example: just pjdfs-cat unlink
 pjdfs-cat category mountpoint="/tmp/agentfs":
     ./scripts/run-pjdfstest.sh "{{mountpoint}}" "{{category}}/"
-
-# Dedicated harness that sets up pjdfstest, mounts AgentFS, runs the
-# entire suite with logging/JSON summary, and unmounts on completion.
-# Usage: just test-pjdfstest-full [/tmp/agentfs]
-test-pjdfstest-full mountpoint="/tmp/agentfs":
-    ./scripts/test-pjdfstest-full.sh "{{mountpoint}}"
 
 # Run complete pjdfstest workflow: setup (if needed), mount, test, unmount
 # Usage: just test-pjdfstest-suite [mountpoint]
@@ -517,10 +504,7 @@ manual-test-tui-remote *args:
     ./scripts/manual-test-remote.py {{args}}
 
 # Convenience wrapper for mock server remote testing (loads default scenario)
-manual-test-tui-remote-typescript-mock *args:
-    ./scripts/manual-test-remote.py --mode typescript-mock {{args}}
-
-manual-test-tui-remote-rust-mock *args:
+manual-test-tui-remote-mock *args:
     ./scripts/manual-test-remote.py --mode mock {{args}}
 
 # Automated smoke test used by CI to validate remote manual-test harness
