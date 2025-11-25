@@ -16,6 +16,13 @@
 - F9 compatibility harness added and wired into CI: `just test-fuse-compat` exercises `fusermount` (libfuse2) and `fusermount3` (libfuse3) mount/unmount flows, logs helper/kernel versions, and writes `summary.json`; first run: `logs/fuse-compat-20251121-143907/summary.json` (both helpers succeeded on NixOS 6.12).
 - pjdfstest full suite rerun: `logs/pjdfstest-full-20251121-114039/summary.json` passes main set; privileged `chmod/12.t` still fails as expected under user-mounted FUSE.
 
+## Latest (Nov 25 2025)
+
+- Added FUSE perf-path micro-optimizations: cached process/group lookups with thread-local reuse, optional lazy size updates batched to flush/fsync/release, and HostFs positional I/O to avoid per-op seeks; bumped default max_write/readahead to 32 MiB and increased perf harness block size to 16 MiB.
+- Performance harness still below target after these changes (passthrough still `EPERM`): `logs/fuse-performance-20251125-121156/summary.json` shows ratios seq_write≈0.36×, seq_read≈0.40×, metadata≈0.21×, concurrent_write≈0.125×.
+- Tried disabling inline/direct HostFs paths and retuning block sizes/max_write, but ratios stayed ~0.32–0.40×; passthrough remains blocked by CAP_SYS_ADMIN on /dev/fuse.
+- Next steps: unlock passthrough capability on this runner, profile the FUSE thread pool/concurrency (possible single-thread bottleneck), and consider deeper batching (readdir/stat cache) before rerunning F1–F10.
+
 ## Latest (Nov 20 2025)
 
 - Working branch is now `feat/agentfs-fuse-f7` (F8 delivered); pjdfstest compliance remains stable. Only the upstream `chown/00.t` TODOs and the kernel-imposed `chmod/12.t` failures appear in the comparison to `specs/Public/AgentFS/pjdfstest.baseline.json`.

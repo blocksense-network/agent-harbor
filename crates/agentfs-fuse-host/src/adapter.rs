@@ -68,6 +68,11 @@ const PSEUDO_PID_BASE: u32 = 0x4000_0000;
 /// FUSE capability bit for writeback caching (ABI 7.23+).
 const FUSE_WRITEBACK_CACHE_FLAG: u64 = 1 << 16;
 
+/// Duration to keep cached supplementary group lists for a PID before refreshing.
+const PROCESS_CACHE_TTL: Duration = Duration::from_secs(1);
+/// Duration to reuse a thread-local client identity before forcing a refresh.
+const THREAD_IDENTITY_TTL: Duration = Duration::from_millis(500);
+
 /// Handle that lets the launcher thread install the kernel notifier after the FUSE
 /// session has been spawned.
 #[derive(Clone)]
@@ -304,7 +309,8 @@ struct WriteHandleState {
     inflight: AtomicUsize,
     waiter: (Mutex<()>, Condvar),
     error: Mutex<Option<i32>>,
-    direct_file: Mutex<Option<File>>,
+    direct_file: Mutex<Option<Arc<File>>>,
+    pending_len: AtomicU64,
 }
 
 impl WriteHandleState {
@@ -314,6 +320,7 @@ impl WriteHandleState {
             waiter: (Mutex::new(()), Condvar::new()),
             error: Mutex::new(None),
             direct_file: Mutex::new(None),
+            pending_len: AtomicU64::new(0),
         }
     }
 
@@ -348,10 +355,30 @@ impl WriteHandleState {
         *self.error.lock().unwrap()
     }
 
-    fn direct_file(&self, path: &Path, writable: bool) -> std::io::Result<File> {
+    fn record_len_hint(&self, len: u64) {
+        let mut current = self.pending_len.load(Ordering::Relaxed);
+        while len > current {
+            match self.pending_len.compare_exchange(
+                current,
+                len,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
+    }
+
+    fn take_len_hint(&self) -> Option<u64> {
+        let len = self.pending_len.swap(0, Ordering::Relaxed);
+        if len == 0 { None } else { Some(len) }
+    }
+
+    fn direct_file(&self, path: &Path, writable: bool) -> std::io::Result<Arc<File>> {
         let mut guard = self.direct_file.lock().unwrap();
         if let Some(file) = guard.as_ref() {
-            return file.try_clone();
+            return Ok(file.clone());
         }
         let mut opts = StdOpenOptions::new();
         opts.read(true);
@@ -359,9 +386,27 @@ impl WriteHandleState {
             opts.write(true);
         }
         let file = opts.open(path)?;
-        *guard = Some(file);
-        guard.as_ref().unwrap().try_clone()
+        *guard = Some(Arc::new(file));
+        Ok(guard.as_ref().unwrap().clone())
     }
+}
+
+struct CachedProcessIdentity {
+    uid: u32,
+    gid: u32,
+    groups: Arc<Vec<u32>>,
+    groups_hash: u64,
+    last_refresh: Instant,
+}
+
+#[derive(Clone)]
+struct CachedThreadIdentity {
+    pid: u32,
+    uid: u32,
+    gid: u32,
+    groups_hash: u64,
+    synthetic: bool,
+    last_refresh: Instant,
 }
 
 struct WriteDispatcher {
@@ -533,10 +578,14 @@ pub struct AgentFsFuse {
     pseudo_pid_counter: AtomicU32,
     /// Cached synthetic PID per (uid, gid, groups_hash) tuple for pid=0 requests
     pseudo_pid_map: Mutex<HashMap<(u32, u32, u64), u32>>,
+    /// Cached process identities keyed by PID to avoid /proc reads on every request
+    process_cache: Mutex<HashMap<u32, CachedProcessIdentity>>,
     /// If true, perform file writes inline on the FUSE worker thread (avoids extra copies)
     inline_writes: bool,
     /// If true, try direct host I/O against HostFs backing paths
     direct_host_io: bool,
+    /// If true, defer file length updates and batch them on flush/release.
+    lazy_size_updates: bool,
 }
 
 impl AgentFsFuse {
@@ -601,11 +650,15 @@ impl AgentFsFuse {
             .unwrap_or(false);
         let inline_writes = inline_writes_enabled();
         let direct_host_io = direct_host_io_enabled();
+        let lazy_size_updates = lazy_size_updates_enabled();
         if inline_writes {
             info!(target: "agentfs::fuse", "Inline write path enabled (bypasses write queue)");
         }
         if direct_host_io {
             info!(target: "agentfs::fuse", "Direct HostFs I/O enabled (read/write via backing files)");
+        }
+        if lazy_size_updates {
+            info!(target: "agentfs::fuse", "Lazy size updates enabled (commit on flush/release)");
         }
 
         let inflight_writes = Arc::new(AtomicU64::new(0));
@@ -646,8 +699,10 @@ impl AgentFsFuse {
             metadata_lock: Arc::new(Mutex::new(())),
             pseudo_pid_counter: AtomicU32::new(0),
             pseudo_pid_map: Mutex::new(HashMap::new()),
+            process_cache: Mutex::new(HashMap::new()),
             inline_writes,
             direct_host_io,
+            lazy_size_updates,
         })
     }
 
@@ -793,15 +848,31 @@ impl AgentFsFuse {
         let client_uid = req.uid();
         let client_gid = req.gid();
         let (effective_pid, groups, used_pseudo, groups_hash) = if client_pid == 0 {
-            let groups = vec![client_gid];
-            let hash = Self::groups_hash(&groups);
+            let groups = Arc::new(vec![client_gid]);
+            let hash = Self::groups_hash(groups.as_slice());
             let pseudo = self.synthetic_pid_for_identity(client_uid, client_gid, hash);
             (pseudo, groups, true, hash)
         } else {
-            let groups = Self::load_process_groups(client_pid, client_gid);
-            let hash = Self::groups_hash(&groups);
+            let (groups, hash) = self.cached_groups_for_pid(client_pid, client_uid, client_gid);
             (client_pid, groups, false, hash)
         };
+
+        thread_local! {
+            static LAST_IDENTITY: std::cell::RefCell<Option<CachedThreadIdentity>> = const { std::cell::RefCell::new(None) };
+        }
+
+        let now = Instant::now();
+        if let Some(existing) = LAST_IDENTITY.with(|slot| slot.borrow().clone()) {
+            if existing.pid == effective_pid
+                && existing.uid == client_uid
+                && existing.gid == client_gid
+                && existing.groups_hash == groups_hash
+                && existing.synthetic == used_pseudo
+                && now.duration_since(existing.last_refresh) < THREAD_IDENTITY_TTL
+            {
+                return PID::new(effective_pid);
+            }
+        }
         debug!(
             target: "agentfs::metadata",
             fuse_pid = client_pid,
@@ -809,7 +880,7 @@ impl AgentFsFuse {
             client_gid,
             effective_pid,
             synthetic = used_pseudo,
-            groups = ?groups,
+            groups = ?groups.as_slice(),
             groups_hash = format_args!("{:016x}", groups_hash),
             "registering client process"
         );
@@ -820,7 +891,54 @@ impl AgentFsFuse {
             client_uid,
             client_gid,
             groups.as_slice(),
-        )
+        );
+
+        LAST_IDENTITY.with(|slot| {
+            *slot.borrow_mut() = Some(CachedThreadIdentity {
+                pid: effective_pid,
+                uid: client_uid,
+                gid: client_gid,
+                groups_hash,
+                synthetic: used_pseudo,
+                last_refresh: now,
+            });
+        });
+
+        PID::new(effective_pid)
+    }
+
+    fn cached_groups_for_pid(&self, pid: u32, uid: u32, gid: u32) -> (Arc<Vec<u32>>, u64) {
+        let now = Instant::now();
+
+        {
+            let mut cache = self.process_cache.lock().unwrap();
+            if let Some(entry) = cache.get_mut(&pid) {
+                if entry.uid == uid
+                    && entry.gid == gid
+                    && now.duration_since(entry.last_refresh) < PROCESS_CACHE_TTL
+                {
+                    entry.last_refresh = now;
+                    return (Arc::clone(&entry.groups), entry.groups_hash);
+                }
+            }
+        }
+
+        let groups = Arc::new(Self::load_process_groups(pid, gid));
+        let hash = Self::groups_hash(groups.as_slice());
+
+        let mut cache = self.process_cache.lock().unwrap();
+        cache.insert(
+            pid,
+            CachedProcessIdentity {
+                uid,
+                gid,
+                groups: Arc::clone(&groups),
+                groups_hash: hash,
+                last_refresh: now,
+            },
+        );
+
+        (groups, hash)
     }
 
     fn synthetic_pid_for_identity(&self, uid: u32, gid: u32, groups_hash: u64) -> u32 {
@@ -1258,6 +1376,22 @@ impl AgentFsFuse {
             state.wait_for_all();
             if let Some(errno) = state.current_error() {
                 return Err(errno);
+            }
+        }
+        Ok(())
+    }
+
+    fn commit_len_hint(&self, fh: u64) -> Result<(), i32> {
+        if !self.lazy_size_updates {
+            return Ok(());
+        }
+        if let Some(state) = self.handle_write_state(fh) {
+            if let Some(len) = state.take_len_hint() {
+                if let Err(err) = self.core.update_backing_len_hint(HandleId(fh), len) {
+                    let errno = errno_from_fs_error(&err);
+                    state.record_error(errno);
+                    return Err(errno);
+                }
             }
         }
         Ok(())
@@ -1835,9 +1969,26 @@ fn direct_host_io_enabled() -> bool {
         .unwrap_or(false)
 }
 
-const DEFAULT_MAX_WRITE_BYTES: u32 = 16 * 1024 * 1024;
+fn lazy_size_updates_enabled() -> bool {
+    std::env::var("AGENTFS_FUSE_LAZY_SIZE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true)
+}
+
+const DEFAULT_MAX_READAHEAD_BYTES: u32 = DEFAULT_MAX_WRITE_BYTES;
+
+fn desired_max_readahead_bytes() -> u32 {
+    std::env::var("AGENTFS_FUSE_MAX_READAHEAD")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .map(|value| value.min(MAX_SUPPORTED_WRITE_BYTES))
+        .unwrap_or(DEFAULT_MAX_READAHEAD_BYTES)
+}
+
+const DEFAULT_MAX_WRITE_BYTES: u32 = 32 * 1024 * 1024;
 const DEFAULT_MAX_BACKGROUND: u16 = 256;
-const MAX_SUPPORTED_WRITE_BYTES: u32 = 16 * 1024 * 1024;
+const MAX_SUPPORTED_WRITE_BYTES: u32 = 32 * 1024 * 1024;
 
 fn desired_max_write_bytes() -> u32 {
     std::env::var("AGENTFS_FUSE_MAX_WRITE")
@@ -1942,6 +2093,15 @@ impl fuser::Filesystem for AgentFsFuse {
                     missing
                 ),
             }
+        }
+
+        match config.set_max_readahead(desired_max_readahead_bytes()) {
+            Ok(actual) => info!("Configured FUSE max_readahead={} bytes", actual),
+            Err(limit) => warn!(
+                "Kernel limited max_readahead to {} bytes (desired {}).",
+                limit,
+                desired_max_readahead_bytes()
+            ),
         }
 
         let (max_write, clamped_write) = configure_max_write(config);
@@ -2797,7 +2957,12 @@ impl fuser::Filesystem for AgentFsFuse {
                         }
                         match result {
                             Ok(written) => {
-                                if let Err(err) = self.core.refresh_backing_len(handle_id) {
+                                let hinted_len = offset as u64 + written as u64;
+                                if self.lazy_size_updates {
+                                    state.record_len_hint(hinted_len);
+                                } else if let Err(err) =
+                                    self.core.update_backing_len_hint(handle_id, hinted_len)
+                                {
                                     let errno = errno_from_fs_error(&err);
                                     state.record_error(errno);
                                     state.finish_write();
@@ -2892,6 +3057,11 @@ impl fuser::Filesystem for AgentFsFuse {
         }
 
         if let Err(errno) = self.wait_for_handle_writes(fh) {
+            reply.error(errno);
+            return;
+        }
+
+        if let Err(errno) = self.commit_len_hint(fh) {
             reply.error(errno);
             return;
         }
@@ -3491,6 +3661,11 @@ impl fuser::Filesystem for AgentFsFuse {
             return;
         }
 
+        if let Err(errno) = self.commit_len_hint(fh) {
+            reply.error(errno);
+            return;
+        }
+
         if self.passthrough_handles.contains_key(&fh) {
             self.maybe_refresh_passthrough_metadata(fh);
         }
@@ -3516,9 +3691,15 @@ impl fuser::Filesystem for AgentFsFuse {
 
         if let Err(errno) = self.wait_for_handle_writes(fh) {
             reply.error(errno);
-        } else {
-            reply.ok();
+            return;
         }
+
+        if let Err(errno) = self.commit_len_hint(fh) {
+            reply.error(errno);
+            return;
+        }
+
+        reply.ok();
     }
 
     fn getxattr(&mut self, req: &Request, ino: u64, name: &OsStr, size: u32, reply: ReplyXattr) {

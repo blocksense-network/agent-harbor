@@ -268,6 +268,12 @@ pub struct FsCore {
 }
 
 impl FsCore {
+    #[inline]
+    fn permissions_enforced(&self) -> bool {
+        self.config.security.enforce_posix_permissions
+            && !self.config.security.root_bypass_permissions
+    }
+
     /// Create a new FsCore instance with the given configuration
     pub fn new(config: FsConfig) -> FsResult<Self> {
         // Initialize storage backend based on backstore configuration
@@ -804,7 +810,7 @@ impl FsCore {
         want_write: bool,
         want_exec: bool,
     ) -> bool {
-        if !self.config.security.enforce_posix_permissions {
+        if !self.permissions_enforced() {
             return true;
         }
         if self.config.security.root_bypass_permissions && user.uid == 0 {
@@ -873,7 +879,7 @@ impl FsCore {
         dir_id: NodeId,
         child: Option<&Node>,
     ) -> FsResult<()> {
-        if !self.config.security.enforce_posix_permissions {
+        if !self.permissions_enforced() {
             return Ok(());
         }
         let Some(user) = self.user_for_process(pid) else {
@@ -912,7 +918,7 @@ impl FsCore {
     }
 
     fn ensure_search_permission(&self, pid: &PID, dir_id: NodeId) -> FsResult<()> {
-        if !self.config.security.enforce_posix_permissions {
+        if !self.permissions_enforced() {
             return Ok(());
         }
         let Some(user) = self.user_for_process(pid) else {
@@ -952,7 +958,7 @@ impl FsCore {
         dir_id: NodeId,
         child: &Node,
     ) -> FsResult<()> {
-        if !self.config.security.enforce_posix_permissions {
+        if !self.permissions_enforced() {
             return Ok(());
         }
 
@@ -1084,7 +1090,7 @@ impl FsCore {
         let nodes = self.nodes.lock().unwrap();
         let user_opt = self.user_for_process(pid);
         // Enforce that a process must be registered when permission checks are enabled
-        if self.config.security.enforce_posix_permissions && user_opt.is_none() {
+        if self.permissions_enforced() && user_opt.is_none() {
             return Err(FsError::AccessDenied);
         }
         let mut parent_node_id = None;
@@ -1095,7 +1101,7 @@ impl FsCore {
 
             match &node.kind {
                 NodeKind::Directory { children } => {
-                    if self.config.security.enforce_posix_permissions {
+                    if self.permissions_enforced() {
                         if let Some(user) = &user_opt {
                             if !self.allowed_for_user(node, user, false, false, true) {
                                 return Err(FsError::AccessDenied);
@@ -2234,7 +2240,7 @@ impl FsCore {
     }
 
     fn ensure_parent_dir_allows_creation(&self, pid: &PID, parent_id: NodeId) -> FsResult<()> {
-        if self.config.security.enforce_posix_permissions {
+        if self.permissions_enforced() {
             if let Some(user) = self.user_for_process(pid) {
                 let nodes = self.nodes.lock().unwrap();
                 let parent_node = nodes.get(&parent_id).ok_or(FsError::NotFound)?;
@@ -2502,7 +2508,7 @@ impl FsCore {
         match self.resolve_path(pid, path) {
             Ok((node_id, _)) => {
                 // Permission check
-                if self.config.security.enforce_posix_permissions {
+                if self.permissions_enforced() {
                     let Some(user) = self.user_for_process(pid) else {
                         return Err(FsError::AccessDenied);
                     };
@@ -2584,7 +2590,7 @@ impl FsCore {
         want_write: bool,
         want_exec: bool,
     ) -> FsResult<()> {
-        if !self.config.security.enforce_posix_permissions {
+        if !self.permissions_enforced() {
             return Ok(());
         }
 
@@ -2832,7 +2838,7 @@ impl FsCore {
         };
 
         // Permission check for read
-        if self.config.security.enforce_posix_permissions {
+        if self.permissions_enforced() {
             if let Some(user) = self.user_for_process(pid) {
                 let nodes = self.nodes.lock().unwrap();
                 let node = nodes.get(&handle.node_id).ok_or(FsError::NotFound)?;
@@ -2889,7 +2895,7 @@ impl FsCore {
             }
         };
 
-        let user = if self.config.security.enforce_posix_permissions {
+        let user = if self.permissions_enforced() {
             self.user_for_process(pid)
         } else {
             None
@@ -2998,7 +3004,7 @@ impl FsCore {
             }
         };
 
-        let user = if self.config.security.enforce_posix_permissions {
+        let user = if self.permissions_enforced() {
             self.user_for_process(pid)
         } else {
             None
@@ -3121,7 +3127,7 @@ impl FsCore {
             )
         };
 
-        let user = if self.config.security.enforce_posix_permissions {
+        let user = if self.permissions_enforced() {
             self.user_for_process(pid)
         } else {
             None
@@ -3231,7 +3237,7 @@ impl FsCore {
             }
         };
 
-        let user = if self.config.security.enforce_posix_permissions {
+        let user = if self.permissions_enforced() {
             self.user_for_process(pid)
         } else {
             None
@@ -3429,6 +3435,38 @@ impl FsCore {
         Ok(())
     }
 
+    /// Update the cached length metadata using the caller-provided hint without
+    /// performing an additional filesystem stat. This is used by the FUSE
+    /// adapter when writing directly through HostFs file descriptors.
+    pub fn update_backing_len_hint(&self, handle_id: HandleId, new_len: u64) -> FsResult<()> {
+        let (node_id, stream_name, _) = self.handle_stream_info(handle_id)?;
+        let (sec, nsec) = Self::current_time_components();
+
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = nodes.get_mut(&node_id).ok_or(FsError::NotFound)?;
+
+        match &mut node.kind {
+            NodeKind::File { streams } => {
+                if let Some(stream) = streams.get_mut(&stream_name) {
+                    if new_len > stream.size {
+                        stream.size = new_len;
+                    }
+                    stream.mark_dirty();
+                } else {
+                    return Err(FsError::NotFound);
+                }
+            }
+            _ => return Err(FsError::InvalidArgument),
+        }
+
+        node.times.mtime = sec;
+        node.times.mtime_nsec = nsec;
+        node.times.ctime = sec;
+        node.times.ctime_nsec = nsec;
+
+        Ok(())
+    }
+
     pub fn close(&self, _pid: &PID, handle_id: HandleId) -> FsResult<()> {
         let mut handles = self.handles.lock().unwrap();
         let handle = handles.get(&handle_id).ok_or(FsError::InvalidArgument)?;
@@ -3532,7 +3570,7 @@ impl FsCore {
         let (parent_id, _) = self.resolve_path(pid, parent_path)?;
 
         // Permission check for parent directory write+execute access (w+x required to modify entries)
-        if self.config.security.enforce_posix_permissions {
+        if self.permissions_enforced() {
             if let Some(user) = self.user_for_process(pid) {
                 let nodes = self.nodes.lock().unwrap();
                 let parent_node = nodes.get(&parent_id).ok_or(FsError::NotFound)?;
@@ -3630,7 +3668,7 @@ impl FsCore {
 
                 match &node.kind {
                     NodeKind::Directory { children } => {
-                        if self.config.security.enforce_posix_permissions {
+                        if self.permissions_enforced() {
                             if let Some(user) = self.user_for_process(pid) {
                                 if !self.allowed_for_user(node, &user, true, false, true) {
                                     return Err(FsError::AccessDenied);
@@ -3830,7 +3868,7 @@ impl FsCore {
 
         match &node.kind {
             NodeKind::Directory { children } => {
-                if self.config.security.enforce_posix_permissions {
+                if self.permissions_enforced() {
                     if let Some(user) = self.user_for_process(pid) {
                         if !self.allowed_for_user(node, &user, true, false, true) {
                             return Err(FsError::AccessDenied);
@@ -3903,7 +3941,7 @@ impl FsCore {
         let (node_id, _) = self.resolve_path(pid, path)?;
 
         // Permission check for read access
-        if self.config.security.enforce_posix_permissions {
+        if self.permissions_enforced() {
             let Some(user) = self.user_for_process(pid) else {
                 return Err(FsError::AccessDenied);
             };
@@ -4287,7 +4325,7 @@ impl FsCore {
         let (node_id, _) = self.resolve_path(pid, path)?;
 
         // Permission check for write access
-        if self.config.security.enforce_posix_permissions {
+        if self.permissions_enforced() {
             if let Some(user) = self.user_for_process(pid) {
                 let nodes = self.nodes.lock().unwrap();
                 let node = nodes.get(&node_id).ok_or(FsError::NotFound)?;
@@ -4476,7 +4514,7 @@ impl FsCore {
         let (dst_parent_id, _) = self.resolve_path(pid, dst_parent_path)?;
 
         // Permission checks
-        if self.config.security.enforce_posix_permissions {
+        if self.permissions_enforced() {
             if let Some(user) = self.user_for_process(pid) {
                 let nodes = self.nodes.lock().unwrap();
 
@@ -4584,7 +4622,7 @@ impl FsCore {
         drop(handles);
 
         // Permission checks
-        if self.config.security.enforce_posix_permissions {
+        if self.permissions_enforced() {
             if let Some(user) = self.user_for_process(pid) {
                 let nodes = self.nodes.lock().unwrap();
 
@@ -5128,7 +5166,7 @@ impl FsCore {
         let changing_uid = uid_specified && new_uid != node.uid;
         let changing_gid = gid_specified && new_gid != node.gid;
 
-        if !self.config.security.enforce_posix_permissions {
+        if !self.permissions_enforced() {
             return Ok((new_uid, new_gid, changing_uid, changing_gid));
         }
 
@@ -5231,7 +5269,7 @@ impl FsCore {
 
     fn sanitize_mode_change(&self, pid: &PID, node: &Node, requested: u32) -> FsResult<u32> {
         let mut mode = requested & 0o7777;
-        if !self.config.security.enforce_posix_permissions {
+        if !self.permissions_enforced() {
             return Ok(mode);
         }
 
@@ -5346,7 +5384,7 @@ impl FsCore {
             return Ok(());
         }
 
-        if !self.config.security.enforce_posix_permissions {
+        if !self.permissions_enforced() {
             return Ok(());
         }
 
@@ -5606,7 +5644,7 @@ impl FsCore {
         let (parent_id, _) = self.resolve_path(pid, parent_path)?;
 
         // Permission checks
-        if self.config.security.enforce_posix_permissions {
+        if self.permissions_enforced() {
             if let Some(user) = self.user_for_process(pid) {
                 let nodes = self.nodes.lock().unwrap();
                 let parent_node = nodes.get(&parent_id).ok_or(FsError::NotFound)?;

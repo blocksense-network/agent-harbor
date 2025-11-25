@@ -7,10 +7,11 @@ use libc;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::os::unix::fs::FileExt;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, error};
+use tracing::debug;
 
 // Note: we use libc::clonefile directly on macOS in platform-specific sections.
 
@@ -612,28 +613,22 @@ impl StorageBackend for HostFsBackend {
     }
     fn read(&self, id: ContentId, offset: u64, buf: &mut [u8]) -> FsResult<usize> {
         let handle = self.get_or_open_handle(id)?;
-        let mut file = handle.lock().unwrap();
-        file.seek(SeekFrom::Start(offset))?;
-        let n = file.read(buf)?;
-        Ok(n)
+        let file = handle.lock().unwrap();
+        Ok(file.read_at(buf, offset)?)
     }
 
     fn write(&self, id: ContentId, offset: u64, data: &[u8]) -> FsResult<usize> {
         let handle = self.get_or_open_handle(id)?;
-        let mut file = handle.lock().unwrap();
-        file.seek(SeekFrom::Start(offset))?;
-        if let Err(err) = file.write_all(data) {
-            error!(
-                target: "agentfs::storage",
-                ?id,
-                offset,
-                size = data.len(),
-                %err,
-                "HostFsBackend write failed"
-            );
-            return Err(err.into());
+        let file = handle.lock().unwrap();
+        let mut written = 0usize;
+        while written < data.len() {
+            let chunk = file.write_at(&data[written..], offset + written as u64)?;
+            if chunk == 0 {
+                return Err(io::Error::new(io::ErrorKind::WriteZero, "short write").into());
+            }
+            written += chunk;
         }
-        Ok(data.len())
+        Ok(written)
     }
 
     fn sync(&self, id: ContentId, data_only: bool) -> FsResult<()> {
