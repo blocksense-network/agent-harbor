@@ -162,7 +162,7 @@ impl AgentExecutor {
                 session_id.to_string(),
                 // TODO(zah): Restore this option once it works properly
                 // The reason for commenting this out is that when using zellij,
-                // we experience issues with the rendering of the initial TUI dashboard
+                // we experience issues with the re-rendering of TUI dashboard after interacting with a spawned agent
                 // "--task-manager-socket".to_string(),
                 // socket_name.to_string(),
             ];
