@@ -222,7 +222,7 @@ jobs:
             cf_project: agent-harbor-webui
             build_command: just webui-build
             dist_path: webui/app/dist
-    uses: ./.github/workflows/deploy-site.yml
+    uses: ./.github/workflows/reusable-deploy-site.yml
     permissions:
       contents: read
       pull-requests: write
