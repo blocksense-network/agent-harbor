@@ -286,7 +286,6 @@ mod tests {
             std::env::set_var("AH_FS_SNAPSHOTS_DAEMON_SOCKET", value);
         }
     }
-    }
 
     #[test]
     fn test_flags_overlay() {

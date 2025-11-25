@@ -18,7 +18,7 @@ use ah_repo::VcsRepo;
 use ah_rest_mock_client::MockRestClient;
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand, ValueEnum};
-use config_core::{load_all, paths};
+use config_core::{env, load_all, paths};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -818,8 +818,9 @@ impl TaskCreateArgs {
         let flag_overlays = self.flag_overlays();
         let flag_refs: Vec<(&str, &str)> =
             flag_overlays.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let flag_layer = (!flag_refs.is_empty()).then(|| env::flags_overlay(&flag_refs));
 
-        load_all(&paths, &flag_refs).context("Failed to merge configuration layers")
+        load_all(&paths, flag_layer.as_ref()).context("Failed to merge configuration layers")
     }
 
     /// Convert CLI flag values into dotted-key overlays for config precedence.
@@ -1547,7 +1548,6 @@ impl TaskGetArgs {
 mod tests {
     use super::*;
     use clap::Parser;
-    use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
 
@@ -2287,7 +2287,9 @@ Ensure MFA is enforced
 
         // Flags overlay
         let flags = vec![("notifications", "yes"), ("delivery", "branch")];
-        let resolved = config_core::load_all(&paths, &flags).expect("config load should succeed");
+        let flag_layer = env::flags_overlay(&flags);
+        let resolved =
+            config_core::load_all(&paths, Some(&flag_layer)).expect("config load should succeed");
 
         // Enforced system value should win for notifications
         assert_eq!(resolved.json["notifications"], "no");
