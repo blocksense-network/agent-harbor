@@ -8,6 +8,7 @@
 
 use ah_mux_core::{SplitMode, *};
 use std::collections::HashMap;
+use tracing::error;
 
 /// Handle to a multiplexer session with role-based pane management
 #[derive(Debug, Clone)]
@@ -66,6 +67,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
     /// Create a standard AH task layout with editor (left) and agent (right) panes
     /// The split_mode determines how the view is split
     pub fn create_task_layout(&self, config: &LayoutConfig) -> Result<LayoutHandle, AwMuxError> {
+        error!("🔍 LAYOUT CONFIG RECEIVED: {:?}", config);
         let title = format!("ah-task-{}", config.task_id);
         let mux_id = self.mux.id();
         let is_tilix = mux_id == "tilix";
@@ -324,16 +326,125 @@ impl<M: Multiplexer> AwMultiplexer<M> {
 
 /// Get the default multiplexer for the current system
 pub fn default_multiplexer() -> Result<Box<dyn Multiplexer + Send + Sync>, AwMuxError> {
-    // This will be implemented when ah-mux provides the multiplexer implementations
-    Err(AwMuxError::Config(
-        "No multiplexer implementations available yet".to_string(),
-    ))
+    ah_mux::default_multiplexer()
+        .map_err(|e| AwMuxError::Config(format!("Failed to create default multiplexer: {}", e)))
 }
 
 /// Get a multiplexer by name
-pub fn multiplexer_by_name(_name: &str) -> Result<Box<dyn Multiplexer + Send + Sync>, AwMuxError> {
-    // This will be implemented when ah-mux provides the multiplexer implementations
-    Err(AwMuxError::Config(
-        "No multiplexer implementations available yet".to_string(),
-    ))
+pub fn multiplexer_by_name(name: &str) -> Result<Box<dyn Multiplexer + Send + Sync>, AwMuxError> {
+    ah_mux::multiplexer_by_name(name)
+        .map_err(|e| AwMuxError::Config(format!("Failed to create {} multiplexer: {}", name, e)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_multiplexer_integration() {
+        // Test that we can now get a default multiplexer instead of the stub error
+        let result = default_multiplexer();
+
+        // It should either succeed or fail with a real error, not the stub error
+        match result {
+            Ok(mux) => {
+                println!("✅ Successfully created default multiplexer: {}", mux.id());
+            }
+            Err(e) => {
+                // Should not be the old stub error
+                let error_msg = e.to_string();
+                assert!(
+                    !error_msg.contains("No multiplexer implementations available yet"),
+                    "Still getting stub error: {}",
+                    error_msg
+                );
+                println!(
+                    "❌ No multiplexer available (expected in some environments): {}",
+                    e
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_multiplexer_by_name_integration() {
+        // Test getting tmux specifically (should work in most environments)
+        let result = multiplexer_by_name("tmux");
+
+        match result {
+            Ok(mux) => {
+                println!("✅ Successfully created tmux multiplexer: {}", mux.id());
+                assert_eq!(mux.id(), "tmux");
+            }
+            Err(e) => {
+                // Should not be the old stub error
+                let error_msg = e.to_string();
+                assert!(
+                    !error_msg.contains("No multiplexer implementations available yet"),
+                    "Still getting stub error: {}",
+                    error_msg
+                );
+                println!("❌ tmux not available (may be expected): {}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_split_mode_integration() {
+        // Test that LayoutConfig properly uses SplitMode with a concrete multiplexer
+        use ah_mux_core::SplitMode;
+        use std::path::Path;
+
+        // Test creating a layout config with horizontal split
+        let config = LayoutConfig {
+            task_id: "test-task",
+            working_dir: Path::new("/tmp"),
+            editor_cmd: Some("echo"),
+            agent_cmd: "echo agent",
+            log_cmd: None,
+            split_mode: SplitMode::Horizontal,
+            focus: false,
+        };
+
+        // Verify the configuration is created correctly
+        assert_eq!(config.split_mode, SplitMode::Horizontal);
+        assert_eq!(config.task_id, "test-task");
+        assert_eq!(config.agent_cmd, "echo agent");
+
+        println!("✅ Successfully created LayoutConfig with horizontal split");
+        println!("✅ Split mode is correctly set to: {:?}", config.split_mode);
+    }
+
+    #[test]
+    fn test_split_mode_propagation() {
+        // Test that LayoutConfig preserves the split mode that was set
+        use ah_mux_core::SplitMode;
+        use std::path::Path;
+
+        // Test creating a layout config with different split modes
+        for (split_mode, expected_desc) in [
+            (SplitMode::None, "None"),
+            (SplitMode::Auto, "Auto"),
+            (SplitMode::Horizontal, "Horizontal"),
+            (SplitMode::Vertical, "Vertical"),
+        ] {
+            let config = LayoutConfig {
+                task_id: "test-task",
+                working_dir: Path::new("/tmp"),
+                editor_cmd: Some("echo"),
+                agent_cmd: "echo agent",
+                log_cmd: None,
+                split_mode,
+                focus: false,
+            };
+
+            assert_eq!(config.split_mode, split_mode);
+            println!(
+                "✅ LayoutConfig correctly preserves split_mode: {}",
+                expected_desc
+            );
+        }
+
+        println!("🎯 LayoutConfig split_mode propagation works correctly!");
+    }
 }

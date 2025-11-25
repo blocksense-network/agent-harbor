@@ -10,5 +10,6 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 ah-domain-types = { path = "../ah-domain-types" }
+ah-mux-core = { path = "../ah-mux-core" }
 serde.workspace = true
 schemars = { version = "0.8", features = ["preserve_order"] }

@@ -20,7 +20,9 @@ ah-core = { path = "../ah-core" }
 ah-workflows = { path = "../ah-workflows" }
 ah-recorder = { path = "../ah-recorder" }
 ah-mux = { path = "../ah-mux" }
+ah-mux-core = { path = "../ah-mux-core" }
 config-core = { path = "../config-core" }
+ah-config-types = { path = "../ah-config-types" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-util = "0.7"
 ratatui = "0.29"
@@ -49,6 +51,7 @@ unic-langid = "0.9"
 ctrlc = "3.4"
 uuid = { version = "1.0", features = ["v4"] }
 tempfile = "3.0"
+toml = "0.8"
 ssz_rs = "0.9"
 interprocess = { version = "2.0", features = ["tokio"] }
 ethereum_ssz = { workspace = true }

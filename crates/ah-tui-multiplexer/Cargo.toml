@@ -10,6 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 ah-mux-core = { path = "../ah-mux-core" }
-ah-mux = { path = "../ah-mux", default-features = false }
+ah-mux = { path = "../ah-mux" }
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+tracing = { workspace = true }
