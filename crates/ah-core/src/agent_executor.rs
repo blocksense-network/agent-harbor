@@ -114,8 +114,7 @@ impl AgentExecutor {
         match working_copy_mode {
             WorkingCopyMode::Snapshots => {
                 agent_args.push("--working-copy".to_string());
-                // Codex CLI expects the worktree label for snapshot-backed working copies
-                agent_args.push("worktree".to_string());
+                agent_args.push("snapshots".to_string());
             }
             WorkingCopyMode::InPlace => {
                 agent_args.push("--working-copy".to_string());
