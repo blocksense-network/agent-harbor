@@ -1,0 +1,55 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Deploy sites
+
+on:
+  # Enable option to manually run the action:
+  workflow_dispatch:
+
+  # Deploy previews on PRs that target `main`:
+  pull_request:
+    branches:
+      - main
+
+  # Deploy production on pushes to `main`:
+  push:
+    branches:
+      - main
+
+  # Run the pipeline for each PR part of merge queues as well
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-sites:
+    name: Deploy sites ${{ matrix.label }}
+    strategy:
+      # Ensure we deploy all sites that build even if one fails
+      fail-fast: false
+      matrix:
+        include:
+          - label: Docs site
+            cf_project: agent-harbor-docs
+            build_command: yarn workspace site build
+            dist_path: docs/site/out
+          - label: WebUI
+            cf_project: agent-harbor-webui
+            build_command: just webui-build
+            dist_path: webui/app/dist
+    uses: ./.github/workflows/reusable-deploy-site.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+    with:
+      label: ${{ matrix.label }}
+      cf_project: ${{ matrix.cf_project }}
+      build_command: ${{ matrix.build_command }}
+      dist_path: ${{ matrix.dist_path }}
