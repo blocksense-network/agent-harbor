@@ -1,0 +1,32 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: task_follow_tmux
+repo:
+  init: true
+  commit: true
+timeline:
+  - userCommand:
+      program: bash
+      env:
+        # Allow tests to locate the built ah binary supplied by the harness
+        AH_BIN: "${AH_BIN:-}"
+      args:
+        - -lc
+        - |
+          set -euo pipefail
+          if [ -z "${AH_BIN:-}" ]; then
+            echo "AH_BIN not set" >&2
+            exit 1
+          fi
+          SOCKET="$(mktemp -u /tmp/ah-tmux-XXXXXX)"
+          LOG="${SOCKET}.log"
+          # Launch follow in a dedicated tmux session so we can capture pane output
+          tmux -S "$SOCKET" new-session -d -s ah "$AH_BIN task create tmux-follow --prompt 'verify follow renders in tmux' --model mock --push-to-remote false --non-interactive --follow"
+          # Give it a moment to render
+          sleep 5
+          tmux -S "$SOCKET" capture-pane -pt ah > "$LOG"
+          tmux -S "$SOCKET" kill-session -t ah || true
+          grep -qi "verify follow renders" "$LOG"
+      expect:
+        exit_code: 0
