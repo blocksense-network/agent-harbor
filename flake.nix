@@ -324,6 +324,7 @@
                   pkgs.lazygit
                   pkgs.fossil
                   pkgs.mercurial
+                  pkgs.jujutsu
                   pkgs.nodejs # for npx-based docson helper
                   pkgs.yarn-berry # Yarn PnP package manager
                   # Mermaid validation (diagram syntax)

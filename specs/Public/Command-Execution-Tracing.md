@@ -14,6 +14,27 @@ The command-execution tracing subsystem provides end-to-end visibility into ever
 
 This document captures the design motivations and key implementation decisions that emerged while stabilizing milestone **R9 / M2**. It explains why the shim is structured the way it is, the trade-offs we accepted, and the operational constraints that shaped the final behaviour.
 
+## Passthrough Recorder Mode (New)
+
+Harbor will now capture **direct** agent-launched tools by rewriting every process start so the tool runs under `ah agent record --passthrough --cmd "<command…>"`. The shim performs the rewrite transparently and the started passthrough recorder enforces the following rules:
+
+1. Detect the current TTY size (rows/cols) before delegation.
+2. Spawn a new PTY with matching size and launch the target program there.
+3. Forward every byte of PTY **output** to the parent TTY immediately (no buffering/formatting).
+4. Forward every byte of parent **input** to the PTY unmodified so the wrapped program behaves exactly as if it were running directly in the user’s terminal.
+5. Timestamp all input/output bytes and send them to the recorder via an `--parent-recorder-socket` connection; the parent recorder writes them into the session’s `.ahr` file. The parent recorder is the recorder started by the task manager (the one recording the output of the third-party coding agent and writing the session AHR file).
+6. Expose a `--session-socket` endpoint so additional clients can attach to the live stream at any time.
+7. When a follower attaches it receives the entire backlog of output and then live bytes; this powers remote IDEs and local SessionViewer replays.
+8. The follower CLI is `ah show-sandbox-execution "<command…>" --id <execution-id>` (described in `ah-agent-record.md`). It connects to the session socket, prints output verbatim, and stays synchronized with the recorder.
+9. Any bytes typed inside the follower are forwarded through the session socket to the recorder, which relays them to the original PTY as if the user typed directly in the agent terminal.
+10. Because the follower and recorder operate on the same PTY, the experience is effectively identical to attaching to a tmux pane: output and input remain in lockstep, multiple observers can attach, and everything is captured for deterministic replay.
+
+This passthrough mode gives us byte-perfect recordings for the exact processes the agent launches, without depending on shell heuristics or post-processing.
+
+### Indirect Child Processes
+
+Processes spawned *inside* the recorded command (e.g., scripts forking helpers) are still intercepted by the existing interpose shims described below. Their stdout/stderr streams are attributed and forwarded to the same recorder so observers see a complete picture, regardless of whether the bytes originated in the top-level command or a nested child.
+
 ## Goals
 
 - Capture every process that participates in a traced session, including shell pipelines, interpreters, and short-lived binaries.

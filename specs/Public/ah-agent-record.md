@@ -89,6 +89,7 @@ Don't emit ANSI color codes when replaying or emitting the final state.
 - `--id` matches the execution identifier emitted in recorder events/SSE and stays stable across replays so ACP clients can reconcile telemetry.
 - Any keystrokes typed while the command is streaming are forwarded through the recorder’s `inject_message` TTY back into the running process, allowing users to unblock password prompts or interactive menus without leaving the follower view.
 - With `--follow`, the command remains open after the process exits so users can scroll recent output; otherwise it exits once the PTY reaches EOF.
+- Followers can ask the recorder for **pipeline decomposition** metadata (see below) so they can display the same per-step timeline that the SessionViewer renders locally.
 
 ---
 
@@ -121,6 +122,8 @@ Replay Pipeline:
 - **Single vt100 parser instance:** There is only one vt100 parser, stored in TerminalState, ensuring consistency between recording and display.
 - **Unified state:** TerminalState maintains both the terminal display state and snapshot positioning information.
 - **Live updates:** The viewer renders directly from TerminalState; storage is not consulted during live recording.
+- **Pipeline capture:** The command-trace shim records every shell pipeline (`cmd1 | cmd2 | …`) by emitting `REC_PIPELINE_*` records that describe the pipeline id, each step’s command/argv, PID, start/end timestamps, and byte offsets into the parent execution. Each child process’ stdout/stderr range is tagged so higher-level tools can stream an individual step without replaying the whole execution. This metadata feeds both the REST/ACP APIs and the SessionViewer pipeline explorer.
+- **Session/follower sockets:** `ah agent record --passthrough` keeps two sockets alive: `--parent-recorder-socket` (used by the session recorder to persist `.ahr`) and `--session-socket` (allows multiple followers to attach, receive backlog output, stream live bytes, and inject input back into the PTY).
 - **Write to local database:** Storage consists of one compressed recording blob.
 - On shutdown (child exit, SIGINT), we flush/finish the last Brotli block and store it in the database and then fsync.
 
@@ -283,6 +286,51 @@ During live recording mode, the terminal content is displayed without a frame to
 - **No storage tailing:** The viewer never reads `.ahr` during a live session.
 - **Keyboard handling:** The SessionViewer processes keyboard input through the `settings.rs` approach, allowing all shortcuts to be remapped. It handles `KeyboardOperations` defined in the settings system, ensuring consistent and customizable key bindings across both live and replay modes.
 - **Tool execution followers:** The status bar lists active `show-sandbox-execution` sessions (identified by `execution-id`). Pressing `Ctrl+Shift+T` (default, configurable) opens a modal that renders the follower TTY exactly as recorded; the modal behaves like a tmux pane, letting the user scroll, copy output, or type input. Any keystrokes typed inside the modal are sent through the recorder’s `inject_message` bridge so the underlying third-party agent sees them immediately, which is critical for unblocking commands waiting on interactive prompts (e.g., sudo). Completed executions remain accessible until dismissed, enabling re-watch without leaving the viewer.
+- **Pipeline step explorer:** Inside the follower modal a sidebar shows every pipeline associated with the selected execution. Selecting a pipeline reveals its steps; highlighting a step displays per-stream stats (stdout/stderr byte counts, start/end timestamps) and lets the user stream just that step’s output or input. Users can flip between steps without leaving the modal, and ACP clients can render the same UI using the pipeline endpoints described in `specs/ACP.extensions.md`.
+
+### 6.1 Pipeline Explorer UX (Detailed)
+
+In SessionViewer every tool execution already emits a snapshot marker (gutter indicator plus inline banner). Pipeline insight is an extension of that system: each marker line gains a subtle `P` badge when the underlying command formed a pipeline (e.g., `find … | grep … | head`). Hovering the badge (mouse) or focusing the marker with the keyboard and pressing `Enter` opens a context sheet anchored to that line. From the footer the viewer advertises the shortcut `P Pipeline Details` whenever focus is on a command marker; pressing `P` (or clicking the badge) toggles the pipeline sheet. Power users can also call `Ctrl+Shift+P` to open the sheet for the currently followed execution without moving focus.
+
+**Layout**
+
+```
+┌─────────────────────────────── Terminal / Follower PTY ───────────────────────────────┬───── Pipeline Context Sheet ───┐
+│ marker ▸ find . -type f                                                              │ Pipelines ▾ (Execution: exec…) │
+│   │ snapshot #42                                                                    │ ┌────────────────────────────┐  │
+│   │ pipeline badge (mouse clickable)                                                │ │ #3 find | grep | head   8s│  │
+│                                                                                     │ │ #2 npm test            45s│  │
+│  (Live terminal output; dimmed slightly when sheet focused)                         │ │ #1 env-setup             2s│  │
+└──────────────────────────────────────────────────────────────────────────────────────│ └────────────────────────────┘  │
+                                                                                        │ Step timeline + line-graph pane│
+                                                                                        └────────────────────────────────┘
+```
+
+- **Pipeline list (upper card):** Displays all pipelines detected in the selected execution, newest first. Each row shows ordinal number, friendly label (derived from the left-most command), elapsed time, status chip, and a tiny line graph representing stdout volume. Hovering a row previews its steps below; pressing `Enter` drills in.
+- **Step detail pane:** When a pipeline is selected, the lower portion of the sheet renders the per-step timeline: each step is a horizontal bar proportional to execution time, colored by status (success = teal, error = amber, terminated = magenta). Selecting a step reveals:
+  - Command/argv, PID, CWD, exit code.
+  - Byte counters for stdout/stderr/stdin with mini “live” meters during execution.
+  - Action buttons: `Follow Step` (streams only this step’s stdout/stderr into a dedicated mini terminal), `Copy Command`, `Jump to Snapshot` (navigates the main timeline to the snapshot closest to the step start), and `Branch Here`.
+- **Output micro-terminal:** Beneath the metrics, a 12-line micro terminal shows a live tail of the chosen step (mirroring `_ah/tool_pipeline_stream`). Expert users can split it with `Ctrl+Shift+Enter` to detach the micro terminal into a full-height pane while keeping the step list visible.
+
+**Interactions**
+
+- Mouse: clicking the pipeline badge on a marker line opens the sheet anchored to that line; within the sheet, clicking a pipeline row focuses it; scroll wheel over the list switches pipelines without affecting main terminal focus.
+- Keyboard: while the sheet is open, `Tab` moves focus between the pipeline list, step timeline, and micro terminal. `Alt+Up/Down` navigates pipelines; `Alt+Left/Right` moves between steps. `P` (from the terminal) opens/closes the sheet when a marker is focused. `F` toggles “Follow Step” streaming, `B` branches a new session at the step snapshot, `S` opens the snapshot inspector.
+- Hover tooltips show derived metadata (e.g., “stdout 3.4 MiB, truncated”).
+
+**Visual design cues**
+
+- Sheet background uses a slightly darker shade than the terminal (e.g., #0f141a vs #0b1016) with neon cyan accent bars to match the SessionViewer brand.
+- Pipeline rows use a subtle frosted-glass effect (semi-transparent cards with blur) so the animated terminal grid behind remains visible, giving a “flashy” effect without sacrificing readability.
+- Line-graph overlays and step bars animate in (slide + fade) when the sheet appears, making the feature feel lively while keeping transitions under 200 ms to respect expert workflows.
+
+**Activation from other contexts**
+
+- From the follower tray: selecting an execution automatically opens the sheet if the execution contains pipelines; otherwise a toast hints that no pipelines were captured.
+- From the timeline gutter: clicking a pipeline marker jumps the main terminal to that timestamp and opens the sheet focused on the associated pipeline.
+
+All UI states (open/closed, selected pipeline/step, follow mode) are exposed via the telemetry API so Scenario Format tests can assert deterministic rendering.
 
 **Key interactions**
 
