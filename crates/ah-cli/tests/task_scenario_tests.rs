@@ -144,6 +144,12 @@ fn scenario_task_browser_disabled() -> Result<()> {
     run_task_scenario("task_browser_disabled")
 }
 
+#[test]
+#[serial]
+fn scenario_task_follow_tmux() -> Result<()> {
+    run_task_scenario("task_follow_tmux")
+}
+
 fn run_task_scenario(name: &str) -> Result<()> {
     let scenario_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -289,7 +295,8 @@ fn run_user_command(cmd: &UserCommand, ctx: &ScenarioContext) -> Result<()> {
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ASKPASS", "echo")
         .env("SSH_ASKPASS", "echo")
-        .env("AH_TASK_FORCE_MOCK_MANAGER", "1");
+        .env("AH_TASK_FORCE_MOCK_MANAGER", "1")
+        .env("AH_BIN", &ctx.ah_bin);
 
     for (k, v) in &cmd.env {
         command.env(k, v);
