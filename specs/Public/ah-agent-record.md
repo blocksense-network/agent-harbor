@@ -38,6 +38,7 @@
 Usage: ah agent record [OPTIONS] -- <CMD> [ARGS...]
        ah agent replay [--session <session-id|file.ahr>] [--fast] [--no-colors] [--print-meta]
        ah agent branch-points [--session <session-id|file.ahr>]
+       ah show-sandbox-execution "<CMD...>" --id <execution-id> [--session <session-id|file.ahr>] [--follow]
 ```
 
 ### `record`
@@ -59,6 +60,7 @@ Usage: ah agent record [OPTIONS] -- <CMD> [ARGS...]
 - `--ipc <auto|uds|tcp:host:port>`: Instruction injection server transport.
 - `--gutter <left|right|none>`: Position of the snapshot indicator gutter column (default: right).
 - `--events-pipe-fd <FD>`: File descriptor of an unnamed pipe for streaming SSE-like events to parent process (used by TUI/CLI for real-time task monitoring).
+- **Input injection (`inject_message`)**: every recording session exposes a PTY-backed control channel that can simulate keystrokes inside the launched third-party agent. SessionViewer, the supervisor CLI, or ACP bridges call `inject_message` to feed bytes into the recorder; those bytes travel through the same TTY, are captured in the `.ahr`, and reach the child process exactly as if the user had typed them live (useful for responding to prompts such as sudo passwords).
 
 ### `replay`
 
@@ -79,6 +81,14 @@ Don't emit ANSI color codes when replaying or emitting the final state.
 ### `branch-points`
 
 - Prints to stdout the final set of terminal output lines in the recorded session, interleaved with the snapshot labels.
+
+### `show-sandbox-execution`
+
+- Opens a read/write view of a specific tool execution captured in `.ahr`, similar to attaching to a tmux pane. Usage: `ah show-sandbox-execution "<original command pipeline>" --id <execution-id> [--session <session-id|file.ahr>] [--follow]`.
+- The quoted command is exactly what the embedded agent ran (pipelines included) so operators and IDEs can display the true shell invocation; Harbor-aware clients may hide the `ah` wrapper when rendering.
+- `--id` matches the execution identifier emitted in recorder events/SSE and stays stable across replays so ACP clients can reconcile telemetry.
+- Any keystrokes typed while the command is streaming are forwarded through the recorder’s `inject_message` TTY back into the running process, allowing users to unblock password prompts or interactive menus without leaving the follower view.
+- With `--follow`, the command remains open after the process exits so users can scroll recent output; otherwise it exits once the PTY reaches EOF.
 
 ---
 
@@ -272,6 +282,7 @@ During live recording mode, the terminal content is displayed without a frame to
 
 - **No storage tailing:** The viewer never reads `.ahr` during a live session.
 - **Keyboard handling:** The SessionViewer processes keyboard input through the `settings.rs` approach, allowing all shortcuts to be remapped. It handles `KeyboardOperations` defined in the settings system, ensuring consistent and customizable key bindings across both live and replay modes.
+- **Tool execution followers:** The status bar lists active `show-sandbox-execution` sessions (identified by `execution-id`). Pressing `Ctrl+Shift+T` (default, configurable) opens a modal that renders the follower TTY exactly as recorded; the modal behaves like a tmux pane, letting the user scroll, copy output, or type input. Any keystrokes typed inside the modal are sent through the recorder’s `inject_message` bridge so the underlying third-party agent sees them immediately, which is critical for unblocking commands waiting on interactive prompts (e.g., sudo). Completed executions remain accessible until dismissed, enabling re-watch without leaving the viewer.
 
 **Key interactions**
 
