@@ -198,7 +198,6 @@ impl KittyMultiplexer {
                     for tab in tabs {
                         if tab.get("is_focused").and_then(|f| f.as_bool()).unwrap_or(false) {
                             if let Some(id) = tab.get("id").and_then(|i| i.as_u64()) {
-                                println!("Found focused window: {}", id);
                                 return Ok(id.to_string());
                             }
                         }
@@ -948,7 +947,6 @@ mod tests {
 
     /// Stop the test Kitty instance
     #[cfg(test)]
-    #[allow(dead_code)]
     fn stop_test_kitty() {
         let mut kitty_guard = TEST_KITTY.lock().unwrap();
         if let Some(mut child) = kitty_guard.take() {
@@ -1106,12 +1104,15 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(env)]
+
     fn test_start_kitty_instance() {
         tracing::debug!("Testing start_test_kitty function");
         match start_test_kitty() {
             Ok(()) => tracing::debug!("start_test_kitty succeeded"),
             Err(e) => tracing::error!(error=%e, "start_test_kitty failed"),
         }
+        stop_test_kitty();
     }
 
     // #[test]
@@ -1122,6 +1123,7 @@ mod tests {
     // }
 
     #[test]
+    #[serial_test::serial(env)]
     fn test_kitty_availability() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1176,6 +1178,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(env)]
     fn test_open_window_with_title_and_cwd() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1216,6 +1219,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(env)]
     fn test_open_window_focus() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1236,7 +1240,6 @@ mod tests {
 
         // This will open new tab and focus it
         let window_id = kitty.open_window(&opts).unwrap();
-        println!("Created window: {}", window_id);
         // Verify the window was created
         assert!(kitty.window_exists(&window_id).unwrap_or(false));
 
@@ -1254,9 +1257,11 @@ mod tests {
             Some(window_id),
             "Window should be focused after creation with focus=true",
         );
+        stop_test_kitty();
     }
 
     #[test]
+    #[serial_test::serial(env)]
     fn test_split_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1332,16 +1337,17 @@ mod tests {
 
         // Verify we now have more windows
         let final_windows = kitty.list_windows_detailed().unwrap_or_default();
-        println!("Final windows: {:?}", final_windows);
         assert!(
             final_windows.len() > initial_count,
             "Should have more than {} windows after split, got {}",
             initial_count,
             final_windows.len()
         );
+        stop_test_kitty();
     }
 
     #[test]
+    #[serial_test::serial(env)]
     fn test_split_pane_with_initial_command() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1351,6 +1357,7 @@ mod tests {
 
         let _ = start_test_kitty();
         let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
+
         let window_opts = WindowOptions {
             title: Some("split-cmd-test"),
             cwd: Some(Path::new("/tmp")),
@@ -1374,10 +1381,11 @@ mod tests {
 
         assert!(new_pane_id.parse::<u32>().is_ok());
         assert_ne!(new_pane_id, window_id);
+        stop_test_kitty();
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
+    #[serial_test::serial(env)]
     fn test_run_command_and_send_text() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1385,72 +1393,70 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            let window_opts = WindowOptions {
-                title: Some("cmd-text-test"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let _ = start_test_kitty();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
 
-            let window_result = kitty.open_window(&window_opts);
-            match window_result {
-                Ok(window_id) => {
-                    // Test run_command
-                    let cmd_result = kitty.run_command(
-                        &window_id,
-                        "echo 'hello world'",
-                        &CommandOptions::default(),
-                    );
-                    match cmd_result {
-                        Ok(()) => {
-                            // Command executed successfully
-                            thread::sleep(Duration::from_millis(100));
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error running command: {:?}", e),
-                    }
+        let window_opts = WindowOptions {
+            title: Some("cmd-text-test"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-                    // Test send_text
-                    let text_result = kitty.send_text(&window_id, "some input text");
-                    match text_result {
-                        Ok(()) => {
-                            // Text sent successfully
-                            thread::sleep(Duration::from_millis(100));
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error sending text: {:?}", e),
+        let window_result = kitty.open_window(&window_opts);
+        match window_result {
+            Ok(window_id) => {
+                // Test run_command
+                let cmd_result =
+                    kitty.run_command(&window_id, "echo 'hello world'", &CommandOptions::default());
+                match cmd_result {
+                    Ok(()) => {
+                        // Command executed successfully
+                        thread::sleep(Duration::from_millis(100));
                     }
-
-                    // Verify window still exists (if we can list windows)
-                    let list_result = kitty.list_windows(Some("cmd-text-test"));
-                    match list_result {
-                        Ok(windows) => {
-                            // Should find our test window
-                            assert!(windows.iter().any(|w| w.parse::<u32>().is_ok()));
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error listing windows: {:?}", e),
+                    Err(MuxError::CommandFailed(_)) => {
+                        // Expected when remote control fails
                     }
+                    Err(e) => panic!("Unexpected error running command: {:?}", e),
                 }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Can't test commands if we can't create windows
+
+                // Test send_text
+                let text_result = kitty.send_text(&window_id, "some input text");
+                match text_result {
+                    Ok(()) => {
+                        // Text sent successfully
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                    Err(MuxError::CommandFailed(_)) => {
+                        // Expected when remote control fails
+                    }
+                    Err(e) => panic!("Unexpected error sending text: {:?}", e),
                 }
-                Err(e) => panic!("Unexpected error creating window: {:?}", e),
+
+                // Verify window still exists (if we can list windows)
+                let list_result = kitty.list_windows(Some("cmd-text-test"));
+                match list_result {
+                    Ok(windows) => {
+                        // Should find our test window
+                        assert!(windows.iter().any(|w| w.parse::<u32>().is_ok()));
+                    }
+                    Err(MuxError::CommandFailed(_)) => {
+                        // Expected when remote control fails
+                    }
+                    Err(e) => panic!("Unexpected error listing windows: {:?}", e),
+                }
             }
+            Err(MuxError::CommandFailed(_)) => {
+                // Can't test commands if we can't create windows
+            }
+            Err(e) => panic!("Unexpected error creating window: {:?}", e),
         }
+        stop_test_kitty();
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
+    #[serial_test::serial(env)]
     fn test_focus_window_and_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1458,93 +1464,97 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            let window_opts1 = WindowOptions {
-                title: Some("window1-005"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let _ = start_test_kitty();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
 
-            let window_opts2 = WindowOptions {
-                title: Some("window2-005"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let window_opts1 = WindowOptions {
+            title: Some("window1-005"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            let window1_result = kitty.open_window(&window_opts1);
-            let window2_result = kitty.open_window(&window_opts2);
+        let window_opts2 = WindowOptions {
+            title: Some("window2-005"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match (window1_result, window2_result) {
-                (Ok(window1), Ok(window2)) => {
-                    // Test window focusing - focus window1 first
-                    let focus1_result = kitty.focus_window(&window1);
-                    match focus1_result {
-                        Ok(()) => {
-                            // Verify window1 is now focused
-                            let focused_id = kitty.get_focused_window_id().unwrap_or_default();
-                            assert_eq!(
-                                focused_id, window1,
-                                "Window {} should be focused after focus_window call",
-                                window1
-                            );
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                            return;
-                        }
-                        Err(e) => panic!("Unexpected error focusing window1: {:?}", e),
+        let window1_result = kitty.open_window(&window_opts1);
+        let window2_result = kitty.open_window(&window_opts2);
+
+        match (window1_result, window2_result) {
+            (Ok(window1), Ok(window2)) => {
+                // Test window focusing - focus window1 first
+                let focus1_result = kitty.focus_window(&window1);
+                match focus1_result {
+                    Ok(()) => {
+                        // Verify window1 is now focused
+                        let focused_id = kitty.current_window().unwrap_or_default();
+                        assert_eq!(
+                            focused_id,
+                            Some(window1.clone()),
+                            "Window {} should be focused after focus_window call",
+                            window1
+                        );
                     }
-
-                    // Now focus window2
-                    let focus2_result = kitty.focus_window(&window2);
-                    match focus2_result {
-                        Ok(()) => {
-                            // Verify window2 is now focused
-                            let focused_id = kitty.get_focused_window_id().unwrap_or_default();
-                            assert_eq!(
-                                focused_id, window2,
-                                "Window {} should be focused after focus_window call",
-                                window2
-                            );
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error focusing window2: {:?}", e),
+                    Err(MuxError::CommandFailed(_)) => {
+                        // Expected when remote control fails
+                        return;
                     }
-
-                    // Test pane focusing (same as window focusing in kitty) - focus back to window1
-                    let pane_focus_result = kitty.focus_pane(&window1);
-                    match pane_focus_result {
-                        Ok(()) => {
-                            // Verify window1 is focused again
-                            let focused_id = kitty.get_focused_window_id().unwrap_or_default();
-                            assert_eq!(
-                                focused_id, window1,
-                                "Pane/window {} should be focused after focus_pane call",
-                                window1
-                            );
-                        }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error focusing pane: {:?}", e),
-                    }
+                    Err(e) => panic!("Unexpected error focusing window1: {:?}", e),
                 }
-                _ => {
-                    // Can't test focusing if we can't create windows
+
+                // Now focus window2
+                let focus2_result = kitty.focus_window(&window2);
+                match focus2_result {
+                    Ok(()) => {
+                        // Verify window2 is now focused
+                        let focused_id = kitty.current_window().unwrap_or_default();
+                        assert_eq!(
+                            focused_id,
+                            Some(window2.clone()),
+                            "Window {} should be focused after focus_window call",
+                            window2
+                        );
+                    }
+                    Err(MuxError::CommandFailed(_)) => {
+                        // Expected when remote control fails
+                    }
+                    Err(e) => panic!("Unexpected error focusing window2: {:?}", e),
+                }
+
+                // Test pane focusing (same as window focusing in kitty) - focus back to window1
+                let pane_focus_result = kitty.focus_pane(&window1);
+                match pane_focus_result {
+                    Ok(()) => {
+                        // Verify window1 is focused again
+                        let focused_id = kitty.current_window().unwrap_or_default();
+                        assert_eq!(
+                            focused_id,
+                            Some(window1.clone()),
+                            "Pane/window {} should be focused after focus_pane call",
+                            window1
+                        );
+                    }
+                    Err(MuxError::CommandFailed(_)) => {
+                        // Expected when remote control fails
+                    }
+                    Err(e) => panic!("Unexpected error focusing pane: {:?}", e),
                 }
             }
+            _ => {
+                // Can't test focusing if we can't create windows
+            }
         }
+        stop_test_kitty();
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
+    #[serial_test::serial(env)]
     fn test_list_windows_filtering() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1552,118 +1562,119 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            // Create test windows
-            let window_opts = vec![
-                WindowOptions {
-                    title: Some("alpha-window-006"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                    init_command: None,
-                },
-                WindowOptions {
-                    title: Some("beta-window-006"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                    init_command: None,
-                },
-                WindowOptions {
-                    title: Some("alpha-other-006"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                    init_command: None,
-                },
-            ];
+        let _ = start_test_kitty();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
 
-            let mut created_windows = Vec::new();
-            for opts in window_opts {
-                match kitty.open_window(&opts) {
-                    Ok(window_id) => {
-                        created_windows.push(window_id);
-                    }
-                    Err(MuxError::CommandFailed(_)) => {
-                        // Skip if remote control not available
-                        return;
-                    }
-                    Err(e) => panic!("Unexpected error creating window: {:?}", e),
-                }
-            }
+        // Create test windows
+        let window_opts = vec![
+            WindowOptions {
+                title: Some("alpha-window-006"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+            WindowOptions {
+                title: Some("beta-window-006"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+            WindowOptions {
+                title: Some("alpha-other-006"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+        ];
 
-            // Give windows time to be created
-            thread::sleep(Duration::from_millis(200));
-
-            // List all windows
-            let all_windows_result = kitty.list_windows(None);
-            match all_windows_result {
-                Ok(all_windows) => {
-                    assert!(!all_windows.is_empty());
-                    // All window IDs should be numeric
-                    for window in &all_windows {
-                        assert!(window.parse::<u32>().is_ok());
-                    }
+        let mut created_windows = Vec::new();
+        for opts in window_opts {
+            match kitty.open_window(&opts) {
+                Ok(window_id) => {
+                    created_windows.push(window_id);
                 }
                 Err(MuxError::CommandFailed(_)) => {
-                    // Expected when remote control fails
+                    // Skip if remote control not available
                     return;
                 }
-                Err(e) => panic!("Unexpected error listing all windows: {:?}", e),
-            }
-
-            // Filter by "alpha"
-            let alpha_windows_result = kitty.list_windows(Some("alpha"));
-            match alpha_windows_result {
-                Ok(alpha_windows) => {
-                    // Should find at least the alpha windows we created
-                    assert!(!alpha_windows.is_empty());
-                    for window in &alpha_windows {
-                        assert!(window.parse::<u32>().is_ok());
-                    }
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Expected when remote control fails
-                }
-                Err(e) => panic!("Unexpected error listing alpha windows: {:?}", e),
-            }
-
-            // Filter by "beta"
-            let beta_windows_result = kitty.list_windows(Some("beta"));
-            match beta_windows_result {
-                Ok(beta_windows) => {
-                    assert!(!beta_windows.is_empty());
-                    for window in &beta_windows {
-                        assert!(window.parse::<u32>().is_ok());
-                    }
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Expected when remote control fails
-                }
-                Err(e) => panic!("Unexpected error listing beta windows: {:?}", e),
-            }
-
-            // Filter by non-existent title
-            let none_windows_result = kitty.list_windows(Some("nonexistent"));
-            match none_windows_result {
-                Ok(none_windows) => {
-                    // Should be empty or not contain our test windows
-                    assert!(
-                        none_windows.is_empty()
-                            || !none_windows.iter().any(|w| created_windows.contains(w))
-                    );
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Expected when remote control fails
-                }
-                Err(e) => panic!("Unexpected error listing nonexistent windows: {:?}", e),
+                Err(e) => panic!("Unexpected error creating window: {:?}", e),
             }
         }
+
+        // Give windows time to be created
+        thread::sleep(Duration::from_millis(200));
+
+        // List all windows
+        let all_windows_result = kitty.list_windows(None);
+        match all_windows_result {
+            Ok(all_windows) => {
+                assert!(!all_windows.is_empty());
+                // All window IDs should be numeric
+                for window in &all_windows {
+                    assert!(window.parse::<u32>().is_ok());
+                }
+            }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when remote control fails
+                return;
+            }
+            Err(e) => panic!("Unexpected error listing all windows: {:?}", e),
+        }
+
+        // Filter by "alpha"
+        let alpha_windows_result = kitty.list_windows(Some("alpha"));
+        match alpha_windows_result {
+            Ok(alpha_windows) => {
+                // Should find at least the alpha windows we created
+                assert!(!alpha_windows.is_empty());
+                for window in &alpha_windows {
+                    assert!(window.parse::<u32>().is_ok());
+                }
+            }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when remote control fails
+            }
+            Err(e) => panic!("Unexpected error listing alpha windows: {:?}", e),
+        }
+
+        // Filter by "beta"
+        let beta_windows_result = kitty.list_windows(Some("beta"));
+        match beta_windows_result {
+            Ok(beta_windows) => {
+                assert!(!beta_windows.is_empty());
+                for window in &beta_windows {
+                    assert!(window.parse::<u32>().is_ok());
+                }
+            }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when remote control fails
+            }
+            Err(e) => panic!("Unexpected error listing beta windows: {:?}", e),
+        }
+
+        // Filter by non-existent title
+        let none_windows_result = kitty.list_windows(Some("nonexistent"));
+        match none_windows_result {
+            Ok(none_windows) => {
+                // Should be empty or not contain our test windows
+                assert!(
+                    none_windows.is_empty()
+                        || !none_windows.iter().any(|w| created_windows.contains(w))
+                );
+            }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when remote control fails
+            }
+            Err(e) => panic!("Unexpected error listing nonexistent windows: {:?}", e),
+        }
+        stop_test_kitty();
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
+    #[serial_test::serial(env)]
     fn test_error_handling_invalid_window() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1671,26 +1682,26 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            // Try to focus a non-existent window
-            let invalid_window = "99999".to_string();
-            let result = kitty.focus_window(&invalid_window);
-            // Should either succeed (if window exists) or fail gracefully
-            match result {
-                Ok(()) => {
-                    // Window might exist
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Expected when window doesn't exist or remote control fails
-                }
-                Err(e) => panic!("Unexpected error: {:?}", e),
+        let _ = start_test_kitty();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
+        // Try to focus a non-existent window
+        let invalid_window = "99999".to_string();
+        let result = kitty.focus_window(&invalid_window);
+        // Should either succeed (if window exists) or fail gracefully
+        match result {
+            Ok(()) => {
+                // Window might exist
             }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when window doesn't exist or remote control fails
+            }
+            Err(e) => panic!("Unexpected error: {:?}", e),
         }
+        stop_test_kitty();
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
+    #[serial_test::serial(env)]
     fn test_error_handling_invalid_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1698,37 +1709,38 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            // Try to focus a non-existent pane
-            let invalid_pane = "99999".to_string();
-            let result = kitty.focus_pane(&invalid_pane);
-            match result {
-                Ok(()) => {
-                    // Pane might exist
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Expected when pane doesn't exist or remote control fails
-                }
-                Err(e) => panic!("Unexpected error: {:?}", e),
-            }
+        let _ = start_test_kitty();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
 
-            // Try to send text to non-existent pane
-            let result = kitty.send_text(&invalid_pane, "test");
-            match result {
-                Ok(()) => {
-                    // Pane might exist
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Expected when pane doesn't exist or remote control fails
-                }
-                Err(e) => panic!("Unexpected error: {:?}", e),
+        // Try to focus a non-existent pane
+        let invalid_pane = "99999".to_string();
+        let result = kitty.focus_pane(&invalid_pane);
+        match result {
+            Ok(()) => {
+                // Pane might exist
             }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when pane doesn't exist or remote control fails
+            }
+            Err(e) => panic!("Unexpected error: {:?}", e),
         }
+
+        // Try to send text to non-existent pane
+        let result = kitty.send_text(&invalid_pane, "test");
+        match result {
+            Ok(()) => {
+                // Pane might exist
+            }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when pane doesn't exist or remote control fails
+            }
+            Err(e) => panic!("Unexpected error: {:?}", e),
+        }
+        stop_test_kitty();
     }
 
     #[test]
-    #[ignore = "TODO: Fix test and re-enable in CI"]
+    #[serial_test::serial(env)]
     fn test_complex_layout_creation() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1736,130 +1748,130 @@ mod tests {
             return;
         }
 
-        let kitty = KittyMultiplexer::new().unwrap();
-        if kitty.is_available() {
-            // Get initial window count
-            let initial_windows = kitty.list_windows_detailed().unwrap_or_default();
-            let initial_count = initial_windows.len();
+        let _ = start_test_kitty();
+        let kitty = KittyMultiplexer::with_socket_path("/tmp/kitty-ah.sock".to_string());
 
-            // Create a main window
-            let window_opts = WindowOptions {
-                title: Some("complex-layout-008"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        // Get initial window count
+        let initial_windows = kitty.list_windows_detailed().unwrap_or_default();
+        let initial_count = initial_windows.len();
 
-            let window_result = kitty.open_window(&window_opts);
-            match window_result {
-                Ok(window_id) => {
-                    // Verify main window was created
-                    assert!(kitty.window_exists(&window_id).unwrap_or(false));
-                    assert_eq!(
-                        kitty.get_window_title(window_id.clone()).unwrap_or_default(),
-                        "complex-layout-008"
-                    );
+        // Create a main window
+        let window_opts = WindowOptions {
+            title: Some("complex-layout-008"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-                    // Create a 3-"pane" layout: editor (left), agent (top-right), logs (bottom-right)
-                    // In kitty terms, this means creating separate windows positioned relative to each other
+        let window_result = kitty.open_window(&window_opts);
+        match window_result {
+            Ok(window_id) => {
+                // Verify main window was created
+                assert!(kitty.window_exists(&window_id).unwrap_or(false));
+                assert_eq!(
+                    kitty.get_window_title(window_id.clone()).unwrap_or_default(),
+                    "complex-layout-008"
+                );
 
-                    // Create agent pane (top-right of main window)
-                    let agent_result = kitty.split_pane(
-                        Some(&window_id),
-                        Some(&window_id),
-                        SplitDirection::Horizontal,
-                        Some(70), // 70% for editor (main window)
-                        &CommandOptions::default(),
-                        None,
-                    );
+                // Create a 3-"pane" layout: editor (left), agent (top-right), logs (bottom-right)
+                // In kitty terms, this means creating separate windows positioned relative to each other
 
-                    match agent_result {
-                        Ok(agent_pane) => {
-                            // Verify agent pane was created
-                            assert!(kitty.window_exists(&agent_pane).unwrap_or(false));
-                            assert_ne!(agent_pane, window_id);
+                // Create agent pane (top-right of main window)
+                let agent_result = kitty.split_pane(
+                    Some(&window_id),
+                    Some(&window_id),
+                    SplitDirection::Horizontal,
+                    Some(70), // 70% for editor (main window)
+                    &CommandOptions::default(),
+                    None,
+                );
 
-                            // Create logs pane (bottom-right, split from agent pane)
-                            let logs_result = kitty.split_pane(
-                                Some(&window_id),
-                                Some(&agent_pane),
-                                SplitDirection::Vertical,
-                                Some(60), // 60% for agent, 40% for logs
-                                &CommandOptions::default(),
-                                None,
-                            );
+                match agent_result {
+                    Ok(agent_pane) => {
+                        // Verify agent pane was created
+                        assert!(kitty.window_exists(&agent_pane).unwrap_or(false));
+                        assert_ne!(agent_pane, window_id);
 
-                            match logs_result {
-                                Ok(logs_pane) => {
-                                    // Verify logs pane was created
-                                    assert!(kitty.window_exists(&logs_pane).unwrap_or(false));
-                                    assert_ne!(logs_pane, window_id);
-                                    assert_ne!(logs_pane, agent_pane);
+                        // Create logs pane (bottom-right, split from agent pane)
+                        let logs_result = kitty.split_pane(
+                            Some(&window_id),
+                            Some(&agent_pane),
+                            SplitDirection::Vertical,
+                            Some(60), // 60% for agent, 40% for logs
+                            &CommandOptions::default(),
+                            None,
+                        );
 
-                                    // Give panes time to be created and verify final state
-                                    thread::sleep(Duration::from_millis(200));
+                        match logs_result {
+                            Ok(logs_pane) => {
+                                // Verify logs pane was created
+                                assert!(kitty.window_exists(&logs_pane).unwrap_or(false));
+                                assert_ne!(logs_pane, window_id);
+                                assert_ne!(logs_pane, agent_pane);
 
-                                    // Verify all "panes" (windows) exist
-                                    let all_panes_result = kitty.list_panes(&window_id);
-                                    match all_panes_result {
-                                        Ok(all_panes) => {
-                                            assert!(!all_panes.is_empty());
-                                            // Should contain our main window and created panes
-                                            assert!(all_panes.contains(&window_id));
-                                            assert!(all_panes.contains(&agent_pane));
-                                            assert!(all_panes.contains(&logs_pane));
-                                        }
-                                        Err(MuxError::CommandFailed(_)) => {
-                                            // Expected when remote control fails
-                                            return;
-                                        }
-                                        Err(e) => panic!("Unexpected error listing panes: {:?}", e),
+                                // Give panes time to be created and verify final state
+                                thread::sleep(Duration::from_millis(200));
+
+                                // Verify all "panes" (windows) exist
+                                let all_panes_result = kitty.list_panes(&window_id);
+                                match all_panes_result {
+                                    Ok(all_panes) => {
+                                        assert!(!all_panes.is_empty());
+                                        // Should contain our main window and created panes
+                                        assert!(all_panes.contains(&window_id));
+                                        assert!(all_panes.contains(&agent_pane));
+                                        assert!(all_panes.contains(&logs_pane));
                                     }
-
-                                    // Verify we have the expected number of windows
-                                    let final_windows =
-                                        kitty.list_windows_detailed().unwrap_or_default();
-                                    assert!(
-                                        final_windows.len() >= initial_count + 2,
-                                        "Should have at least {} windows after creating 2 splits, got {}",
-                                        initial_count + 2,
-                                        final_windows.len()
-                                    );
-
-                                    // Test focusing different panes and verify focus changes
-                                    let _ = kitty.focus_window(&window_id);
-                                    let focused = kitty.get_focused_window_id().unwrap_or_default();
-                                    assert_eq!(focused, window_id);
-
-                                    let _ = kitty.focus_pane(&agent_pane);
-                                    let focused = kitty.get_focused_window_id().unwrap_or_default();
-                                    assert_eq!(focused, agent_pane);
-
-                                    let _ = kitty.focus_pane(&logs_pane);
-                                    let focused = kitty.get_focused_window_id().unwrap_or_default();
-                                    assert_eq!(focused, logs_pane);
+                                    Err(MuxError::CommandFailed(_)) => {
+                                        // Expected when remote control fails
+                                        return;
+                                    }
+                                    Err(e) => panic!("Unexpected error listing panes: {:?}", e),
                                 }
-                                Err(MuxError::CommandFailed(_)) => {
-                                    // Expected when remote control fails
-                                }
-                                Err(e) => panic!("Unexpected error creating logs pane: {:?}", e),
+
+                                // Verify we have the expected number of windows
+                                let final_windows =
+                                    kitty.list_windows_detailed().unwrap_or_default();
+                                assert!(
+                                    final_windows.len() >= initial_count + 2,
+                                    "Should have at least {} windows after creating 2 splits, got {}",
+                                    initial_count + 2,
+                                    final_windows.len()
+                                );
+
+                                // Test focusing different panes and verify focus changes
+                                let _ = kitty.focus_window(&window_id);
+                                let focused = kitty.current_window().unwrap_or_default();
+                                assert_eq!(focused, Some(window_id));
+
+                                let _ = kitty.focus_pane(&agent_pane);
+                                let focused = kitty.current_window().unwrap_or_default();
+                                assert_eq!(focused, Some(agent_pane));
+
+                                let _ = kitty.focus_pane(&logs_pane);
+                                let focused = kitty.current_window().unwrap_or_default();
+                                assert_eq!(focused, Some(logs_pane));
                             }
+                            Err(MuxError::CommandFailed(_)) => {
+                                // Expected when remote control fails
+                            }
+                            Err(e) => panic!("Unexpected error creating logs pane: {:?}", e),
                         }
-                        Err(MuxError::CommandFailed(_)) => {
-                            // Expected when remote control fails
-                        }
-                        Err(e) => panic!("Unexpected error creating agent pane: {:?}", e),
                     }
+                    Err(MuxError::CommandFailed(_)) => {
+                        // Expected when remote control fails
+                    }
+                    Err(e) => panic!("Unexpected error creating agent pane: {:?}", e),
                 }
-                Err(MuxError::CommandFailed(_)) => {
-                    // Can't test complex layout if we can't create windows
-                }
-                Err(e) => panic!("Unexpected error creating main window: {:?}", e),
             }
+            Err(MuxError::CommandFailed(_)) => {
+                // Can't test complex layout if we can't create windows
+            }
+            Err(e) => panic!("Unexpected error creating main window: {:?}", e),
         }
+        stop_test_kitty();
     }
-
 
     #[test]
     #[serial_test::serial(env)]
