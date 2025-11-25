@@ -22,6 +22,17 @@ async fn main() -> Result<()> {
         Some(&cli_overrides),
     )?;
 
+    // Determine if this is a TUI command that should log to file
+    let is_tui_command = matches!(
+        &cli.command,
+        Commands::Tui(_)
+            | Commands::Agent {
+                subcommand: AgentCommands::Record(_)
+                    | AgentCommands::Replay(_)
+                    | AgentCommands::BranchPoints(_)
+            }
+    );
+
     // Set up centralized logging using the merged configuration
     let default_level = if cfg!(debug_assertions) {
         CliLogLevel::Debug
@@ -30,7 +41,7 @@ async fn main() -> Result<()> {
     };
     config_result.config.logging().to_cli_logging_args().init_with_default_level(
         "ah-cli",
-        false,
+        is_tui_command,
         default_level,
     )?;
 
