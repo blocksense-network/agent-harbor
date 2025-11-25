@@ -4,18 +4,9 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { setupTestEnvironment, teardownTestEnvironment } from '../utils/test-helpers';
 
 test.describe('Toast Notifications', () => {
   let baseURL: string;
-
-  test.beforeAll(async () => {
-    baseURL = await setupTestEnvironment();
-  });
-
-  test.afterAll(async () => {
-    await teardownTestEnvironment();
-  });
 
   test('should display error toast for failed session stop', async ({ page }) => {
     await page.goto(baseURL);

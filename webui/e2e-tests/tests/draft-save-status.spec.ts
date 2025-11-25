@@ -4,18 +4,9 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { setupTestEnvironment, teardownTestEnvironment } from '../utils/test-helpers';
 
 test.describe('Draft Save Status Algorithm', () => {
   let baseURL: string;
-
-  test.beforeAll(async () => {
-    baseURL = await setupTestEnvironment();
-  });
-
-  test.afterAll(async () => {
-    await teardownTestEnvironment();
-  });
 
   test("should show 'Saved' status initially for new drafts", async ({ page }) => {
     await page.goto(baseURL);
