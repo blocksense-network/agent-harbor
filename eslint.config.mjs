@@ -8,6 +8,7 @@ import { flatConfigs as importConfigs } from 'eslint-plugin-import-x';
 
 export default defineConfig(
   globalIgnores([
+    '**/out',
     '**/dist',
     '**/build',
     '**/*.md',

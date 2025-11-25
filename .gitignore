@@ -169,3 +169,4 @@ webui/shared/dist/
 # Next.js build output
 .next
 _pagefind
+out/
