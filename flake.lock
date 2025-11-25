@@ -102,11 +102,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1758571257,
-        "narHash": "sha256-l5LtcQ98ISM4uDuW2CO30aQedM33kz/NL7E4NhUoR8U=",
+        "lastModified": 1764033248,
+        "narHash": "sha256-1VZrwxtGHAtUlTsBBKokfztt96rQN9eY/y+fRz1mXjI=",
         "ref": "refs/heads/blocksense",
-        "rev": "4bdd846622b88dc3cefebff9f39ee1178bf4073f",
-        "revCount": 1249,
+        "rev": "bd9b20980b125df9ff005c9aa5b19861f0c3d83f",
+        "revCount": 2155,
         "type": "git",
         "url": "file:./vendor/codex"
       },
