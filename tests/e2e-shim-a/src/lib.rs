@@ -18,7 +18,7 @@ fn init_hooks() {
 #[cfg(target_os = "macos")]
 hook! {
     priority: 5,
-    unsafe fn read(stackable_self, fd: libc::c_int, buf: *mut libc::c_void, count: libc::size_t)
+    unsafe fn read(fd: libc::c_int, buf: *mut libc::c_void, count: libc::size_t)
         -> libc::ssize_t => my_read {
         // For call_real! direct test: simulate blocking reads from stdin (fd 0) by returning -1
         let test_direct = std::env::var("TEST_CALL_REAL_DIRECT").unwrap_or_else(|_| "0".to_string()) == "1";
@@ -50,7 +50,7 @@ hook! {
         }
 
         // Call the next hook in the chain or the real function
-        let result = stackable_hooks::call_next!(stackable_self, read, fd, buf, count);
+        let result = stackable_hooks::call_next!(fd, buf, count);
 
         // Log the result (use direct libc write to avoid triggering hooks)
         let msg = format!("SHIM_A: read() returned {}\n", result);
@@ -70,7 +70,7 @@ hook! {
 #[cfg(target_os = "macos")]
 hook! {
     priority: 5,
-    unsafe fn close(stackable_self, fd: libc::c_int) -> libc::c_int => my_close {
+    unsafe fn close(fd: libc::c_int) -> libc::c_int => my_close {
         // Print a message to indicate the hook is active (use direct libc write to avoid triggering hooks)
         let msg = format!("SHIM_A: close() intercepted (priority 5), fd={}\n", fd);
         let c_msg = std::ffi::CString::new(msg).unwrap();
@@ -90,7 +90,7 @@ hook! {
             stackable_hooks::call_real!(close, fd)
         } else {
             // For priority test: continue hook chain
-            stackable_hooks::call_next!(stackable_self, close, fd)
+            stackable_hooks::call_next!(fd)
         };
 
         // Log the result (use direct libc write to avoid triggering hooks)

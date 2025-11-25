@@ -25,9 +25,9 @@ crate-type = ["cdylib"]
 
 ```rust
 stackable_hooks::hook! {
-    unsafe fn write(stackable_self, fd: libc::c_int, buf: *const libc::c_void, len: libc::size_t)
+    unsafe fn write(fd: libc::c_int, buf: *const libc::c_void, len: libc::size_t)
         -> libc::ssize_t => my_write {
-        let result = stackable_hooks::call_next!(stackable_self, write, fd, buf, len);
+        let result = stackable_hooks::call_next!(fd, buf, len);
         if result > 0 {
             forward_to_recorder(fd, buf, result as usize);
         }

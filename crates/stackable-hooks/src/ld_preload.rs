@@ -27,7 +27,7 @@ pub unsafe fn dlsym_next(symbol: &'static str) -> *const u8 {
 
 #[macro_export]
 macro_rules! hook {
-    (unsafe fn $real_fn:ident ( $self_ident:ident $(, $v:ident : $t:ty)* ) -> $r:ty => $hook_fn:ident $body:block) => {
+    (unsafe fn $real_fn:ident ( $( $v:ident : $t:ty ),* ) -> $r:ty => $hook_fn:ident $body:block) => {
         #[allow(non_camel_case_types)]
         pub struct $real_fn {__private_field: ()}
         #[allow(non_upper_case_globals)]
@@ -55,14 +55,13 @@ macro_rules! hook {
         }
 
         pub unsafe fn $hook_fn ( $( $v : $t ),* ) -> $r {
-            #[allow(unused_variables)]
-            let $self_ident = ::core::ptr::null_mut::<::core::ffi::c_void>();
+            let __stackable_call_next_fn = $real_fn.get();
             $body
         }
     };
 
-    (unsafe fn $real_fn:ident ( $self_ident:ident $(, $v:ident : $t:ty)* ) => $hook_fn:ident $body:block) => {
-        $crate::hook! { unsafe fn $real_fn ( $self_ident $(, $v : $t)* ) -> () => $hook_fn $body }
+    (unsafe fn $real_fn:ident ( $( $v:ident : $t:ty ),* ) => $hook_fn:ident $body:block) => {
+        $crate::hook! { unsafe fn $real_fn ( $( $v : $t ),* ) -> () => $hook_fn $body }
     };
 }
 
@@ -75,7 +74,7 @@ macro_rules! real {
 
 #[macro_export]
 macro_rules! call_next {
-    ($self_expr:expr, $real_fn:ident $(, $args:expr )* $(,)?) => {
-        unsafe { $crate::real!($real_fn)($($args),*) }
+    ($($args:expr ),* $(,)?) => {
+        unsafe { __stackable_call_next_fn($($args),*) }
     };
 }
