@@ -308,6 +308,45 @@ Additional event types for agent activity:
 }
 ```
 
+```json
+{
+  "type": "diff",
+  "tool_execution_id": "tool_exec_01H...",
+  "path": "/workspace/src/auth.ts",
+  "oldText": "fn foo() {\n  println!(\"old\");\n}",
+  "newText": "fn foo() {\n  println!(\"new\");\n}",
+  "ts": "2025-01-01T12:05:01Z"
+}
+```
+
+`diff` events are emitted automatically whenever the passthrough recorder detects a completed file write: Harbor takes a snapshot, computes the diff against the previous snapshot for the touched file, and streams the diff over SSE (and ACP). Clients can render these diffs immediately without re-fetching files. For very large files, Harbor may send truncated diffs along with a hint to fetch the full diff via `GET /api/v1/sessions/{id}/diff/{file}`.
+
+**Large diff truncation rules**
+
+- A diff is considered “large” when either payload exceeds **64 KiB** or contains more than **2,000 lines**. This keeps SSE payloads efficient while still surfacing actionable information.
+- When truncation is required, the SSE event uses the following structure:
+
+```json
+{
+  "type": "diff",
+  "tool_execution_id": "tool_exec_01H...",
+  "path": "/workspace/src/bigfile.rs",
+  "oldTextHead": "<first 200 lines>",
+  "oldTextTail": "<last 50 lines>",
+  "newTextHead": "<first 200 lines>",
+  "newTextTail": "<last 50 lines>",
+  "truncated": true,
+  "fullDiffUrl": "/api/v1/sessions/01HV.../diff/src/bigfile.rs",
+  "ts": "2025-01-01T12:05:01Z"
+}
+```
+
+  - `oldTextHead` / `newTextHead` contain the first 200 lines (clamped to the 64 KiB limit).  
+  - `oldTextTail` / `newTextTail` contain the last 50 lines.  
+  - `truncated: true` indicates the payload is partial.  
+  - `fullDiffUrl` points to the REST endpoint where the complete diff can be retrieved (clients should honor auth headers when requesting it).
+- When the diff fits under the thresholds, the traditional `oldText` / `newText` fields are used and `truncated` is omitted.
+
 **Tool Execution ID (`tool_execution_id`)**: A unique identifier assigned to each tool execution, used to correlate `tool_use`, `tool_result`, and related `log` events when multiple tools are running concurrently. This field is optional for `log` events (set to `null` when the log is not associated with a specific tool execution).
 
 Query parameters for events endpoint:
@@ -1309,6 +1348,57 @@ Additional workspace endpoints (for IDE integration and advanced features):
 - `POST /api/v1/sessions/{id}/open/ide` → Launch IDE connected to workspace (existing endpoint enhanced).
 - `GET /api/v1/sessions/{id}/workspace/download` → Download workspace as archive.
 - `POST /api/v1/sessions/{id}/workspace/snapshot` → Create named snapshot of current workspace state.
+
+#### Tool Execution Pipelines
+
+`ah agent record` captures shell pipelines (`cmd1 | cmd2 | …`) with per-step metadata. These REST endpoints expose that metadata so clients can inspect individual steps, stream their output, or present richer UI (e.g., per-step menus).
+
+- `GET /api/v1/sessions/{sessionId}/executions/{executionId}/pipelines`
+
+  Lists every pipeline observed during the execution. Supports filtering via `commandContains`, `startedAfter`, `endedBefore`, `page`, and `perPage`.
+
+  Response `200 OK`:
+
+  ```json
+  {
+    "pipelines": [
+      {
+        "pipelineId": "pipe-01HVZ6…",
+        "startedAt": "2025-02-01T12:35:00Z",
+        "endedAt": "2025-02-01T12:35:05Z",
+        "bytes": { "stdout": 8192, "stderr": 0 },
+        "steps": [
+          {
+            "stepId": "pipe-01HVZ6…:1",
+            "command": "npm run build",
+            "stdoutBytes": 4096,
+            "stderrBytes": 0
+          },
+          {
+            "stepId": "pipe-01HVZ6…:2",
+            "command": "grep ERROR",
+            "stdoutBytes": 4096,
+            "stderrBytes": 0
+          }
+        ]
+      }
+    ]
+  }
+  ```
+
+- `GET /api/v1/sessions/{sessionId}/executions/{executionId}/pipelines/{pipelineId}/steps/{stepId}`
+
+  Returns detailed metadata for a single step (argv, PID, timestamps, stdout/stderr/input byte counts, byte-range anchors into the session `.ahr` file).
+
+- `GET /api/v1/sessions/{sessionId}/executions/{executionId}/pipelines/{pipelineId}/steps/{stepId}/stream`
+
+  Streams stdout or stderr for the selected step. Query parameters:
+
+  - `stream`: `stdout` or `stderr` (required)
+  - `follow`: `true|false` (default `false`). When `true`, the server keeps streaming live bytes until the step exits; otherwise it emits the recorded bytes and closes.
+
+  Streams use SSE (same transport as `/logs`), include base64-encoded byte chunks plus timestamps, and respect tenant redaction policies.
+
 
 #### Event Ingestion (leader → server)
 
