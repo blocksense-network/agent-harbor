@@ -56,6 +56,11 @@ macro_rules! hook {
 
         pub unsafe fn $hook_fn ( $( $v : $t ),* ) -> $r {
             let __stackable_call_next_fn = $real_fn.get();
+            // Provide a hygienic accessor so stackable_hooks::call_next! can reach the
+            // function pointer even though it is introduced by this macro expansion.
+            macro_rules! __stackable_call_next_fn {
+                () => { __stackable_call_next_fn };
+            }
             $body
         }
     };
@@ -75,6 +80,6 @@ macro_rules! real {
 #[macro_export]
 macro_rules! call_next {
     ($($args:expr ),* $(,)?) => {
-        unsafe { __stackable_call_next_fn($($args),*) }
+        unsafe { __stackable_call_next_fn!()($($args),*) }
     };
 }
