@@ -69,13 +69,8 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Config { subcommand } => subcommand.run(cli.config.as_deref()).await,
         Commands::Task { subcommand } => {
-            subcommand
-                .run(
-                    cli.config.as_deref(),
-                    cli.repo.clone(),
-                    cli.fs_snapshots.clone(),
-                )
-                .await
+            let fs_snapshots = cli.fs_snapshots.clone().unwrap_or_default();
+            subcommand.run(cli.config.as_deref(), cli.repo.clone(), fs_snapshots).await
         }
         Commands::Agent { ref subcommand } => match subcommand {
             AgentCommands::Fs {
