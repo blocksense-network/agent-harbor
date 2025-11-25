@@ -956,7 +956,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_kitty_multiplexer_creation() {
         // Set up a test environment with proper kitty configuration
         let test_config = "# Test kitty configuration\nallow_remote_control yes\nenabled_layouts splits\nlisten_on unix:/tmp/kitty-ah.sock\n";
@@ -984,7 +984,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_check_configuration_collects_multiple_errors() {
         // Set up test environment with incomplete kitty configuration
         // (missing remote control and socket settings)
@@ -1034,7 +1034,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_check_configuration_with_complete_config() {
         // Set up test environment with complete kitty configuration
         let complete_config = "# Complete kitty configuration\nallow_remote_control yes\nlisten_on unix:/tmp/kitty-ah.sock\nenabled_layouts splits\n";
@@ -1063,7 +1063,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_check_configuration_without_config_file() {
         // Set up test environment without any configuration file
         let _guard = setup_test_home_without_config();
@@ -1104,7 +1104,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
 
     fn test_start_kitty_instance() {
         tracing::debug!("Testing start_test_kitty function");
@@ -1123,7 +1123,7 @@ mod tests {
     // }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_kitty_availability() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1178,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_open_window_with_title_and_cwd() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1219,7 +1219,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_open_window_focus() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1261,7 +1261,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_split_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1347,7 +1347,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_split_pane_with_initial_command() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1385,7 +1385,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_run_command_and_send_text() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1456,7 +1456,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_focus_window_and_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1554,7 +1554,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_list_windows_filtering() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1674,7 +1674,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_error_handling_invalid_window() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1701,7 +1701,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_error_handling_invalid_pane() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1740,7 +1740,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_complex_layout_creation() {
         // Skip kitty tests in CI environments where kitty remote control is not available
         if std::env::var("CI").is_ok() {
@@ -1874,7 +1874,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_read_default_config() {
         let test_config = "# Test kitty configuration\nallow_remote_control yes\nlisten_on unix:/tmp/kitty-ah.sock\n";
         let _guard = setup_test_home_with_config(test_config);
@@ -1899,7 +1899,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_read_default_config_missing_file() {
         let _guard = setup_test_home_without_config();
 
@@ -1926,7 +1926,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_check_remote_control_from_config() {
         // Test case 1: Config with remote control enabled
         {
@@ -1978,7 +1978,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_check_enable_layout_split_from_config() {
         // Test case 1: Config with layout split enabled
         {
@@ -2053,7 +2053,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(env)]
+    #[serial_test::file_serial]
     fn test_config_methods_with_missing_file() {
         let _guard = setup_test_home_without_config();
 
