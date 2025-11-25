@@ -1227,9 +1227,26 @@ set-environment -g ZDOTDIR ""
 "#;
             std::fs::write(&config_path, tmux_config)?;
 
-            // Spawn tmux with custom config and minimal shell for deterministic snapshots
-            // Use sh instead of the default shell to avoid shell-specific behaviors
-            let tmux_cmd = format!("tmux -f {} new-session -s {} sh", config_path, session_name);
+            // First create the session detached so tmux doesn't need our controlling TTY
+            // (important for headless/CI test runs). Then attach via expectrl so we can
+            // capture deterministic snapshots from the pseudo-terminal.
+            let create_cmd = std::process::Command::new("tmux")
+                .args([
+                    "-f",
+                    &config_path,
+                    "new-session",
+                    "-d",
+                    "-s",
+                    session_name,
+                    "sh",
+                ])
+                .status()?;
+            if !create_cmd.success() {
+                anyhow::bail!("failed to create tmux session {}", session_name);
+            }
+
+            // Attach to the freshly created session using the same config
+            let tmux_cmd = format!("tmux -f {} attach-session -t {}", config_path, session_name);
             let mut p = spawn(&tmux_cmd)?;
             p.set_echo(false, None)?;
 
