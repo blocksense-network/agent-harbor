@@ -18,13 +18,13 @@ fn init_hooks() {
 #[cfg(target_os = "macos")]
 hook! {
     priority: 20,
-    unsafe fn write(stackable_self, fd: libc::c_int, buf: *const libc::c_void, count: libc::size_t)
+    unsafe fn write(fd: libc::c_int, buf: *const libc::c_void, count: libc::size_t)
         -> libc::ssize_t => my_write {
         // Print a message to indicate the hook is active
         info!("SHIM_B: write() intercepted (priority 20), fd={}, count={}", fd, count);
 
         // Call the next hook in the chain or the real function
-        let result = stackable_hooks::call_next!(stackable_self, write, fd, buf, count);
+        let result = stackable_hooks::call_next!(fd, buf, count);
 
         // Log the result
         info!("SHIM_B: write() returned {}", result);
@@ -36,13 +36,13 @@ hook! {
 #[cfg(target_os = "macos")]
 hook! {
     priority: 20,
-    unsafe fn open(stackable_self, path: *const libc::c_char, flags: libc::c_int, mode: libc::mode_t)
+    unsafe fn open(path: *const libc::c_char, flags: libc::c_int, mode: libc::mode_t)
         -> libc::c_int => my_open {
         // Print a message to indicate the hook is active
         info!("SHIM_B: open() intercepted (priority 20), flags={}, mode={}", flags, mode);
 
         // Call the next hook in the chain or the real function
-        let result = stackable_hooks::call_next!(stackable_self, open, path, flags, mode);
+        let result = stackable_hooks::call_next!(path, flags, mode);
 
         // Log the result
         info!("SHIM_B: open() returned {}", result);

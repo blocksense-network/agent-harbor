@@ -50,14 +50,14 @@ pub fn send_keepalive() -> Result<(), Box<dyn std::error::Error>> {
 
 // Linux-specific hooks for vfork and clone
 stackable_hooks::hook! {
-    unsafe fn vfork(stackable_self) -> libc::pid_t => my_vfork {
-        stackable_hooks::call_next!(stackable_self, vfork)
+    unsafe fn vfork() -> libc::pid_t => my_vfork {
+        stackable_hooks::call_next!( vfork)
     }
 }
 
 stackable_hooks::hook! {
-    unsafe fn clone(stackable_self, fn_: extern "C" fn(*mut libc::c_void) -> libc::c_int, child_stack: *mut libc::c_void, flags: libc::c_int, arg: *mut libc::c_void, ptid: *mut libc::pid_t, tls: *mut libc::c_void, ctid: *mut libc::pid_t) -> libc::c_int => my_clone {
-        stackable_hooks::call_next!(stackable_self, clone, fn_, child_stack, flags, arg, ptid, tls, ctid)
+    unsafe fn clone(fn_: extern "C" fn(*mut libc::c_void) -> libc::c_int, child_stack: *mut libc::c_void, flags: libc::c_int, arg: *mut libc::c_void, ptid: *mut libc::pid_t, tls: *mut libc::c_void, ctid: *mut libc::pid_t) -> libc::c_int => my_clone {
+        stackable_hooks::call_next!(fn_, child_stack, flags, arg, ptid, tls, ctid)
     }
 }
 

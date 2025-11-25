@@ -16,7 +16,6 @@ fn init_hooks() {
 #[cfg(target_os = "macos")]
 hook! {
     unsafe fn posix_spawn(
-        stackable_self,
         pid: *mut libc::pid_t,
         path: *const libc::c_char,
         file_actions: *const libc::posix_spawn_file_actions_t,
@@ -27,10 +26,7 @@ hook! {
         eprintln!("[test-posix-spawn-hook] posix_spawn hook called!");
 
         // Call the real function
-        let result = stackable_hooks::call_next!(
-            stackable_self,
-            posix_spawn,
-            pid,
+        let result = stackable_hooks::call_next!(pid,
             path,
             file_actions,
             attrp,

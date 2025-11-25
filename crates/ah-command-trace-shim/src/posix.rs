@@ -419,47 +419,47 @@ pub unsafe fn extract_command_info(
 // Common POSIX hooks using stackable-hooks
 
 stackable_hooks::hook! {
-    unsafe fn fork(stackable_self) -> libc::pid_t => my_fork {
-        stackable_hooks::call_next!(stackable_self, fork)
+    unsafe fn fork() -> libc::pid_t => my_fork {
+        stackable_hooks::call_next!()
     }
 }
 
 stackable_hooks::hook! {
-    unsafe fn execve(stackable_self, path: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_execve {
-        stackable_hooks::call_next!(stackable_self, execve, path, argv, envp)
+    unsafe fn execve(path: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_execve {
+        stackable_hooks::call_next!(path, argv, envp)
     }
 }
 
 stackable_hooks::hook! {
-    unsafe fn execvp(stackable_self, file: *const libc::c_char, argv: *const *mut libc::c_char) -> libc::c_int => my_execvp {
-        stackable_hooks::call_next!(stackable_self, execvp, file, argv)
+    unsafe fn execvp(file: *const libc::c_char, argv: *const *mut libc::c_char) -> libc::c_int => my_execvp {
+        stackable_hooks::call_next!(file, argv)
     }
 }
 
 stackable_hooks::hook! {
-    unsafe fn execv(stackable_self, file: *const libc::c_char, argv: *const *mut libc::c_char) -> libc::c_int => my_execv {
-        stackable_hooks::call_next!(stackable_self, execv, file, argv)
-    }
-}
-
-#[cfg(target_os = "linux")]
-stackable_hooks::hook! {
-    unsafe fn execveat(stackable_self, dirfd: libc::c_int, pathname: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char, flags: libc::c_int) -> libc::c_int => my_execveat {
-        stackable_hooks::call_next!(stackable_self, execveat, dirfd, pathname, argv, envp, flags)
+    unsafe fn execv(file: *const libc::c_char, argv: *const *mut libc::c_char) -> libc::c_int => my_execv {
+        stackable_hooks::call_next!(file, argv)
     }
 }
 
 #[cfg(target_os = "linux")]
 stackable_hooks::hook! {
-    unsafe fn execvpe(stackable_self, file: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_execvpe {
-        stackable_hooks::call_next!(stackable_self, execvpe, file, argv, envp)
+    unsafe fn execveat(dirfd: libc::c_int, pathname: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char, flags: libc::c_int) -> libc::c_int => my_execveat {
+        stackable_hooks::call_next!(dirfd, pathname, argv, envp, flags)
+    }
+}
+
+#[cfg(target_os = "linux")]
+stackable_hooks::hook! {
+    unsafe fn execvpe(file: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_execvpe {
+        stackable_hooks::call_next!(file, argv, envp)
     }
 }
 
 stackable_hooks::hook! {
-    unsafe fn posix_spawn(stackable_self, pid: *mut libc::pid_t, path: *const libc::c_char, file_actions: *const libc::posix_spawn_file_actions_t, attrp: *const libc::posix_spawnattr_t, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_posix_spawn {
+    unsafe fn posix_spawn(pid: *mut libc::pid_t, path: *const libc::c_char, file_actions: *const libc::posix_spawn_file_actions_t, attrp: *const libc::posix_spawnattr_t, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_posix_spawn {
         // Call the real posix_spawn first
-        let result = stackable_hooks::call_next!(stackable_self, posix_spawn, pid, path, file_actions, attrp, argv, envp);
+        let result = stackable_hooks::call_next!(pid, path, file_actions, attrp, argv, envp);
 
         // If spawn was successful and we have a PID, send CommandStart
         if result == 0 && !pid.is_null() {
@@ -526,9 +526,9 @@ stackable_hooks::hook! {
 }
 
 stackable_hooks::hook! {
-    unsafe fn posix_spawnp(stackable_self, pid: *mut libc::pid_t, file: *const libc::c_char, file_actions: *const libc::posix_spawn_file_actions_t, attrp: *const libc::posix_spawnattr_t, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_posix_spawnp {
+    unsafe fn posix_spawnp(pid: *mut libc::pid_t, file: *const libc::c_char, file_actions: *const libc::posix_spawn_file_actions_t, attrp: *const libc::posix_spawnattr_t, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_posix_spawnp {
         // Call the real posix_spawnp first
-        let result = stackable_hooks::call_next!(stackable_self, posix_spawnp, pid, file, file_actions, attrp, argv, envp);
+        let result = stackable_hooks::call_next!(pid, file, file_actions, attrp, argv, envp);
 
         // If spawn was successful and we have a PID, send CommandStart
         if result == 0 && !pid.is_null() {
@@ -597,8 +597,8 @@ stackable_hooks::hook! {
 // FD Lifecycle and I/O Hooks
 
 stackable_hooks::hook! {
-    unsafe fn write(stackable_self, fd: libc::c_int, buf: *const c_void, count: libc::size_t) -> libc::ssize_t => my_write {
-        let result = stackable_hooks::call_next!(stackable_self, write, fd, buf, count);
+    unsafe fn write(fd: libc::c_int, buf: *const c_void, count: libc::size_t) -> libc::ssize_t => my_write {
+        let result = stackable_hooks::call_next!(fd, buf, count);
 
         if result > 0 {
              let slice = std::slice::from_raw_parts(buf as *const u8, result as usize);
@@ -609,8 +609,8 @@ stackable_hooks::hook! {
     }
 }
 stackable_hooks::hook! {
-    unsafe fn writev(stackable_self, fd: libc::c_int, iov: *const libc::iovec, iovcnt: libc::c_int) -> libc::ssize_t => my_writev {
-        let result = stackable_hooks::call_next!(stackable_self, writev, fd, iov, iovcnt);
+    unsafe fn writev(fd: libc::c_int, iov: *const libc::iovec, iovcnt: libc::c_int) -> libc::ssize_t => my_writev {
+        let result = stackable_hooks::call_next!(fd, iov, iovcnt);
 
         if result > 0 {
              // Reconstruct written data from iov?
@@ -638,8 +638,8 @@ stackable_hooks::hook! {
 }
 
 stackable_hooks::hook! {
-    unsafe fn dup(stackable_self, oldfd: libc::c_int) -> libc::c_int => my_dup {
-        let newfd = stackable_hooks::call_next!(stackable_self, dup, oldfd);
+    unsafe fn dup(oldfd: libc::c_int) -> libc::c_int => my_dup {
+        let newfd = stackable_hooks::call_next!(oldfd);
         if newfd >= 0 {
             update_fd_mapping(oldfd, newfd);
         }
@@ -648,11 +648,11 @@ stackable_hooks::hook! {
 }
 
 stackable_hooks::hook! {
-    unsafe fn dup2(stackable_self, oldfd: libc::c_int, newfd: libc::c_int) -> libc::c_int => my_dup2 {
+    unsafe fn dup2(oldfd: libc::c_int, newfd: libc::c_int) -> libc::c_int => my_dup2 {
         // If newfd was open, it is closed. remove_fd_mapping(newfd) first?
         // dup2 closes newfd silently if open.
         // But we just overwrite mapping, so it is fine.
-        let result = stackable_hooks::call_next!(stackable_self, dup2, oldfd, newfd);
+        let result = stackable_hooks::call_next!(oldfd, newfd);
         if result >= 0 {
             update_fd_mapping(oldfd, newfd);
         }
@@ -662,8 +662,8 @@ stackable_hooks::hook! {
 
 #[cfg(target_os = "linux")]
 stackable_hooks::hook! {
-    unsafe fn dup3(stackable_self, oldfd: libc::c_int, newfd: libc::c_int, flags: libc::c_int) -> libc::c_int => my_dup3 {
-        let result = stackable_hooks::call_next!(stackable_self, dup3, oldfd, newfd, flags);
+    unsafe fn dup3(oldfd: libc::c_int, newfd: libc::c_int, flags: libc::c_int) -> libc::c_int => my_dup3 {
+        let result = stackable_hooks::call_next!(oldfd, newfd, flags);
         if result >= 0 {
             update_fd_mapping(oldfd, newfd);
         }
@@ -672,8 +672,8 @@ stackable_hooks::hook! {
 }
 
 stackable_hooks::hook! {
-    unsafe fn close(stackable_self, fd: libc::c_int) -> libc::c_int => my_close {
-        let result = stackable_hooks::call_next!(stackable_self, close, fd);
+    unsafe fn close(fd: libc::c_int) -> libc::c_int => my_close {
+        let result = stackable_hooks::call_next!(fd);
         if result == 0 {
             remove_fd_mapping(fd);
         }
@@ -683,8 +683,8 @@ stackable_hooks::hook! {
 
 #[cfg(target_os = "linux")]
 stackable_hooks::hook! {
-    unsafe fn fcntl(stackable_self, fd: libc::c_int, cmd: libc::c_int, arg: libc::c_int) -> libc::c_int => my_fcntl {
-        let result = stackable_hooks::call_next!(stackable_self, fcntl, fd, cmd, arg);
+    unsafe fn fcntl(fd: libc::c_int, cmd: libc::c_int, arg: libc::c_int) -> libc::c_int => my_fcntl {
+        let result = stackable_hooks::call_next!(fd, cmd, arg);
         if result >= 0 && (cmd == libc::F_DUPFD || cmd == libc::F_DUPFD_CLOEXEC) {
             update_fd_mapping(fd, result);
         }
@@ -695,8 +695,8 @@ stackable_hooks::hook! {
 // sendmsg is often used for socket IO, but can be used for other things.
 // For M2 we need to support it.
 stackable_hooks::hook! {
-    unsafe fn sendmsg(stackable_self, fd: libc::c_int, msg: *const libc::msghdr, flags: libc::c_int) -> libc::ssize_t => my_sendmsg {
-        let result = stackable_hooks::call_next!(stackable_self, sendmsg, fd, msg, flags);
+    unsafe fn sendmsg(fd: libc::c_int, msg: *const libc::msghdr, flags: libc::c_int) -> libc::ssize_t => my_sendmsg {
+        let result = stackable_hooks::call_next!(fd, msg, flags);
 
         if result > 0 {
              // Extract data from msg.msg_iov

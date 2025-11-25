@@ -1,7 +1,6 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use core::cell::Cell;
 use core::ffi::c_void;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -32,7 +31,7 @@ static RUNTIME_READY: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     // Use const initializer to satisfy clippy::missing_const_for_thread_local
-    static HOOK_DEPTH: Cell<usize> = const { Cell::new(0) };
+    static HOOK_DEPTH: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
 pub fn enable_hooks() {
@@ -165,16 +164,10 @@ where
 
 #[macro_export]
 macro_rules! call_next {
-    ($self_expr:expr, $real_fn:ident $(, $args:expr )* $(,)?) => {
-        $crate::__stackable_paste! {
-            $crate::dyld_insert_libraries::with_reentrancy(|| unsafe {
-                [<__stackable_call_next_ $real_fn>](
-                    ($self_expr as *mut ::core::ffi::c_void)
-                        as *mut [<__StackableNode_ $real_fn>],
-                    $($args),*
-                )
-            })
-        }
+    ($($args:expr ),* $(,)?) => {
+        $crate::dyld_insert_libraries::with_reentrancy(|| unsafe {
+            __stackable_call_next_fn!()(__stackable_current_self!(), $($args),*)
+        })
     };
 }
 
@@ -192,11 +185,10 @@ macro_rules! call_real {
 
 #[macro_export]
 macro_rules! hook {
-    (priority: $priority:expr, unsafe fn $real_fn:ident ( $self_ident:ident $(, $v:ident : $t:ty)* ) -> $r:ty => $hook_fn:ident $body:block) => {
+    (priority: $priority:expr, unsafe fn $real_fn:ident ( $( $v:ident : $t:ty ),* ) -> $r:ty => $hook_fn:ident $body:block) => {
         $crate::__stackable_hook_impl!(
             $real_fn,
             $hook_fn,
-            $self_ident,
             [ $( ($v : $t) ),* ],
             $r,
             $priority,
@@ -204,23 +196,23 @@ macro_rules! hook {
         );
     };
 
-    (priority: $priority:expr, unsafe fn $real_fn:ident ( $self_ident:ident $(, $v:ident : $t:ty)* ) => $hook_fn:ident $body:block) => {
-        $crate::hook! { priority: $priority, unsafe fn $real_fn ( $self_ident $(, $v : $t)* ) -> () => $hook_fn $body }
+    (priority: $priority:expr, unsafe fn $real_fn:ident ( $( $v:ident : $t:ty ),* ) => $hook_fn:ident $body:block) => {
+        $crate::hook! { priority: $priority, unsafe fn $real_fn ( $( $v : $t ),* ) -> () => $hook_fn $body }
     };
 
-    (unsafe fn $real_fn:ident ( $self_ident:ident $(, $v:ident : $t:ty)* ) -> $r:ty => $hook_fn:ident $body:block) => {
-        $crate::hook! { priority: 0, unsafe fn $real_fn ( $self_ident $(, $v : $t)* ) -> $r => $hook_fn $body }
+    (unsafe fn $real_fn:ident ( $( $v:ident : $t:ty ),* ) -> $r:ty => $hook_fn:ident $body:block) => {
+        $crate::hook! { priority: 0, unsafe fn $real_fn ( $( $v : $t ),* ) -> $r => $hook_fn $body }
     };
 
-    (unsafe fn $real_fn:ident ( $self_ident:ident $(, $v:ident : $t:ty)* ) => $hook_fn:ident $body:block) => {
-        $crate::hook! { priority: 0, unsafe fn $real_fn ( $self_ident $(, $v : $t)* ) -> () => $hook_fn $body }
+    (unsafe fn $real_fn:ident ( $( $v:ident : $t:ty ),* ) => $hook_fn:ident $body:block) => {
+        $crate::hook! { priority: 0, unsafe fn $real_fn ( $( $v : $t ),* ) -> () => $hook_fn $body }
     };
 }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __stackable_hook_impl {
-    ($real_fn:ident, $hook_fn:ident, $self_ident:ident, [ $( ($v:ident : $t:ty) ),* ], $r:ty, $priority:expr, $body:block) => {
+    ($real_fn:ident, $hook_fn:ident, [ $( ($v:ident : $t:ty) ),* ], $r:ty, $priority:expr, $body:block) => {
         $crate::__stackable_paste! {
             type [<__StackableHookFn_ $real_fn>] =
                 unsafe extern "C" fn(*mut [<__StackableNode_ $real_fn>], $($t),*) -> $r;
@@ -454,9 +446,15 @@ macro_rules! __stackable_hook_impl {
                 node: *mut [<__StackableNode_ $real_fn>],
                 $($v : $t),*
             ) -> $r {
+                macro_rules! __stackable_current_self {
+                    () => { node };
+                }
+                macro_rules! __stackable_call_next_fn {
+                    () => {
+                        $crate::__stackable_paste! { [<__stackable_call_next_ $real_fn>] }
+                    };
+                }
                 match ::std::panic::catch_unwind(|| {
-                    #[allow(unused_variables)]
-                    let $self_ident = node as *mut ::core::ffi::c_void;
                     $body
                 }) {
                     Ok(value) => value,

@@ -15,7 +15,7 @@ fn init_hooks() {
 #[cfg(target_os = "macos")]
 hook! {
     priority: 10,
-    unsafe fn read(stackable_self, fd: libc::c_int, buf: *mut libc::c_void, count: libc::size_t)
+    unsafe fn read(fd: libc::c_int, buf: *mut libc::c_void, count: libc::size_t)
         -> libc::ssize_t => my_read {
         // For call_real! testing: block reads from stdin (fd 0)
         if fd == 0 {
@@ -35,7 +35,7 @@ hook! {
         }
 
         // For other fds, allow the read
-        stackable_hooks::call_next!(stackable_self, read, fd, buf, count)
+        stackable_hooks::call_next!(fd, buf, count)
     }
 }
 
