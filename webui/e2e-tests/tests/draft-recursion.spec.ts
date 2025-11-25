@@ -4,18 +4,9 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { setupTestEnvironment, teardownTestEnvironment } from '../utils/test-helpers';
 
 test.describe('Draft Recursion Prevention', () => {
   let baseURL: string;
-
-  test.beforeAll(async () => {
-    baseURL = await setupTestEnvironment();
-  });
-
-  test.afterAll(async () => {
-    await teardownTestEnvironment();
-  });
 
   test('should not cause infinite recursion when typing rapidly', async ({ page }) => {
     // Set up console monitoring to detect recursion
