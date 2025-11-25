@@ -2,7 +2,7 @@
 
 ## Overview
 
-Goal: expose the Agent Harbor execution platform through the Agent Client Protocol (ACP) so that any ACP-compliant editor can talk to `ah-rest-server` the same way it already talks to on-device agents. The ACP reference docs in `resources/acp-specs/docs` (notably `overview/architecture.mdx`, `protocol/overview.mdx`, and `protocol/transports.mdx`) define the JSON-RPC methods we must serve. The REST surface from `specs/Public/REST-Service/API.md` already models session/task lifecycles, so the ACP server becomes an alternative control plane that maps ACP flows (`initialize → session/new → session/prompt → session/update …`) to the existing REST orchestrator.
+Goal: expose the Agent Harbor execution platform through the Agent Client Protocol (ACP) so that any ACP-compliant editor can talk to `ah-rest-server` the same way it already talks to on-device agents. The ACP reference docs in `resources/acp-specs/docs` (notably `overview/architecture.mdx`, `protocol/overview.mdx`, and `protocol/transports.mdx`) define the JSON-RPC methods we must serve. The REST surface from `specs/Public/REST-Service/API.md` already models session/task lifecycles, Command Execution Tracing is specified in `specs/Public/Command-Execution-Tracing.md`, the recorder/user-experience details live in `specs/Public/ah-agent-record.md`, our scenario harness is documented in `specs/Public/Scenario-Format.md`, and the custom ACP/REST extensions are described in `specs/ACP.extensions.md`. Collectively, these references ensure a newcomer understands the end-to-end pipeline we’re wiring together as the ACP server becomes an alternative control plane that maps ACP flows (`initialize → session/new → session/prompt → session/update …`) to the existing REST orchestrator.
 
 Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `agentclientprotocol/rust-sdk` for:
 
@@ -143,7 +143,65 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 ---
 
-### Milestone 5: Recorder Bridge, Follower Playback & Workspace Guardrails
+### Milestone 5: Command Execution Tracing & Passthrough Recorder
+
+**Status**: Planned
+
+#### Deliverables
+
+- [ ] Finalize the new command-trace shim (Linux + macOS builds) that rewrites every agent-launched `exec/posix_spawn` to run under `ah agent record --passthrough --cmd "<command …>" --parent-recorder-socket <sock> --session-socket <sock>`. This includes hooking the shim into all third-party agent launches by default (`ah agent start` exports the correct `LD_PRELOAD`/`DYLD_INSERT_LIBRARIES` and socket descriptors).
+- [ ] Ensure the passthrough recorder mirrors the parent TTY (size negotiation, raw byte forwarding) and streams timestamped input/output to the observer socket for `.ahr` persistence.
+- [ ] Teach the shim to keep forwarding stdout/stderr from indirect child processes (existing interception path) so nested commands remain visible in the recording.
+- [ ] Expose the session socket to followers: implement the `ah show-sandbox-execution` CLI integration plus an ACP hook that tells IDEs how to attach (including execution IDs, backlog replay, and live streaming).
+- [ ] Harden the recorder to handle multiple simultaneous followers, late joins (send backlog), and input injection from followers routed through the `inject_message` bridge back to the running process.
+- [ ] Add basic regression tests (`ah-command-trace-e2e-tests`) that prove the shim loads, rewrites commands, and fails open when env injection or sockets are unavailable.
+- [ ] Automatically create filesystem snapshots after every tool execution and after every file write detected by the shim. For file writes, capture the diff against the previous snapshot for the affected file and emit it as an ACP `diff` content block (or via REST diff endpoints) so clients can show before/after views without re-reading the workspace.
+- [ ] Track writes to agent session files (per agent type) and maintain a mapping between the snapshot taken for those writes and the session file update event. This mapping allows restoring session files to the correct state when a snapshot is restored or branched.
+
+##### Sub-milestones
+
+1. **5.1 Shim injection & fail-open** — Cross-platform build, env propagation, safety tests.
+2. **5.2 Passthrough recorder core** — PTY mirroring, parent/session sockets, observer mock.
+3. **5.3 Follower channel** — Session socket plumbing to `ah show-sandbox-execution`, ACP hooks, multi-follower support.
+4. **5.4 Auto snapshot & diff emission** — Snapshot-after-tool/write automation plus SSE/ACP diff events (with truncation).
+5. **5.5 Session-file mapping** — Detect session-file writes, store metadata, integrate with time-travel.
+
+#### Verification
+
+- [ ] Scenario `tests/acp_bridge/scenarios/passthrough_recorder.yaml` launches a tool via the shim, verifies the rewritten command, and asserts that SSE/`.ahr` output matches the original PTY stream.
+- [ ] Unit tests cover shim rewrite logic on Linux/macOS, socket negotiation, environment injection from `ah agent start`, and failure modes (recorder unavailable → fail open).
+- [ ] Integration test `cargo test -p ah-command-trace-e2e-tests passthrough_follow_mode` spawns the shim, records a command, attaches a follower, injects input (e.g., sudo prompt), and checks that both the running process and `.ahr` capture the interaction faithfully.
+- [ ] Scenario `tests/acp_bridge/scenarios/auto_snapshot_diff.yaml` runs multiple file edits, confirms that each write triggers a snapshot + diff, and verifies the diff is delivered to ACP clients (`type: "diff"` content) and REST diff endpoints.
+- [ ] Scenario-driven integration test (using the LLM API Proxy + Scenario Format harness) launches a real third-party agent, performs writes to agent session files, and validates that the snapshot/session-file mapping stays consistent when branches/time-travel are exercised. This ensures the feature works end-to-end with an actual agent stack instead of a synthetic shim-only test.
+
+---
+
+### Milestone 6: `ah show-sandbox-execution` Integration Tests
+
+**Status**: Planned
+
+#### Deliverables
+
+- [ ] Build deterministic integration fixtures for `ah show-sandbox-execution` covering: backlog replay, live streaming, concurrent followers, and input injection (including prompts that require user input such as sudo passwords).
+- [ ] Add Scenario Format coverage (`tests/acp_bridge/scenarios/show_sandbox_execution.yaml`) that drives a tool command, attaches a follower mid-flight, injects keystrokes, and verifies recorder + ACP output stay consistent.
+- [ ] Create CLI-level tests under `tests/tools/show-sandbox-execution/` that run the follower program against a mocked session socket; verify tty resizing, ctrl-c handling, and graceful shutdown when the recorder exits first.
+- [ ] Ensure SessionViewer shortcut/modal integration is exercised via an automated UI test (e.g., Ratatui harness) so status-bar indicators map to follower sessions correctly.
+
+##### Sub-milestones
+
+1. **6.1 CLI harness** — Finalize follower CLI behavior, add mocked-socket tests.
+2. **6.2 Scenario-driven pipelines** — Use Scenario Format to cover attach/detach, prompts, error handling.
+3. **6.3 SessionViewer UX** — Implement modal UI, keyboard shortcuts, snapshot-aware auto-follow suppression.
+
+#### Verification
+
+- [ ] `cargo test -p ah-agent-record --test show_sandbox_execution_backlog` asserts that the follower receives historical bytes plus live updates and terminates cleanly when the PTY closes.
+- [ ] `cargo test -p ah-agent-record --test show_sandbox_execution_input` proves injected keystrokes routed through the follower reach the underlying PTY (recorded in `.ahr`) and unblock a scripted sudo prompt.
+- [ ] Scenario `tests/acp_bridge/scenarios/show_sandbox_execution.yaml` runs end-to-end (Harbor agent → passthrough recorder → ACP follower) and diff-checks the IDE transcript vs. the `.ahr` output.
+
+---
+
+### Milestone 7: Recorder Bridge, Follower Playback & Workspace Guardrails
 
 **Status**: Planned
 
@@ -155,16 +213,80 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - [ ] Update SessionViewer to surface the same follower terminals locally: show active executions in the status bar, add a shortcut that opens the follower TTY in a modal, and send keystrokes back through the recorder’s `inject_message` TTY so users can unblock prompts (e.g., sudo passwords) directly from the UI.
 - [ ] Ensure recorder outputs always reference sandbox-relative paths and reject any attempt by upstream agents to exec outside the session workspace (guarded via tracer policies).
 - [ ] Provide per-session/tenant policies to disable follower playback export or to redact sensitive commands before they’re replayed to IDEs.
+- [ ] Stream “last lines” for each ongoing tool execution by piping passthrough-recorder output from the parent recorder to the local task manager over the task-manager socket, then fanning it out to the dashboard UI plus SSE/ACP subscribers. Implement throttling/line-wrapping in the task manager so ACP clients see concise yet timely updates (mirrors `last_lines` panel in the TUI).
+
+##### Sub-milestones
+
+1. **7.1 Recorder → ACP bridge** — Translate SSE/IPC events into ACP `session/update` payloads with execution IDs.
+2. **7.2 IDE follower channel** — Emit ACP instructions + policies for follower launch, ensure resilience when IDE disconnects/reconnects.
+3. **7.3 SessionViewer UX & policies** — Local modal hookup plus redaction/governance toggles.
+4. **7.4 Last-lines streaming** — Task-manager socket plumbing to dashboards + ACP SSE, including throttling tests.
 
 #### Verification
 
 - [ ] Scenario `tests/acp_bridge/scenarios/terminal_only.yaml` records a deterministic tool run, streams live updates to the IDE, issues the `ah show-sandbox-execution` command, and asserts the IDE output matches the `.ahr` playback while the SessionViewer modal reflects the same TTY.
 - [ ] Unit tests cover tracer policy enforcement (workspace confinement), recorder-to-ACP translation, replay command construction, and SessionViewer shortcut/modal + input-injection plumbing.
 - [ ] Integration test `cargo test -p ah-rest-server --test acp_recorder_follow_mode` launches a mock agent, records an `.ahr`, triggers IDE replay via ACP, and compares the IDE’s rendered output to the original PTY stream (including injected keystrokes routed through `inject_message`).
+- [ ] Integration test `cargo test -p ah-task-manager --test last_lines_stream` feeds synthetic passthrough output into the parent recorder socket and asserts the local task manager publishes capped “last line” summaries over both the dashboard channel and the REST SSE endpoint; a companion ACP test validates the same data arrives via `session/update`.
 
 ---
 
-### Milestone 6: Plans, Modes, Permissions, and Slash Commands
+### Milestone 8: Pipeline Introspection APIs & UI
+
+**Status**: Planned
+
+#### Deliverables
+
+- [ ] Persist pipeline metadata (pipeline id, steps, per-stream byte counts, timestamps) alongside each execution in the recorder and expose it via new REST endpoints (`GET /api/v1/sessions/{id}/executions/{executionId}/pipelines[...]`).
+- [ ] Implement ACP extensions `_ah/tool_pipeline_list` and `_ah/tool_pipeline_stream`, including streaming support for individual steps (stdout/stderr) with backlog + follow semantics.
+- [ ] Extend SessionViewer follower modal with the pipeline sidebar/menu (as described in `ah-agent-record.md`) and provide the same data to ACP clients so IDEs can render matching UIs.
+- [ ] Teach `ah show-sandbox-execution` to request pipeline metadata and expose a CLI switch (`--step <stepId> --stream stdout`) so terminal users can focus on a single pipeline stage.
+- [ ] Add RBAC/policy enforcement so tenants can disable pipeline introspection or redact specific commands/streams before exposing them over REST/ACP.
+
+##### Sub-milestones
+
+1. **8.1 Recorder metadata capture** — Persist pipeline/step details plus byte ranges.
+2. **8.2 REST surface** — Expose `/pipelines` endpoints with pagination and RBAC.
+3. **8.3 ACP extensions** — Implement `_ah/tool_pipeline_*` methods with backlog + follow support.
+4. **8.4 UI/CLI integrations** — SessionViewer sidebar + `ah show-sandbox-execution --step`.
+
+#### Verification
+
+- [ ] Scenario `tests/acp_bridge/scenarios/pipeline_explorer.yaml` records a multi-step pipeline, exercises the REST + ACP endpoints, and asserts that IDE telemetry matches the `.ahr` metadata (including per-step byte counts).
+- [ ] `cargo test -p ah-agent-record --test pipeline_metadata_roundtrip` ensures recorder-generated pipeline records survive replay and match the REST responses.
+- [ ] UI test `tests/ui/session_viewer_pipeline.rs` drives the SessionViewer shortcut/modal, navigates between steps, and confirms streamed bytes match the selected pipeline step.
+- [ ] CLI test `tests/tools/show-sandbox-execution/pipeline.rs` verifies that `ah show-sandbox-execution --step ...` streams only the requested step and handles follow/unfollow correctly.
+
+---
+
+### Milestone 9: Workspace Info & File Diff Extensions (REST + ACP)
+
+**Status**: Planned
+
+#### Deliverables
+
+- [ ] Build a shared workspace-inspection layer (library in `ah-rest-server`) that powers both REST endpoints (`GET /api/v1/sessions/{id}/workspace/info`, `/workspace/files`, `/files/{path}`, `/diff`, etc.) and the new ACP extensions (`_ah/workspace/info`, `_ah/workspace/list`, `_ah/workspace/file`, `_ah/workspace/diff`). The implementation must live in one place so feature parity and RBAC policies remain consistent.
+- [ ] Implement the ACP methods from `specs/ACP.extensions.md` so IDEs can browse Harbor’s workspace, fetch metadata/content, and request diffs without relying on `fs/read_text_file`.
+- [ ] Ensure the SSE diff events and ACP diff payloads reuse the same diff computation layer, including the truncation rules (64 KiB / 2,000-line thresholds) and `fullDiffUrl` hints described in the REST spec.
+- [ ] Add policy/RBAC knobs to restrict workspace browsing (e.g., blacklist directories, disable diff streaming) and verify they apply equally to REST and ACP.
+- [ ] Advertise `_meta.agent.harbor` capability blocks during `initialize`, documenting which `_ah/*` methods are available (workspace, snapshots, pipelines) and ensuring capability negotiation gates each extension.
+
+##### Sub-milestones
+
+1. **9.1 Shared workspace library** — Build reusable service exposing list/info/diff APIs with caching.
+2. **9.2 REST parity** — Refactor REST endpoints to use the shared layer; add regression tests.
+3. **9.3 ACP workspace extensions** — Implement `_ah/workspace/*` methods with pagination + filtering.
+4. **9.4 Policy enforcement** — Centralize RBAC toggles (directory allowlists, diff redaction) and ensure both transports honor them.
+
+#### Verification
+
+- [ ] Scenario `tests/acp_bridge/scenarios/workspace_browse.yaml` exercises both REST and ACP workspace endpoints side-by-side and asserts identical results (order, pagination, metadata).
+- [ ] Unit tests cover the shared workspace layer (filtering, pagination, diff truncation) and RBAC enforcement.
+- [ ] Integration test `cargo test -p ah-rest-server --test workspace_extensions_rest_vs_acp` invokes the REST endpoints and ACP methods in the same run to ensure parity (including error cases).
+
+---
+
+### Milestone 10: Plans, Modes, Permissions, and Slash Commands
 
 **Status**: Planned
 
@@ -175,6 +297,13 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - [ ] Surface slash commands exposed by Agent Harbor (run tests, open IDE, branch session) via `session/update` command catalog updates.
 - [ ] Implement `session/request_permission` round-trips so that potentially destructive tool calls (e.g., `fs.write_text_file`) can request user approval based on tenant policies.
 
+##### Sub-milestones
+
+1. **10.1 Plan plumbing** — Map Harbor supervisor plans to ACP `agent_plan/update`, store acknowledgements.
+2. **10.2 Mode transitions** — Bridge `session/set_mode` to Harbor runtime profiles with validation tests.
+3. **10.3 Slash command catalog** — Publish actionable commands over ACP and REST with metadata.
+4. **10.4 Permission workflow** — Implement policy-driven prompts, integrate with Scenario Format pause/resume controls.
+
 #### Verification
 
 - [ ] Scenario `tests/acp_bridge/scenarios/plan_and_permissions.yaml` models a flow where the agent publishes a plan, switches modes, and requests permission for a filesystem write; harness assertions verify each stage.
@@ -183,7 +312,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 ---
 
-### Milestone 7: Resilience, Metrics, and Multi-Client Concurrency
+### Milestone 11: Resilience, Metrics, and Multi-Client Concurrency
 
 **Status**: Planned
 
@@ -194,6 +323,13 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - [ ] Harden error handling: classify fatal vs. recoverable errors, ensure JSON-RPC errors adhere to ACP codes, and add structured audit logs.
 - [ ] Load-test harness that spins up multiple Scenario Format clients concurrently to validate concurrency and tenant isolation.
 
+##### Sub-milestones
+
+1. **11.1 Metrics instrumentation** — Add Prometheus gauges/counters + regression tests.
+2. **11.2 Reconnection protocol** — Implement resume tokens, backlog replay, and SDK validation.
+3. **11.3 Error taxonomy** — Standardize JSON-RPC errors, audit logs, and fatal vs recoverable handling.
+4. **11.4 Load/chaos harness** — Expand Scenario Format runners to orchestrate multi-client stress + fault injection.
+
 #### Verification
 
 - [ ] Benchmark test `cargo test -p ah-rest-server --test acp_load_balancer` spawns 50 simulated ACP clients, each replaying `tests/acp_bridge/scenarios/prompt_turn_basic.yaml`, and asserts no dropped events.
@@ -202,7 +338,9 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 ---
 
-### Milestone 8: Optional In-Place Filesystem Passthrough
+### Milestone 12: Optional In-Place Filesystem Passthrough
+
+---
 
 **Status**: Planned
 
@@ -212,14 +350,75 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - [ ] Reuse `ah-fs-snapshots` provider metadata to verify absolute paths belong to the opted-in working copy; refuse access to other directories.
 - [ ] Provide tenant-level policy controls so administrators must opt into exposing local filesystem state before the capability bit is set.
 - [ ] Document the operational caveats (no AgentFS isolation, relies on client to persist edits) inside `specs/Public/Configuration.status.md`.
+- [ ] Extend the command-execution shim so that, when the ACP client advertises `fs.readTextFile` / `fs.writeTextFile`, agent-side file reads/writes are intercepted and serviced by remote `fs/*` calls to the client (with caching/fallback when the client is offline). This keeps the Harbor sandbox in lockstep with the editor’s workspace even in in-place mode.
+
+##### Sub-milestones
+
+1. **12.1 Capability negotiation** — Detect client `fs.*` support and only enable in-place mode when both sides agree.
+2. **12.2 REST proxying** — Reuse task file APIs to service `fs/*` calls, including diff emission and policy checks.
+3. **12.3 Shim redirection** — Intercept agent syscalls and forward to client `fs/*` methods with caching/fallback.
+4. **12.4 Policy & docs** — Document operational caveats and enforce tenant opt-in.
 
 #### Verification
 
 - [ ] Scenario `tests/acp_bridge/scenarios/in_place_fs.yaml` runs a session with in-place mode enabled, exercises read/write operations, and confirms the editor receives the expected diffs.
 - [ ] Integration test `cargo test -p ah-rest-server --test acp_fs_passthrough` uses a temporary on-disk workspace mounted via the client harness to ensure edits round-trip correctly.
 - [ ] Policy test ensures sessions without the opt-in continue to advertise `fs.* = false` even if workloads request it.
+- [ ] Shim-level integration test `cargo test -p ah-command-trace-e2e-tests fs_redirect` verifies that `open`/`read`/`write` syscalls inside the third-party agent result in mocked `fs/*` JSON-RPC calls when the capability is enabled, and fall back to local disk when disabled.
 
 ---
+
+### Milestone 13: Multimodal Input Staging & Third-Party Agent Support
+
+**Status**: Planned
+
+#### Deliverables
+
+- [ ] Implement a media staging subsystem inside each session workspace (`/workspace/.ah-media/<uuid>`) that stores ACP/REST-uploaded attachments (images, audio, arbitrary binaries) with metadata (mime type, size, timestamps). Ensure staging respects tenant policies and integrates with time-travel snapshots.
+- [ ] Extend the ACP gateway & REST API to ingest multimodal content (per `resources/acp-specs/docs/protocol/content.mdx`), persist it in the staging area, and return `harborMediaId` references so downstream components can rehydrate attachments.
+- [ ] Update third-party agent launchers (documented in `specs/Public/3rd-Party-Agents/`) to consume staged media: e.g., pass file paths via CLI flags, provide HTTP upload helpers, or call agent-specific APIs as needed.
+- [ ] Ensure the recorder/command-tracing stack captures media references so recorded sessions and snapshots include the context required to replay multimodal inputs.
+- [ ] Integrate the flow into the LLM API Proxy (Scenario Format) so we can drive real third-party agents with media inputs and verify end-to-end behavior.
+
+##### Sub-milestones
+
+1. **13.1 Media staging service** — Define on-disk layout, metadata, retention policies.
+2. **13.2 REST + ACP ingestion** — Extend APIs to upload/stream attachments, return `harborMediaId`.
+3. **13.3 Agent adapters** — Update each third-party agent wrapper with media ingestion (e.g., CLI flags, HTTP uploads).
+4. **13.4 Recorder + snapshot integration** — Persist media references in `.ahr`, ensure snapshots/time-travel include assets.
+5. **13.5 Scenario coverage** — Add Scenario Format fixtures for multimodal inputs driven via the LLM API Proxy.
+
+#### Verification
+
+- [ ] Scenario `tests/acp_bridge/scenarios/multimodal_input.yaml` drives an ACP client that uploads images/audio, ensures the media is staged, and verifies the third-party agent receives and consumes the files.
+- [ ] Agent-specific integration tests (one per supported agent) cover media handling (e.g., Claude Code image input, OpenHands audio) and confirm outputs are recorded/replayed correctly.
+- [ ] Snapshot restoration test ensures media files referenced by snapshots are restored alongside session files, preserving agent state when branching/time-traveling.
+
+### Milestone 14: SessionViewer UI Enhancements & Regression Suite
+
+**Status**: Planned
+
+#### Deliverables
+
+- [ ] Ship the SessionViewer follower tray/modal: session status-bar indicators, keyboard shortcuts (open/close, switch follower), and embedded PTY panes wired to recorder streams.
+- [ ] Add the pipeline explorer sidebar plus workspace/diff panes so users can inspect `_ah/tool_pipeline_*` and `_ah/workspace/*` data without leaving the UI.
+- [ ] Integrate time-travel controls (snapshot list, branch selector, “jump to follower”) that leverage recorder anchors, ensuring UI actions mirror REST/ACP time-travel APIs.
+- [ ] Surface “last lines” summaries, media attachment previews, and multimodal context hints inside the SessionViewer to align with Milestones 5, 8, 9, and 13.
+- [ ] Build a regression harness (Ratatui/TUI) that replays Scenario Format fixtures, captures golden screenshots/logs for key UI states, and runs in CI to prevent regressions.
+
+##### Sub-milestones
+
+1. **14.1 Follower tray & shortcuts** — Implement status bar entries, modal navigation, keystroke passthrough; add golden screenshot tests.
+2. **14.2 Pipeline & workspace panes** — Render pipeline steps, diffs, and workspace metadata using the shared workspace layer; include interactive focus/follow controls.
+3. **14.3 Timeline & branch UX** — Display snapshots/branches, enable jump-to-snapshot/follower actions, and sync with `_ah/session_seek`.
+4. **14.4 Regression harness** — Extend the TUI screenshot harness + Scenario Format playback to exercise the new UI states and enforce thresholds on layout changes.
+
+#### Verification
+
+- [ ] UI test `tests/ui/session_viewer_followers.rs` verifies shortcuts open the follower modal, multiple executions render correctly, and input injection matches `.ahr` output.
+- [ ] UI test `tests/ui/session_viewer_pipeline.rs` drives the pipeline sidebar, ensures streamed bytes align with the selected step, and confirms truncation hints render.
+- [ ] UI test `tests/ui/session_viewer_workspace.rs` exercises workspace/diff panes, snapshot jump controls, and last-line panels using mocked `_ah/workspace/*` data.
+- [ ] Scenario `tests/acp_bridge/scenarios/session_viewer_ui.yaml` replays a full session (followers + pipelines + multimodal inputs) and diff-checks golden screenshots/logs.
 
 ## Outstanding Tasks After Milestones
 
