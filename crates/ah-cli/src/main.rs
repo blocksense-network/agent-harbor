@@ -28,6 +28,7 @@ async fn main() -> Result<()> {
         Commands::Tui(_)
             | Commands::Agent {
                 subcommand: AgentCommands::Record(_)
+                    | AgentCommands::Start(_)
                     | AgentCommands::Replay(_)
                     | AgentCommands::BranchPoints(_)
             }
