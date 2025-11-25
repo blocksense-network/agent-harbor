@@ -16,6 +16,21 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
+// Macro to convert i32 to usize only on macOS to avoid unnecessary conversion warnings on Linux
+#[cfg(target_os = "macos")]
+macro_rules! macos_i32_to_usize {
+    ($expr:expr) => {
+        $expr as usize
+    };
+}
+
+#[cfg(not(target_os = "macos"))]
+macro_rules! macos_i32_to_usize {
+    ($expr:expr) => {
+        $expr
+    };
+}
+
 thread_local! {
     static IN_TRACE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
@@ -713,7 +728,7 @@ stackable_hooks::hook! {
 
                  for i in 0..iovcnt {
                      if remaining == 0 { break; }
-                     let iov_ptr = iov.add(i);
+                     let iov_ptr = iov.add(macos_i32_to_usize!(i));
                      let iov_base = (*iov_ptr).iov_base;
                      let iov_len = (*iov_ptr).iov_len;
 
