@@ -10,7 +10,8 @@ use std::process::{Command, Stdio};
 
 mod platform;
 
-use crate::platform::macos::CommandExt;
+#[cfg(target_os = "macos")]
+use crate::platform::CommandExt;
 
 #[test]
 fn test_program_runs_without_hooks() {

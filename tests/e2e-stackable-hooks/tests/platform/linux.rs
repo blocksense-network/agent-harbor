@@ -9,11 +9,11 @@ use std::process::Command;
 /// Extension trait for Command to add shim library injection
 #[allow(dead_code)]
 pub trait CommandExt {
-    fn with_shim_libraries(self, libraries: &[PathBuf]) -> Self;
+    fn with_shim_libraries(&mut self, libraries: &[PathBuf]) -> &mut Self;
 }
 
 impl CommandExt for Command {
-    fn with_shim_libraries(mut self, libraries: &[PathBuf]) -> Self {
+    fn with_shim_libraries(&mut self, libraries: &[PathBuf]) -> &mut Self {
         if !libraries.is_empty() {
             let library_paths =
                 libraries.iter().map(|lib| lib.to_string_lossy()).collect::<Vec<_>>().join(":");

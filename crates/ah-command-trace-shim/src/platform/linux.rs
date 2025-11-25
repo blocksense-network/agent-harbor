@@ -51,7 +51,7 @@ pub fn send_keepalive() -> Result<(), Box<dyn std::error::Error>> {
 // Linux-specific hooks for vfork and clone
 stackable_hooks::hook! {
     unsafe fn vfork() -> libc::pid_t => my_vfork {
-        stackable_hooks::call_next!( vfork)
+        stackable_hooks::call_next!()
     }
 }
 

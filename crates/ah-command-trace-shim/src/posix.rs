@@ -713,7 +713,7 @@ stackable_hooks::hook! {
 
                  for i in 0..iovcnt {
                      if remaining == 0 { break; }
-                     let iov_ptr = iov.add(i as usize);
+                     let iov_ptr = iov.add(i);
                      let iov_base = (*iov_ptr).iov_base;
                      let iov_len = (*iov_ptr).iov_len;
 
