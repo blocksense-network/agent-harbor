@@ -3,5 +3,8 @@
 
 fn main() {
     // FSEventStream* symbols live in CoreServices, so ensure we link against it.
-    println!("cargo:rustc-link-lib=framework=CoreServices");
+    // This is only needed on macOS.
+    if std::env::var("TARGET").unwrap().contains("apple") {
+        println!("cargo:rustc-link-lib=framework=CoreServices");
+    }
 }

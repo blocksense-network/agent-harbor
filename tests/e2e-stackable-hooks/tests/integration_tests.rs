@@ -8,6 +8,8 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+mod platform;
+
 #[test]
 fn test_program_runs_without_hooks() {
     let test_program = get_test_program_path();
@@ -27,13 +29,14 @@ fn test_program_runs_without_hooks() {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
 fn test_shim_library_a_loading() {
     let test_program = get_test_program_path();
     let shim_library_a = get_shim_library_a_path();
 
     let output = Command::new(&test_program)
-        .arg("--with-hooks-priority")
-        .env("DYLD_INSERT_LIBRARIES", &shim_library_a)
+        .args(&["--with-hooks-priority"])
+        .with_shim_libraries(&[shim_library_a])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -54,13 +57,14 @@ fn test_shim_library_a_loading() {
 
 /// Test that shim library B can be loaded individually
 #[test]
+#[cfg(target_os = "macos")]
 fn test_shim_library_b_loading() {
     let test_program = get_test_program_path();
     let shim_library_b = get_shim_library_b_path();
 
     let output = Command::new(&test_program)
-        .arg("--with-hooks-priority")
-        .env("DYLD_INSERT_LIBRARIES", &shim_library_b)
+        .args(&["--with-hooks-priority"])
+        .with_shim_libraries(&[shim_library_b])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -86,6 +90,7 @@ fn test_shim_library_b_loading() {
 /// Test that demonstrates the priority system by loading both shim libraries simultaneously
 /// and verifying that hooks are called in the correct priority order
 #[test]
+#[cfg(target_os = "macos")]
 fn test_priority_system_demonstration() {
     let test_program = get_test_program_path();
     let shim_library_a = get_shim_library_a_path();
@@ -94,13 +99,10 @@ fn test_priority_system_demonstration() {
     eprintln!("Library A path: {}", shim_library_a.display());
     eprintln!("Library B path: {}", shim_library_b.display());
 
-    // Load both libraries simultaneously (order in DYLD_INSERT_LIBRARIES doesn't matter, priority should determine execution order)
-    let libraries = format!("{}:{}", shim_library_a.display(), shim_library_b.display());
-    eprintln!("DYLD_INSERT_LIBRARIES: {}", libraries);
-
+    // Load both libraries simultaneously (order doesn't matter, priority should determine execution order)
     let output = Command::new(&test_program)
-        .arg("--with-hooks-priority")
-        .env("DYLD_INSERT_LIBRARIES", &libraries)
+        .args(&["--with-hooks-priority"])
+        .with_shim_libraries(&[shim_library_a, shim_library_b])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -153,17 +155,16 @@ fn test_priority_system_demonstration() {
 
 /// Test that call_real! bypasses other hooks and calls the original function directly
 #[test]
+#[cfg(target_os = "macos")]
 fn test_call_real_bypasses_hooks() {
     let test_program = get_test_program_path();
     let shim_library_a = get_shim_library_a_path();
     let shim_library_b = get_shim_library_b_path();
 
     // Load both libraries - set TEST_CALL_REAL=1 so library A uses call_real! for close
-    let libraries = format!("{}:{}", shim_library_a.display(), shim_library_b.display());
-
     let output = Command::new(&test_program)
-        .arg("--with-hooks-priority")
-        .env("DYLD_INSERT_LIBRARIES", &libraries)
+        .args(&["--with-hooks-priority"])
+        .with_shim_libraries(&[shim_library_a, shim_library_b])
         .env("TEST_CALL_REAL", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -209,15 +210,14 @@ fn test_call_real_bypasses_hooks() {
 /// This test runs a demo binary that loads a hook library and demonstrates
 /// that call_real! bypasses hooks while normal calls execute them.
 #[test]
+#[cfg(target_os = "macos")]
 fn test_call_real_from_application_bypasses_hooks() {
     let demo_program = get_call_real_demo_path();
     let shim_library = get_call_real_shim_path();
 
     // Load the call_real_shim library which blocks reads from stdin
-    let libraries = shim_library.display().to_string();
-
     let output = Command::new(&demo_program)
-        .env("DYLD_INSERT_LIBRARIES", &libraries)
+        .with_shim_libraries(&[shim_library])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -273,6 +273,7 @@ fn get_test_program_path() -> PathBuf {
 }
 
 /// Get the path to shim library A
+#[allow(dead_code)]
 fn get_shim_library_a_path() -> PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
@@ -293,6 +294,7 @@ fn get_shim_library_a_path() -> PathBuf {
 }
 
 /// Get the path to shim library B
+#[allow(dead_code)]
 fn get_shim_library_b_path() -> PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
@@ -313,6 +315,7 @@ fn get_shim_library_b_path() -> PathBuf {
 }
 
 /// Get the path to the call_real_demo binary
+#[allow(dead_code)]
 fn get_call_real_demo_path() -> PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
@@ -327,6 +330,7 @@ fn get_call_real_demo_path() -> PathBuf {
 }
 
 /// Get the path to the call_real_shim library
+#[allow(dead_code)]
 fn get_call_real_shim_path() -> PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
