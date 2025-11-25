@@ -18,10 +18,16 @@
 name: CI
 
 on:
-  push:
-    branches: [main, linux-sandbox]
+  # Enable option to manually run the action:
+  workflow_dispatch:
+
+  # Run on PRs that target `main` it:
   pull_request:
-    branches: [main, linux-sandbox]
+    branches:
+      - main
+
+  # Run the pipeline for each PR part of merge queues as well
+  merge_group:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
