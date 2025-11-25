@@ -1022,6 +1022,10 @@ register-fskit-extension:
 download-mac-sandbox-docs:
     nix run .#sosumi-docs-downloader -- fskit endpointsecurity -o resources
 
+# Download Agent Client Protocol specifications
+download-acp-specs:
+    python3 scripts/resource_downloader.py acp-specs
+
 # Run a program with MITM proxy capturing all HTTP(S) traffic
 # Usage: just mitm claude
 #        just mitm curl https://api.anthropic.com/v1/models
