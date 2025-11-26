@@ -10,9 +10,7 @@
 //! dispatcher.
 
 use crate::{
-    acp::{
-        translator::{InitializeLite, JsonRpcTranslator},
-    },
+    acp::translator::{InitializeLite, JsonRpcTranslator},
     auth::{AuthConfig, Claims},
     config::{AcpAuthPolicy, AcpConfig},
     error::{ServerError, ServerResult},
@@ -128,24 +126,19 @@ impl Side for HarborAgentSide {
         // Backwards compatibility: schema requires fields we historically omitted.
         if method == "initialize" {
             if let Value::Object(obj) = &mut params_raw {
-                obj.entry("protocolVersion")
-                    .or_insert_with(|| Value::String("1.0".to_string()));
+                obj.entry("protocolVersion").or_insert_with(|| Value::String("1.0".to_string()));
             }
         }
         if method == "session/new" {
             if let Value::Object(obj) = &mut params_raw {
-                obj.entry("cwd")
-                    .or_insert_with(|| Value::String("/workspace".to_string()));
-                obj.entry("mcpServers")
-                    .or_insert_with(|| Value::Array(vec![]));
+                obj.entry("cwd").or_insert_with(|| Value::String("/workspace".to_string()));
+                obj.entry("mcpServers").or_insert_with(|| Value::Array(vec![]));
             }
         }
         if method == "session/load" {
             if let Value::Object(obj) = &mut params_raw {
-                obj.entry("cwd")
-                    .or_insert_with(|| Value::String("/workspace".to_string()));
-                obj.entry("mcpServers")
-                    .or_insert_with(|| Value::Array(vec![]));
+                obj.entry("cwd").or_insert_with(|| Value::String("/workspace".to_string()));
+                obj.entry("mcpServers").or_insert_with(|| Value::Array(vec![]));
             }
         }
 
@@ -171,7 +164,8 @@ impl Side for HarborAgentSide {
             }
         }
 
-        let raw_value = serde_json::to_string(&decode_value).map_err(|_| Error::invalid_params())?;
+        let raw_value =
+            serde_json::to_string(&decode_value).map_err(|_| Error::invalid_params())?;
         let raw_val = serde_json::value::RawValue::from_string(raw_value)
             .map_err(|_| Error::invalid_params())?;
 
@@ -553,55 +547,53 @@ async fn route_wrapped_request(
                 .map_err(server_error_to_rpc)
         }
         ClientRequest::SetSessionModeRequest(_) => Err(Error::method_not_found()),
-        ClientRequest::ExtMethodRequest(ext) => {
-            match ext.method.as_ref() {
-                "session/list" => handle_session_list(state, request.raw, &guard)
+        ClientRequest::ExtMethodRequest(ext) => match ext.method.as_ref() {
+            "session/list" => handle_session_list(state, request.raw, &guard)
+                .await
+                .map_err(server_error_to_rpc),
+            "session/cancel" => {
+                drop(guard);
+                let mut guard = ctx.lock().await;
+                handle_session_cancel(state, &mut guard, driver, sender, request.raw)
                     .await
-                    .map_err(server_error_to_rpc),
-                "session/cancel" => {
-                    drop(guard);
-                    let mut guard = ctx.lock().await;
-                    handle_session_cancel(state, &mut guard, driver, sender, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/pause" => {
-                    drop(guard);
-                    let mut guard = ctx.lock().await;
-                    handle_session_pause(state, &mut guard, driver, sender, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/resume" => {
-                    drop(guard);
-                    let mut guard = ctx.lock().await;
-                    handle_session_resume(state, &mut guard, driver, sender, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "ah/terminal/follow" => {
-                    drop(guard);
-                    handle_terminal_follow(state, driver, sender, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "ah/terminal/write" => {
-                    drop(guard);
-                    let mut guard = ctx.lock().await;
-                    handle_terminal_write(state, &mut guard, driver, sender, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "ah/terminal/detach" => {
-                    drop(guard);
-                    handle_terminal_detach(driver, sender, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "ping" => Ok(request.raw),
-                _ => Err(Error::method_not_found()),
+                    .map_err(server_error_to_rpc)
             }
-        }
+            "session/pause" => {
+                drop(guard);
+                let mut guard = ctx.lock().await;
+                handle_session_pause(state, &mut guard, driver, sender, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "session/resume" => {
+                drop(guard);
+                let mut guard = ctx.lock().await;
+                handle_session_resume(state, &mut guard, driver, sender, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "ah/terminal/follow" => {
+                drop(guard);
+                handle_terminal_follow(state, driver, sender, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "ah/terminal/write" => {
+                drop(guard);
+                let mut guard = ctx.lock().await;
+                handle_terminal_write(state, &mut guard, driver, sender, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "ah/terminal/detach" => {
+                drop(guard);
+                handle_terminal_detach(driver, sender, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "ping" => Ok(request.raw),
+            _ => Err(Error::method_not_found()),
+        },
     }
 }
 
@@ -662,7 +654,8 @@ async fn route_request_stdio(
             let caps = JsonRpcTranslator::negotiate_caps(&state.config);
             guard.negotiated_caps = Some(caps.clone());
             drop(guard);
-            let req: InitializeLite = serde_json::from_value(request.raw.clone()).unwrap_or_default();
+            let req: InitializeLite =
+                serde_json::from_value(request.raw.clone()).unwrap_or_default();
             Ok(JsonRpcTranslator::initialize_response_typed(&caps, &req))
         }
         ClientRequest::AuthenticateRequest(_) => {
@@ -695,54 +688,52 @@ async fn route_request_stdio(
                 .map_err(server_error_to_rpc)
         }
         ClientRequest::SetSessionModeRequest(_) => Err(Error::method_not_found()),
-        ClientRequest::ExtMethodRequest(ext) => {
-            match ext.method.as_ref() {
-                "session/list" => handle_session_list(state, request.raw, &guard)
+        ClientRequest::ExtMethodRequest(ext) => match ext.method.as_ref() {
+            "session/list" => handle_session_list(state, request.raw, &guard)
+                .await
+                .map_err(server_error_to_rpc),
+            "session/cancel" => {
+                drop(guard);
+                let mut guard = ctx.lock().await;
+                handle_session_cancel_stdio(state, &mut guard, driver, writer, request.raw)
                     .await
-                    .map_err(server_error_to_rpc),
-                "session/cancel" => {
-                    drop(guard);
-                    let mut guard = ctx.lock().await;
-                    handle_session_cancel_stdio(state, &mut guard, driver, writer, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/pause" => {
-                    drop(guard);
-                    let mut guard = ctx.lock().await;
-                    handle_session_pause_stdio(state, &mut guard, driver, writer, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/resume" => {
-                    drop(guard);
-                    let mut guard = ctx.lock().await;
-                    handle_session_resume_stdio(state, &mut guard, driver, writer, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "ah/terminal/follow" => {
-                    drop(guard);
-                    handle_terminal_follow_stdio(state, driver, writer, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "ah/terminal/write" => {
-                    drop(guard);
-                    let mut guard = ctx.lock().await;
-                    handle_terminal_write_stdio(state, &mut guard, driver, writer, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "ah/terminal/detach" => {
-                    drop(guard);
-                    handle_terminal_detach_stdio(driver, writer, request.raw)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                _ => Err(Error::method_not_found()),
+                    .map_err(server_error_to_rpc)
             }
-        }
+            "session/pause" => {
+                drop(guard);
+                let mut guard = ctx.lock().await;
+                handle_session_pause_stdio(state, &mut guard, driver, writer, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "session/resume" => {
+                drop(guard);
+                let mut guard = ctx.lock().await;
+                handle_session_resume_stdio(state, &mut guard, driver, writer, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "ah/terminal/follow" => {
+                drop(guard);
+                handle_terminal_follow_stdio(state, driver, writer, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "ah/terminal/write" => {
+                drop(guard);
+                let mut guard = ctx.lock().await;
+                handle_terminal_write_stdio(state, &mut guard, driver, writer, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            "ah/terminal/detach" => {
+                drop(guard);
+                handle_terminal_detach_stdio(driver, writer, request.raw)
+                    .await
+                    .map_err(server_error_to_rpc)
+            }
+            _ => Err(Error::method_not_found()),
+        },
     }
 }
 
@@ -780,6 +771,70 @@ fn json_error(id: Value, code: i64, message: &str) -> Value {
         "id": id,
         "error": { "code": code, "message": message }
     })
+}
+
+fn sanitize_command(cmd: &str) -> Option<String> {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.len() > 1024 {
+        return None;
+    }
+    if trimmed.chars().any(|c| c == '\n' || c == '\r') {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+/// Derive a human-friendly command string for a tool execution from recorded
+/// tool metadata, preferring the tool arguments over the name.
+fn tool_event_command(tool_name: &[u8], tool_args: &[u8]) -> Option<String> {
+    let args = String::from_utf8_lossy(tool_args).trim().to_string();
+    if !args.is_empty() {
+        return Some(args);
+    }
+    let name = String::from_utf8_lossy(tool_name).trim().to_string();
+    if !name.is_empty() {
+        return Some(name);
+    }
+    None
+}
+
+/// Walk recorded session events (latest first) to find the command associated
+/// with an execution id. Falls back to the client-supplied value when history
+/// is unavailable.
+async fn resolve_execution_command(
+    app_state: &AppState,
+    session_id: &str,
+    execution_id: &str,
+    provided: Option<&str>,
+) -> Option<String> {
+    if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
+        if let Some(cmd) = command_from_events(&events, execution_id) {
+            return Some(cmd);
+        }
+    }
+    provided.and_then(sanitize_command)
+}
+
+fn command_from_events(events: &[SessionEvent], execution_id: &str) -> Option<String> {
+    for event in events.iter().rev() {
+        match event {
+            SessionEvent::ToolUse(ev) if ev.tool_execution_id == execution_id.as_bytes() => {
+                if let Some(cmd) = tool_event_command(&ev.tool_name, &ev.tool_args) {
+                    return Some(cmd);
+                }
+            }
+            SessionEvent::ToolResult(ev) if ev.tool_execution_id == execution_id.as_bytes() => {
+                if let Some(cmd) = tool_event_command(&ev.tool_name, &[]) {
+                    return Some(cmd);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 async fn handle_authenticate_with_raw(
@@ -1009,12 +1064,20 @@ async fn handle_terminal_follow(
         .get("executionId")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
-    let command = params
-        .get("command")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ServerError::BadRequest("command is required".into()))?;
+    let cmd_string = resolve_execution_command(
+        &state.app_state,
+        session_id,
+        execution_id,
+        params.get("command").and_then(|v| v.as_str()),
+    )
+    .await
+    .ok_or_else(|| {
+        ServerError::BadRequest(
+            "command is required when no recorded tool execution matches executionId".into(),
+        )
+    })?;
 
-    let cmd = follower_command(execution_id, session_id, command);
+    let cmd = follower_command(execution_id, session_id, &cmd_string);
 
     let update = terminal_follow_params(session_id, execution_id, &cmd);
     let _ = send_session_notification(driver, sender, update).await;
@@ -1078,12 +1141,20 @@ async fn handle_terminal_follow_stdio(
         .get("executionId")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
-    let command = params
-        .get("command")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ServerError::BadRequest("command is required".into()))?;
+    let cmd_string = resolve_execution_command(
+        &state.app_state,
+        session_id,
+        execution_id,
+        params.get("command").and_then(|v| v.as_str()),
+    )
+    .await
+    .ok_or_else(|| {
+        ServerError::BadRequest(
+            "command is required when no recorded tool execution matches executionId".into(),
+        )
+    })?;
 
-    let cmd = follower_command(execution_id, session_id, command);
+    let cmd = follower_command(execution_id, session_id, &cmd_string);
 
     let update = terminal_follow_params(session_id, execution_id, &cmd);
     let _ = send_session_notification_stdout(driver, writer, update).await;
@@ -2003,34 +2074,44 @@ fn event_to_json(session_id: &str, event: &SessionEvent) -> Value {
             "text": String::from_utf8_lossy(&thought.thought),
             "timestamp": thought.timestamp,
         }),
-        SessionEvent::ToolUse(tool) => json!({
-            "type": "tool_use",
-            "sessionId": session_id,
-            "toolName": String::from_utf8_lossy(&tool.tool_name),
-            "args": String::from_utf8_lossy(&tool.tool_args),
-            "executionId": String::from_utf8_lossy(&tool.tool_execution_id),
-            "status": tool_status_str(&tool.status),
-            "timestamp": tool.timestamp,
-            "followerCommand": follower_command(
+        SessionEvent::ToolUse(tool) => {
+            let derived = tool_event_command(&tool.tool_name, &tool.tool_args)
+                .unwrap_or_else(|| String::from_utf8_lossy(&tool.tool_name).to_string());
+            let follower = follower_command(
                 &String::from_utf8_lossy(&tool.tool_execution_id),
                 session_id,
-                &String::from_utf8_lossy(&tool.tool_name)
-            ),
-        }),
-        SessionEvent::ToolResult(result) => json!({
-            "type": "tool_result",
-            "sessionId": session_id,
-            "toolName": String::from_utf8_lossy(&result.tool_name),
-            "output": String::from_utf8_lossy(&result.tool_output),
-            "executionId": String::from_utf8_lossy(&result.tool_execution_id),
-            "status": tool_status_str(&result.status),
-            "timestamp": result.timestamp,
-            "followerCommand": follower_command(
+                &derived,
+            );
+            json!({
+                "type": "tool_use",
+                "sessionId": session_id,
+                "toolName": String::from_utf8_lossy(&tool.tool_name),
+                "args": String::from_utf8_lossy(&tool.tool_args),
+                "executionId": String::from_utf8_lossy(&tool.tool_execution_id),
+                "status": tool_status_str(&tool.status),
+                "timestamp": tool.timestamp,
+                "followerCommand": follower,
+            })
+        }
+        SessionEvent::ToolResult(result) => {
+            let derived = tool_event_command(&result.tool_name, &[])
+                .unwrap_or_else(|| String::from_utf8_lossy(&result.tool_name).to_string());
+            let follower = follower_command(
                 &String::from_utf8_lossy(&result.tool_execution_id),
                 session_id,
-                &String::from_utf8_lossy(&result.tool_name)
-            ),
-        }),
+                &derived,
+            );
+            json!({
+                "type": "tool_result",
+                "sessionId": session_id,
+                "toolName": String::from_utf8_lossy(&result.tool_name),
+                "output": String::from_utf8_lossy(&result.tool_output),
+                "executionId": String::from_utf8_lossy(&result.tool_execution_id),
+                "status": tool_status_str(&result.status),
+                "timestamp": result.timestamp,
+                "followerCommand": follower,
+            })
+        }
         SessionEvent::FileEdit(edit) => json!({
             "type": "file_edit",
             "sessionId": session_id,
@@ -2136,6 +2217,40 @@ mod tests {
             json.pointer("/event/rows").and_then(|v| v.as_u64()),
             Some(33)
         );
+    }
+
+    #[test]
+    fn command_from_tool_use_prefers_args() {
+        let events = vec![SessionEvent::tool_use(
+            "bash".into(),
+            "npm test".into(),
+            "exec-42".into(),
+            SessionToolStatus::Started,
+            1,
+        )];
+        let cmd = command_from_events(&events, "exec-42");
+        assert_eq!(cmd.as_deref(), Some("npm test"));
+    }
+
+    #[test]
+    fn command_from_tool_use_falls_back_to_name() {
+        let events = vec![SessionEvent::tool_use(
+            "cargo fmt".into(),
+            "".into(),
+            "exec-99".into(),
+            SessionToolStatus::Started,
+            1,
+        )];
+        let cmd = command_from_events(&events, "exec-99");
+        assert_eq!(cmd.as_deref(), Some("cargo fmt"));
+    }
+
+    #[test]
+    fn sanitize_command_rejects_newlines_and_empty() {
+        assert!(sanitize_command("echo hi").is_some());
+        assert!(sanitize_command("   ").is_none());
+        assert!(sanitize_command("evil\ncmd").is_none());
+        assert!(sanitize_command("evil\rcmd").is_none());
     }
 }
 
