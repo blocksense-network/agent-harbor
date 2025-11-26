@@ -10,3 +10,12 @@ events:
   - at_ms: 10
     kind: status
     value: "completed"
+assertions:
+  - kind: has_event
+    event:
+      type: status
+      status: running
+  - kind: has_event
+    event:
+      type: status
+      status: completed
