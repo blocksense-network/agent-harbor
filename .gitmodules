@@ -7,3 +7,6 @@
 [submodule "vendor/vt100"]
 	path = vendor/vt100
 	url = git@github.com:blocksense-network/vt100-rust.git
+[submodule "vendor/rust-sdk"]
+	path = vendor/rust-sdk
+	url = https://github.com/agentclientprotocol/rust-sdk
