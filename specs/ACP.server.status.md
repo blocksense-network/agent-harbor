@@ -210,6 +210,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] Integration test `cargo test -p ah-rest-server --test acp_cancel acp_session_cancel_streams_update` verifies `session/cancel` emits a cancelled status and acknowledges the request.
 - [x] `cargo test -p ah-rest-server --test acp_prompt acp_prompt_rejects_on_context_limit` rejects over-budget prompts with `stopReason: context_limit` and avoids echoing them into session logs.
 - [x] `cargo test -p ah-rest-server --test acp_sessions acp_session_new_respects_context_limit` rejects oversized initial prompts with `stopReason: context_limit` and suppresses `session/update` fanout.
+- [x] Scenario `tests/acp_bridge/scenarios/initialize_and_auth.yaml` + integration test `cargo test -p ah-rest-server --test acp_initialize_and_auth_scenario_succeeds` validate the initialize/auth handshake and streamed status transitions using legacy `events`/`assertions`.
 - [ ] Scenario playback assertions are exercised automatically in CI once ACP-specific fixtures supply `assertions:` blocks (mock store now evaluates them).
 
 #### Implementation Details (current)
