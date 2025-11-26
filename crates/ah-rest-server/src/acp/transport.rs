@@ -298,6 +298,14 @@ async fn handle_rpc(
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
+        "_ah/terminal/follow" => match handle_terminal_follow(sender, params).await {
+            Ok(result) => Some(rpc_response(id, result)),
+            Err(err) => Some(json_error(id, -32000, &err.to_string())),
+        },
+        "_ah/terminal/detach" => match handle_terminal_detach(sender, params).await {
+            Ok(result) => Some(rpc_response(id, result)),
+            Err(err) => Some(json_error(id, -32000, &err.to_string())),
+        },
         _ => {
             let result = request.get("params").cloned().unwrap_or(Value::Null);
             Some(rpc_response(id, result))
@@ -392,6 +400,50 @@ async fn handle_terminal_write(
 
     subscribe_session(ctx, &state.app_state, session_id, sender).await;
     Ok(json!({"sessionId": session_id, "accepted": true}))
+}
+
+async fn handle_terminal_follow(
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    params: Value,
+) -> ServerResult<Value> {
+    let session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
+    let execution_id = params
+        .get("executionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
+    let command = params
+        .get("command")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("command is required".into()))?;
+
+    let cmd = follower_command(execution_id, session_id, command);
+
+    let update = terminal_follow_update(session_id, execution_id, &cmd);
+    let _ = send_json(sender, update).await;
+
+    Ok(json!({ "sessionId": session_id, "executionId": execution_id, "command": cmd }))
+}
+
+async fn handle_terminal_detach(
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    params: Value,
+) -> ServerResult<Value> {
+    let session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
+    let execution_id = params
+        .get("executionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
+
+    let update = terminal_detach_update(session_id, execution_id);
+    let _ = send_json(sender, update).await;
+
+    Ok(json!({ "sessionId": session_id, "executionId": execution_id, "detached": true }))
 }
 
 async fn handle_session_list(
@@ -906,6 +958,35 @@ fn pty_to_update(session_id: &str, msg: &TaskManagerMessage) -> Value {
             }
         }),
     }
+}
+
+fn terminal_follow_update(session_id: &str, execution_id: &str, command: &str) -> Value {
+    json!({
+        "method": "session/update",
+        "params": {
+            "sessionId": session_id,
+            "event": {
+                "type": "terminal_follow",
+                "executionId": execution_id,
+                "command": command,
+                "timestamp": chrono::Utc::now().timestamp_millis(),
+            }
+        }
+    })
+}
+
+fn terminal_detach_update(session_id: &str, execution_id: &str) -> Value {
+    json!({
+        "method": "session/update",
+        "params": {
+            "sessionId": session_id,
+            "event": {
+                "type": "terminal_detach",
+                "executionId": execution_id,
+                "timestamp": chrono::Utc::now().timestamp_millis(),
+            }
+        }
+    })
 }
 
 fn tool_status_str(status: &SessionToolStatus) -> &'static str {

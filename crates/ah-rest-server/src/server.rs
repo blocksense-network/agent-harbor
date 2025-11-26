@@ -121,6 +121,10 @@ impl Server {
                 get(handlers::sessions::stream_session_events),
             )
             .route(
+                "/sessions/:id/pty",
+                get(handlers::sessions::stream_session_pty),
+            )
+            .route(
                 "/sessions/:id/info",
                 get(handlers::sessions::get_session_info),
             )
