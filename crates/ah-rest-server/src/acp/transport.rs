@@ -45,6 +45,11 @@ use ah_rest_api_contract::{
 };
 use crate::acp::recorder::follower_command;
 
+/// Conservative context window guardrail for inbound ACP prompts.
+/// Matches the per-message cap to keep total user-provided text bounded
+/// until the recorder/LLM bridge is wired (Milestone 4 follow-up).
+const MAX_CONTEXT_CHARS: usize = 16_000;
+
 #[derive(Clone)]
 pub struct AcpTransportState {
     pub auth: AuthConfig,
@@ -266,6 +271,23 @@ async fn handle_session_new(
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
+    let prompt = params
+        .get("prompt")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let prompt_len = prompt.chars().count();
+    if prompt_len > MAX_CONTEXT_CHARS {
+        return Ok(json!({
+            "accepted": false,
+            "stopReason": "context_limit",
+            "limitChars": MAX_CONTEXT_CHARS,
+            "usedChars": prompt_len,
+            "overLimitBy": prompt_len.saturating_sub(MAX_CONTEXT_CHARS),
+            "remainingChars": 0
+        }));
+    }
+
     let request = translate_create_request(params)?;
     let service = SessionService::new(Arc::clone(&state.app_state.session_store));
     let response = service.create_session(&request).await?;
@@ -372,46 +394,68 @@ async fn handle_session_prompt(
         .or_else(|| params.get("prompt"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("message is required".into()))?;
-    const MAX_PROMPT_CHARS: usize = 16000;
-    if message.chars().count() > MAX_PROMPT_CHARS {
+    let message_chars = message.chars().count();
+    if message_chars > MAX_CONTEXT_CHARS {
         return Ok(json!({
             "sessionId": session_id,
             "accepted": false,
             "stopReason": "context_limit",
-            "maxChars": MAX_PROMPT_CHARS
+            "limitChars": MAX_CONTEXT_CHARS,
+            "usedChars": message_chars,
+            "currentChars": 0,
+            "overLimitBy": message_chars.saturating_sub(MAX_CONTEXT_CHARS),
+            "remainingChars": 0
         }));
     }
 
-    if let Some(mut session) = state
+    let Some(mut session) = state
         .app_state
         .session_store
         .get_session(session_id)
         .await?
-    {
-        subscribe_session(ctx, &state.app_state, session_id);
-        let _ = seed_history(&state.app_state, session_id, sender).await;
-        ctx.sessions.insert(session_id.to_string());
-        if matches!(session.session.status, SessionStatus::Queued | SessionStatus::Provisioning) {
-            session.session.status = SessionStatus::Running;
-            state
-                .app_state
-                .session_store
-                .update_session(session_id, &session)
-                .await?;
-            state
-                .app_state
-                .session_store
-                .add_session_event(
-                    session_id,
-                    SessionEvent::status(
-                        SessionStatus::Running,
-                        chrono::Utc::now().timestamp_millis() as u64,
-                    ),
-                )
-                .await?;
-        }
-    } else {
+    else {
         return Err(ServerError::SessionNotFound(session_id.to_string()));
+    };
+
+    let current_context =
+        current_context_chars(&state.app_state, session_id, &session.session).await?;
+    if current_context + message_chars > MAX_CONTEXT_CHARS {
+        let over_by = current_context + message_chars - MAX_CONTEXT_CHARS;
+        let remaining = MAX_CONTEXT_CHARS.saturating_sub(current_context);
+        return Ok(json!({
+            "sessionId": session_id,
+            "accepted": false,
+            "stopReason": "context_limit",
+            "limitChars": MAX_CONTEXT_CHARS,
+            "usedChars": current_context + message_chars,
+            "currentChars": current_context,
+            "rejectedChars": message_chars,
+            "overLimitBy": over_by,
+            "remainingChars": remaining
+        }));
+    }
+
+    subscribe_session(ctx, &state.app_state, session_id);
+    let _ = seed_history(&state.app_state, session_id, sender).await;
+    ctx.sessions.insert(session_id.to_string());
+    if matches!(session.session.status, SessionStatus::Queued | SessionStatus::Provisioning) {
+        session.session.status = SessionStatus::Running;
+        state
+            .app_state
+            .session_store
+            .update_session(session_id, &session)
+            .await?;
+        state
+            .app_state
+            .session_store
+            .add_session_event(
+                session_id,
+                SessionEvent::status(
+                    SessionStatus::Running,
+                    chrono::Utc::now().timestamp_millis() as u64,
+                ),
+            )
+            .await?;
     }
 
     state
@@ -657,22 +701,40 @@ async fn send_json(
         .map_err(|_| ())
 }
 
+async fn current_context_chars(
+    app_state: &AppState,
+    session_id: &str,
+    session: &Session,
+) -> ServerResult<usize> {
+    let mut total = session.task.prompt.chars().count();
+    if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
+        for event in events {
+            if let SessionEvent::Log(log) = event {
+                let msg = String::from_utf8_lossy(&log.message);
+                if let Some(stripped) = msg.strip_prefix("user: ") {
+                    total += stripped.chars().count();
+                }
+            }
+        }
+    }
+    Ok(total)
+}
+
 fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
     let prompt = params
         .get("prompt")
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
-    const MAX_PROMPT_CHARS: usize = 16000;
     if prompt.trim().is_empty() {
         return Err(ServerError::BadRequest(
             "prompt is required for session/new".into(),
         ));
     }
-    if prompt.chars().count() > MAX_PROMPT_CHARS {
+    if prompt.chars().count() > MAX_CONTEXT_CHARS {
         return Err(ServerError::BadRequest(format!(
             "prompt exceeds max length of {} characters",
-            MAX_PROMPT_CHARS
+            MAX_CONTEXT_CHARS
         )));
     }
     if prompt.trim().is_empty() {

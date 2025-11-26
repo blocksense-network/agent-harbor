@@ -10,8 +10,8 @@ use ah_domain_types::{AgentSoftware, AgentSoftwareBuild};
 use ah_local_db::Database;
 use ah_rest_api_contract::*;
 use ah_scenario_format::{
-    PlaybackEventKind, PlaybackIterator, PlaybackOptions, Scenario, ScenarioLoader,
-    ScenarioMatcher, ScenarioRecord, ScenarioSource,
+    LegacyAssertion, LegacyAssertEvent, LegacyScenarioEvent, PlaybackEventKind, PlaybackIterator,
+    PlaybackOptions, Scenario, ScenarioLoader, ScenarioMatcher, ScenarioRecord, ScenarioSource,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -151,20 +151,40 @@ impl ScenarioSessionStore {
     }
 
     async fn playback_loop(&self, session_id: String, scenario: Scenario) -> Result<()> {
-        let iterator = PlaybackIterator::new(
-            &scenario,
-            PlaybackOptions {
-                speed_multiplier: self.inner.speed_multiplier,
-            },
-        )?;
-        let mut previous = 0_u64;
-        for scheduled in iterator {
-            let delay = scheduled.at_ms.saturating_sub(previous);
-            previous = scheduled.at_ms;
-            if delay > 0 {
-                sleep(Duration::from_millis(delay)).await;
+        if !scenario.timeline.is_empty() {
+            let iterator = PlaybackIterator::new(
+                &scenario,
+                PlaybackOptions {
+                    speed_multiplier: self.inner.speed_multiplier,
+                },
+            )?;
+            let mut previous = 0_u64;
+            for scheduled in iterator {
+                let delay = scheduled.at_ms.saturating_sub(previous);
+                previous = scheduled.at_ms;
+                if delay > 0 {
+                    sleep(Duration::from_millis(delay)).await;
+                }
+                self.apply_playback_event(&session_id, scheduled.kind, scheduled.at_ms)
+                    .await?;
             }
-            self.apply_playback_event(&session_id, scheduled.kind, scheduled.at_ms).await?;
+        } else if !scenario.legacy_events.is_empty() {
+            let mut events = scenario.legacy_events.clone();
+            events.sort_by_key(|e| e.at_ms);
+            let mut previous = 0_u64;
+            for event in events {
+                let delay = event.at_ms.saturating_sub(previous);
+                previous = event.at_ms;
+                if delay > 0 {
+                    sleep(Duration::from_millis(delay)).await;
+                }
+                self.apply_legacy_event(&session_id, &event).await?;
+            }
+        }
+
+        if !scenario.legacy_assertions.is_empty() {
+            self.evaluate_legacy_assertions(&session_id, &scenario.legacy_assertions)
+                .await?;
         }
         Ok(())
     }
@@ -385,6 +405,137 @@ impl ScenarioSessionStore {
             }
         }
         Ok(())
+    }
+
+    async fn apply_legacy_event(
+        &self,
+        session_id: &str,
+        event: &LegacyScenarioEvent,
+    ) -> Result<()> {
+        match event.kind.as_str() {
+            "status" => {
+                let status = match event
+                    .value
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_lowercase()
+                    .as_str()
+                {
+                    "queued" => SessionStatus::Queued,
+                    "provisioning" => SessionStatus::Provisioning,
+                    "running" => SessionStatus::Running,
+                    "completed" => SessionStatus::Completed,
+                    "failed" => SessionStatus::Failed,
+                    other => {
+                        tracing::warn!("unknown legacy status '{other}', defaulting to running");
+                        SessionStatus::Running
+                    }
+                };
+                self.update_status(session_id, status, event.at_ms).await?;
+            }
+            "log" => {
+                let message = event
+                    .message
+                    .clone()
+                    .or_else(|| event.value.clone())
+                    .unwrap_or_default();
+                self.push_event(
+                    session_id,
+                    SessionEvent::log(SessionLogLevel::Info, message, None, event.at_ms),
+                )
+                .await?;
+            }
+            "thought" => {
+                let text = event
+                    .text
+                    .clone()
+                    .or_else(|| event.value.clone())
+                    .unwrap_or_default();
+                self.push_event(
+                    session_id,
+                    SessionEvent::thought(text, None, event.at_ms),
+                )
+                .await?;
+            }
+            _ => tracing::warn!("Unhandled legacy event kind: {}", event.kind),
+        }
+        Ok(())
+    }
+
+    async fn evaluate_legacy_assertions(
+        &self,
+        session_id: &str,
+        assertions: &[LegacyAssertion],
+    ) -> Result<()> {
+        for assertion in assertions {
+            if assertion.kind == "has_event" {
+                if let Some(event) = &assertion.event {
+                    if !self.assert_event_present(session_id, event).await? {
+                        let msg = format!(
+                            "Assertion failed: missing event type={} status={:?}",
+                            event.event_type, event.status
+                        );
+                        self.push_event(
+                            session_id,
+                            SessionEvent::error(msg.clone(), current_timestamp()),
+                        )
+                        .await?;
+                        self.update_status(session_id, SessionStatus::Failed, current_timestamp())
+                            .await?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn assert_event_present(
+        &self,
+        session_id: &str,
+        expected: &LegacyAssertEvent,
+    ) -> Result<bool> {
+        let sessions = self.inner.sessions.read().await;
+        if let Some(record) = sessions.get(session_id) {
+            for ev in &record.events {
+                match ev {
+                    SessionEvent::Status(status) => {
+                        if expected.event_type == "status"
+                            && expected.status.as_deref()
+                                == Some(status.status.to_string().to_lowercase().as_str())
+                        {
+                            return Ok(true);
+                        }
+                    }
+                    SessionEvent::Log(log) => {
+                        if expected.event_type == "log" {
+                            if let Some(substr) = &expected.message_contains {
+                                let msg = String::from_utf8_lossy(&log.message);
+                                if msg.contains(substr) {
+                                    return Ok(true);
+                                }
+                            } else {
+                                return Ok(true);
+                            }
+                        }
+                    }
+                    SessionEvent::Thought(thought) => {
+                        if expected.event_type == "thought" {
+                            let text = String::from_utf8_lossy(&thought.thought);
+                            if expected
+                                .message_contains
+                                .as_deref()
+                                .map(|needle| text.contains(needle))
+                                .unwrap_or(true)
+                            {
+                                return Ok(true);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(false)
     }
 
     async fn push_event(&self, session_id: &str, event: SessionEvent) -> Result<()> {
