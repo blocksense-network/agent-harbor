@@ -486,6 +486,11 @@ async fn handle_session_prompt(
         )
         .await?;
 
+    // Best-effort agent delivery through task controller when available
+    if let Some(controller) = &state.app_state.task_controller {
+        let _ = controller.inject_message(session_id, message).await;
+    }
+
     Ok(json!({
         "sessionId": session_id,
         "accepted": true
