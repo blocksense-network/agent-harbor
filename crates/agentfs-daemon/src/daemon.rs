@@ -1617,8 +1617,12 @@ impl AgentFsDaemon {
             .map_err(|e| format!("failed to create export directory: {}", e))?;
         let export_path = temp_dir.path().to_path_buf();
 
-        // Export is not supported with the current core API; return a placeholder path/token.
-        // Callers should treat this as a no-op export.
+        // Materialize the snapshot contents into the export directory
+        self.core
+            .lock()
+            .unwrap()
+            .export_snapshot(snapshot_id, &export_path)
+            .map_err(|e| format!("failed to export snapshot contents: {:?}", e))?;
 
         let token = self.next_export_token();
         self.readonly_exports.insert(
