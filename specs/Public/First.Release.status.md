@@ -458,7 +458,7 @@
 
 **Deliverables:**
 
-- [ ] Choose a static site generator (e.g., Docusaurus, Mintlify, MkDocs, MdBook) and set up a docs bundle under `docs/site/` sourced from the spec/markdown files.
+- [ ] Choose a static site generator (e.g., Docusaurus, Mintlify, MkDocs, MdBook) and set up a docs bundle under `apps/docs.agent-harbor.dev/` sourced from the spec/markdown files.
 - [ ] Implement automated conversion/sync (lint, link validation, diagrams) within CI.
 - [ ] Design navigation: intro, quick start, TUI, AgentFS, Recorder, API, development guides.
 - [ ] Provide deployment pipeline (GitHub Pages, Cloudflare Pages, or S3) triggered on main/release tags.

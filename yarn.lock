@@ -12,6 +12,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@agent-harbor/docs.agent-harbor.dev@workspace:apps/docs.agent-harbor.dev":
+  version: 0.0.0-use.local
+  resolution: "@agent-harbor/docs.agent-harbor.dev@workspace:apps/docs.agent-harbor.dev"
+  dependencies:
+    "@tailwindcss/postcss": "npm:^4.1.17"
+    "@types/node": "npm:24.10.1"
+    "@types/react": "npm:19.2.6"
+    next: "npm:^16.0.3"
+    nextra: "npm:^4.6.0"
+    nextra-theme-docs: "npm:^4.6.0"
+    pagefind: "npm:^1.4.0"
+    postcss: "npm:^8.5.6"
+    react: "npm:^19.2.0"
+    react-dom: "npm:^19.2.0"
+    tailwindcss: "npm:^4.1.17"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@alloc/quick-lru@npm:^5.2.0":
   version: 5.2.0
   resolution: "@alloc/quick-lru@npm:5.2.0"
@@ -16691,25 +16710,6 @@ __metadata:
   checksum: 10c0/2a00bd03bfbcbf8a737c47ab230d7920f8bfb92d1159d421bdd194479f6d01ebc995d13fbe13d45dace23066a78a3dc6642999b4e3b38b847e6664191575b20c
   languageName: node
   linkType: hard
-
-"site@workspace:docs/site":
-  version: 0.0.0-use.local
-  resolution: "site@workspace:docs/site"
-  dependencies:
-    "@tailwindcss/postcss": "npm:^4.1.17"
-    "@types/node": "npm:24.10.1"
-    "@types/react": "npm:19.2.6"
-    next: "npm:^16.0.3"
-    nextra: "npm:^4.6.0"
-    nextra-theme-docs: "npm:^4.6.0"
-    pagefind: "npm:^1.4.0"
-    postcss: "npm:^8.5.6"
-    react: "npm:^19.2.0"
-    react-dom: "npm:^19.2.0"
-    tailwindcss: "npm:^4.1.17"
-    typescript: "npm:5.9.3"
-  languageName: unknown
-  linkType: soft
 
 "slash@npm:^5.1.0":
   version: 5.1.0

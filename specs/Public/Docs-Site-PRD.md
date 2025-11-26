@@ -4,12 +4,12 @@
 
 The Docs Site is the primary documentation hub for Agent Harbor and its ecosystem (CLI/TUI, WebUI, AgentFS, Recorder, API, development workflows).
 
-It is implemented as a **static documentation site** using **Next.js 15 + Nextra 4 (Docs theme)** with filesystem-based routing under `docs/site/app`. Content is authored in Markdown/MDX inside the main repository and presented as a navigable, searchable experience.
+It is implemented as a **static documentation site** using **Next.js 15 + Nextra 4 (Docs theme)** with filesystem-based routing under `apps/docs.agent-harbor.dev/app`. Content is authored in Markdown/MDX inside the main repository and presented as a navigable, searchable experience.
 
-- `docs/site/app/layout.tsx` composes the Nextra `<Layout>` and `<Navbar>` with `getPageMap` to auto-wire sidebar/page navigation.
-- `docs/site/mdx-components.tsx` merges Nextra theme components with custom MDX components, so bespoke blocks can be added without losing defaults.
+- `apps/docs.agent-harbor.dev/app/layout.tsx` composes the Nextra `<Layout>` and `<Navbar>` with `getPageMap` to auto-wire sidebar/page navigation.
+- `apps/docs.agent-harbor.dev/mdx-components.tsx` merges Nextra theme components with custom MDX components, so bespoke blocks can be added without losing defaults.
 - Search uses the **built-in Nextra Docs local search**, bundled into the static export without external services.
-- `docs/site/app/page.mdx` is the homepage entrypoint; additional sections should be represented as sibling MDX files/directories (App Router semantics).
+- `apps/docs.agent-harbor.dev/app/page.mdx` is the homepage entrypoint; additional sections should be represented as sibling MDX files/directories (App Router semantics).
 
 Unless noted otherwise, layout, navigation, theming, and search use **Nextra Docs default behavior** with configuration limited to branding, ordering, and content.
 
@@ -162,7 +162,7 @@ Search operates entirely on **static data** (no external SaaS dependency) so tha
 
 ### Content Source and Authoring Model
 
-- The **source of truth** for docs is markdown/MDX files in the repository. Author pages under `docs/site/app/**` (App Router) and keep canonical content in the existing in-repo docs (`/docs`, `/specs/Public`) referenced via includes/links rather than duplication.
+- The **source of truth** for docs is markdown/MDX files in the repository. Author pages under `apps/docs.agent-harbor.dev/app/**` (App Router) and keep canonical content in the existing in-repo docs (`/docs`, `/specs/Public`) referenced via includes/links rather than duplication.
 - The docs site **imports and renders** those files; there is no manual copy/paste of content into a separate system.
 
 Requirements:
@@ -226,11 +226,11 @@ The PRD does **not** mandate a complex version switcher; it only requires:
 
 ### Deployment and Hosting
 
-- Builds must produce a fully static export (`yarn workspace site build` → `docs/site/out`) using the Next.js `output: 'export'` setting in `docs/site/next.config.mjs`; this artifact is the sole deployable for previews and production.
+- Builds must produce a fully static export (`yarn workspace site build` → `apps/docs.agent-harbor.dev/out`) using the Next.js `output: 'export'` setting in `apps/docs.agent-harbor.dev/next.config.mjs`; this artifact is the sole deployable for previews and production.
 - Avoid server-rendered routes, API routes, or runtime data fetches that require Node.js/Edge execution; everything (including the built-in Pagefind search assets) ships in the static export so the site remains CDN-friendly.
-- Treat missing or non-static `docs/site/out` output as a build failure so previews and production deploys cannot regress to dynamic hosting requirements.
+- Treat missing or non-static `apps/docs.agent-harbor.dev/out` output as a build failure so previews and production deploys cannot regress to dynamic hosting requirements.
 - Hosting uses **Cloudflare Pages** with two flows:
-  - **Main branch** deployments publish the static export (`docs/site/out`) to the primary docs URL.
+  - **Main branch** deployments publish the static export (`apps/docs.agent-harbor.dev/out`) to the primary docs URL.
   - **Pull request previews** upload the same static export to a preview URL tied to the branch/PR for review.
 - Deployment automation must rely on the static artifact only: the pipeline should fail if the export is absent or contains non-static features, and it should surface the resulting Pages URL (production or preview) for reviewers.
 
