@@ -121,3 +121,4 @@ agentfs = ["ah-fs-snapshots/agentfs"]
 tempfile = { workspace = true }
 mockall = { workspace = true }
 ah-rest-client = { workspace = true }
+serde_yaml = { workspace = true }

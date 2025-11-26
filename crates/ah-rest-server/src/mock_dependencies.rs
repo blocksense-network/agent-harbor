@@ -30,6 +30,17 @@ use uuid::Uuid;
 pub struct ScenarioPlaybackOptions {
     pub scenario_files: Vec<PathBuf>,
     pub speed_multiplier: f64,
+    /// Optional linger (seconds) to keep connections open after timeline finishes.
+    pub linger_after_timeline_secs: Option<f64>,
+}
+
+impl ScenarioPlaybackOptions {
+    pub fn with_files(files: Vec<PathBuf>) -> Self {
+        Self {
+            scenario_files: files,
+            ..Default::default()
+        }
+    }
 }
 
 impl Default for ScenarioPlaybackOptions {
@@ -37,6 +48,7 @@ impl Default for ScenarioPlaybackOptions {
         Self {
             scenario_files: Vec::new(),
             speed_multiplier: 1.0,
+            linger_after_timeline_secs: None,
         }
     }
 }
@@ -72,7 +84,11 @@ impl MockServerDependencies {
                 })
                 .collect::<Vec<_>>();
             let loader = ScenarioLoader::from_sources(sources)?;
-            Arc::new(ScenarioSessionStore::new(loader, options.speed_multiplier)?)
+            Arc::new(ScenarioSessionStore::new(
+                loader,
+                options.speed_multiplier,
+                options.linger_after_timeline_secs,
+            )?)
         };
 
         let state = AppState {
@@ -99,6 +115,7 @@ struct ScenarioSessionStoreInner {
     sessions: RwLock<HashMap<String, ScenarioSession>>,
     scenarios: Vec<ScenarioRecord>,
     speed_multiplier: f64,
+    linger_after_timeline_secs: Option<f64>,
 }
 
 struct ScenarioSession {
@@ -115,7 +132,11 @@ struct ActiveTool {
 }
 
 impl ScenarioSessionStore {
-    fn new(loader: ScenarioLoader, speed_multiplier: f64) -> Result<Self> {
+    fn new(
+        loader: ScenarioLoader,
+        speed_multiplier: f64,
+        linger_after_timeline_secs: Option<f64>,
+    ) -> Result<Self> {
         let scenarios = loader.into_records();
         if scenarios.is_empty() {
             return Err(anyhow::anyhow!(
@@ -128,6 +149,7 @@ impl ScenarioSessionStore {
                 sessions: RwLock::new(HashMap::new()),
                 scenarios,
                 speed_multiplier,
+                linger_after_timeline_secs,
             }),
         })
     }
@@ -185,6 +207,11 @@ impl ScenarioSessionStore {
             self.evaluate_legacy_assertions(&session_id, &scenario.legacy_assertions)
                 .await?;
         }
+
+        if let Some(linger) = self.inner.linger_after_timeline_secs {
+            sleep(Duration::from_secs_f64(linger)).await;
+        }
+
         Ok(())
     }
 

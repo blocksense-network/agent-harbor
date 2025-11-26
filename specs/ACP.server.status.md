@@ -230,6 +230,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Prompt injection now targets the live PTY via the task-manager socket: the socket protocol is a bidirectional SSZ envelope, `ah agent record` listens for `InjectInput` frames and writes them to the PTY, and the REST `TaskExecutor::inject_message` forwards ACP prompts over that channel (with newline termination) in addition to logging. The socket now also carries `PtyData`/`PtyResize` envelopes from the recorder to seed the follower/backlog channel for Milestone 5.3. Recorder-side PTY bytes are now buffered inside `TaskSocketHub` (backlog + broadcast) but no consumer is wired yet; follower hookup remains outstanding.
 - Task executor now exposes PTY backlog/live subscription through `TaskController::subscribe_pty`, backed by `TaskSocketHub`; recorder PTY bytes and resizes flow into the hub and tests cover backlog + live delivery. ACP gateway now subscribes to the PTY stream per session, seeds backlog immediately, and emits `session/update` notifications with `terminal`/`terminal_resize` events (base64 payloads) so IDEs can begin rendering live output. IDE follower attachment/command channel remains TODO.
 - Added `_ah/terminal/write` ACP extension to inject raw PTY bytes (base64) through the task manager socket without newline. `_ah/terminal/follow` returns the canonical follower command (`ah show-sandbox-execution ...`) so IDEs can spawn a follower terminal with the right execution/session ids. Full IDE follower lifecycle (attach/detach surfacing in UI) is still pending.
+- Added REST SSE endpoint `/api/v1/sessions/{id}/pty` streaming PTY backlog + live output (`event: pty`, base64 payloads and resizes) to mirror ACP terminal updates for non-ACP clients. `_ah/terminal/detach` ACP notification emits a `terminal_detach` event on the update stream. Scenario stub `tests/acp_bridge/scenarios/terminal_follow_detach.yaml` documents the happy path for follow/write/detach; UI wiring remains.
 - Added REST SSE endpoint `/api/v1/sessions/{id}/pty` streaming PTY backlog + live output (`event: pty`, base64 payloads and resizes) to mirror ACP terminal updates for non-ACP clients. `_ah/terminal/detach` ACP notification emits a `terminal_detach` event on the update stream.
 
 #### Key Implementation Files
@@ -262,6 +263,8 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 - Added recorder bridge scaffold (`acp::recorder`) with a single source of truth for constructing follower commands (`ah show-sandbox-execution ... --id <exec> --session <session> --follow`), matching the design described in this milestone.
 - No runtime wiring yet; this helper will be consumed by the upcoming recorder-to-ACP bridge and IDE follower channel.
+- Scenario playback now honors a `linger_after_timeline_secs` option (exposed in `MockServerDependencies` and the `ah-rest-server-mock` CLI via `--scenario-linger-secs`) to keep connections open after scripted timelines, preventing premature teardown while follower terminals drain trailing PTY bytes.
+- Added an ACP scenario-driven follower test (`acp_prompt_followers`) that replays `tests/acp_bridge/scenarios/terminal_follow_detach.yaml` against the live gateway, asserting both `_ah/terminal/follow` and `_ah/terminal/detach` updates surface as `session/update` notifications. The fixture now uses placeholders so session IDs returned by the server are applied at runtime.
 
 #### Key Implementation Files
 
@@ -534,6 +537,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Define a compatibility matrix for third-party ACP clients (VS Code, Cursor, Zed) once the server reaches beta.
 - Extend Scenario fixtures with negative-path coverage (malformed JSON-RPC, outdated schema versions).
 - Determine whether to expose ACP over QUIC once the spec finalizes HTTP streaming transport.
+- Promote Scenario Format support for ACP RPC timelines (client/server frames) so fixtures like `terminal_follow_detach.yaml` can be executed directly without bespoke harness code.
 
 Once all milestones are implemented and verified, update this status document with:
 
