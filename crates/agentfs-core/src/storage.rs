@@ -7,7 +7,8 @@ use libc;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::os::unix::io::AsRawFd;
+#[cfg(target_os = "linux")]
+use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error};

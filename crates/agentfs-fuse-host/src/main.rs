@@ -12,7 +12,9 @@ mod adapter;
 #[cfg(all(feature = "fuse", target_os = "linux"))]
 use adapter::AgentFsFuse;
 use agentfs_core::FsConfig;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
+#[cfg(all(feature = "fuse", target_os = "linux"))]
+use anyhow::anyhow;
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
@@ -228,7 +230,7 @@ mod tests {
         assert!(config.track_events);
     }
 
-    #[cfg(feature = "fuse")]
+    #[cfg(all(feature = "fuse", target_os = "linux"))]
     #[test]
     fn test_adapter_creation() {
         let config = FsConfig::default();
