@@ -10,7 +10,9 @@
 //! dispatcher.
 
 use crate::{
-    acp::translator::{InitializeLite, JsonRpcTranslator},
+    acp::{
+        translator::{InitializeLite, JsonRpcTranslator},
+    },
     auth::{AuthConfig, Claims},
     config::{AcpAuthPolicy, AcpConfig},
     error::{ServerError, ServerResult},
@@ -18,8 +20,9 @@ use crate::{
     state::AppState,
 };
 use agent_client_protocol::{
-    AgentCapabilities, Error, IncomingMessage, OutgoingMessage, ResponseResult, Side,
-    ValueDispatcher,
+    AgentCapabilities, AuthMethodId, AuthenticateRequest, ClientNotification, ClientRequest, Error,
+    ExtRequest, IncomingMessage, OutgoingMessage, ResponseResult, Side, ValueDispatcher,
+    WrappedRequest,
 };
 use axum::{
     Json, Router,
@@ -33,7 +36,6 @@ use axum::{
 };
 use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
-use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -66,17 +68,6 @@ use serde::Deserialize;
 /// until the recorder/LLM bridge is wired (Milestone 4 follow-up).
 const MAX_CONTEXT_CHARS: usize = 16_000;
 
-/// Minimal RPC payload that preserves the method name and params as raw JSON
-/// for routing through the existing translator/TaskManager bridge without
-/// depending on the SDK's typed request structs (which do not yet mirror
-/// Harbor's prompt/session fields).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct RawRpcPayload {
-    method: Arc<str>,
-    #[serde(default)]
-    params: Value,
-}
-
 #[derive(Default, Clone, Debug, Deserialize)]
 struct AuthenticateLite {
     #[serde(rename = "methodId")]
@@ -85,43 +76,6 @@ struct AuthenticateLite {
     meta: Option<Value>,
 }
 
-#[derive(Clone)]
-struct IncomingSide;
-
-impl Side for IncomingSide {
-    type InRequest = RawRpcPayload;
-    type OutResponse = Value;
-    type InNotification = RawRpcPayload;
-
-    fn decode_request(
-        method: &str,
-        params: Option<&serde_json::value::RawValue>,
-    ) -> Result<Self::InRequest, Error> {
-        let params = params
-            .and_then(|raw| serde_json::from_str(raw.get()).ok())
-            .unwrap_or(Value::Null);
-        Ok(RawRpcPayload {
-            method: Arc::from(method),
-            params,
-        })
-    }
-
-    fn decode_notification(
-        method: &str,
-        params: Option<&serde_json::value::RawValue>,
-    ) -> Result<Self::InNotification, Error> {
-        let params = params
-            .and_then(|raw| serde_json::from_str(raw.get()).ok())
-            .unwrap_or(Value::Null);
-        Ok(RawRpcPayload {
-            method: Arc::from(method),
-            params,
-        })
-    }
-}
-
-/// Outgoing side uses raw JSON params; decode methods are unreachable because
-/// this side is only used for serialization.
 #[derive(Clone)]
 struct OutgoingSide;
 
@@ -154,6 +108,104 @@ pub struct AcpTransportState {
     pub app_state: AppState,
 }
 
+/// SDK side that keeps both typed and raw params to avoid losing Harbor-specific fields.
+#[derive(Clone)]
+struct HarborAgentSide;
+
+impl Side for HarborAgentSide {
+    type InRequest = WrappedRequest<agent_client_protocol::ClientRequest>;
+    type OutResponse = Value;
+    type InNotification = WrappedRequest<agent_client_protocol::ClientNotification>;
+
+    fn decode_request(
+        method: &str,
+        params: Option<&serde_json::value::RawValue>,
+    ) -> Result<Self::InRequest, Error> {
+        let mut params_raw = params
+            .and_then(|p| serde_json::from_str::<Value>(p.get()).ok())
+            .unwrap_or(Value::Null);
+
+        // Backwards compatibility: schema requires fields we historically omitted.
+        if method == "initialize" {
+            if let Value::Object(obj) = &mut params_raw {
+                obj.entry("protocolVersion")
+                    .or_insert_with(|| Value::String("1.0".to_string()));
+            }
+        }
+        if method == "session/new" {
+            if let Value::Object(obj) = &mut params_raw {
+                obj.entry("cwd")
+                    .or_insert_with(|| Value::String("/workspace".to_string()));
+                obj.entry("mcpServers")
+                    .or_insert_with(|| Value::Array(vec![]));
+            }
+        }
+        if method == "session/load" {
+            if let Value::Object(obj) = &mut params_raw {
+                obj.entry("cwd")
+                    .or_insert_with(|| Value::String("/workspace".to_string()));
+                obj.entry("mcpServers")
+                    .or_insert_with(|| Value::Array(vec![]));
+            }
+        }
+
+        let raw_clone = params_raw.clone();
+        let raw_value = serde_json::to_string(&params_raw).map_err(|_| Error::invalid_params())?;
+        let raw_val = serde_json::value::RawValue::from_string(raw_value)
+            .map_err(|_| Error::invalid_params())?;
+
+        // Extension methods that the SDK schema doesn't currently model.
+        if method == "session/list"
+            || method == "session/pause"
+            || method == "session/resume"
+            || method == "_ah/terminal/follow"
+            || method == "_ah/terminal/write"
+            || method == "_ah/terminal/detach"
+        {
+            return Ok(WrappedRequest {
+                typed: ClientRequest::ExtMethodRequest(ExtRequest {
+                    method: method.trim_start_matches('_').into(),
+                    params: raw_val.into(),
+                }),
+                raw: raw_clone,
+            });
+        }
+
+        // Authenticate payloads coming from legacy clients may omit methodId/_meta;
+        // fall back to a synthesized request so we can still route while preserving
+        // the original params in `raw`.
+        let req = if method == "authenticate" {
+            match agent_client_protocol::AgentSide::decode_request(method, Some(&raw_val)) {
+                Ok(r) => r,
+                Err(_) => ClientRequest::AuthenticateRequest(AuthenticateRequest {
+                    method_id: AuthMethodId("harbor-api-key".into()),
+                    meta: params_raw.get("_meta").cloned(),
+                }),
+            }
+        } else {
+            agent_client_protocol::AgentSide::decode_request(method, Some(&raw_val))?
+        };
+        Ok(WrappedRequest {
+            typed: req,
+            raw: raw_clone,
+        })
+    }
+
+    fn decode_notification(
+        method: &str,
+        params: Option<&serde_json::value::RawValue>,
+    ) -> Result<Self::InNotification, Error> {
+        let params_raw = params
+            .and_then(|p| serde_json::from_str::<Value>(p.get()).ok())
+            .unwrap_or(Value::Null);
+        let notif = agent_client_protocol::AgentSide::decode_notification(method, params)?;
+        Ok(WrappedRequest {
+            typed: notif,
+            raw: params_raw,
+        })
+    }
+}
+
 /// Query params accepted by the WebSocket endpoint.
 #[derive(Debug, Deserialize)]
 pub struct AcpQuery {
@@ -180,7 +232,7 @@ pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
         auth_claims: None,
         ..Default::default()
     }));
-    let (dispatcher, _streams) = ValueDispatcher::<IncomingSide, OutgoingSide>::new();
+    let (dispatcher, _streams) = ValueDispatcher::<HarborAgentSide, OutgoingSide>::new();
     let driver = Arc::new(Mutex::new(dispatcher));
     let mut incoming_rx = driver.lock().await.take_incoming().fuse();
 
@@ -341,7 +393,7 @@ async fn handle_socket(
         auth_claims: claims,
         ..Default::default()
     }));
-    let (dispatcher, _streams) = ValueDispatcher::<IncomingSide, OutgoingSide>::new();
+    let (dispatcher, _streams) = ValueDispatcher::<HarborAgentSide, OutgoingSide>::new();
     let driver = Arc::new(Mutex::new(dispatcher));
     let mut incoming_rx = driver.lock().await.take_incoming().fuse();
 
@@ -367,7 +419,7 @@ async fn handle_socket(
                 if let Some(message) = maybe_incoming {
                     match message {
                         IncomingMessage::Request { id, request } => {
-                            let result = route_request(&state, &context, &sender, &driver, request, &headers).await;
+                            let result = route_wrapped_request(&state, &context, &sender, &driver, request, &headers).await;
                             let outgoing = OutgoingMessage::Response {
                                 id,
                                 result: ResponseResult::from(result),
@@ -426,100 +478,95 @@ async fn handle_socket(
     }
 }
 
-async fn route_request(
+async fn route_wrapped_request(
     state: &AcpTransportState,
     ctx: &Arc<Mutex<AcpSessionContext>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
-    request: RawRpcPayload,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    request: WrappedRequest<agent_client_protocol::ClientRequest>,
     headers: &HeaderMap,
 ) -> Result<Value, Error> {
     let mut guard = ctx.lock().await;
-    let method = request.method.as_ref();
-    match method {
-        "initialize" => {
+    match request.typed {
+        ClientRequest::InitializeRequest(_) => {
             let caps = JsonRpcTranslator::negotiate_caps(&state.config);
             guard.negotiated_caps = Some(caps.clone());
+            drop(guard);
             let req: InitializeLite =
-                serde_json::from_value(request.params.clone()).unwrap_or_default();
+                serde_json::from_value(request.raw.clone()).unwrap_or_default();
             Ok(JsonRpcTranslator::initialize_response_typed(&caps, &req))
         }
-        "authenticate" => {
-            let req: AuthenticateLite =
-                serde_json::from_value(request.params.clone()).unwrap_or_default();
-            handle_authenticate_typed(state, &mut guard, req, headers)
+        ClientRequest::AuthenticateRequest(_) => {
+            handle_authenticate_with_raw(state, &mut guard, request.raw, headers)
                 .await
                 .map_err(server_error_to_rpc)
         }
-        "session/new" | "session/list" | "session/load" | "session/prompt" | "session/cancel"
-        | "session/pause" | "session/resume" => {
+        ClientRequest::NewSessionRequest(_) => {
             require_initialized(&guard)?;
             drop(guard);
-            // Re-acquire as needed inside handlers
-            match method {
-                "session/new" => {
-                    let mut guard = ctx.lock().await;
-                    handle_session_new(state, &mut guard, driver, sender, request.params)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/list" => {
-                    let guard = ctx.lock().await;
-                    handle_session_list(state, request.params, &guard)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/load" => {
-                    let mut guard = ctx.lock().await;
-                    handle_session_load(state, &mut guard, driver, sender, request.params)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/prompt" => {
-                    let mut guard = ctx.lock().await;
-                    handle_session_prompt(state, &mut guard, driver, sender, request.params)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/cancel" => {
-                    let mut guard = ctx.lock().await;
-                    handle_session_cancel(state, &mut guard, driver, sender, request.params)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
+            let mut guard = ctx.lock().await;
+            handle_session_new(state, &mut guard, driver, sender, request.raw)
+                .await
+                .map_err(server_error_to_rpc)
+        }
+        ClientRequest::LoadSessionRequest(_) => {
+            require_initialized(&guard)?;
+            drop(guard);
+            let mut guard = ctx.lock().await;
+            handle_session_load(state, &mut guard, driver, sender, request.raw)
+                .await
+                .map_err(server_error_to_rpc)
+        }
+        ClientRequest::PromptRequest(_) => {
+            require_initialized(&guard)?;
+            drop(guard);
+            let mut guard = ctx.lock().await;
+            handle_session_prompt(state, &mut guard, driver, sender, request.raw)
+                .await
+                .map_err(server_error_to_rpc)
+        }
+        ClientRequest::SetSessionModeRequest(_) => Err(Error::method_not_found()),
+        ClientRequest::ExtMethodRequest(ext) => {
+            match ext.method.as_ref() {
+                "session/list" => handle_session_list(state, request.raw, &guard)
+                    .await
+                    .map_err(server_error_to_rpc),
                 "session/pause" => {
+                    drop(guard);
                     let mut guard = ctx.lock().await;
-                    handle_session_pause(state, &mut guard, driver, sender, request.params)
+                    handle_session_pause(state, &mut guard, driver, sender, request.raw)
                         .await
                         .map_err(server_error_to_rpc)
                 }
                 "session/resume" => {
+                    drop(guard);
                     let mut guard = ctx.lock().await;
-                    handle_session_resume(state, &mut guard, driver, sender, request.params)
+                    handle_session_resume(state, &mut guard, driver, sender, request.raw)
+                        .await
+                        .map_err(server_error_to_rpc)
+                }
+                "ah/terminal/follow" => {
+                    drop(guard);
+                    handle_terminal_follow(state, driver, sender, request.raw)
+                        .await
+                        .map_err(server_error_to_rpc)
+                }
+                "ah/terminal/write" => {
+                    drop(guard);
+                    let mut guard = ctx.lock().await;
+                    handle_terminal_write(state, &mut guard, driver, sender, request.raw)
+                        .await
+                        .map_err(server_error_to_rpc)
+                }
+                "ah/terminal/detach" => {
+                    drop(guard);
+                    handle_terminal_detach(driver, sender, request.raw)
                         .await
                         .map_err(server_error_to_rpc)
                 }
                 _ => Err(Error::method_not_found()),
             }
         }
-        "_ah/terminal/write" => {
-            handle_terminal_write(state, &mut guard, driver, sender, request.params)
-                .await
-                .map_err(server_error_to_rpc)
-        }
-        "_ah/terminal/follow" => {
-            drop(guard);
-            handle_terminal_follow(state, driver, sender, request.params)
-                .await
-                .map_err(server_error_to_rpc)
-        }
-        "_ah/terminal/detach" => {
-            drop(guard);
-            handle_terminal_detach(driver, sender, request.params)
-                .await
-                .map_err(server_error_to_rpc)
-        }
-        _ => Ok(request.params),
     }
 }
 
@@ -527,12 +574,19 @@ async fn route_notification(
     state: &AcpTransportState,
     ctx: &Arc<Mutex<AcpSessionContext>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
-    notification: RawRpcPayload,
-    headers: &HeaderMap,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    notification: WrappedRequest<agent_client_protocol::ClientNotification>,
+    _headers: &HeaderMap,
 ) -> Result<(), Error> {
-    // Treat notifications the same as requests but drop the response
-    let _ = route_request(state, ctx, sender, driver, notification, headers).await?;
+    match notification.typed {
+        ClientNotification::CancelNotification(_) => {
+            let mut guard = ctx.lock().await;
+            handle_session_cancel(state, &mut guard, driver, sender, notification.raw)
+                .await
+                .map_err(server_error_to_rpc)?;
+        }
+        ClientNotification::ExtNotification(_) => {}
+    }
     Ok(())
 }
 
@@ -562,108 +616,111 @@ fn server_error_to_rpc(err: ServerError) -> Error {
 async fn route_request_stdio(
     state: &AcpTransportState,
     ctx: &Arc<Mutex<AcpSessionContext>>,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
-    request: RawRpcPayload,
+    request: WrappedRequest<agent_client_protocol::ClientRequest>,
     headers: &HeaderMap,
 ) -> Result<Value, Error> {
     let mut guard = ctx.lock().await;
-    let method = request.method.as_ref();
-    match method {
-        "initialize" => {
+    match request.typed {
+        ClientRequest::InitializeRequest(_) => {
             let caps = JsonRpcTranslator::negotiate_caps(&state.config);
             guard.negotiated_caps = Some(caps.clone());
-            let req: InitializeLite =
-                serde_json::from_value(request.params.clone()).unwrap_or_default();
+            drop(guard);
+            let req: InitializeLite = serde_json::from_value(request.raw.clone()).unwrap_or_default();
             Ok(JsonRpcTranslator::initialize_response_typed(&caps, &req))
         }
-        "authenticate" => {
-            let req: AuthenticateLite =
-                serde_json::from_value(request.params.clone()).unwrap_or_default();
-            handle_authenticate_typed(state, &mut guard, req, headers)
+        ClientRequest::AuthenticateRequest(_) => {
+            handle_authenticate_with_raw(state, &mut guard, request.raw, headers)
                 .await
                 .map_err(server_error_to_rpc)
         }
-        "session/new" | "session/list" | "session/load" | "session/prompt" | "session/cancel"
-        | "session/pause" | "session/resume" => {
+        ClientRequest::NewSessionRequest(_) => {
             require_initialized(&guard)?;
             drop(guard);
-            match method {
-                "session/new" => {
-                    let mut guard = ctx.lock().await;
-                    handle_session_new_stdio(state, &mut guard, driver, writer, request.params)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/list" => {
-                    let guard = ctx.lock().await;
-                    handle_session_list(state, request.params, &guard)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/load" => {
-                    let mut guard = ctx.lock().await;
-                    handle_session_load_stdio(state, &mut guard, driver, writer, request.params)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/prompt" => {
-                    let mut guard = ctx.lock().await;
-                    handle_session_prompt_stdio(state, &mut guard, driver, writer, request.params)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
-                "session/cancel" => {
-                    let mut guard = ctx.lock().await;
-                    handle_session_cancel_stdio(state, &mut guard, driver, writer, request.params)
-                        .await
-                        .map_err(server_error_to_rpc)
-                }
+            let mut guard = ctx.lock().await;
+            handle_session_new_stdio(state, &mut guard, driver, writer, request.raw)
+                .await
+                .map_err(server_error_to_rpc)
+        }
+        ClientRequest::LoadSessionRequest(_) => {
+            require_initialized(&guard)?;
+            drop(guard);
+            let mut guard = ctx.lock().await;
+            handle_session_load_stdio(state, &mut guard, driver, writer, request.raw)
+                .await
+                .map_err(server_error_to_rpc)
+        }
+        ClientRequest::PromptRequest(_) => {
+            require_initialized(&guard)?;
+            drop(guard);
+            let mut guard = ctx.lock().await;
+            handle_session_prompt_stdio(state, &mut guard, driver, writer, request.raw)
+                .await
+                .map_err(server_error_to_rpc)
+        }
+        ClientRequest::SetSessionModeRequest(_) => Err(Error::method_not_found()),
+        ClientRequest::ExtMethodRequest(ext) => {
+            match ext.method.as_ref() {
+                "session/list" => handle_session_list(state, request.raw, &guard)
+                    .await
+                    .map_err(server_error_to_rpc),
                 "session/pause" => {
+                    drop(guard);
                     let mut guard = ctx.lock().await;
-                    handle_session_pause_stdio(state, &mut guard, driver, writer, request.params)
+                    handle_session_pause_stdio(state, &mut guard, driver, writer, request.raw)
                         .await
                         .map_err(server_error_to_rpc)
                 }
                 "session/resume" => {
+                    drop(guard);
                     let mut guard = ctx.lock().await;
-                    handle_session_resume_stdio(state, &mut guard, driver, writer, request.params)
+                    handle_session_resume_stdio(state, &mut guard, driver, writer, request.raw)
+                        .await
+                        .map_err(server_error_to_rpc)
+                }
+                "ah/terminal/follow" => {
+                    drop(guard);
+                    handle_terminal_follow_stdio(state, driver, writer, request.raw)
+                        .await
+                        .map_err(server_error_to_rpc)
+                }
+                "ah/terminal/write" => {
+                    drop(guard);
+                    let mut guard = ctx.lock().await;
+                    handle_terminal_write_stdio(state, &mut guard, driver, writer, request.raw)
+                        .await
+                        .map_err(server_error_to_rpc)
+                }
+                "ah/terminal/detach" => {
+                    drop(guard);
+                    handle_terminal_detach_stdio(driver, writer, request.raw)
                         .await
                         .map_err(server_error_to_rpc)
                 }
                 _ => Err(Error::method_not_found()),
             }
         }
-        "_ah/terminal/write" => {
-            handle_terminal_write_stdio(state, &mut guard, driver, writer, request.params)
-                .await
-                .map_err(server_error_to_rpc)
-        }
-        "_ah/terminal/follow" => {
-            drop(guard);
-            handle_terminal_follow_stdio(state, driver, writer, request.params)
-                .await
-                .map_err(server_error_to_rpc)
-        }
-        "_ah/terminal/detach" => {
-            drop(guard);
-            handle_terminal_detach_stdio(driver, writer, request.params)
-                .await
-                .map_err(server_error_to_rpc)
-        }
-        _ => Ok(request.params),
     }
 }
 
 async fn route_notification_stdio(
     state: &AcpTransportState,
     ctx: &Arc<Mutex<AcpSessionContext>>,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
-    notification: RawRpcPayload,
-    headers: &HeaderMap,
+    notification: WrappedRequest<agent_client_protocol::ClientNotification>,
+    _headers: &HeaderMap,
 ) -> Result<(), Error> {
-    let _ = route_request_stdio(state, ctx, driver, writer, notification, headers).await?;
+    match notification.typed {
+        ClientNotification::CancelNotification(_) => {
+            let mut guard = ctx.lock().await;
+            handle_session_cancel_stdio(state, &mut guard, driver, writer, notification.raw)
+                .await
+                .map_err(server_error_to_rpc)?;
+        }
+        ClientNotification::ExtNotification(_) => {}
+    }
     Ok(())
 }
 
@@ -683,10 +740,41 @@ fn json_error(id: Value, code: i64, message: &str) -> Value {
     })
 }
 
+async fn handle_authenticate_with_raw(
+    state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
+    raw: Value,
+    headers: &HeaderMap,
+) -> ServerResult<Value> {
+    let req: AuthenticateLite = serde_json::from_value(raw.clone()).unwrap_or_default();
+    let meta = req.meta.unwrap_or_default();
+    let query = AcpQuery {
+        api_key: meta
+            .get("apiKey")
+            .or_else(|| raw.get("apiKey"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        bearer_token: meta
+            .get("token")
+            .or_else(|| raw.get("token"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    };
+
+    let claims = authenticate(&state.auth, state.config.auth_policy, &query, headers)?;
+    ctx.auth_claims = claims.clone();
+
+    Ok(json!({
+        "authenticated": true,
+        "tenantId": claims.as_ref().and_then(|c| c.tenant_id.clone()),
+        "projectId": claims.as_ref().and_then(|c| c.project_id.clone())
+    }))
+}
+
 async fn handle_session_new(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -749,7 +837,7 @@ async fn handle_session_new(
 async fn handle_session_new_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -809,53 +897,10 @@ async fn handle_session_new_stdio(
     }
 }
 
-async fn handle_authenticate(
-    state: &AcpTransportState,
-    ctx: &mut AcpSessionContext,
-    params: Value,
-    headers: &HeaderMap,
-) -> ServerResult<Value> {
-    let query = AcpQuery {
-        api_key: params.get("apiKey").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        bearer_token: params.get("token").and_then(|v| v.as_str()).map(|s| s.to_string()),
-    };
-
-    let claims = authenticate(&state.auth, state.config.auth_policy, &query, headers)?;
-    ctx.auth_claims = claims.clone();
-
-    Ok(json!({
-        "authenticated": true,
-        "tenantId": claims.as_ref().and_then(|c| c.tenant_id.clone()),
-        "projectId": claims.as_ref().and_then(|c| c.project_id.clone())
-    }))
-}
-
-async fn handle_authenticate_typed(
-    state: &AcpTransportState,
-    ctx: &mut AcpSessionContext,
-    req: AuthenticateLite,
-    headers: &HeaderMap,
-) -> ServerResult<Value> {
-    let meta = req.meta.unwrap_or_default();
-    let query = AcpQuery {
-        api_key: meta.get("apiKey").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        bearer_token: meta.get("token").and_then(|v| v.as_str()).map(|s| s.to_string()),
-    };
-
-    let claims = authenticate(&state.auth, state.config.auth_policy, &query, headers)?;
-    ctx.auth_claims = claims.clone();
-
-    Ok(json!({
-        "authenticated": true,
-        "tenantId": claims.as_ref().and_then(|c| c.tenant_id.clone()),
-        "projectId": claims.as_ref().and_then(|c| c.project_id.clone())
-    }))
-}
-
 async fn handle_terminal_write(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -883,7 +928,7 @@ async fn handle_terminal_write(
 async fn handle_terminal_write_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -910,7 +955,7 @@ async fn handle_terminal_write_stdio(
 
 async fn handle_terminal_follow(
     state: &AcpTransportState,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -979,7 +1024,7 @@ async fn handle_terminal_follow(
 
 async fn handle_terminal_follow_stdio(
     state: &AcpTransportState,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1046,7 +1091,7 @@ async fn handle_terminal_follow_stdio(
 }
 
 async fn handle_terminal_detach(
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1066,7 +1111,7 @@ async fn handle_terminal_detach(
 }
 
 async fn handle_terminal_detach_stdio(
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1122,7 +1167,7 @@ async fn handle_session_list(
 async fn handle_session_load(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1146,7 +1191,7 @@ async fn handle_session_load(
 async fn handle_session_load_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1170,7 +1215,7 @@ async fn handle_session_load_stdio(
 async fn handle_session_prompt(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1269,7 +1314,7 @@ async fn handle_session_prompt(
 async fn handle_session_prompt_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1367,7 +1412,7 @@ async fn handle_session_prompt_stdio(
 async fn handle_session_cancel(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1412,7 +1457,7 @@ async fn handle_session_cancel(
 async fn handle_session_cancel_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1456,7 +1501,7 @@ async fn handle_session_cancel_stdio(
 async fn handle_session_pause(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1500,7 +1545,7 @@ async fn handle_session_pause(
 async fn handle_session_pause_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1544,7 +1589,7 @@ async fn handle_session_pause_stdio(
 async fn handle_session_resume(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1588,7 +1633,7 @@ async fn handle_session_resume(
 async fn handle_session_resume_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1633,7 +1678,7 @@ async fn subscribe_session(
     ctx: &mut AcpSessionContext,
     app_state: &AppState,
     session_id: &str,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
 ) {
     if !ctx.receivers.contains_key(session_id) {
@@ -1659,7 +1704,7 @@ async fn subscribe_session_stdio(
     ctx: &mut AcpSessionContext,
     app_state: &AppState,
     session_id: &str,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
 ) {
     if !ctx.receivers.contains_key(session_id) {
@@ -1687,7 +1732,7 @@ async fn subscribe_session_stdio(
 async fn seed_history(
     app_state: &AppState,
     session_id: &str,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
 ) -> Result<(), ()> {
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
@@ -1705,7 +1750,7 @@ async fn seed_history(
 async fn seed_history_stdio(
     app_state: &AppState,
     session_id: &str,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
 ) -> Result<(), ()> {
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
@@ -1741,7 +1786,7 @@ fn session_to_json(session: &Session) -> Value {
 
 async fn flush_session_events(
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
 ) -> bool {
     let mut sent = false;
@@ -1780,7 +1825,7 @@ async fn flush_session_events(
 
 async fn flush_session_events_stdio(
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
 ) -> bool {
     let mut sent = false;
@@ -1819,7 +1864,7 @@ async fn flush_session_events_stdio(
 
 async fn flush_pty_events(
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
 ) -> bool {
     let mut sent = false;
@@ -1855,7 +1900,7 @@ async fn flush_pty_events(
 
 async fn flush_pty_events_stdio(
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
 ) -> bool {
     let mut sent = false;
@@ -2062,9 +2107,9 @@ async fn send_json(
 }
 
 async fn send_outgoing(
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
-    message: &OutgoingMessage<IncomingSide, OutgoingSide>,
+    message: &OutgoingMessage<HarborAgentSide, OutgoingSide>,
 ) -> Result<(), ()> {
     let payload = {
         let dispatcher = driver.lock().await;
@@ -2074,7 +2119,7 @@ async fn send_outgoing(
 }
 
 async fn send_session_notification(
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> Result<(), ()> {
@@ -2097,9 +2142,9 @@ async fn send_json_stdout(
 }
 
 async fn send_outgoing_stdout(
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
-    message: &OutgoingMessage<IncomingSide, OutgoingSide>,
+    message: &OutgoingMessage<HarborAgentSide, OutgoingSide>,
 ) -> Result<(), ()> {
     let payload = {
         let dispatcher = driver.lock().await;
@@ -2109,7 +2154,7 @@ async fn send_outgoing_stdout(
 }
 
 async fn send_session_notification_stdout(
-    driver: &Arc<Mutex<ValueDispatcher<IncomingSide, OutgoingSide>>>,
+    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> Result<(), ()> {
@@ -2140,7 +2185,16 @@ async fn current_context_chars(
 }
 
 fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
-    let prompt = params.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let meta = params.get("_meta").cloned().unwrap_or(Value::Null);
+
+    // Prompt/agent live at the root; accept _meta as a backwards-compatible fallback
+    // but prefer the top-level fields to avoid duplication.
+    let prompt = params
+        .get("prompt")
+        .or_else(|| meta.get("prompt"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
     if prompt.trim().is_empty() {
         return Err(ServerError::BadRequest(
             "prompt is required for session/new".into(),
@@ -2152,13 +2206,20 @@ fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
             MAX_CONTEXT_CHARS
         )));
     }
-    if prompt.trim().is_empty() {
-        return Err(ServerError::BadRequest(
-            "prompt is required for session/new".into(),
-        ));
-    }
+    let agent_model = params
+        .get("agent")
+        .or_else(|| meta.get("agent"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("sonnet")
+        .to_string();
 
-    let repo_url = params.get("repoUrl").and_then(|v| v.as_str()).and_then(|s| Url::parse(s).ok());
+    // Harbor-specific session options live under _meta; keep root fallback for
+    // backwards compatibility during the migration.
+    let repo_url = meta
+        .get("repoUrl")
+        .or_else(|| params.get("repoUrl"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| Url::parse(s).ok());
     let repo = RepoConfig {
         mode: if repo_url.is_some() {
             RepoMode::Git
@@ -2166,11 +2227,13 @@ fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
             RepoMode::None
         },
         url: repo_url,
-        branch: params.get("branch").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        branch: meta
+            .get("branch")
+            .or_else(|| params.get("branch"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         commit: None,
     };
-
-    let agent_model = params.get("agent").and_then(|v| v.as_str()).unwrap_or("sonnet").to_string();
 
     let agent = AgentChoice {
         agent: AgentSoftwareBuild {
@@ -2189,8 +2252,9 @@ fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
         resources: None,
     };
 
-    let labels = params
+    let labels = meta
         .get("labels")
+        .or_else(|| params.get("labels"))
         .and_then(|v| v.as_object())
         .map(|map| {
             map.iter()

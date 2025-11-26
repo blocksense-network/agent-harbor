@@ -15,6 +15,7 @@ pub use agent_client_protocol_schema::*;
 pub use client::*;
 pub use rpc::{
     Id, IncomingMessage, OutgoingMessage, ResponseResult, RpcDispatcher, Side, ValueDispatcher,
+    WrappedRequest,
 };
 pub use stream_broadcast::{
     StreamMessage, StreamMessageContent, StreamMessageDirection, StreamReceiver,

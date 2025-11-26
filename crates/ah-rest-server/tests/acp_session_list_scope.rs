@@ -56,7 +56,7 @@ async fn acp_session_list_scopes_to_jwt_tenant() {
     let mut socket1 = connect_with_bearer(None).await;
     socket1
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .unwrap();
@@ -88,7 +88,7 @@ async fn acp_session_list_scopes_to_jwt_tenant() {
     let mut socket2 = connect_with_bearer(Some(token)).await;
     socket2
         .send(WsMessage::Text(
-            json!({"id":10,"method":"initialize","params":{}}).to_string(),
+            json!({"id":10,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .unwrap();
