@@ -3,17 +3,14 @@
 
 use ah_rest_server::acp::translator::{AcpCapabilities, JsonRpcTranslator};
 use ah_rest_server::config::{AcpConfig, AcpTransportMode};
-use ah_rest_server::{
-    Server, ServerConfig,
-    mock_dependencies::{MockServerDependencies, ScenarioPlaybackOptions},
-};
+use common::acp::spawn_acp_server_with_scenario;
 use futures::{SinkExt, StreamExt};
 use proptest::prelude::*;
 use serde_json::json;
-use std::net::TcpListener;
 use std::path::PathBuf;
-use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
+
+mod common;
 
 #[test]
 fn acp_initialize_caps_roundtrip() {
@@ -74,42 +71,12 @@ proptest! {
     }
 }
 
-async fn spawn_acp_server_with_scenario(fixture: PathBuf) -> (String, JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
-    let addr = listener.local_addr().unwrap();
-    drop(listener);
-
-    let acp_listener = TcpListener::bind("127.0.0.1:0").expect("bind");
-    let acp_addr = acp_listener.local_addr().unwrap();
-    drop(acp_listener);
-
-    let mut config = ServerConfig::default();
-    config.bind_addr = addr;
-    config.enable_cors = true;
-    config.api_key = Some("secret".into());
-    config.acp.enabled = true;
-    config.acp.bind_addr = acp_addr;
-
-    let deps = MockServerDependencies::with_options(
-        config.clone(),
-        ScenarioPlaybackOptions {
-            scenario_files: vec![fixture],
-            speed_multiplier: 0.1,
-        },
-    )
-    .await
-    .expect("deps");
-    let server = Server::with_state(config, deps.into_state()).await.expect("server");
-    let handle = tokio::spawn(async move { server.run().await.expect("server run") });
-    let acp_url = format!("ws://{}/acp/v1/connect?api_key=secret", acp_addr);
-    (acp_url, handle)
-}
-
 #[tokio::test]
 async fn acp_initialize_and_auth_scenario_succeeds() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/acp_bridge/scenarios/initialize_and_auth.yaml");
     let (acp_url, handle) = spawn_acp_server_with_scenario(fixture).await;
+    let acp_url = format!("{}?api_key=secret", acp_url);
 
     let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
