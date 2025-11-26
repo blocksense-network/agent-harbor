@@ -218,7 +218,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] Scenario `tests/acp_bridge/scenarios/initialize_and_auth.yaml` + integration test `cargo test -p ah-rest-server --test acp_initialize_and_auth_scenario_succeeds` validate the initialize/auth handshake and streamed status transitions using legacy `events`/`assertions`.
 - [x] Scenario `tests/acp_bridge/scenarios/pause_resume.yaml` + integration tests `cargo test -p ah-rest-server --test acp_pause_resume acp_pause_resume_status_streams` and `cargo test -p ah-rest-server --test acp_pause_resume acp_pause_and_resume_rpcs_emit_status` validate paused → resumed → completed status streaming and the new pause/resume RPCs.
 - [x] Unit test `cargo test -p ah-rest-server inject_message_forwards_to_recorder_socket` spins up the task-manager socket, simulates a recorder client, and asserts injected bytes reach the PTY channel.
-- [ ] Scenario playback assertions are exercised automatically in CI once ACP-specific fixtures supply `assertions:` blocks (mock store now evaluates them).
+- [x] Scenario playback assertions are exercised automatically in CI now that ACP fixtures include `assertions:` blocks (mock store evaluates them).
 
 #### Implementation Details (current)
 
