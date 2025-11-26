@@ -37,9 +37,7 @@ async fn spawn_acp_server() -> (String, JoinHandle<()>) {
 #[tokio::test]
 async fn acp_prompt_backpressure() {
     let (acp_url, handle) = spawn_acp_server().await;
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     // initialize
     socket
@@ -66,11 +64,7 @@ async fn acp_prompt_backpressure() {
         ))
         .await
         .expect("session new");
-    let session_new_resp = socket
-        .next()
-        .await
-        .expect("session/new resp")
-        .expect("frame");
+    let session_new_resp = socket.next().await.expect("session/new resp").expect("frame");
     let session_id = if let WsMessage::Text(text) = session_new_resp {
         let value: serde_json::Value = serde_json::from_str(&text).expect("json");
         value
@@ -131,7 +125,10 @@ async fn acp_prompt_backpressure() {
         }
     }
 
-    assert!(!closed_early, "connection should survive brief backpressure window");
+    assert!(
+        !closed_early,
+        "connection should survive brief backpressure window"
+    );
     assert!(
         received_updates >= 0,
         "sanity check: counter should not underflow"

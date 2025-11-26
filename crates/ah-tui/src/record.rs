@@ -32,8 +32,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::thread;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{UnixStream, unix::OwnedReadHalf, unix::OwnedWriteHalf};
+use tokio::io::AsyncWriteExt;
+use tokio::net::{UnixStream, unix::OwnedWriteHalf};
 use tokio::{signal, sync::mpsc};
 use tracing::error;
 use tracing::{debug, info, trace, warn};
@@ -153,7 +153,7 @@ async fn send_sse_event(sender: &mut Option<OwnedWriteHalf>, event: SessionEvent
 
 /// Detect agent activity patterns in PTY output and send corresponding events
 /// This is a basic heuristic implementation that can be enhanced with more sophisticated detection
-async fn detect_and_send_agent_events(events_sender: &mut Option<UnixStream>, buffer: &str) {
+async fn detect_and_send_agent_events(events_sender: &mut Option<OwnedWriteHalf>, buffer: &str) {
     use ah_rest_api_contract::types::SessionEvent;
 
     // Look for tool usage patterns (very basic heuristics)

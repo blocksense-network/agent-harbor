@@ -49,9 +49,7 @@ async fn acp_pause_resume_status_streams() {
         .join("../../tests/acp_bridge/scenarios/pause_resume.yaml");
     let (acp_url, handle) = spawn_acp_server_with_scenario(fixture).await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     socket
         .send(WsMessage::Text(
@@ -96,7 +94,9 @@ async fn acp_pause_resume_status_streams() {
                         value.pointer("/params/sessionId").and_then(|v| v.as_str()),
                         Some(session_id.as_str())
                     );
-                    if let Some(status) = value.pointer("/params/event/status").and_then(|v| v.as_str()) {
+                    if let Some(status) =
+                        value.pointer("/params/event/status").and_then(|v| v.as_str())
+                    {
                         match status {
                             "paused" => saw_paused = true,
                             "completed" => {
@@ -125,9 +125,7 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
     )
     .await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     socket
         .send(WsMessage::Text(
@@ -175,7 +173,10 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
             if let WsMessage::Text(text) = msg {
                 let value: serde_json::Value = serde_json::from_str(&text).expect("json");
                 if value.get("id").and_then(|v| v.as_i64()) == Some(3) {
-                    assert_eq!(value.pointer("/result/status").and_then(|v| v.as_str()), Some("paused"));
+                    assert_eq!(
+                        value.pointer("/result/status").and_then(|v| v.as_str()),
+                        Some("paused")
+                    );
                     break;
                 }
             }
@@ -192,7 +193,9 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
             if let WsMessage::Text(text) = msg {
                 let value: serde_json::Value = serde_json::from_str(&text).expect("json");
                 if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-                    if let Some(status) = value.pointer("/params/event/status").and_then(|v| v.as_str()) {
+                    if let Some(status) =
+                        value.pointer("/params/event/status").and_then(|v| v.as_str())
+                    {
                         if status == "paused" {
                             saw_paused = true;
                             break;
@@ -222,7 +225,10 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
             if let WsMessage::Text(text) = msg {
                 let value: serde_json::Value = serde_json::from_str(&text).expect("json");
                 if value.get("id").and_then(|v| v.as_i64()) == Some(4) {
-                    assert_eq!(value.pointer("/result/status").and_then(|v| v.as_str()), Some("running"));
+                    assert_eq!(
+                        value.pointer("/result/status").and_then(|v| v.as_str()),
+                        Some("running")
+                    );
                     break;
                 }
             }
@@ -237,7 +243,9 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
             if let WsMessage::Text(text) = msg {
                 let value: serde_json::Value = serde_json::from_str(&text).expect("json");
                 if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-                    if let Some(status) = value.pointer("/params/event/status").and_then(|v| v.as_str()) {
+                    if let Some(status) =
+                        value.pointer("/params/event/status").and_then(|v| v.as_str())
+                    {
                         if status == "running" {
                             saw_running = true;
                             break;
@@ -248,7 +256,10 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
         }
     }
 
-    assert!(saw_running, "session/update should include running status after resume");
+    assert!(
+        saw_running,
+        "session/update should include running status after resume"
+    );
 
     handle.abort();
 }
