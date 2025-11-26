@@ -155,7 +155,7 @@ async fn handle_socket(
                             WsMessage::Text(text) => {
                                 match serde_json::from_str::<Value>(&text) {
                                     Ok(value) => {
-                                        let response = handle_rpc(&state, &mut context, value).await;
+                                        let response = handle_rpc(&state, &mut context, &sender, value).await;
                                         if let Some(payload) = response {
                                             if send_json(&sender, payload).await.is_err() {
                                                 break;
@@ -209,6 +209,7 @@ fn json_error(id: Value, code: i64, message: &str) -> Value {
 async fn handle_rpc(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     request: Value,
 ) -> Option<Value> {
     let id = request.get("id").cloned().unwrap_or(Value::Null);
@@ -231,7 +232,7 @@ async fn handle_rpc(
                 "initialize must be called before session operations",
             ))
         }
-        "session/new" => match handle_session_new(state, ctx, params).await {
+        "session/new" => match handle_session_new(state, ctx, sender, params).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
@@ -239,15 +240,15 @@ async fn handle_rpc(
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
-        "session/load" => match handle_session_load(state, ctx, params).await {
+        "session/load" => match handle_session_load(state, ctx, sender, params).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
-        "session/prompt" => match handle_session_prompt(state, ctx, params).await {
+        "session/prompt" => match handle_session_prompt(state, ctx, sender, params).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
-        "session/cancel" => match handle_session_cancel(state, ctx, params).await {
+        "session/cancel" => match handle_session_cancel(state, ctx, sender, params).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
@@ -261,6 +262,7 @@ async fn handle_rpc(
 async fn handle_session_new(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let request = translate_create_request(params)?;
@@ -274,6 +276,7 @@ async fn handle_session_new(
 
     if let Some(session) = state.app_state.session_store.get_session(&session_id).await? {
         subscribe_session(ctx, &state.app_state, &session_id);
+        let _ = seed_history(&state.app_state, &session_id, sender).await;
         ctx.sessions.insert(session_id.clone());
         let _ = state
             .app_state
@@ -328,6 +331,7 @@ async fn handle_session_list(
 async fn handle_session_load(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -342,6 +346,7 @@ async fn handle_session_load(
         .await?
     {
         subscribe_session(ctx, &state.app_state, session_id);
+        let _ = seed_history(&state.app_state, session_id, sender).await;
         ctx.sessions.insert(session_id.to_string());
         Ok(json!({
             "session": session_to_json(&session.session),
@@ -354,6 +359,7 @@ async fn handle_session_load(
 async fn handle_session_prompt(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -365,6 +371,13 @@ async fn handle_session_prompt(
         .or_else(|| params.get("prompt"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("message is required".into()))?;
+    const MAX_PROMPT_CHARS: usize = 16000;
+    if message.chars().count() > MAX_PROMPT_CHARS {
+        return Err(ServerError::BadRequest(format!(
+            "message exceeds max length of {} characters",
+            MAX_PROMPT_CHARS
+        )));
+    }
 
     if let Some(mut session) = state
         .app_state
@@ -373,6 +386,7 @@ async fn handle_session_prompt(
         .await?
     {
         subscribe_session(ctx, &state.app_state, session_id);
+        let _ = seed_history(&state.app_state, session_id, sender).await;
         ctx.sessions.insert(session_id.to_string());
         if matches!(session.session.status, SessionStatus::Queued | SessionStatus::Provisioning) {
             session.session.status = SessionStatus::Running;
@@ -420,6 +434,7 @@ async fn handle_session_prompt(
 async fn handle_session_cancel(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -437,6 +452,7 @@ async fn handle_session_cancel(
     };
 
     subscribe_session(ctx, &state.app_state, session_id);
+    let _ = seed_history(&state.app_state, session_id, sender).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Cancelled;
@@ -470,6 +486,26 @@ fn subscribe_session(ctx: &mut AcpSessionContext, app_state: &AppState, session_
     if let Some(receiver) = app_state.session_store.subscribe_session_events(session_id) {
         ctx.receivers.insert(session_id.to_string(), receiver);
     }
+}
+
+async fn seed_history(
+    app_state: &AppState,
+    session_id: &str,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+) -> Result<(), ()> {
+    if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
+        for event in events {
+            let update = json!({
+                "method": "session/update",
+                "params": {
+                    "sessionId": session_id,
+                    "event": event_to_json(session_id, &event),
+                }
+            });
+            send_json(sender, update).await?;
+        }
+    }
+    Ok(())
 }
 
 fn session_to_json(session: &Session) -> Value {
@@ -609,6 +645,18 @@ fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
+    const MAX_PROMPT_CHARS: usize = 16000;
+    if prompt.trim().is_empty() {
+        return Err(ServerError::BadRequest(
+            "prompt is required for session/new".into(),
+        ));
+    }
+    if prompt.chars().count() > MAX_PROMPT_CHARS {
+        return Err(ServerError::BadRequest(format!(
+            "prompt exceeds max length of {} characters",
+            MAX_PROMPT_CHARS
+        )));
+    }
     if prompt.trim().is_empty() {
         return Err(ServerError::BadRequest(
             "prompt is required for session/new".into(),
