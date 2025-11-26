@@ -228,7 +228,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 ### Milestone 5: Command Execution Tracing & Passthrough Recorder
 
-**Status**: Planned
+**Status**: In progress (2025-11-26)
 
 #### Deliverables
 
@@ -240,6 +240,15 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [ ] Add basic regression tests (`ah-command-trace-e2e-tests`) that prove the shim loads, rewrites commands, and fails open when env injection or sockets are unavailable.
 - [ ] Automatically create filesystem snapshots after every tool execution and after every file write detected by the shim. For file writes, capture the diff against the previous snapshot for the affected file and emit it as an ACP `diff` content block (or via REST diff endpoints) so clients can show before/after views without re-reading the workspace.
 - [ ] Track writes to agent session files (per agent type) and maintain a mapping between the snapshot taken for those writes and the session file update event. This mapping allows restoring session files to the correct state when a snapshot is restored or branched.
+
+#### Implementation Details (current)
+
+- Added recorder bridge scaffold (`acp::recorder`) with a single source of truth for constructing follower commands (`ah show-sandbox-execution ... --id <exec> --session <session> --follow`), matching the design described in this milestone.
+- No runtime wiring yet; this helper will be consumed by the upcoming recorder-to-ACP bridge and IDE follower channel.
+
+#### Key Implementation Files
+
+- `crates/ah-rest-server/src/acp/recorder.rs` — follower command builder utility and unit test.
 
 ##### Sub-milestones
 
