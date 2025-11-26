@@ -734,12 +734,14 @@ mod tests {
     use super::*;
     use crate::models::InMemorySessionStore;
     use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
-    use ah_rest_api_contract::{CreateTaskRequest, RepoConfig, RepoMode, RuntimeConfig, RuntimeType};
+    use ah_rest_api_contract::{
+        CreateTaskRequest, RepoConfig, RepoMode, RuntimeConfig, RuntimeType,
+    };
     use std::collections::HashMap;
     use std::time::Duration;
+    use tempfile;
     use tokio::io::AsyncWriteExt;
     use tokio::time::timeout;
-    use tempfile;
 
     #[tokio::test]
     async fn recorder_session_events_are_persisted_and_broadcast() -> anyhow::Result<()> {
@@ -776,8 +778,9 @@ mod tests {
         };
         let session_id = store.create_session(&request).await?.pop().unwrap();
 
-        let recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let recorder_senders: Arc<
+            Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>,
+        > = Arc::new(Mutex::new(HashMap::new()));
         let hub = Arc::new(crate::task_socket::TaskSocketHub::new());
 
         let (mut client, server) = UnixStream::pair()?;
@@ -791,9 +794,7 @@ mod tests {
 
         // Write session id
         let id_bytes = session_id.as_bytes();
-        client
-            .write_all(&(id_bytes.len() as u32).to_le_bytes())
-            .await?;
+        client.write_all(&(id_bytes.len() as u32).to_le_bytes()).await?;
         client.write_all(id_bytes).await?;
 
         // Send a SessionEvent via TaskManagerMessage
@@ -814,9 +815,9 @@ mod tests {
 
         let events = store.get_session_events(&session_id).await?;
         assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, SessionEvent::Log(ev) if ev.message == b"recorder says hi".to_vec())),
+            events.iter().any(
+                |e| matches!(e, SessionEvent::Log(ev) if ev.message == b"recorder says hi".to_vec())
+            ),
             "log event from recorder should be stored and broadcast"
         );
         Ok(())

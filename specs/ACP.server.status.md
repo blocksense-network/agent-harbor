@@ -267,6 +267,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Added an ACP scenario-driven follower test (`acp_prompt_followers`) that replays `tests/acp_bridge/scenarios/terminal_follow_detach.yaml` against the live gateway, asserting both `_ah/terminal/follow` and `_ah/terminal/detach` updates surface as `session/update` notifications. The fixture now uses placeholders so session IDs returned by the server are applied at runtime; the test harness consumes the scenario timeline to drive the WebSocket while letting the server execute normally.
 - ACP gateway now streams PTY backlog + live data/resizes from the TaskManager socket to ACP clients after `_ah/terminal/follow`, using the recorder task socket hub (`TaskManagerMessage::PtyData`/`PtyResize`). This wires prompt-injection-followers to the live TTY instead of log-only.
 - Recorder socket session events now hydrate the session store: `TaskManagerMessage::SessionEvent` (and legacy SSZ `SessionEvent`) are persisted and fanned out to SSE/ACP subscribers, completing the recorder→ACP bridge for status/log/tool/file events.
+- New reusable ACP Scenario driver (`tests/common/acp_scenario.rs`) executes YAML client/server timelines with placeholder substitution; `acp_prompt_followers` now uses it, reducing bespoke harness code. This sets the stage for running ACP scenarios directly via the Scenario Format rather than per-test wiring.
 
 #### Key Implementation Files
 
