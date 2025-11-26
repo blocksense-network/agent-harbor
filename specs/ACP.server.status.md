@@ -23,6 +23,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - WebSocket and stdio transports now run through the SDK `ValueDispatcher`, preserving raw JSON params via `WrappedRequest` so Harbor-specific fields survive decoding.
 - Vendored SDK exports `WrappedRequest` (typed + raw) to propagate `_meta` and extension fields into handlers.
 - `session/new` translation now expects Harbor-specific fields (`repoUrl`, `branch`, `labels`, etc.) under `_meta` (prompt/agent stay at the root); ACP tests updated accordingly.
+- Added dispatcher compatibility shims for legacy clients (`ping`, `session/cancel` as requests, string-only `session/prompt` messages) and schema defaults for `session/load` so the full ACP test suite passes under the SDK runtime.
 
 ## Test Strategy
 
