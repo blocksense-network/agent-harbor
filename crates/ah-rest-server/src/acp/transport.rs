@@ -2394,9 +2394,10 @@ async fn send_session_notification(
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
-    _notifier: &Notifier,
+    notifier: &Notifier,
 ) -> Result<(), ()> {
-    // Temporary: still using dispatcher path; notifier hook reserved for future
+    // notify path to be wired once typed session/update payloads are used.
+    let _ = notifier.notify("session/update", None).await;
     let message = OutgoingMessage::Notification {
         method: Arc::from("session/update"),
         params: Some(params),
@@ -2431,8 +2432,9 @@ async fn send_session_notification_stdout(
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
-    _notifier: &Notifier,
+    notifier: &Notifier,
 ) -> Result<(), ()> {
+    let _ = notifier.notify("session/update", None).await;
     let message = OutgoingMessage::Notification {
         method: Arc::from("session/update"),
         params: Some(params),
