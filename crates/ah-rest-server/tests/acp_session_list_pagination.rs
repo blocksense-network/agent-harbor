@@ -31,15 +31,12 @@ async fn acp_session_list_respects_pagination() {
     let (acp_url, handle) = spawn_acp_server_basic().await;
     let acp_url = format!("{}?api_key=secret", acp_url);
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     // initialize
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}})
-                .to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .unwrap();
@@ -64,8 +61,7 @@ async fn acp_session_list_respects_pagination() {
     // list first two
     socket
         .send(WsMessage::Text(
-            json!({"id":20,"method":"session/list","params":{"offset":0,"limit":2}})
-                .to_string(),
+            json!({"id":20,"method":"session/list","params":{"offset":0,"limit":2}}).to_string(),
         ))
         .await
         .unwrap();
@@ -75,15 +71,23 @@ async fn acp_session_list_respects_pagination() {
         .and_then(|v| v.as_array())
         .expect("items array");
     assert_eq!(first_items.len(), 2);
-    assert_eq!(first_page.pointer("/result/offset").and_then(|v| v.as_u64()), Some(0));
-    assert_eq!(first_page.pointer("/result/limit").and_then(|v| v.as_u64()), Some(2));
-    assert_eq!(first_page.pointer("/result/total").and_then(|v| v.as_u64()), Some(3));
+    assert_eq!(
+        first_page.pointer("/result/offset").and_then(|v| v.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        first_page.pointer("/result/limit").and_then(|v| v.as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        first_page.pointer("/result/total").and_then(|v| v.as_u64()),
+        Some(3)
+    );
 
     // list last item via offset
     socket
         .send(WsMessage::Text(
-            json!({"id":21,"method":"session/list","params":{"offset":2,"limit":2}})
-                .to_string(),
+            json!({"id":21,"method":"session/list","params":{"offset":2,"limit":2}}).to_string(),
         ))
         .await
         .unwrap();
@@ -93,8 +97,14 @@ async fn acp_session_list_respects_pagination() {
         .and_then(|v| v.as_array())
         .expect("items array");
     assert_eq!(second_items.len(), 1);
-    assert_eq!(second_page.pointer("/result/offset").and_then(|v| v.as_u64()), Some(2));
-    assert_eq!(second_page.pointer("/result/limit").and_then(|v| v.as_u64()), Some(2));
+    assert_eq!(
+        second_page.pointer("/result/offset").and_then(|v| v.as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        second_page.pointer("/result/limit").and_then(|v| v.as_u64()),
+        Some(2)
+    );
 
     handle.abort();
 }

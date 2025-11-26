@@ -3,6 +3,7 @@
 
 use crate::{
     config::ServerConfig,
+    dependencies::TaskController,
     models::{InMemorySessionStore, InternalSession, SessionStore},
     state::AppState,
 };
@@ -95,7 +96,7 @@ impl MockServerDependencies {
             db,
             config,
             session_store,
-            task_controller: None,
+            task_controller: Some(Arc::new(MockTaskController::default())),
         };
 
         Ok(Self { state })
@@ -103,6 +104,42 @@ impl MockServerDependencies {
 
     pub fn into_state(self) -> AppState {
         self.state
+    }
+}
+
+#[derive(Default)]
+struct MockTaskController {
+    // Track injected prompts/bytes per session for test diagnostics
+    injected_messages: tokio::sync::Mutex<std::collections::HashMap<String, Vec<Vec<u8>>>>,
+}
+
+#[async_trait]
+impl TaskController for MockTaskController {
+    async fn stop_task(&self, _session_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn pause_task(&self, _session_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn resume_task(&self, _session_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn inject_message(&self, session_id: &str, message: &str) -> anyhow::Result<()> {
+        let mut guard = self.injected_messages.lock().await;
+        guard
+            .entry(session_id.to_string())
+            .or_default()
+            .push(message.as_bytes().to_vec());
+        Ok(())
+    }
+
+    async fn inject_bytes(&self, session_id: &str, bytes: &[u8]) -> anyhow::Result<()> {
+        let mut guard = self.injected_messages.lock().await;
+        guard.entry(session_id.to_string()).or_default().push(bytes.to_vec());
+        Ok(())
     }
 }
 
