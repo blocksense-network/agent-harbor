@@ -21,10 +21,10 @@ use crate::{
     state::AppState,
 };
 use agent_client_protocol::{
-    AgentCapabilities, AgentNotification, AgentSideConnection, AuthMethodId, AuthenticateRequest,
-    ClientNotification, ClientRequest, ContentBlock, Error, ExtRequest, IncomingMessage,
-    OutgoingMessage, ResponseResult, SessionId, SessionNotification, SessionUpdate, Side,
-    TextContent, ValueDispatcher, WrappedRequest,
+    AgentCapabilities, AgentNotification, AuthMethodId, AuthenticateRequest, ClientNotification,
+    ClientRequest, ContentBlock, Error, ExtRequest, IncomingMessage, OutgoingMessage,
+    ResponseResult, SessionId, SessionNotification, SessionUpdate, Side, TextContent,
+    ValueDispatcher, WrappedRequest,
 };
 use axum::{
     Json, Router,
@@ -791,8 +791,6 @@ struct AcpSessionContext {
     /// client-supplied follow commands.
     execution_commands: HashMap<String, HashMap<String, String>>,
     notifier: Notifier,
-    /// Optional typed SDK connection used for outbound notifications once seeded per transport.
-    sdk_conn: Option<AgentSideConnection>,
 }
 
 fn json_error(id: Value, code: i64, message: &str) -> Value {
@@ -2382,24 +2380,147 @@ fn terminal_detach_params(session_id: &str, execution_id: &str) -> Value {
 }
 
 fn session_update_from_json(params: &Value) -> SessionNotification {
-    // Minimal lossy converter to bridge existing JSON into SDK typed updates; preserves event blob as meta.
     let session_id =
         params.get("sessionId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     let event = params.get("event").cloned().unwrap_or(Value::Null);
 
-    // For now, wrap the entire event JSON as a text block so clients still receive it until we do full mapping.
-    let update = SessionUpdate::AgentMessageChunk {
-        content: ContentBlock::Text(TextContent {
-            annotations: None,
-            text: event.to_string(),
-            meta: None,
-        }),
+    let (update, meta) = match event.get("type").and_then(|v| v.as_str()) {
+        Some("status") => (
+            SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: event
+                        .get("status")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    meta: None,
+                }),
+            },
+            Some(event.clone()),
+        ),
+        Some("log") => (
+            SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: event
+                        .get("message")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    meta: None,
+                }),
+            },
+            Some(event.clone()),
+        ),
+        Some("thought") => (
+            SessionUpdate::AgentThoughtChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: event
+                        .get("text")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    meta: None,
+                }),
+            },
+            Some(event.clone()),
+        ),
+        Some("tool_use") => {
+            let exec = event.get("executionId").and_then(|s| s.as_str()).unwrap_or_default();
+            let title = event
+                .get("followerCommand")
+                .or_else(|| event.get("toolName"))
+                .and_then(|s| s.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let status = match event.get("status").and_then(|s| s.as_str()).unwrap_or_default() {
+                "completed" => agent_client_protocol::ToolCallStatus::Completed,
+                "failed" => agent_client_protocol::ToolCallStatus::Failed,
+                _ => agent_client_protocol::ToolCallStatus::InProgress,
+            };
+            let raw_input = event.get("args").cloned();
+            (
+                SessionUpdate::ToolCall(agent_client_protocol::ToolCall {
+                    id: agent_client_protocol::ToolCallId(exec.into()),
+                    title,
+                    kind: agent_client_protocol::ToolKind::Execute,
+                    status,
+                    content: Vec::new(),
+                    locations: Vec::new(),
+                    raw_input,
+                    raw_output: None,
+                    meta: Some(event.clone()),
+                }),
+                Some(event.clone()),
+            )
+        }
+        Some("tool_result") => {
+            let exec = event.get("executionId").and_then(|s| s.as_str()).unwrap_or_default();
+            let status = match event.get("status").and_then(|s| s.as_str()).unwrap_or_default() {
+                "failed" => Some(agent_client_protocol::ToolCallStatus::Failed),
+                _ => Some(agent_client_protocol::ToolCallStatus::Completed),
+            };
+            let raw_output = event.get("output").cloned();
+            (
+                SessionUpdate::ToolCallUpdate(agent_client_protocol::ToolCallUpdate {
+                    id: agent_client_protocol::ToolCallId(exec.into()),
+                    fields: agent_client_protocol::ToolCallUpdateFields {
+                        status,
+                        content: None,
+                        locations: None,
+                        raw_input: None,
+                        raw_output,
+                        title: None,
+                        kind: None,
+                    },
+                    meta: Some(event.clone()),
+                }),
+                Some(event.clone()),
+            )
+        }
+        Some("file_edit") => (
+            SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: format!(
+                        "[file_edit] {} (+{} -{})",
+                        event.get("path").and_then(|s| s.as_str()).unwrap_or("<unknown>"),
+                        event.get("added").and_then(|n| n.as_i64()).unwrap_or(0),
+                        event.get("removed").and_then(|n| n.as_i64()).unwrap_or(0)
+                    ),
+                    meta: None,
+                }),
+            },
+            Some(event.clone()),
+        ),
+        Some(kind) if kind.starts_with("terminal") => (
+            SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: format!("[{}]", kind),
+                    meta: None,
+                }),
+            },
+            Some(event.clone()),
+        ),
+        _ => (
+            SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: event.to_string(),
+                    meta: None,
+                }),
+            },
+            Some(event.clone()),
+        ),
     };
 
     SessionNotification {
         session_id: SessionId(session_id.into()),
         update,
-        meta: None,
+        meta,
     }
 }
 
