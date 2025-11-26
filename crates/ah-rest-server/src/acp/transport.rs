@@ -43,6 +43,7 @@ use ah_rest_api_contract::{
     CreateTaskRequest, FilterQuery, RepoConfig, RepoMode, RuntimeConfig, RuntimeType, Session,
     SessionEvent, SessionLogLevel, SessionStatus, SessionToolStatus,
 };
+use crate::acp::recorder::follower_command;
 
 #[derive(Clone)]
 pub struct AcpTransportState {
@@ -605,6 +606,11 @@ fn event_to_json(session_id: &str, event: &SessionEvent) -> Value {
             "executionId": String::from_utf8_lossy(&tool.tool_execution_id),
             "status": tool_status_str(&tool.status),
             "timestamp": tool.timestamp,
+            "followerCommand": follower_command(
+                &String::from_utf8_lossy(&tool.tool_execution_id),
+                session_id,
+                &String::from_utf8_lossy(&tool.tool_name)
+            ),
         }),
         SessionEvent::ToolResult(result) => json!({
             "type": "tool_result",
@@ -614,6 +620,11 @@ fn event_to_json(session_id: &str, event: &SessionEvent) -> Value {
             "executionId": String::from_utf8_lossy(&result.tool_execution_id),
             "status": tool_status_str(&result.status),
             "timestamp": result.timestamp,
+            "followerCommand": follower_command(
+                &String::from_utf8_lossy(&result.tool_execution_id),
+                session_id,
+                &String::from_utf8_lossy(&result.tool_name)
+            ),
         }),
         SessionEvent::FileEdit(edit) => json!({
             "type": "file_edit",
