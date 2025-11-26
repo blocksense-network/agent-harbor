@@ -9,10 +9,12 @@ use crate::{
     models::{DatabaseSessionStore, SessionStore},
     state::AppState,
 };
+use ah_core::task_manager_wire::TaskManagerMessage;
 use ah_local_db::Database;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
+use tokio::sync::broadcast;
 
 /// Task control surface that can be injected into handlers
 #[async_trait]
@@ -35,6 +37,20 @@ pub trait TaskController: Send + Sync {
     async fn inject_message(&self, _session_id: &str, _message: &str) -> anyhow::Result<()> {
         Ok(())
     }
+
+    /// Subscribe to PTY stream for a session, returning backlog and a live receiver.
+    /// Default is unimplemented for backends that do not expose PTY data.
+    async fn subscribe_pty(
+        &self,
+        _session_id: &str,
+    ) -> anyhow::Result<(
+        Vec<TaskManagerMessage>,
+        broadcast::Receiver<TaskManagerMessage>,
+    )> {
+        Err(anyhow::anyhow!(
+            "PTY subscription not supported by this TaskController"
+        ))
+    }
 }
 
 #[async_trait]
@@ -54,6 +70,16 @@ impl TaskController for TaskExecutor {
 
     async fn inject_message(&self, session_id: &str, message: &str) -> anyhow::Result<()> {
         self.inject_message(session_id, message).await
+    }
+
+    async fn subscribe_pty(
+        &self,
+        session_id: &str,
+    ) -> anyhow::Result<(
+        Vec<TaskManagerMessage>,
+        broadcast::Receiver<TaskManagerMessage>,
+    )> {
+        TaskExecutor::subscribe_pty(self, session_id).await
     }
 }
 
