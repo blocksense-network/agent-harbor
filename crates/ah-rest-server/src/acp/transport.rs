@@ -10,7 +10,7 @@
 //! dispatcher.
 
 use crate::{
-    acp::translator::JsonRpcTranslator,
+    acp::translator::{InitializeLite, JsonRpcTranslator},
     auth::{AuthConfig, Claims},
     config::{AcpAuthPolicy, AcpConfig},
     error::{ServerError, ServerResult},
@@ -75,6 +75,14 @@ struct RawRpcPayload {
     method: Arc<str>,
     #[serde(default)]
     params: Value,
+}
+
+#[derive(Default, Clone, Debug, Deserialize)]
+struct AuthenticateLite {
+    #[serde(rename = "methodId")]
+    _method_id: Option<String>,
+    #[serde(rename = "_meta", default)]
+    meta: Option<Value>,
 }
 
 #[derive(Clone)]
@@ -432,11 +440,17 @@ async fn route_request(
         "initialize" => {
             let caps = JsonRpcTranslator::negotiate_caps(&state.config);
             guard.negotiated_caps = Some(caps.clone());
-            Ok(JsonRpcTranslator::initialize_response(&caps))
+            let req: InitializeLite =
+                serde_json::from_value(request.params.clone()).unwrap_or_default();
+            Ok(JsonRpcTranslator::initialize_response_typed(&caps, &req))
         }
-        "authenticate" => handle_authenticate(state, &mut guard, request.params, headers)
-            .await
-            .map_err(server_error_to_rpc),
+        "authenticate" => {
+            let req: AuthenticateLite =
+                serde_json::from_value(request.params.clone()).unwrap_or_default();
+            handle_authenticate_typed(state, &mut guard, req, headers)
+                .await
+                .map_err(server_error_to_rpc)
+        }
         "session/new" | "session/list" | "session/load" | "session/prompt" | "session/cancel"
         | "session/pause" | "session/resume" => {
             require_initialized(&guard)?;
@@ -559,11 +573,17 @@ async fn route_request_stdio(
         "initialize" => {
             let caps = JsonRpcTranslator::negotiate_caps(&state.config);
             guard.negotiated_caps = Some(caps.clone());
-            Ok(JsonRpcTranslator::initialize_response(&caps))
+            let req: InitializeLite =
+                serde_json::from_value(request.params.clone()).unwrap_or_default();
+            Ok(JsonRpcTranslator::initialize_response_typed(&caps, &req))
         }
-        "authenticate" => handle_authenticate(state, &mut guard, request.params, headers)
-            .await
-            .map_err(server_error_to_rpc),
+        "authenticate" => {
+            let req: AuthenticateLite =
+                serde_json::from_value(request.params.clone()).unwrap_or_default();
+            handle_authenticate_typed(state, &mut guard, req, headers)
+                .await
+                .map_err(server_error_to_rpc)
+        }
         "session/new" | "session/list" | "session/load" | "session/prompt" | "session/cancel"
         | "session/pause" | "session/resume" => {
             require_initialized(&guard)?;
@@ -798,6 +818,28 @@ async fn handle_authenticate(
     let query = AcpQuery {
         api_key: params.get("apiKey").and_then(|v| v.as_str()).map(|s| s.to_string()),
         bearer_token: params.get("token").and_then(|v| v.as_str()).map(|s| s.to_string()),
+    };
+
+    let claims = authenticate(&state.auth, state.config.auth_policy, &query, headers)?;
+    ctx.auth_claims = claims.clone();
+
+    Ok(json!({
+        "authenticated": true,
+        "tenantId": claims.as_ref().and_then(|c| c.tenant_id.clone()),
+        "projectId": claims.as_ref().and_then(|c| c.project_id.clone())
+    }))
+}
+
+async fn handle_authenticate_typed(
+    state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
+    req: AuthenticateLite,
+    headers: &HeaderMap,
+) -> ServerResult<Value> {
+    let meta = req.meta.unwrap_or_default();
+    let query = AcpQuery {
+        api_key: meta.get("apiKey").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        bearer_token: meta.get("token").and_then(|v| v.as_str()).map(|s| s.to_string()),
     };
 
     let claims = authenticate(&state.auth, state.config.auth_policy, &query, headers)?;

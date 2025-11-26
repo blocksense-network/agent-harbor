@@ -138,6 +138,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - [x] Implement optional `authenticate` request forwarding to the guardrails built in M1.
 - [x] Persist negotiated settings per connection inside an `AcpSessionContext`.
 - [x] Add compatibility matrix docs summarizing which ACP features map to Agent Harbor features.
+- [x] Parse `initialize`/`authenticate` payloads using the ACP schema (lite structs) so capability negotiation/auth flows align with SDK types; capability state is stored with SDK `AgentCapabilities`.
 
 #### Verification
 

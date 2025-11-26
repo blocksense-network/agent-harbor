@@ -10,12 +10,22 @@
 
 use crate::config::{AcpConfig, AcpTransportMode};
 use agent_client_protocol::{AgentCapabilities, McpCapabilities, PromptCapabilities};
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use tracing::warn;
 
 /// Translator utilities for JSON-RPC payloads.
 #[derive(Debug, Default, Clone)]
 pub struct JsonRpcTranslator;
+
+/// Minimal Initialize request parser to avoid tight coupling to SDK defaults.
+#[derive(Default, Clone, Debug, Deserialize)]
+pub struct InitializeLite {
+    #[serde(rename = "protocolVersion")]
+    pub protocol_version: Option<String>,
+    #[serde(rename = "_meta", default)]
+    pub meta: Option<Value>,
+}
 
 impl JsonRpcTranslator {
     pub fn new() -> Self {
@@ -49,19 +59,32 @@ impl JsonRpcTranslator {
     }
 
     pub fn initialize_response(caps: &AgentCapabilities) -> Value {
+        Self::initialize_response_typed(caps, &InitializeLite::default())
+    }
+
+    pub fn initialize_response_typed(caps: &AgentCapabilities, req: &InitializeLite) -> Value {
         let transports = caps
             .meta
             .as_ref()
             .and_then(|m| m.pointer("/agent.harbor/transports").cloned())
             .unwrap_or_else(|| json!(["websocket"]));
+        let mut response_meta = caps.meta.clone().unwrap_or(json!({}));
+        response_meta
+            .as_object_mut()
+            .and_then(|m| m.get_mut("agent.harbor"))
+            .and_then(|m| m.as_object_mut())
+            .map(|m| m.insert("transports".into(), transports.clone()));
+
         json!({
+            "protocolVersion": req.protocol_version.clone().unwrap_or_else(|| "1.0".into()),
             "capabilities": {
                 "loadSession": caps.load_session,
                 "promptCapabilities": caps.prompt_capabilities,
                 "mcp": caps.mcp_capabilities,
                 "transports": transports,
-                "_meta": caps.meta.clone().unwrap_or(json!({}))
-            }
+                "_meta": response_meta
+            },
+            "authMethods": []
         })
     }
 
