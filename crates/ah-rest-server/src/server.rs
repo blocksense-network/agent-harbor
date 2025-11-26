@@ -3,12 +3,12 @@
 
 //! Main server implementation
 
-use crate::config::ServerConfig;
 use crate::dependencies::DefaultServerDependencies;
 use crate::error::ServerResult;
 use crate::handlers;
 use crate::middleware::{RateLimitState, rate_limit_middleware};
 use crate::state::AppState;
+use crate::{acp::AcpGateway, config::ServerConfig, error::ServerError};
 use axum::{
     Router,
     http::HeaderValue,
@@ -29,19 +29,25 @@ use tracing::info;
 pub struct Server {
     config: ServerConfig,
     app: Router,
+    acp_gateway: Option<AcpGateway>,
 }
 
 impl Server {
     /// Create a new server instance
     pub async fn new(config: ServerConfig) -> ServerResult<Self> {
         let state = DefaultServerDependencies::new(config.clone()).await?.into_state();
-        Self::with_state(config, state)
+        Self::with_state(config, state).await
     }
 
     /// Construct a server from an already-built app state (used for custom dependencies)
-    pub fn with_state(config: ServerConfig, state: AppState) -> ServerResult<Self> {
+    pub async fn with_state(config: ServerConfig, state: AppState) -> ServerResult<Self> {
+        let acp_gateway = AcpGateway::bind(config.acp.clone(), state.clone()).await?;
         let app = Self::build_app(state, &config);
-        Ok(Self { config, app })
+        Ok(Self {
+            config: config.clone(),
+            app,
+            acp_gateway: config.acp.enabled.then_some(acp_gateway),
+        })
     }
 
     /// Build the Axum application with routes and middleware
@@ -162,13 +168,114 @@ impl Server {
         info!("Starting server on {}", addr);
 
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, self.app).await?;
+        let rest_server = axum::serve(listener, self.app);
+
+        if let Some(acp_gateway) = self.acp_gateway {
+            tokio::try_join!(
+                async move {
+                    rest_server
+                        .await
+                        .map_err(|err| ServerError::Internal(format!("REST server error: {err}")))
+                },
+                async move { acp_gateway.run().await.map_err(ServerError::from) },
+            )?;
+        } else {
+            rest_server
+                .await
+                .map_err(|err| ServerError::Internal(format!("REST server error: {err}")))?;
+        }
 
         Ok(())
+    }
+
+    /// Address of the ACP gateway when it is enabled and bound.
+    pub fn acp_bind_addr(&self) -> Option<std::net::SocketAddr> {
+        self.acp_gateway.as_ref().and_then(|gateway| gateway.handle().map(|h| h.addr()))
     }
 
     /// Get the bind address
     pub fn addr(&self) -> SocketAddr {
         self.config.bind_addr
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_dependencies::MockServerDependencies;
+    use std::{
+        fs::{File, metadata},
+        io::Write,
+        path::PathBuf,
+    };
+    use uuid::Uuid;
+
+    struct TestLog {
+        path: PathBuf,
+        file: File,
+    }
+
+    impl TestLog {
+        fn new(name: &str) -> Self {
+            let mut path = std::env::temp_dir();
+            path.push(format!("ah-rest-server-{}-{}.log", name, Uuid::new_v4()));
+            let file = File::create(&path).expect("create log file");
+            Self { path, file }
+        }
+
+        fn record(&mut self, msg: &str) {
+            writeln!(self.file, "{}", msg).expect("write log line");
+        }
+    }
+
+    impl Drop for TestLog {
+        fn drop(&mut self) {
+            if std::thread::panicking() {
+                if let Ok(meta) = metadata(&self.path) {
+                    eprintln!(
+                        "test log available at {} ({} bytes)",
+                        self.path.display(),
+                        meta.len()
+                    );
+                } else {
+                    eprintln!("test log available at {}", self.path.display());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn acp_flag_enables_gateway() {
+        let mut log = TestLog::new("acp_flag_enables_gateway");
+
+        let mut config = ServerConfig::default();
+        config.bind_addr = "127.0.0.1:0".parse().unwrap();
+        config.enable_cors = true;
+        config.acp.enabled = true;
+        config.acp.bind_addr = "127.0.0.1:0".parse().unwrap();
+
+        let deps = MockServerDependencies::new(config.clone()).await.expect("mock deps");
+        let server = Server::with_state(config.clone(), deps.into_state()).await.expect("server");
+
+        let acp_addr = server.acp_bind_addr();
+        log.record(&format!("acp_addr_enabled={:?}", acp_addr));
+        let bound = acp_addr.expect("ACP gateway should bind when enabled");
+        assert_ne!(bound.port(), 0, "gateway should bind to an ephemeral port");
+
+        let mut disabled_config = config;
+        disabled_config.acp.enabled = false;
+        let deps_disabled =
+            MockServerDependencies::new(disabled_config.clone()).await.expect("mock deps");
+        let server_disabled = Server::with_state(disabled_config, deps_disabled.into_state())
+            .await
+            .expect("server");
+        log.record(&format!(
+            "acp_addr_disabled={:?}",
+            server_disabled.acp_bind_addr()
+        ));
+        assert!(
+            server_disabled.acp_bind_addr().is_none(),
+            "gateway should remain disabled when flag is off"
+        );
     }
 }

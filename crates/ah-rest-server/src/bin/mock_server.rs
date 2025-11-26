@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let deps = MockServerDependencies::with_options(config.clone(), playback).await?;
-    let server = Server::with_state(config, deps.into_state())?;
+    let server = Server::with_state(config, deps.into_state()).await?;
     server.run().await?;
 
     Ok(())

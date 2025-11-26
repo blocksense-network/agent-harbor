@@ -3,7 +3,7 @@
 
 //! Data models and business logic
 
-use ah_domain_types::{AgentSoftware, AgentSoftwareBuild};
+use ah_domain_types::{AgentSoftware, AgentSoftwareBuild, LogLevel};
 use ah_local_db::{
     Database, SessionRecord, SessionStore as DbSessionStore, TaskRecord, TaskStore as DbTaskStore,
 };
@@ -57,12 +57,14 @@ pub trait SessionStore: Send + Sync {
 /// In-memory session store implementation (for development/testing)
 pub struct InMemorySessionStore {
     sessions: tokio::sync::RwLock<HashMap<String, InternalSession>>,
+    broadcasters: tokio::sync::RwLock<HashMap<String, broadcast::Sender<SessionEvent>>>,
 }
 
 impl InMemorySessionStore {
     pub fn new() -> Self {
         Self {
             sessions: tokio::sync::RwLock::new(HashMap::new()),
+            broadcasters: tokio::sync::RwLock::new(HashMap::new()),
         }
     }
 }
@@ -78,6 +80,7 @@ impl SessionStore for InMemorySessionStore {
     async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<Vec<String>> {
         let mut session_ids = Vec::new();
         let now = Utc::now();
+        let now_ms = now.timestamp_millis() as u64;
 
         for agent_config in &request.agents {
             // Create multiple sessions based on agent count
@@ -134,11 +137,20 @@ impl SessionStore for InMemorySessionStore {
                     created_at: now,
                     updated_at: now,
                     logs: vec![],
-                    events: vec![],
+                    events: vec![SessionEvent::status(
+                        SessionStatus::Queued,
+                        now_ms,
+                    )],
                 };
 
                 let mut sessions = self.sessions.write().await;
                 sessions.insert(session_id.clone(), internal_session);
+                drop(sessions);
+
+                let (tx, _) = broadcast::channel(128);
+                tx.send(SessionEvent::status(SessionStatus::Queued, now_ms))
+                    .ok();
+                self.broadcasters.write().await.insert(session_id.clone(), tx);
 
                 session_ids.push(session_id);
             }
@@ -158,13 +170,31 @@ impl SessionStore for InMemorySessionStore {
         session: &InternalSession,
     ) -> anyhow::Result<()> {
         let mut sessions = self.sessions.write().await;
+        let previous = sessions
+            .get(session_id)
+            .map(|existing| existing.session.status.clone());
         sessions.insert(session_id.to_string(), session.clone());
+        drop(sessions);
+
+        if let Some(prev_status) = previous {
+            if prev_status != session.session.status {
+                self.push_event(
+                    session_id,
+                    SessionEvent::status(
+                        session.session.status.clone(),
+                        Utc::now().timestamp_millis() as u64,
+                    ),
+                )
+                .await?;
+            }
+        }
         Ok(())
     }
 
     async fn delete_session(&self, session_id: &str) -> anyhow::Result<()> {
         let mut sessions = self.sessions.write().await;
         sessions.remove(session_id);
+        self.broadcasters.write().await.remove(session_id);
         Ok(())
     }
 
@@ -201,21 +231,24 @@ impl SessionStore for InMemorySessionStore {
     }
 
     async fn add_session_event(&self, session_id: &str, event: SessionEvent) -> anyhow::Result<()> {
-        let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(session_id) {
-            session.events.push(event);
-            session.updated_at = Utc::now();
-        }
-        Ok(())
+        self.push_event(session_id, event).await
     }
 
     async fn add_session_log(&self, _session_id: &str, log: LogEntry) -> anyhow::Result<()> {
         let mut sessions = self.sessions.write().await;
+        let timestamp = log.ts.timestamp_millis() as u64;
+        let level = map_log_level(log.level.clone());
+        let message = log.message.clone();
         if let Some(session) = sessions.get_mut(_session_id) {
-            session.logs.push(log);
+            session.logs.push(log.clone());
             session.updated_at = Utc::now();
         }
-        Ok(())
+        drop(sessions);
+        self.push_event(
+            _session_id,
+            SessionEvent::log(level, message, None, timestamp),
+        )
+        .await
     }
 
     async fn get_session_logs(
@@ -238,6 +271,43 @@ impl SessionStore for InMemorySessionStore {
         } else {
             Ok(vec![])
         }
+    }
+
+    fn subscribe_session_events(
+        &self,
+        session_id: &str,
+    ) -> Option<broadcast::Receiver<SessionEvent>> {
+        self.broadcasters
+            .try_read()
+            .ok()
+            .and_then(|map| map.get(session_id).map(|tx| tx.subscribe()))
+    }
+}
+
+impl InMemorySessionStore {
+    async fn push_event(&self, session_id: &str, event: SessionEvent) -> anyhow::Result<()> {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            session.events.push(event.clone());
+            session.updated_at = Utc::now();
+        }
+        drop(sessions);
+
+        if let Some(tx) = self.broadcasters.try_read().ok().and_then(|m| m.get(session_id).cloned())
+        {
+            let _ = tx.send(event);
+        }
+        Ok(())
+    }
+}
+
+fn map_log_level(level: LogLevel) -> SessionLogLevel {
+    match level {
+        LogLevel::Debug => SessionLogLevel::Debug,
+        LogLevel::Info => SessionLogLevel::Info,
+        LogLevel::Warn => SessionLogLevel::Warn,
+        LogLevel::Error => SessionLogLevel::Error,
+        LogLevel::Trace => SessionLogLevel::Debug,
     }
 }
 

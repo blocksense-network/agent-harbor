@@ -7,6 +7,7 @@
 //! the REST-Service specification. It provides endpoints for task creation,
 //! session management, real-time event streaming, and capability discovery.
 
+pub mod acp;
 pub mod auth;
 pub mod config;
 pub mod dependencies;
