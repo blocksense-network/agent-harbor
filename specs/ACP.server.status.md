@@ -204,6 +204,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] Add ACP `session/pause` / `session/resume` handlers that update session status and broadcast `session/update` events; verified with pause/resume scenario + RPC tests.
 - [x] TaskController exposes pause/resume/inject stubs so downstream TaskManager wiring can adopt ACP control paths without API churn.
 - [x] Database-backed TaskExecutor now updates session status for pause/resume and records status events, with unit tests covering the controller hooks.
+- [x] JWT bearer claims propagate tenantId/projectId into `session/new` when absent from params; ACP test covers claim inference.
 
 #### Verification
 

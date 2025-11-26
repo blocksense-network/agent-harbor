@@ -162,6 +162,90 @@ async fn acp_session_catalog_end_to_end() {
 }
 
 #[tokio::test]
+async fn acp_session_new_infers_tenant_from_jwt() {
+    use tungstenite::client::IntoClientRequest;
+    use jsonwebtoken::{EncodingKey, Header};
+    use ah_rest_server::auth::Claims;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+
+    let acp_listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let acp_addr = acp_listener.local_addr().unwrap();
+    drop(acp_listener);
+
+    let mut config = ServerConfig::default();
+    config.bind_addr = addr;
+    config.enable_cors = true;
+    config.jwt_secret = Some("secret".into());
+    config.acp.enabled = true;
+    config.acp.bind_addr = acp_addr;
+
+    let deps = MockServerDependencies::new(config.clone()).await.expect("deps");
+    let server = Server::with_state(config, deps.into_state()).await.expect("server");
+    let handle = tokio::spawn(async move { server.run().await.expect("server run") });
+    let acp_url = format!("ws://{}/acp/v1/connect", acp_addr);
+
+    let claims = Claims {
+        sub: "user-1".into(),
+        exp: (chrono::Utc::now().timestamp() + 300) as usize,
+        tenant_id: Some("tenant-xyz".into()),
+        project_id: Some("proj-99".into()),
+        roles: vec!["dev".into()],
+    };
+    let token = jsonwebtoken::encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret("secret".as_ref()),
+    )
+    .expect("jwt");
+
+    let mut request = acp_url.into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", format!("Bearer {}", token).parse().unwrap());
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(request)
+        .await
+        .expect("connect");
+
+    socket
+        .send(WsMessage::Text(
+            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+        ))
+        .await
+        .expect("init");
+    let _ = socket.next().await;
+
+    socket
+        .send(WsMessage::Text(
+            json!({
+                "id":2,
+                "method":"session/new",
+                "params":{
+                    "prompt":"tenant inference",
+                    "agent":"sonnet"
+                }
+            })
+            .to_string(),
+        ))
+        .await
+        .expect("session/new");
+    let created = read_response(&mut socket, 2).await;
+    assert_eq!(
+        created.pointer("/result/tenantId").and_then(|v| v.as_str()),
+        Some("tenant-xyz")
+    );
+    assert_eq!(
+        created.pointer("/result/projectId").and_then(|v| v.as_str()),
+        Some("proj-99")
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
 async fn acp_session_new_respects_context_limit() {
     let (acp_url, handle) = spawn_acp_server().await;
 
