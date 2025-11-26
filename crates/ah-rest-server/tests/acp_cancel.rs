@@ -16,7 +16,7 @@ async fn acp_session_cancel_streams_update() {
 
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .expect("init");

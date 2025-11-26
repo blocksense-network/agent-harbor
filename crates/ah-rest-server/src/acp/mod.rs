@@ -20,6 +20,13 @@ pub mod recorder;
 pub mod translator;
 pub mod transport;
 
+/// Raw+typed payload wrapper for SDK-driven dispatch.
+#[derive(Clone, Debug)]
+pub struct RawAndTyped<T> {
+    pub typed: T,
+    pub raw: serde_json::Value,
+}
+
 pub use errors::{AcpError, AcpResult};
 pub use gateway::{AcpGateway, GatewayHandle};
 pub use translator::JsonRpcTranslator;

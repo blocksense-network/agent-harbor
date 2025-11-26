@@ -75,13 +75,14 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
     // initialize
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .expect("init");
     let init_resp = socket.next().await.expect("init response").expect("frame");
     if let WsMessage::Text(text) = init_resp {
         let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        println!("INIT RESP: {}", value);
         assert_eq!(value.get("id").and_then(|v| v.as_i64()), Some(1));
         assert!(
             value.pointer("/result/capabilities/_meta/agent.harbor").is_some(),
@@ -118,6 +119,7 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
     let created = socket.next().await.expect("created").expect("frame");
     let session_id = if let WsMessage::Text(text) = created {
         let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        println!("SESSION NEW RESP: {}", value);
         value.pointer("/result/sessionId").and_then(|v| v.as_str()).unwrap().to_string()
     } else {
         panic!("unexpected frame")
@@ -179,7 +181,7 @@ async fn acp_authenticate_rpc_uses_payload_tokens() {
 
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .expect("init");

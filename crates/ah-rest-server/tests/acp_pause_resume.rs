@@ -21,7 +21,7 @@ async fn acp_pause_resume_status_streams() {
 
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .expect("init");
@@ -99,7 +99,7 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
 
     socket
         .send(WsMessage::Text(
-            serde_json::to_string(&json!({"id":1,"method":"initialize","params":{}})).unwrap(),
+            serde_json::to_string(&json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}})).unwrap(),
         ))
         .await
         .expect("init");
