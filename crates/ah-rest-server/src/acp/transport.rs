@@ -828,14 +828,12 @@ fn tool_event_command(tool_name: &[u8], tool_args: &[u8]) -> Option<String> {
 }
 
 /// Walk recorded session events (latest first) to find the command associated
-/// with an execution id. Falls back to the client-supplied value when history
-/// is unavailable.
+/// with an execution id. Only recorder-derived tool metadata is trusted.
 async fn resolve_execution_command(
     ctx: &mut AcpSessionContext,
     app_state: &AppState,
     session_id: &str,
     execution_id: &str,
-    provided: Option<&str>,
 ) -> Option<String> {
     if let Some(cmd) = ctx.execution_commands.get(session_id).and_then(|m| m.get(execution_id)) {
         return Some(cmd.clone());
@@ -849,7 +847,7 @@ async fn resolve_execution_command(
             return Some(cmd);
         }
     }
-    provided.and_then(sanitize_command)
+    None
 }
 
 fn command_from_events(events: &[SessionEvent], execution_id: &str) -> Option<String> {
@@ -869,6 +867,40 @@ fn command_from_events(events: &[SessionEvent], execution_id: &str) -> Option<St
         }
     }
     None
+}
+
+/// When recorder metadata is absent (e.g., synthetic/mock sessions), seed a minimal
+/// tool_use event so follower commands can still be derived without trusting the
+/// raw client-supplied string forever.
+async fn maybe_cache_synthetic_tool_event(
+    app_state: &AppState,
+    ctx: &mut AcpSessionContext,
+    session_id: &str,
+    execution_id: &str,
+    provided_command: &str,
+) {
+    if ctx
+        .execution_commands
+        .get(session_id)
+        .and_then(|m| m.get(execution_id))
+        .is_some()
+    {
+        return;
+    }
+    // Avoid storing obviously invalid commands.
+    let Some(cmd) = sanitize_command(provided_command) else {
+        return;
+    };
+
+    let event = SessionEvent::tool_use(
+        "client-supplied".to_string(),
+        cmd.clone(),
+        execution_id.to_string(),
+        SessionToolStatus::Started,
+        chrono::Utc::now().timestamp_millis() as u64,
+    );
+    let _ = app_state.session_store.add_session_event(session_id, event.clone()).await;
+    cache_execution_command(&mut ctx.execution_commands, session_id, &event);
 }
 
 async fn handle_authenticate_with_raw(
@@ -1100,19 +1132,18 @@ async fn handle_terminal_follow(
         .get("executionId")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
-    let cmd_string = resolve_execution_command(
-        ctx,
-        &state.app_state,
-        session_id,
-        execution_id,
-        params.get("command").and_then(|v| v.as_str()),
-    )
-    .await
-    .ok_or_else(|| {
-        ServerError::BadRequest(
-            "command is required when no recorded tool execution matches executionId".into(),
-        )
-    })?;
+    if let Some(provided) = params.get("command").and_then(|v| v.as_str()) {
+        maybe_cache_synthetic_tool_event(&state.app_state, ctx, session_id, execution_id, provided)
+            .await;
+    }
+
+    let cmd_string = resolve_execution_command(ctx, &state.app_state, session_id, execution_id)
+        .await
+        .ok_or_else(|| {
+            ServerError::BadRequest(
+                "executionId has no recorded command (recorder metadata missing)".into(),
+            )
+        })?;
 
     let cmd = follower_command(execution_id, session_id, &cmd_string);
 
@@ -1183,19 +1214,17 @@ async fn handle_terminal_follow_stdio(
         .get("executionId")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
-    let cmd_string = resolve_execution_command(
-        ctx,
-        &state.app_state,
-        session_id,
-        execution_id,
-        params.get("command").and_then(|v| v.as_str()),
-    )
-    .await
-    .ok_or_else(|| {
-        ServerError::BadRequest(
-            "command is required when no recorded tool execution matches executionId".into(),
-        )
-    })?;
+    if let Some(provided) = params.get("command").and_then(|v| v.as_str()) {
+        maybe_cache_synthetic_tool_event(&state.app_state, ctx, session_id, execution_id, provided)
+            .await;
+    }
+    let cmd_string = resolve_execution_command(ctx, &state.app_state, session_id, execution_id)
+        .await
+        .ok_or_else(|| {
+            ServerError::BadRequest(
+                "executionId has no recorded command (recorder metadata missing)".into(),
+            )
+        })?;
 
     let cmd = follower_command(execution_id, session_id, &cmd_string);
 
@@ -1464,10 +1493,14 @@ async fn handle_session_prompt(
         )
         .await?;
 
-    // Best-effort agent delivery through task controller when available
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.inject_message(session_id, message).await;
-    }
+    let controller =
+        state.app_state.task_controller.as_ref().ok_or_else(|| {
+            ServerError::NotImplemented("live prompt delivery unavailable".into())
+        })?;
+    controller
+        .inject_message(session_id, message)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to deliver prompt: {e}")))?;
 
     Ok(json!({
         "sessionId": session_id,
@@ -1564,9 +1597,14 @@ async fn handle_session_prompt_stdio(
         )
         .await?;
 
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.inject_message(session_id, message).await;
-    }
+    let controller =
+        state.app_state.task_controller.as_ref().ok_or_else(|| {
+            ServerError::NotImplemented("live prompt delivery unavailable".into())
+        })?;
+    controller
+        .inject_message(session_id, message)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to deliver prompt: {e}")))?;
 
     Ok(json!({
         "sessionId": session_id,
@@ -1595,10 +1633,15 @@ async fn handle_session_cancel(
     let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
-    // best-effort task stop via TaskController if available
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.stop_task(session_id).await;
-    }
+    let controller = state
+        .app_state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("task controller unavailable".into()))?;
+    controller
+        .stop_task(session_id)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to stop task: {e}")))?;
 
     session.session.status = SessionStatus::Cancelled;
     state.app_state.session_store.update_session(session_id, &session).await?;
@@ -1641,9 +1684,15 @@ async fn handle_session_cancel_stdio(
     let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.stop_task(session_id).await;
-    }
+    let controller = state
+        .app_state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("task controller unavailable".into()))?;
+    controller
+        .stop_task(session_id)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to stop task: {e}")))?;
 
     session.session.status = SessionStatus::Cancelled;
     state.app_state.session_store.update_session(session_id, &session).await?;
@@ -1700,9 +1749,15 @@ async fn handle_session_pause(
         )
         .await?;
 
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.pause_task(session_id).await;
-    }
+    let controller = state
+        .app_state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("task controller unavailable".into()))?;
+    controller
+        .pause_task(session_id)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to pause task: {e}")))?;
 
     Ok(json!({
         "sessionId": session_id,
@@ -1745,9 +1800,15 @@ async fn handle_session_pause_stdio(
         )
         .await?;
 
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.pause_task(session_id).await;
-    }
+    let controller = state
+        .app_state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("task controller unavailable".into()))?;
+    controller
+        .pause_task(session_id)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to pause task: {e}")))?;
 
     Ok(json!({
         "sessionId": session_id,
@@ -1790,9 +1851,15 @@ async fn handle_session_resume(
         )
         .await?;
 
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.resume_task(session_id).await;
-    }
+    let controller = state
+        .app_state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("task controller unavailable".into()))?;
+    controller
+        .resume_task(session_id)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to resume task: {e}")))?;
 
     Ok(json!({
         "sessionId": session_id,
@@ -1835,9 +1902,15 @@ async fn handle_session_resume_stdio(
         )
         .await?;
 
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.resume_task(session_id).await;
-    }
+    let controller = state
+        .app_state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("task controller unavailable".into()))?;
+    controller
+        .resume_task(session_id)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to resume task: {e}")))?;
 
     Ok(json!({
         "sessionId": session_id,
