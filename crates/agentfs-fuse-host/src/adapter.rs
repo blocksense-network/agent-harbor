@@ -145,35 +145,6 @@ mod tests {
             other => panic!("unexpected response: {:?}", other),
         }
     }
-
-    #[test]
-    fn control_ioctl_fault_policy_roundtrip() {
-        let fuse = AgentFsFuse::new(FsConfig::default()).expect("fuse init");
-        let policy = br#"{ "enabled": true, "rules": [ { "op": "write", "errno": "eio", "max_faults": 1 } ] }"#;
-        let set_req = ControlRequest::fault_policy_set(policy.to_vec());
-        let set_resp = fuse
-            .handle_control_ioctl(&set_req.as_ssz_bytes())
-            .expect("fault policy set resp");
-        match ControlResponse::from_ssz_bytes(&set_resp).expect("decode resp") {
-            ControlResponse::FaultPolicyStatus(status) => {
-                assert!(status.enabled);
-                assert!(status.active);
-                assert_eq!(status.rule_count, 1);
-            }
-            other => panic!("unexpected response: {:?}", other),
-        }
-
-        let clear_req = ControlRequest::fault_policy_clear();
-        let clear_resp = fuse
-            .handle_control_ioctl(&clear_req.as_ssz_bytes())
-            .expect("fault policy clear resp");
-        match ControlResponse::from_ssz_bytes(&clear_resp).expect("decode resp") {
-            ControlResponse::FaultPolicyStatus(status) => {
-                assert!(!status.active);
-            }
-            other => panic!("unexpected response: {:?}", other),
-        }
-    }
 }
 
 struct LowerHandle {
@@ -1719,35 +1690,6 @@ impl AgentFsFuse {
                         ))
                     }
                 }
-            }
-            Request::FaultPolicySet((_, req)) => {
-                match self.core.apply_fault_policy_from_json(&req.policy_json) {
-                    Ok(summary) => {
-                        let response = Response::fault_policy_status(
-                            summary.enabled,
-                            summary.active,
-                            summary.rule_count as u32,
-                        );
-                        Ok(Self::frame_response_bytes(response.as_ssz_bytes()))
-                    }
-                    Err(err) => {
-                        let errno = match err {
-                            FsError::InvalidArgument => EINVAL,
-                            _ => EIO,
-                        };
-                        let response = Response::error(format!("{:?}", err), Some(errno as u32));
-                        Ok(Self::frame_response_bytes(response.as_ssz_bytes()))
-                    }
-                }
-            }
-            Request::FaultPolicyClear(_) => {
-                let summary = self.core.clear_fault_policy();
-                let response = Response::fault_policy_status(
-                    summary.enabled,
-                    summary.active,
-                    summary.rule_count as u32,
-                );
-                Ok(Self::frame_response_bytes(response.as_ssz_bytes()))
             }
             _ => {
                 // For now, only handle the basic control operations mentioned in the milestone
