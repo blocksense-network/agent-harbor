@@ -16,6 +16,7 @@
 
 pub mod errors;
 pub mod gateway;
+pub mod notify;
 pub mod recorder;
 pub mod translator;
 pub mod transport;
