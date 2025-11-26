@@ -2724,20 +2724,24 @@ async fn send_session_notification(
     params: Value,
     notifier: &Notifier,
 ) -> Result<(), ()> {
-    // Legacy dispatcher path; typed notify path is handled via notifier.
-    let _ = notifier
+    // Prefer SDK typed notify; fall back to legacy dispatcher only on failure.
+    if notifier
         .notify(
             "sessionUpdate",
             Some(AgentNotification::SessionNotification(
                 session_update_from_json(&params),
             )),
         )
-        .await;
-    let message = OutgoingMessage::Notification {
-        method: Arc::from("session/update"),
-        params: Some(params),
-    };
-    send_outgoing(driver, sender, &message).await
+        .await
+        .is_err()
+    {
+        let message = OutgoingMessage::Notification {
+            method: Arc::from("session/update"),
+            params: Some(params),
+        };
+        return send_outgoing(driver, sender, &message).await;
+    }
+    Ok(())
 }
 
 async fn send_json_stdout(
@@ -2769,19 +2773,23 @@ async fn send_session_notification_stdout(
     params: Value,
     notifier: &Notifier,
 ) -> Result<(), ()> {
-    let _ = notifier
+    if notifier
         .notify(
             "sessionUpdate",
             Some(AgentNotification::SessionNotification(
                 session_update_from_json(&params),
             )),
         )
-        .await;
-    let message = OutgoingMessage::Notification {
-        method: Arc::from("session/update"),
-        params: Some(params),
-    };
-    send_outgoing_stdout(driver, writer, &message).await
+        .await
+        .is_err()
+    {
+        let message = OutgoingMessage::Notification {
+            method: Arc::from("session/update"),
+            params: Some(params),
+        };
+        return send_outgoing_stdout(driver, writer, &message).await;
+    }
+    Ok(())
 }
 
 async fn current_context_chars(
