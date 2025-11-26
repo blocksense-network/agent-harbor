@@ -79,7 +79,26 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
         ))
         .await
         .expect("init");
-    let _ = socket.next().await;
+    let init_resp = socket.next().await.expect("init response").expect("frame");
+    if let WsMessage::Text(text) = init_resp {
+        let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        assert_eq!(value.get("id").and_then(|v| v.as_i64()), Some(1));
+        assert!(
+            value.pointer("/result/capabilities/_meta/agent.harbor").is_some(),
+            "initialize should advertise _meta.agent.harbor"
+        );
+        let transports = value
+            .pointer("/result/capabilities/transports")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            transports.iter().any(|t| t == "websocket"),
+            "initialize should advertise websocket transport"
+        );
+    } else {
+        panic!("unexpected init frame: {:?}", init_resp);
+    }
 
     // create session to trigger scenario playback
     socket
