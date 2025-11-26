@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::{AsyncRead, AsyncWrite, future::LocalBoxFuture};
-use rpc::{MessageHandler, RpcConnection};
+// RpcConnection is re-exported below; keep import minimal to avoid duplication
 use std::sync::Arc;
 
 mod agent;
@@ -14,8 +14,8 @@ pub use agent::*;
 pub use agent_client_protocol_schema::*;
 pub use client::*;
 pub use rpc::{
-    Id, IncomingMessage, OutgoingMessage, ResponseResult, RpcDispatcher, Side, ValueDispatcher,
-    WrappedRequest,
+    Id, IncomingMessage, MessageHandler, OutgoingMessage, ResponseResult, RpcConnection,
+    RpcDispatcher, Side, ValueDispatcher, WrappedRequest,
 };
 pub use stream_broadcast::{
     StreamMessage, StreamMessageContent, StreamMessageDirection, StreamReceiver,
