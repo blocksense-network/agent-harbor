@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tokio::time::{Duration, sleep};
 use tracing::{debug, error, info};
 use uuid;
@@ -285,6 +285,17 @@ impl TaskExecutor {
             )
             .await;
         Ok(())
+    }
+
+    /// Subscribe to PTY backlog + live stream for a session.
+    pub async fn subscribe_pty(
+        &self,
+        session_id: &str,
+    ) -> anyhow::Result<(
+        Vec<TaskManagerMessage>,
+        broadcast::Receiver<TaskManagerMessage>,
+    )> {
+        Ok(self.task_socket_hub.subscribe(session_id).await)
     }
 
     /// Start the task executor
@@ -694,6 +705,7 @@ mod tests {
     use ah_rest_api_contract::{
         CreateTaskRequest, RepoConfig, RepoMode, RuntimeConfig, RuntimeType,
     };
+    use tempfile;
     use tokio::io::AsyncWriteExt;
     use tokio::time::timeout;
 
@@ -765,6 +777,63 @@ mod tests {
         match received {
             TaskManagerMessage::InjectInput(bytes) => assert_eq!(bytes, b"ping\n"),
             other => panic!("Unexpected message {:?}", other),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn pty_stream_backlog_and_live_updates_are_recorded() -> anyhow::Result<()> {
+        use tokio::time::Duration;
+
+        let db = Arc::new(Database::open_in_memory()?);
+        let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
+        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
+        let socket_dir = tempfile::tempdir()?;
+        let prior_socket_dir = std::env::var("AH_SOCKET_DIR").ok();
+        std::env::set_var("AH_SOCKET_DIR", socket_dir.path());
+
+        let ids = session_store.create_session(&make_request()).await?;
+        let session_id = ids.first().cloned().expect("session id");
+
+        executor.ensure_task_manager_listener().await?;
+        let socket_path = task_manager_socket_path();
+
+        // Recorder simulation that sends PTY bytes and a resize
+        let mut stream = UnixStream::connect(&socket_path).await?;
+        let id_bytes = session_id.as_bytes();
+        let mut frame = (id_bytes.len() as u32).to_le_bytes().to_vec();
+        frame.extend_from_slice(id_bytes);
+        stream.write_all(&frame).await?;
+
+        TaskManagerMessage::PtyData(b"hello".to_vec()).write_to(&mut stream).await?;
+        TaskManagerMessage::PtyResize((80, 24)).write_to(&mut stream).await?;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Subscribe after initial messages to capture backlog
+        let (backlog, mut rx) = executor.subscribe_pty(&session_id).await?;
+        assert_eq!(backlog.len(), 2);
+        assert!(matches!(
+            backlog[0],
+            TaskManagerMessage::PtyData(ref bytes) if bytes == b"hello"
+        ));
+        assert!(matches!(
+            backlog[1],
+            TaskManagerMessage::PtyResize((80, 24))
+        ));
+
+        // Send a live update and ensure receiver observes it
+        TaskManagerMessage::PtyData(b"tail".to_vec()).write_to(&mut stream).await?;
+        let live = timeout(Duration::from_secs(1), rx.recv()).await??;
+        assert!(matches!(
+            live,
+            TaskManagerMessage::PtyData(ref bytes) if bytes == b"tail"
+        ));
+
+        if let Some(prev) = prior_socket_dir {
+            std::env::set_var("AH_SOCKET_DIR", prev);
+        } else {
+            std::env::remove_var("AH_SOCKET_DIR");
         }
 
         Ok(())
