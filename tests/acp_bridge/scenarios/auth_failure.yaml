@@ -1,0 +1,10 @@
+name: "acp_auth_failure"
+description: "Minimal placeholder scenario: auth should fail when no API key is provided."
+events:
+  - at_ms: 0
+    kind: status
+    value: "queued"
+  - at_ms: 10
+    kind: status
+    value: "failed"
+    detail: "authentication failed"

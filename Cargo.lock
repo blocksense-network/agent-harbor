@@ -22,7 +22,8 @@ dependencies = [
 [[package]]
 name = "agent-client-protocol"
 version = "0.4.7"
-source = "git+https://github.com/blocksense-network/acp-rust-sdk?branch=agent-harbor#8bceb9ce3b3951bacc3084800a05f3fb9d906836"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76133c067c37ae7a3641c3ad1ec88f36aac06cea5f9b3b49b5c29f18214f9101"
 dependencies = [
  "agent-client-protocol-schema",
  "anyhow",
@@ -889,13 +890,13 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.23.1",
  "tower",
  "tower-http",
  "tower_governor",
  "tracing",
  "tracing-subscriber",
- "tungstenite",
+ "tungstenite 0.23.0",
  "url",
  "utoipa",
  "utoipa-swagger-ui",
@@ -1806,6 +1807,7 @@ dependencies = [
  "async-trait",
  "axum-core 0.4.5",
  "axum-macros",
+ "base64 0.22.1",
  "bytes",
  "futures-util",
  "http 1.3.1",
@@ -1824,8 +1826,10 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
+ "sha1",
  "sync_wrapper",
  "tokio",
+ "tokio-tungstenite 0.24.0",
  "tower",
  "tower-layer",
  "tower-service",
@@ -8778,7 +8782,19 @@ dependencies = [
  "futures-util",
  "log",
  "tokio",
- "tungstenite",
+ "tungstenite 0.23.0",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edc5f74e248dc973e0dbb7b74c7e0d6fcc301c694ff50049504004ef4d0cdcd9"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite 0.24.0",
 ]
 
 [[package]]
@@ -9088,6 +9104,24 @@ name = "tungstenite"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e2e2ce1e47ed2994fd43b04c8f618008d4cabdd5ee34027cf14f9d918edd9c8"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "data-encoding",
+ "http 1.3.1",
+ "httparse",
+ "log",
+ "rand 0.8.5",
+ "sha1",
+ "thiserror 1.0.69",
+ "utf-8",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18e5b8366ee7a95b16d32197d0b2604b43a0be89dc5fac9f8e96ccafbaedda8a"
 dependencies = [
  "byteorder",
  "bytes",
