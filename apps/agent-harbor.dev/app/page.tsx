@@ -8,7 +8,7 @@ import Footer from './components/layout/Footer';
 import Hero from './components/sections/Hero';
 import Features from './components/sections/Features';
 import Benefits from './components/sections/Benefits';
-import EarlyAccess from './components/sections/EarlyAccess';
+// import EarlyAccess from './components/sections/EarlyAccess';
 
 export default function Home() {
   return (
@@ -20,7 +20,7 @@ export default function Home() {
       <Hero />
       <Features />
       <Benefits />
-      <EarlyAccess />
+      {/* <EarlyAccess /> */}
       <Footer />
     </>
   );
