@@ -16,7 +16,7 @@ export default function Hero() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-brand"></span>
           </span>
-          V 1.0 loading...
+          v1.0 loading...
         </div>
 
         <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
