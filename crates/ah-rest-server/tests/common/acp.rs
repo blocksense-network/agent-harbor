@@ -62,6 +62,7 @@ pub async fn spawn_acp_server_with_limit(limit: usize) -> (String, JoinHandle<()
 
 /// Convenience: spawn with a single scenario fixture.
 pub async fn spawn_acp_server_with_scenario(fixture: PathBuf) -> (String, JoinHandle<()>) {
+    // Allow scenario playback to stay connected briefly after timeline for assertions.
     spawn_acp_server(
         |cfg| {
             cfg.acp.connection_limit = 10; // sane default for scenario playback
@@ -69,6 +70,7 @@ pub async fn spawn_acp_server_with_scenario(fixture: PathBuf) -> (String, JoinHa
         Some(ScenarioPlaybackOptions {
             scenario_files: vec![fixture],
             speed_multiplier: 0.1,
+            linger_after_timeline_secs: Some(1.0),
         }),
     )
     .await
