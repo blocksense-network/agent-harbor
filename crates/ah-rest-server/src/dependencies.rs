@@ -45,13 +45,11 @@ impl TaskController for TaskExecutor {
     }
 
     async fn pause_task(&self, session_id: &str) -> anyhow::Result<()> {
-        tracing::debug!("pause_task stub for session_id={session_id}");
-        Ok(())
+        self.pause_task(session_id).await
     }
 
     async fn resume_task(&self, session_id: &str) -> anyhow::Result<()> {
-        tracing::debug!("resume_task stub for session_id={session_id}");
-        Ok(())
+        self.resume_task(session_id).await
     }
 
     async fn inject_message(&self, session_id: &str, message: &str) -> anyhow::Result<()> {
