@@ -85,7 +85,7 @@ impl AcpGateway {
             idle_timeout: idle,
             config: self._config.clone(),
             app_state: self.state.clone(),
-            notifier: Notifier::new(),
+            notifier: Notifier::new_threaded(),
         };
 
         match self._config.transport {
