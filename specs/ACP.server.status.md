@@ -203,8 +203,22 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 #### Verification
 
 - [ ] Scenario `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` reproduces a deterministic timeline from the Scenario Format document, verifying each streamed event (captured by the harness) matches the expected ordering and payload schema.
-- [ ] `cargo test -p ah-rest-server --test acp_prompt_backpressure` simulates a slow ACP client and ensures the gateway applies bounded channels so the REST event bus never blocks.
+- [x] `cargo test -p ah-rest-server --test acp_prompt_backpressure` simulates a slow ACP client and ensures the gateway applies bounded channels so the REST event bus never blocks.
 - [x] Integration test `cargo test -p ah-rest-server --test acp_prompt acp_prompt_round_trip` sends `session/prompt` and asserts the gateway streams the user log back via `session/update`.
+
+#### Implementation Details (current)
+
+- Added ACP RPCs `session/prompt` and `session/cancel` inside `acp::transport`; they reuse `SessionService` storage, flip queued sessions to running, emit status/log events, and stream them back as `session/update` without blocking the socket.
+- Event fanout now de-duplicates subscriptions per connection and continues to flush broadcast events on idle ticks; lagged/closed channels are pruned defensively.
+- Backpressure coverage added via `acp_prompt_backpressure` which blasts prompts while delaying reads to ensure the gateway keeps streaming and does not deadlock.
+- Scenario fixture `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` added to mirror the prompt turn timeline; harness assertions to be wired next.
+
+#### Key Implementation Files
+
+- `crates/ah-rest-server/src/acp/transport.rs` — prompt/cancel handlers, event flush tweaks.
+- `crates/ah-rest-server/tests/acp_prompt.rs` — round-trip prompt coverage.
+- `crates/ah-rest-server/tests/acp_prompt_backpressure.rs` — slow-consumer safety.
+- `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` — prompt timeline fixture (assertions pending).
 
 ---
 
