@@ -6,14 +6,17 @@
 use crate::ServerResult;
 use crate::error::ServerError;
 use crate::state::AppState;
+use ah_core::task_manager_wire::TaskManagerMessage;
 use ah_rest_api_contract::*;
 use axum::{
     Json,
     extract::{Path, Query, State},
     response::sse::{Event, KeepAlive, Sse},
 };
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as B64;
 use futures::{Stream, StreamExt, stream};
-use serde_json;
+use serde_json::{self, json};
 use std::time::Duration;
 use std::{convert::Infallible, pin::Pin};
 use tokio_stream::wrappers::BroadcastStream;
@@ -160,9 +163,61 @@ pub async fn stream_session_events(
         .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("keep-alive")))
 }
 
+/// Stream PTY output for a session (backlog + live) via SSE.
+pub async fn stream_session_pty(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ServerResult<Sse<SessionSseStream>> {
+    let controller = state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("PTY streaming not available".into()))?;
+
+    let (backlog, receiver) = controller.subscribe_pty(&session_id).await.map_err(|_| {
+        ServerError::NotImplemented("PTY streaming not available for this session".into())
+    })?;
+
+    let history_stream = stream::iter(backlog.into_iter().map(pty_to_sse));
+    let live_stream = BroadcastStream::new(receiver).filter_map(|result| async move {
+        match result {
+            Ok(msg) => Some(pty_to_sse(msg)),
+            Err(_) => None,
+        }
+    });
+
+    let combined: SessionSseStream = Box::pin(history_stream.chain(live_stream));
+
+    Ok(Sse::new(combined)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("keep-alive")))
+}
+
 fn session_event_to_sse(event: SessionEvent) -> Result<Event, Infallible> {
     let payload = serde_json::to_string(&event).unwrap_or_else(|_| "{}".into());
     Ok(Event::default().event("session").data(payload))
+}
+
+fn pty_to_sse(msg: TaskManagerMessage) -> Result<Event, Infallible> {
+    match msg {
+        TaskManagerMessage::PtyData(bytes) => {
+            let payload = json!({
+                "type": "terminal",
+                "encoding": "base64",
+                "data": B64.encode(bytes),
+                "timestamp": chrono::Utc::now().timestamp_millis(),
+            });
+            Ok(Event::default().event("pty").data(payload.to_string()))
+        }
+        TaskManagerMessage::PtyResize((cols, rows)) => {
+            let payload = json!({
+                "type": "terminal_resize",
+                "cols": cols,
+                "rows": rows,
+                "timestamp": chrono::Utc::now().timestamp_millis(),
+            });
+            Ok(Event::default().event("pty").data(payload.to_string()))
+        }
+        _ => Ok(Event::default().event("pty").data("{}")),
+    }
 }
 
 /// Get session info (fleet and endpoints)
