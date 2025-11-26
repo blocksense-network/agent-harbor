@@ -94,4 +94,7 @@ async fn task_controller_inject_message_stub_is_non_fatal() {
         .inject_message(&session_id, "hello world")
         .await
         .expect("inject");
+
+    // ensure the log was recorded as a session event
+    // Database-backed event storage is a TODO; the call must still succeed.
 }
