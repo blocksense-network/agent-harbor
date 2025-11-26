@@ -25,6 +25,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - `session/new` translation now expects Harbor-specific fields (`repoUrl`, `branch`, `labels`, etc.) under `_meta` (prompt/agent stay at the root); ACP tests updated accordingly.
 - Added dispatcher compatibility shims for legacy clients (`ping`, `session/cancel` as requests, string-only `session/prompt` messages) and schema defaults for `session/load` so the full ACP test suite passes under the SDK runtime.
 - Rolled back the experimental LocalSet/notify refactor; keeping the per-connection loops single-threaded with dispatcher-driven notifications until we have a Send-safe SDK path.
+- Added ACP pagination regression test (`acp_session_list_pagination`) to lock in offset/limit slicing on `session/list`.
 
 ## Test Strategy
 
@@ -209,6 +210,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 - [x] Integration test `cargo test -p ah-rest-server --test acp_sessions acp_session_catalog_end_to_end` dials the ACP gateway, runs `initialize → session/new → session/list → session/load`, and asserts both the response payloads and the streamed `session/update` notification include the created session.
 - [x] Integration test `cargo test -p ah-rest-server --test acp_sessions acp_session_load_paused_marks_workspace_read_only` pauses a session, reloads it via ACP, and validates the response flags the workspace as read-only with snapshot metadata.
+- [x] Integration test `cargo test -p ah-rest-server --test acp_session_list_pagination` checks `session/list` respects offset/limit and returns total counts.
 - [ ] Scenario `tests/acp_bridge/scenarios/session_new_and_load.yaml` creates a session, pauses it, and reloads it through ACP; assertions check that the workspace mount path inside the scenario matches the TOT snapshot provider while the new pause/resume timeline events drive both REST and ACP clients appropriately.
 - [ ] Integration test `cargo test -p ah-rest-server --test acp_session_catalog` uses the mock TaskManager backend to create sessions via REST and ensure ACP `session/list` mirrors them (including pagination).
 - [ ] Database migration test ensures the cross-reference table enforces foreign keys and cleans up orphaned rows when sessions are deleted.
