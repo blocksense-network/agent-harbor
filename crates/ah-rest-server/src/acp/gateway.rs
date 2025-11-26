@@ -9,6 +9,7 @@
 //! lifecycle wiring so the feature flag and bind address are honored without
 //! changing default REST behavior.
 
+use crate::acp::notify::Notifier;
 use crate::{auth::AuthConfig, config::AcpConfig, state::AppState};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
@@ -84,6 +85,7 @@ impl AcpGateway {
             idle_timeout: idle,
             config: self._config.clone(),
             app_state: self.state.clone(),
+            notifier: Notifier::new(),
         };
 
         match self._config.transport {
