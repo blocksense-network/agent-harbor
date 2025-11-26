@@ -19,12 +19,24 @@ use std::sync::Arc;
 pub trait TaskController: Send + Sync {
     /// Stop a running task/session
     async fn stop_task(&self, session_id: &str) -> anyhow::Result<()>;
+
+    /// Inject a user/system message into a running task (best-effort, may noop if backend
+    /// does not support live message delivery yet).
+    async fn inject_message(&self, _session_id: &str, _message: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl TaskController for TaskExecutor {
     async fn stop_task(&self, session_id: &str) -> anyhow::Result<()> {
         self.stop_task(session_id).await?;
+        Ok(())
+    }
+
+    async fn inject_message(&self, session_id: &str, message: &str) -> anyhow::Result<()> {
+        // TODO: wire to real TaskManager once live agent injection is implemented.
+        tracing::debug!("inject_message stub: session_id={session_id}, message_len={}", message.len());
         Ok(())
     }
 }
