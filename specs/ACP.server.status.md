@@ -264,7 +264,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Added recorder bridge scaffold (`acp::recorder`) with a single source of truth for constructing follower commands (`ah show-sandbox-execution ... --id <exec> --session <session> --follow`), matching the design described in this milestone.
 - No runtime wiring yet; this helper will be consumed by the upcoming recorder-to-ACP bridge and IDE follower channel.
 - Scenario playback now honors a `linger_after_timeline_secs` option (exposed in `MockServerDependencies` and the `ah-rest-server-mock` CLI via `--scenario-linger-secs`) to keep connections open after scripted timelines, preventing premature teardown while follower terminals drain trailing PTY bytes.
-- Added an ACP scenario-driven follower test (`acp_prompt_followers`) that replays `tests/acp_bridge/scenarios/terminal_follow_detach.yaml` against the live gateway, asserting both `_ah/terminal/follow` and `_ah/terminal/detach` updates surface as `session/update` notifications. The fixture now uses placeholders so session IDs returned by the server are applied at runtime.
+- Added an ACP scenario-driven follower test (`acp_prompt_followers`) that replays `tests/acp_bridge/scenarios/terminal_follow_detach.yaml` against the live gateway, asserting both `_ah/terminal/follow` and `_ah/terminal/detach` updates surface as `session/update` notifications. The fixture now uses placeholders so session IDs returned by the server are applied at runtime; the test harness consumes the scenario timeline to drive the WebSocket while letting the server execute normally.
 
 #### Key Implementation Files
 
@@ -280,6 +280,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 #### Verification
 
+- [x] Integration test `cargo test -p ah-rest-server --test acp_prompt_followers` drives `_ah/terminal/follow/write/detach` over ACP and validates the streamed `terminal_follow`/`terminal_detach` updates plus write acknowledgements.
 - [ ] Scenario `tests/acp_bridge/scenarios/passthrough_recorder.yaml` launches a tool via the shim, verifies the rewritten command, and asserts that SSE/`.ahr` output matches the original PTY stream.
 - [ ] Unit tests cover shim rewrite logic on Linux/macOS, socket negotiation, environment injection from `ah agent start`, and failure modes (recorder unavailable → fail open).
 - [ ] Integration test `cargo test -p ah-command-trace-e2e-tests passthrough_follow_mode` spawns the shim, records a command, attaches a follower, injects input (e.g., sudo prompt), and checks that both the running process and `.ahr` capture the interaction faithfully.
@@ -537,7 +538,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Define a compatibility matrix for third-party ACP clients (VS Code, Cursor, Zed) once the server reaches beta.
 - Extend Scenario fixtures with negative-path coverage (malformed JSON-RPC, outdated schema versions).
 - Determine whether to expose ACP over QUIC once the spec finalizes HTTP streaming transport.
-- Promote Scenario Format support for ACP RPC timelines (client/server frames) so fixtures like `terminal_follow_detach.yaml` can be executed directly without bespoke harness code.
+- Promote Scenario Format support for ACP RPC timelines (client/server frames) so fixtures like `terminal_follow_detach.yaml` can be executed directly without bespoke harness code; currently the ACP follow/detach scenario is driven via a bespoke test harness rather than the scenario store.
 
 Once all milestones are implemented and verified, update this status document with:
 
