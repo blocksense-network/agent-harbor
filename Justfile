@@ -415,6 +415,21 @@ test-cgroups:
     just build-cgroup-tests
     cargo test -p sandbox-integration-tests --verbose
 
+# Agent Harbor Dev Site Development Targets
+# ==========================================
+
+# Build Agent Harbor Dev site (Next.js static export)
+website-build:
+    yarn workspace @agent-harbor/agent-harbor.dev run build
+
+# Run Agent Harbor Dev site development server
+website-dev:
+    yarn workspace @agent-harbor/agent-harbor.dev run dev
+
+# Lint Agent Harbor Dev site
+website-lint:
+    yarn workspace @agent-harbor/agent-harbor.dev run lint
+
 # WebUI Development Targets
 # ========================
 
