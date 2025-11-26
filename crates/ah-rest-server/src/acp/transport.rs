@@ -455,6 +455,11 @@ async fn handle_session_cancel(
     let _ = seed_history(&state.app_state, session_id, sender).await;
     ctx.sessions.insert(session_id.to_string());
 
+    // best-effort task stop via TaskController if available
+    if let Some(controller) = &state.app_state.task_controller {
+        let _ = controller.stop_task(session_id).await;
+    }
+
     session.session.status = SessionStatus::Cancelled;
     state
         .app_state
