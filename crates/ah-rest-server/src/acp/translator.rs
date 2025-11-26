@@ -65,7 +65,10 @@ impl JsonRpcTranslator {
                     "readTextFile": caps.fs_read,
                     "writeTextFile": caps.fs_write
                 },
-                "terminal": caps.terminals
+                "terminal": caps.terminals,
+                "_meta": {
+                    "agent.harbor": harbor_meta_caps()
+                }
             }
         })
     }
@@ -99,4 +102,23 @@ impl JsonRpcTranslator {
             terminals,
         }
     }
+}
+
+fn harbor_meta_caps() -> Value {
+    json!({
+        "workspace": {
+            "version": 1,
+            "supportsDiffs": true
+        },
+        "snapshots": {
+            "version": 1,
+            "supportsTimelineSeek": true,
+            "supportsBranching": true,
+            "supportsFollowPlayback": true
+        },
+        "pipelineIntrospection": {
+            "version": 1,
+            "supportsStepStreaming": true
+        }
+    })
 }

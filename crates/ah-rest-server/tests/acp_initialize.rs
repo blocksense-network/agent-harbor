@@ -4,6 +4,7 @@
 use ah_rest_server::acp::translator::{AcpCapabilities, JsonRpcTranslator};
 use ah_rest_server::config::{AcpConfig, AcpTransportMode};
 use common::acp::spawn_acp_server_with_scenario;
+use ah_rest_server::config::AcpAuthPolicy;
 use futures::{SinkExt, StreamExt};
 use proptest::prelude::*;
 use serde_json::json;
@@ -30,6 +31,7 @@ fn acp_initialize_caps_roundtrip() {
     let payload = JsonRpcTranslator::initialize_response(&caps);
     assert_eq!(payload["capabilities"]["transports"][0], "websocket");
     assert_eq!(payload["capabilities"]["filesystem"]["readTextFile"], false);
+    assert!(payload["capabilities"]["_meta"]["agent.harbor"]["workspace"].is_object());
 
     // Unknown flags should be ignored
     let noisy = json!({
@@ -147,6 +149,58 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
         saw_completed,
         "should observe completed status from scenario"
     );
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn acp_authenticate_rpc_uses_payload_tokens() {
+    use common::acp::spawn_acp_server;
+
+    let (acp_url, handle) = spawn_acp_server(
+        |cfg| {
+            cfg.acp.auth_policy = AcpAuthPolicy::Anonymous;
+            cfg.api_key = Some("secret".into());
+        },
+        None,
+    )
+    .await;
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
+        .await
+        .expect("connect");
+
+    socket
+        .send(WsMessage::Text(
+            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+        ))
+        .await
+        .expect("init");
+    let _ = socket.next().await;
+
+    socket
+        .send(WsMessage::Text(
+            json!({"id":2,"method":"authenticate","params":{"apiKey":"secret"}}).to_string(),
+        ))
+        .await
+        .expect("auth");
+
+    let mut authed = false;
+    while let Some(msg) = socket.next().await {
+        let msg = msg.expect("frame");
+        if let WsMessage::Text(text) = msg {
+            let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+            if value.get("id").and_then(|v| v.as_i64()) == Some(2) {
+                authed = value
+                    .pointer("/result/authenticated")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                break;
+            }
+        }
+    }
+
+    assert!(authed, "authenticate RPC should accept apiKey payload");
 
     handle.abort();
 }
