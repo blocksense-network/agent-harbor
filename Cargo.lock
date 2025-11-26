@@ -22,7 +22,7 @@ dependencies = [
 [[package]]
 name = "agent-client-protocol"
 version = "0.4.7"
-source = "git+https://github.com/blocksense-network/acp-rust-sdk?branch=agent-harbor#e766cdf3cc5c53cd9d31bfc735c7c6fcba1509ed"
+source = "git+https://github.com/blocksense-network/acp-rust-sdk?branch=agent-harbor#ec9818e93ec9421709c178bbb8cd0526c96d7d3c"
 dependencies = [
  "agent-client-protocol-schema",
  "anyhow",

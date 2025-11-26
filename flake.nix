@@ -200,7 +200,7 @@
                     outputHashes = {
                       "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
                       "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                      "agent-client-protocol-0.4.7" = "sha256-oMGBW2Fo6wQ9fWxdXmi5fjOefSneQP66N5QWWjv2Ryc=";
+                      "agent-client-protocol-0.4.7" = "sha256-KL9+U1xbyfPHu7yrTi5KrCu/dLwZdqg/N27tpeFndVE=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
@@ -229,7 +229,7 @@
                     outputHashes = {
                       "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
                       "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                      "agent-client-protocol-0.4.7" = "sha256-oMGBW2Fo6wQ9fWxdXmi5fjOefSneQP66N5QWWjv2Ryc=";
+                      "agent-client-protocol-0.4.7" = "sha256-KL9+U1xbyfPHu7yrTi5KrCu/dLwZdqg/N27tpeFndVE=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
