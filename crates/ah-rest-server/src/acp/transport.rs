@@ -1081,9 +1081,15 @@ async fn handle_terminal_write(
         .decode(data_b64)
         .map_err(|_| ServerError::BadRequest("data must be base64".into()))?;
 
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.inject_bytes(session_id, &bytes).await;
-    }
+    let controller = state
+        .app_state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("terminal write unavailable".into()))?;
+    controller
+        .inject_bytes(session_id, &bytes)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to write to terminal: {e}")))?;
 
     subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
     Ok(json!({"sessionId": session_id, "accepted": true}))
@@ -1109,9 +1115,15 @@ async fn handle_terminal_write_stdio(
         .decode(data_b64)
         .map_err(|_| ServerError::BadRequest("data must be base64".into()))?;
 
-    if let Some(controller) = &state.app_state.task_controller {
-        let _ = controller.inject_bytes(session_id, &bytes).await;
-    }
+    let controller = state
+        .app_state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("terminal write unavailable".into()))?;
+    controller
+        .inject_bytes(session_id, &bytes)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to write to terminal: {e}")))?;
 
     subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
     Ok(json!({"sessionId": session_id, "accepted": true}))
