@@ -681,9 +681,31 @@ impl SessionStore for ScenarioSessionStore {
 
     async fn update_session(
         &self,
-        _session_id: &str,
-        _session: &InternalSession,
+        session_id: &str,
+        session: &InternalSession,
     ) -> anyhow::Result<()> {
+        let changed_status = {
+            let mut sessions = self.inner.sessions.write().await;
+            if let Some(record) = sessions.get_mut(session_id) {
+                let previous_status = record.internal.session.status.clone();
+                let new_status = session.session.status.clone();
+                record.internal = session.clone();
+                previous_status != new_status
+            } else {
+                false
+            }
+        };
+
+        if changed_status {
+            self.push_event(
+                session_id,
+                SessionEvent::status(
+                    session.session.status.clone(),
+                    current_timestamp(),
+                ),
+            )
+            .await?;
+        }
         Ok(())
     }
 

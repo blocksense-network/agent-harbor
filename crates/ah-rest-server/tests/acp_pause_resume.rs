@@ -116,3 +116,139 @@ async fn acp_pause_resume_status_streams() {
 
     handle.abort();
 }
+
+#[tokio::test]
+async fn acp_pause_and_resume_rpcs_emit_status() {
+    let (acp_url, handle) = spawn_acp_server_with_scenario(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/acp_bridge/scenarios/prompt_turn_basic.yaml"),
+    )
+    .await;
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
+        .await
+        .expect("connect");
+
+    socket
+        .send(WsMessage::Text(
+            serde_json::to_string(&json!({"id":1,"method":"initialize","params":{}})).unwrap(),
+        ))
+        .await
+        .expect("init");
+    let _ = socket.next().await;
+
+    socket
+        .send(WsMessage::Text(
+            serde_json::to_string(&json!({
+                "id":2,
+                "method":"session/new",
+                "params":{"prompt":"pause rpc","agent":"sonnet"}
+            }))
+            .unwrap(),
+        ))
+        .await
+        .expect("session/new");
+    let created = socket.next().await.expect("created").expect("frame");
+    let session_id = if let WsMessage::Text(text) = created {
+        let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value.pointer("/result/sessionId").and_then(|v| v.as_str()).unwrap().to_string()
+    } else {
+        panic!("unexpected frame");
+    };
+
+    socket
+        .send(WsMessage::Text(
+            serde_json::to_string(&json!({
+                "id":3,
+                "method":"session/pause",
+                "params":{"sessionId":session_id}
+            }))
+            .unwrap(),
+        ))
+        .await
+        .expect("pause");
+
+    // drain frames until we see the pause response
+    loop {
+        if let Some(msg) = socket.next().await {
+            let msg = msg.expect("frame");
+            if let WsMessage::Text(text) = msg {
+                let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+                if value.get("id").and_then(|v| v.as_i64()) == Some(3) {
+                    assert_eq!(value.pointer("/result/status").and_then(|v| v.as_str()), Some("paused"));
+                    break;
+                }
+            }
+        }
+    }
+
+    // Expect a paused status event
+    let mut saw_paused = false;
+    let mut saw_running = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    while tokio::time::Instant::now() < deadline {
+        if let Some(msg) = socket.next().await {
+            let msg = msg.expect("frame");
+            if let WsMessage::Text(text) = msg {
+                let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+                if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
+                    if let Some(status) = value.pointer("/params/event/status").and_then(|v| v.as_str()) {
+                        if status == "paused" {
+                            saw_paused = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(saw_paused, "session/update should include paused status");
+
+    socket
+        .send(WsMessage::Text(
+            serde_json::to_string(&json!({
+                "id":4,
+                "method":"session/resume",
+                "params":{"sessionId":session_id}
+            }))
+            .unwrap(),
+        ))
+        .await
+        .expect("resume");
+
+    loop {
+        if let Some(msg) = socket.next().await {
+            let msg = msg.expect("frame");
+            if let WsMessage::Text(text) = msg {
+                let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+                if value.get("id").and_then(|v| v.as_i64()) == Some(4) {
+                    assert_eq!(value.pointer("/result/status").and_then(|v| v.as_str()), Some("running"));
+                    break;
+                }
+            }
+        }
+    }
+
+    // Expect running status again
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    while tokio::time::Instant::now() < deadline {
+        if let Some(msg) = socket.next().await {
+            let msg = msg.expect("frame");
+            if let WsMessage::Text(text) = msg {
+                let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+                if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
+                    if let Some(status) = value.pointer("/params/event/status").and_then(|v| v.as_str()) {
+                        if status == "running" {
+                            saw_running = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(saw_running, "session/update should include running status after resume");
+
+    handle.abort();
+}
