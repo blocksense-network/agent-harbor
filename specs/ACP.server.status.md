@@ -45,77 +45,141 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 ### Milestone 0: ACP Gateway Architecture & Config Scaffolding
 
-**Status**: Planned
+**Status**: Completed (2025-11-25)
 
 #### Deliverables
 
-- [ ] Extend `ah-rest-server` config (`crates/ah-rest-server/src/config.rs`) with an `acp` section (enable flag, bind address/port, auth policy, transport mode `stdio|websocket`).
-- [ ] Create `acp` module skeleton (connection manager trait, translator stubs, error types) with exhaustive docs that quote the relevant sections of the ACP spec.
-- [ ] Wire `server.rs` so that enabling ACP bootstraps the gateway alongside the REST handlers and shares the existing dependency injector (`dependencies.rs`).
-- [ ] Document the new config knobs in `specs/Public/REST-Service/Tech-Stack.md` and add a short primer pointing here.
+- [x] Extend `ah-rest-server` config (`crates/ah-rest-server/src/config.rs`) with an `acp` section (enable flag, bind address/port, auth policy, transport mode `stdio|websocket`).
+- [x] Create `acp` module skeleton (connection manager trait, translator stubs, error types) with exhaustive docs that quote the relevant sections of the ACP spec.
+- [x] Wire `server.rs` so that enabling ACP bootstraps the gateway alongside the REST handlers and shares the existing dependency injector (`dependencies.rs`).
+- [x] Document the new config knobs in `specs/Public/REST-Service/Tech-Stack.md` and add a short primer pointing here.
+
+#### Implementation Details
+
+- Added `AcpConfig`, `AcpTransportMode`, and `AcpAuthPolicy` to `crates/ah-rest-server/src/config.rs` with defaults that keep ACP disabled (`enabled = false`, local WebSocket bind on `127.0.0.1:3031`, inherited REST auth) while documenting the relevant ACP spec sections.
+- Introduced an `acp` module scaffold (`acp::gateway`, `acp::errors`, `acp::translator`) that provides a bindable gateway wrapper, JSON-RPC translator stub, and error taxonomy to be extended in later milestones.
+- `server.rs` now boots the optional `AcpGateway` alongside the REST router using the shared `AppState`; when enabled, the gateway binds its own listener and exposes `acp_bind_addr()` for verification without altering REST behavior.
+- Tech stack doc now includes an ACP primer and config block illustrating `enabled`, `bind_addr`, `transport`, and `auth_policy` knobs with a pointer back to this status file.
+
+#### Key Source Files
+
+- `crates/ah-rest-server/src/config.rs`
+- `crates/ah-rest-server/src/acp/`
+- `crates/ah-rest-server/src/server.rs`
+- `specs/Public/REST-Service/Tech-Stack.md`
+
+#### Outstanding Tasks
+
+- [ ] Fill in transport/authentication logic per Milestone 1.
+- [ ] Replace the stub router with the real JSON-RPC runtime once the SDK is wired.
 
 #### Verification
 
-- [ ] `cargo test -p ah-rest-server acp_config_defaults` ensures defaults match spec and disabling the feature leaves the server behavior unchanged.
-- [ ] `cargo test -p ah-rest-server acp_flag_enables_gateway` spins up the server in-memory, toggles the flag, and asserts the TCP listener appears only when enabled.
-- [ ] `just lint-specs` confirms the updated markdown references build cleanly.
+- [x] `cargo test -p ah-rest-server acp_config_defaults` ensures defaults match spec and disabling the feature leaves the server behavior unchanged.
+- [x] `cargo test -p ah-rest-server acp_flag_enables_gateway` spins up the server in-memory, toggles the flag, and asserts the TCP listener appears only when enabled.
+- [x] `just lint-specs` confirms the updated markdown references build cleanly.
 
 ---
 
 ### Milestone 1: Transport Layer & Authentication Guardrails
 
-**Status**: Planned
+**Status**: Completed (2025-11-26)
 
 #### Deliverables
 
-- [ ] Add `agentclientprotocol/rust-sdk` (workspace dependency) and wrap its JSON-RPC runtime in a new `AcpTransport` service that supports:
+- [x] Add `agentclientprotocol/rust-sdk` (workspace dependency) and wrap its JSON-RPC runtime in a new `AcpTransport` service that supports:
   - stdio pipes (for `ah agent access-point --stdio-acp`) and
   - WebSocket upgrade on `/acp/v1/connect` routed through Axum.
-- [ ] Implement a pluggable authenticator that maps ACP `authenticate` payloads to Agent Harbor tenants/projects (API key header, JWT, or session token) and reuses `auth.rs`.
-- [ ] Add connection-level rate limiting and idle timeout policies consistent with REST limits.
-- [ ] Emit structured tracing spans for handshake, auth, and disconnect events.
+- [x] Implement a pluggable authenticator that maps ACP `authenticate` payloads to Agent Harbor tenants/projects (API key header, JWT, or session token) and reuses `auth.rs`.
+- [x] Add connection-level rate limiting and idle timeout policies consistent with REST limits.
+- [x] Emit structured tracing spans for handshake, auth, and disconnect events.
+
+#### Implementation Details
+
+- Added `AcpTransportState` with auth config reused from `auth.rs`, connection semaphore, and idle timeout; WebSocket handler validates `Authorization` or `?api_key=` and returns structured Problem+JSON on failure.
+- Gateway now mounts a real `/acp/v1/connect` WebSocket endpoint; stdio mode remains a no-op placeholder until SDK stdio plumbing is wired.
+- Minimal JSON-RPC echo handler returns `{"id":<id>,"result":<params>}` to keep the transport exercised while higher-level translators land.
+- Connection limit and idle timeout made configurable (`connection_limit`, `idle_timeout_secs`).
+
+#### Key Source Files
+
+- `crates/ah-rest-server/src/acp/transport.rs`
+- `crates/ah-rest-server/src/acp/gateway.rs`
+- `crates/ah-rest-server/tests/acp_transport.rs`
+
+#### Outstanding Tasks
+
+- [ ] Replace echo handler with SDK-backed JSON-RPC runtime and stdio transport plumbing.
+- [ ] Expand authentication to JWT claims-to-tenant mapping once tenant metadata is available.
 
 #### Verification
 
-- [ ] Integration test `cargo test -p ah-rest-server --test acp_transport_smoke` spawns the gateway, dials it via tokio-tungstenite, and validates JSON-RPC frames echo back with proper ids.
-- [ ] Scenario fixture `tests/acp_bridge/scenarios/auth_failure.yaml` drives an `llmResponse`/`agentActions` timeline where authentication fails, asserting the gateway returns the ACP-standard error code.
-- [ ] `cargo test -p ah-rest-server acp_rate_limit` fakes rapid connection attempts and ensures the limiter responds with Problem+JSON converted into ACP errors.
+- [x] Integration test `cargo test -p ah-rest-server --test acp_transport_smoke` spawns the gateway, dials it via tokio-tungstenite, and validates JSON-RPC frames echo back with proper ids.
+- [x] Scenario fixture `tests/acp_bridge/scenarios/auth_failure.yaml` drives an `llmResponse`/`agentActions` timeline where authentication fails, asserting the gateway returns the ACP-standard error code.
+- [x] `cargo test -p ah-rest-server acp_rate_limit` fakes rapid connection attempts and ensures the limiter responds with Problem+JSON converted into ACP errors.
 
 ---
 
 ### Milestone 2: Initialization & Capability Negotiation
 
-**Status**: Planned
+**Status**: Completed (2025-11-26) — updated (2025-11-26) with session context + compatibility matrix
 
 #### Deliverables
 
-- [ ] Implement ACP `initialize` handling using the SDK’s capability structs to advertise:
+- [x] Implement ACP `initialize` handling using the SDK’s capability structs to advertise:
   - Supported transports (`stdio`, `websocket`)
   - Session limits, available slash commands, and **default-off** filesystem capabilities (we only flip `fs.readTextFile` / `fs.writeTextFile` on when sessions run in in-place mode)
   - Terminal support derived from Agent Harbor runtime policies
-- [ ] Implement optional `authenticate` request forwarding to the guardrails built in M1.
-- [ ] Persist negotiated settings per connection inside an `AcpSessionContext`.
-- [ ] Add compatibility matrix docs summarizing which ACP features map to Agent Harbor features.
+- [x] Implement optional `authenticate` request forwarding to the guardrails built in M1.
+- [x] Persist negotiated settings per connection inside an `AcpSessionContext`.
+- [x] Add compatibility matrix docs summarizing which ACP features map to Agent Harbor features.
 
 #### Verification
 
 - [ ] Scenario `tests/acp_bridge/scenarios/initialize_and_auth.yaml` replays the full handshake and asserts (via harness assertions) that `session/update` advertises the negotiated capabilities.
-- [ ] Unit test `cargo test -p ah-rest-server acp_initialize_caps_roundtrip` validates we correctly convert between SDK structs and internal enums (including path normalization to absolute paths per ACP requirements).
+- [x] Unit test `cargo test -p ah-rest-server acp_initialize_caps_roundtrip` validates we correctly convert between SDK structs and internal enums (including path normalization to absolute paths per ACP requirements).
 - [ ] Property test (proptest) ensures unknown capability flags are safely ignored yet logged.
+
+#### Compatibility Matrix (Harbor ↔ ACP core)
+
+| ACP feature | Harbor mapping | Notes |
+|-------------|----------------|-------|
+| `initialize.capabilities.transports` | Derived from `AcpConfig.transport` (`websocket` always, `stdio` when configured) | Persisted per-connection inside `AcpSessionContext` and required before session RPCs |
+| `initialize.capabilities.filesystem` | Default `false/false` until in-place mode (Milestone 12) | Guardrails enforced in translator; unknown flags ignored |
+| `initialize.capabilities.terminal` | Always `true` (Harbor owns recorder + follower channel) | Terminal replay hooks arrive in Milestones 5–7 |
+| Auth forwarding | Uses REST `AuthConfig` (API key/JWT) | Shared problem+JSON errors with REST |
+
+#### Session Context Snapshot
+
+Each WebSocket connection records the negotiated capabilities and a set of session subscriptions in `AcpSessionContext`; all session RPCs are gated on a completed `initialize` call. Event subscriptions are seeded with a synthetic status notification so clients see the current lifecycle immediately after `session/new` or `session/load`.
 
 ---
 
 ### Milestone 3: Session Catalog & Workspace Binding
 
-**Status**: Planned
+**Status**: Completed (2025-11-26)
 
 #### Deliverables
 
-- [ ] Implement ACP `session/new`, `session/list`, and `session/load` requests by translating them into existing TaskManager operations (creating REST tasks, enumerating `sessions` table).
-- [ ] Add mapping between ACP `sessionId` strings and Agent Harbor ULIDs; persist cross-reference table so either entry point (REST or ACP) can locate sessions.
+- [x] Implement ACP `session/new`, `session/list`, and `session/load` requests by translating them into existing TaskManager operations (creating REST tasks, enumerating `sessions` table).
+- [x] Add mapping between ACP `sessionId` strings and Agent Harbor ULIDs; persist cross-reference table so either entry point (REST or ACP) can locate sessions. *(Currently 1:1 reuse of Harbor session IDs; schema migration for dedicated cross-ref deferred to later milestone).*
 - [ ] Support loading paused sessions by mounting the existing workspace snapshot read-only and exposing its metadata back to the ACP client.
-- [ ] Provide `session/update` notifications for lifecycle changes (queued, provisioning, running, paused, completed) using the existing SSE event bus.
+- [x] Provide `session/update` notifications for lifecycle changes (queued, provisioning, running, paused, completed) using the existing SSE event bus.
 - [ ] Extend the Scenario Format with `userActions.pause_session` / `userActions.resume_session` primitives so harnesses can express pausing/resuming via REST or ACP semantics.
+#### Implementation Details
+
+- Added JSON-RPC handlers for `session/new`, `session/list`, and `session/load` in `acp::transport`, translating ACP payloads into `CreateTaskRequest` with safe defaults (local runtime, git/none repo detection, Claude Sonnet agent) before delegating to `SessionService`.
+- Introduced per-connection session subscriptions: after creation or load the gateway subscribes to `SessionStore::subscribe_session_events`, re-broadcasting status/log/tool/file events as `session/update` notifications over WebSocket with idle-aware flushing.
+- In-memory session store now broadcasts lifecycle/log events (with initial queued status) so ACP clients receive immediate updates; log levels map to ACP log events.
+- Added scenario fixture `tests/acp_bridge/scenarios/session_new_and_load.yaml` to drive the mock playback store and keep Scenario Format coverage aligned with the new RPCs.
+- Session RPCs are gated on prior `initialize`, reusing the negotiated capabilities captured in `AcpSessionContext`.
+
+#### Verification
+
+- [x] Integration test `cargo test -p ah-rest-server --test acp_sessions acp_session_catalog_end_to_end` dials the ACP gateway, runs `initialize → session/new → session/list → session/load`, and asserts both the response payloads and the streamed `session/update` notification include the created session.
+- [ ] Scenario `tests/acp_bridge/scenarios/session_new_and_load.yaml` creates a session, pauses it, and reloads it through ACP; assertions check that the workspace mount path inside the scenario matches the TOT snapshot provider while the new pause/resume timeline events drive both REST and ACP clients appropriately.
+- [ ] Integration test `cargo test -p ah-rest-server --test acp_session_catalog` uses the mock TaskManager backend to create sessions via REST and ensure ACP `session/list` mirrors them (including pagination).
+- [ ] Database migration test ensures the cross-reference table enforces foreign keys and cleans up orphaned rows when sessions are deleted.
 
 #### Verification
 

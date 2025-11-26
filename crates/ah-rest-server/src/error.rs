@@ -9,6 +9,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use tungstenite;
 
 /// Server result type
 pub type ServerResult<T> = Result<T, ServerError>;
@@ -152,5 +153,26 @@ impl From<validator::ValidationError> for ServerError {
 impl From<std::io::Error> for ServerError {
     fn from(err: std::io::Error) -> Self {
         ServerError::Internal(format!("IO error: {}", err))
+    }
+}
+
+impl From<tungstenite::Error> for ServerError {
+    fn from(err: tungstenite::Error) -> Self {
+        ServerError::Internal(format!("WebSocket error: {}", err))
+    }
+}
+
+/// Convert ACP errors into server errors for unified handling
+impl From<crate::acp::AcpError> for ServerError {
+    fn from(err: crate::acp::AcpError) -> Self {
+        match err {
+            crate::acp::AcpError::Disabled => {
+                ServerError::NotImplemented("ACP gateway is disabled in configuration".to_string())
+            }
+            crate::acp::AcpError::Transport(io_err) => {
+                ServerError::Internal(format!("ACP transport error: {}", io_err))
+            }
+            crate::acp::AcpError::Internal(msg) => ServerError::Internal(msg),
+        }
     }
 }

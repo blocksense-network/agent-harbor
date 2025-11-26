@@ -52,7 +52,7 @@ async fn spawn_mock_server_with_options(
     } else {
         MockServerDependencies::new(config.clone()).await.expect("mock deps")
     };
-    let server = Server::with_state(config, deps.into_state()).expect("server");
+    let server = Server::with_state(config, deps.into_state()).await.expect("server");
     let bind = format!("http://{}", addr);
 
     let handle = tokio::spawn(async move {
