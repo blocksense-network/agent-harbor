@@ -67,8 +67,10 @@ impl TaskManagerMessage {
 pub fn socket_dir() -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;
 
-    // Choose base directory based on OS
-    let base_dir = if cfg!(target_os = "linux") {
+    // Prefer explicit override for tests or custom deployments
+    let base_dir = if let Ok(dir) = std::env::var("AH_SOCKET_DIR") {
+        std::path::PathBuf::from(dir)
+    } else if cfg!(target_os = "linux") {
         // Linux: prefer XDG_RUNTIME_DIR, fallback to /tmp
         std::env::var("XDG_RUNTIME_DIR")
             .map(std::path::PathBuf::from)
