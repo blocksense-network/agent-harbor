@@ -38,6 +38,11 @@ pub trait TaskController: Send + Sync {
         Ok(())
     }
 
+    /// Inject raw bytes into the PTY (no newline).
+    async fn inject_bytes(&self, _session_id: &str, _bytes: &[u8]) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     /// Subscribe to PTY stream for a session, returning backlog and a live receiver.
     /// Default is unimplemented for backends that do not expose PTY data.
     async fn subscribe_pty(
@@ -70,6 +75,10 @@ impl TaskController for TaskExecutor {
 
     async fn inject_message(&self, session_id: &str, message: &str) -> anyhow::Result<()> {
         self.inject_message(session_id, message).await
+    }
+
+    async fn inject_bytes(&self, session_id: &str, bytes: &[u8]) -> anyhow::Result<()> {
+        self.inject_bytes(session_id, bytes).await
     }
 
     async fn subscribe_pty(
