@@ -149,10 +149,6 @@ impl AgentExecutor {
         }
 
         if with_recording {
-            let _socket_name = task_manager_socket_path.ok_or_else(|| {
-                "task_manager_socket_path is required when with_recording is true".to_string()
-            })?;
-
             // Get the full path to the current executable
             // Construct the full command: <exe_path> agent record --session-id <id> --task-manager-socket <path> --out-file <path> -- <agent_args...>
             let mut cmd_parts = vec![
@@ -161,12 +157,12 @@ impl AgentExecutor {
                 "record".to_string(),
                 "--session-id".to_string(),
                 session_id.to_string(),
-                // TODO(zah): Restore this option once it works properly
-                // The reason for commenting this out is that when using zellij,
-                // we experience issues with the re-rendering of TUI dashboard after interacting with a spawned agent
-                // "--task-manager-socket".to_string(),
-                // socket_name.to_string(),
             ];
+
+            if let Some(socket_name) = task_manager_socket_path {
+                cmd_parts.push("--task-manager-socket".to_string());
+                cmd_parts.push(socket_name.to_string());
+            }
 
             // Add --out-file parameter with the default recordings path only when persistence is requested
             if persist_recording {
@@ -388,6 +384,7 @@ impl AgentExecutor {
         working_copy_mode: WorkingCopyMode,
         cwd: Option<&Path>,
         snapshot_id: Option<String>,
+        task_manager_socket_path: Option<std::path::PathBuf>,
     ) -> Result<JoinHandle<()>> {
         let session_id = session_id.to_string();
         let agent_type = agent_type.to_string();
@@ -418,7 +415,10 @@ impl AgentExecutor {
                     snapshot_id,
                     true, // spawn_agent_process always uses recording
                     true, // spawn_agent_process always persists recording
-                    None, // spawn_agent_process doesn't need task manager socket
+                    task_manager_socket_path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .as_deref(),
                 ) {
                     Ok(args) => args,
                     Err(e) => {

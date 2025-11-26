@@ -7,7 +7,10 @@
 //! queued → provisioning → running → completed/failed
 
 use crate::models::{DatabaseSessionStore, SessionStore};
-use ah_core::{AgentExecutionConfig, AgentExecutor};
+use ah_core::{
+    AgentExecutionConfig, AgentExecutor,
+    task_manager_wire::{TaskManagerMessage, task_manager_socket_path},
+};
 use ah_local_db::Database;
 use ah_rest_api_contract::{Session, SessionEvent, SessionStatus};
 use anyhow::Result;
@@ -15,7 +18,9 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::io::AsyncReadExt;
+use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::{Duration, sleep};
 use tracing::{debug, error, info};
 use uuid;
@@ -109,6 +114,9 @@ pub struct TaskExecutor {
     snapshot_cache: Arc<RwLock<SnapshotCache>>,
     provisioning_lock: Arc<Mutex<()>>,
     agent_executor: Arc<AgentExecutor>,
+    task_manager_listener: Arc<Mutex<Option<Arc<UnixListener>>>>,
+    recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
+    accept_loop_running: Arc<Mutex<bool>>,
 }
 
 impl TaskExecutor {
@@ -141,7 +149,58 @@ impl TaskExecutor {
             snapshot_cache,
             provisioning_lock: Arc::new(Mutex::new(())),
             agent_executor,
+            task_manager_listener: Arc::new(Mutex::new(None)),
+            recorder_senders: Arc::new(Mutex::new(HashMap::new())),
+            accept_loop_running: Arc::new(Mutex::new(false)),
         }
+    }
+
+    /// Ensure the task manager socket listener is running to receive recorder connections.
+    async fn ensure_task_manager_listener(&self) -> anyhow::Result<()> {
+        let mut running = self.accept_loop_running.lock().await;
+        if *running {
+            return Ok(());
+        }
+
+        let socket_path = task_manager_socket_path();
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = UnixListener::bind(&socket_path)?;
+        let listener = Arc::new(listener);
+
+        {
+            let mut guard = self.task_manager_listener.lock().await;
+            *guard = Some(Arc::clone(&listener));
+        }
+
+        *running = true;
+
+        let recorder_senders = Arc::clone(&self.recorder_senders);
+        let accept_loop_running = Arc::clone(&self.accept_loop_running);
+        tokio::spawn(async move {
+            loop {
+                if !*accept_loop_running.lock().await {
+                    break;
+                }
+
+                match listener.accept().await {
+                    Ok((stream, _addr)) => {
+                        let recorder_senders = Arc::clone(&recorder_senders);
+                        tokio::spawn(async move {
+                            if let Err(e) =
+                                handle_recorder_connection(stream, recorder_senders).await
+                            {
+                                error!("Recorder connection handling failed: {}", e);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        error!("Task manager socket accept error: {}", e);
+                    }
+                }
+            }
+        });
+
+        Ok(())
     }
 
     /// Pause a running task by updating its session status to Paused.
@@ -184,9 +243,30 @@ impl TaskExecutor {
     }
 
     /// Inject a user/system message into the running session by recording it as a log event.
-    /// TODO: forward to live agent runtime once available.
     pub async fn inject_message(&self, session_id: &str, message: &str) -> anyhow::Result<()> {
         let ts = chrono::Utc::now().timestamp_millis() as u64;
+
+        // Attempt to forward to live recorder via task manager socket
+        let sender = {
+            let guard = self.recorder_senders.lock().await;
+            guard.get(session_id).cloned()
+        };
+        if let Some(tx) = sender {
+            let mut payload = message.as_bytes().to_vec();
+            payload.push(b'\n');
+            if let Err(e) = tx.send(TaskManagerMessage::InjectInput(payload)) {
+                error!(
+                    "Failed to forward inject_message to recorder for {}: {}",
+                    session_id, e
+                );
+            }
+        } else {
+            debug!(
+                "No recorder sender found for {}; inject_message will be logged only",
+                session_id
+            );
+        }
+
         let _ = self
             .session_store
             .add_session_event(
@@ -214,6 +294,9 @@ impl TaskExecutor {
             snapshot_cache: Arc::clone(&self.snapshot_cache),
             provisioning_lock: Arc::clone(&self.provisioning_lock),
             agent_executor: Arc::clone(&self.agent_executor),
+            task_manager_listener: Arc::clone(&self.task_manager_listener),
+            recorder_senders: Arc::clone(&self.recorder_senders),
+            accept_loop_running: Arc::clone(&self.accept_loop_running),
         });
 
         tokio::spawn(async move {
@@ -317,6 +400,10 @@ impl TaskExecutor {
 
         info!("Starting task {}: running", session_id);
 
+        // Ensure the task manager socket is available for recorder interaction
+        self.ensure_task_manager_listener().await?;
+        let tm_socket = task_manager_socket_path();
+
         // Start the agent process
         let handle = self
             .agent_executor
@@ -330,6 +417,7 @@ impl TaskExecutor {
                     &internal_session.session.workspace.mount_path,
                 )),
                 snapshot_id,
+                Some(tm_socket),
             )
             .await?;
 
@@ -507,6 +595,152 @@ impl TaskExecutor {
 
         // Remove from running tasks if present
         self.running_tasks.write().await.remove(session_id);
+
+        Ok(())
+    }
+}
+
+/// Handle a single recorder connection for the task manager socket.
+async fn handle_recorder_connection(
+    mut stream: UnixStream,
+    recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
+) -> anyhow::Result<()> {
+    // Read session id (length prefixed)
+    let mut len_buf = [0u8; 4];
+    stream.read_exact(&mut len_buf).await?;
+    let len = u32::from_le_bytes(len_buf) as usize;
+    let mut id_buf = vec![0u8; len];
+    stream.read_exact(&mut id_buf).await?;
+    let session_id = String::from_utf8(id_buf)?;
+
+    let (mut reader, mut writer) = stream.into_split();
+
+    // Register sender for injections
+    let (tx, mut rx) = mpsc::unbounded_channel::<TaskManagerMessage>();
+    {
+        let mut guard = recorder_senders.lock().await;
+        guard.insert(session_id.clone(), tx);
+    }
+
+    let cleanup_senders = Arc::clone(&recorder_senders);
+    let cleanup_id = session_id.clone();
+    let writer_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if msg.write_to(&mut writer).await.is_err() {
+                break;
+            }
+        }
+        let mut guard = cleanup_senders.lock().await;
+        guard.remove(&cleanup_id);
+    });
+
+    loop {
+        let mut len_buf = [0u8; 4];
+        if reader.read_exact(&mut len_buf).await.is_err() {
+            break;
+        }
+        let len = u32::from_le_bytes(len_buf) as usize;
+        let mut buf = vec![0u8; len];
+        if reader.read_exact(&mut buf).await.is_err() {
+            break;
+        }
+
+        // Decode either the new envelope or legacy session event for logging
+        if let Ok(TaskManagerMessage::SessionEvent(_event)) =
+            <TaskManagerMessage as ssz::Decode>::from_ssz_bytes(&buf)
+        {
+            debug!("Recorder {} reported event", session_id);
+            continue;
+        }
+
+        if let Ok(_event) = <SessionEvent as ssz::Decode>::from_ssz_bytes(&buf) {
+            debug!("Recorder {} reported legacy event", session_id);
+        }
+    }
+
+    let _ = writer_task.await;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
+    use ah_rest_api_contract::{
+        CreateTaskRequest, RepoConfig, RepoMode, RuntimeConfig, RuntimeType,
+    };
+    use tokio::io::AsyncWriteExt;
+    use tokio::time::timeout;
+
+    fn make_request() -> CreateTaskRequest {
+        CreateTaskRequest {
+            tenant_id: None,
+            project_id: None,
+            prompt: "hello".into(),
+            repo: RepoConfig {
+                mode: RepoMode::None,
+                url: None,
+                branch: None,
+                commit: None,
+            },
+            runtime: RuntimeConfig {
+                runtime_type: RuntimeType::Local,
+                devcontainer_path: None,
+                resources: None,
+            },
+            workspace: None,
+            agents: vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".into(),
+                },
+                model: "sonnet".into(),
+                count: 1,
+                settings: std::collections::HashMap::new(),
+                display_name: Some("sonnet".into()),
+            }],
+            delivery: None,
+            labels: std::collections::HashMap::new(),
+            webhooks: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn inject_message_forwards_to_recorder_socket() -> anyhow::Result<()> {
+        let db = Arc::new(Database::open_in_memory()?);
+        let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
+        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
+
+        let ids = session_store.create_session(&make_request()).await?;
+        let session_id = ids.first().cloned().expect("session id");
+
+        executor.ensure_task_manager_listener().await?;
+        let socket_path = task_manager_socket_path();
+
+        // Recorder simulation that captures injected bytes
+        let (msg_tx, msg_rx) = tokio::sync::oneshot::channel();
+        let session_clone = session_id.clone();
+        tokio::spawn(async move {
+            let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+            let id_bytes = session_clone.as_bytes();
+            let mut frame = (id_bytes.len() as u32).to_le_bytes().to_vec();
+            frame.extend_from_slice(id_bytes);
+            stream.write_all(&frame).await.unwrap();
+
+            let msg = TaskManagerMessage::read_from(&mut stream).await.unwrap();
+            let _ = msg_tx.send(msg);
+        });
+
+        // Give the accept loop a brief moment to register the recorder connection.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        executor.inject_message(&session_id, "ping").await?;
+
+        let received = timeout(Duration::from_secs(1), msg_rx).await??;
+        match received {
+            TaskManagerMessage::InjectInput(bytes) => assert_eq!(bytes, b"ping\n"),
+            other => panic!("Unexpected message {:?}", other),
+        }
 
         Ok(())
     }
