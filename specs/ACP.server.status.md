@@ -176,7 +176,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 - [x] Implement ACP `session/new`, `session/list`, and `session/load` requests by translating them into existing TaskManager operations (creating REST tasks, enumerating `sessions` table).
 - [x] Add mapping between ACP `sessionId` strings and Agent Harbor ULIDs; persist cross-reference table so either entry point (REST or ACP) can locate sessions. *(Currently 1:1 reuse of Harbor session IDs; schema migration for dedicated cross-ref deferred to later milestone).*
-- [ ] Support loading paused sessions by mounting the existing workspace snapshot read-only and exposing its metadata back to the ACP client.
+- [x] Support loading paused sessions by mounting the existing workspace snapshot read-only and exposing its metadata back to the ACP client (workspace metadata now flags read-only and includes snapshot provider when status=paused).
 - [x] Provide `session/update` notifications for lifecycle changes (queued, provisioning, running, paused, completed) using the existing SSE event bus.
 - [ ] Extend the Scenario Format with `userActions.pause_session` / `userActions.resume_session` primitives so harnesses can express pausing/resuming via REST or ACP semantics.
 #### Implementation Details
@@ -190,7 +190,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 #### Outstanding Tasks
 
-- [ ] Support loading paused sessions by mounting the existing workspace snapshot read-only and exposing its metadata back to the ACP client.
+- [x] Support loading paused sessions by mounting the existing workspace snapshot read-only and exposing its metadata back to the ACP client.
 - [ ] Extend the Scenario Format with `userActions.pause_session` / `userActions.resume_session` primitives so harnesses can express pausing/resuming via REST or ACP semantics.
 - [ ] Create an ACP↔REST session ID cross-reference table/migration instead of reusing raw session IDs.
 - [x] Implement pagination (offset/limit) in `session/list` responses.
@@ -199,6 +199,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 #### Verification
 
 - [x] Integration test `cargo test -p ah-rest-server --test acp_sessions acp_session_catalog_end_to_end` dials the ACP gateway, runs `initialize → session/new → session/list → session/load`, and asserts both the response payloads and the streamed `session/update` notification include the created session.
+- [x] Integration test `cargo test -p ah-rest-server --test acp_sessions acp_session_load_paused_marks_workspace_read_only` pauses a session, reloads it via ACP, and validates the response flags the workspace as read-only with snapshot metadata.
 - [ ] Scenario `tests/acp_bridge/scenarios/session_new_and_load.yaml` creates a session, pauses it, and reloads it through ACP; assertions check that the workspace mount path inside the scenario matches the TOT snapshot provider while the new pause/resume timeline events drive both REST and ACP clients appropriately.
 - [ ] Integration test `cargo test -p ah-rest-server --test acp_session_catalog` uses the mock TaskManager backend to create sessions via REST and ensure ACP `session/list` mirrors them (including pagination).
 - [ ] Database migration test ensures the cross-reference table enforces foreign keys and cleans up orphaned rows when sessions are deleted.
