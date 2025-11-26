@@ -411,6 +411,33 @@ test-fuse-security-robustness:
 test-fuse-compat:
     ./scripts/test-fuse-compat.sh
 
+# Run all FUSE tests (requires sudo)
+# This runs all FUSE harness tests and the full pjdfstest suite
+test-fuse-all:
+    @echo "🧪 Running comprehensive FUSE test suite..."
+    @echo "📋 Running FUSE harness tests..."
+    just test-fuse-mount-cycle
+    just test-fuse-mount-failures
+    just test-fuse-mount-concurrent
+    just test-fuse-basic-ops
+    just test-fuse-negative-ops
+    just test-fuse-overlay-ops
+    just test-fuse-control-plane
+    just test-fuse-xattrs
+    just test-fuse-mknod
+    just test-fuse-mount-options
+    just test-fuse-advanced-io
+    just test-fuse-security-permissions
+    just test-fuse-security-privileges
+    just test-fuse-security-input
+    just test-fuse-security-sandbox
+    just test-fuse-security-robustness
+    just test-fuse-stress
+    just test-fuse-compat
+    @echo "📋 Running full pjdfstest suite..."
+    just test-pjdfstest-full
+    @echo "✅ All FUSE tests completed!"
+
 # Setup comprehensive pjdfstest suite with test files
 # Usage: just setup-pjdfstest-suite
 # See docs/PJDFSTest-Guide.md for detailed usage instructions
