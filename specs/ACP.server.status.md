@@ -29,6 +29,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - Prompt/cancel/pause/resume now require a live `TaskController` and propagate errors instead of silently best-effort delivery; mock dependencies ship a lightweight controller so scenario/integration tests still run.
 - Terminal follow now derives follower commands strictly from recorder/tool metadata; when metadata is missing (mock sessions), a synthetic `tool_use` event is recorded instead of trusting raw client strings.
 - Send-safe notifier path added: per-connection SDK `AgentSideConnection::notify` now runs on a dedicated single-thread runtime behind a channel, so we can migrate `session/update` to typed SDK notifications when ready without `Send` issues.
+- `session/update` now emits typed SDK notifications (`SessionUpdate` variants for status/log/thought/tool/file/terminal), preserving the raw event in `_meta` for fidelity; dispatcher path remains only as a fallback.
 
 ## Test Strategy
 
