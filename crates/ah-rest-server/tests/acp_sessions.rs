@@ -160,3 +160,57 @@ async fn acp_session_catalog_end_to_end() {
 
     handle.abort();
 }
+
+#[tokio::test]
+async fn acp_session_new_respects_context_limit() {
+    let (acp_url, handle) = spawn_acp_server().await;
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
+        .await
+        .expect("connect");
+
+    socket
+        .send(WsMessage::Text(
+            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+        ))
+        .await
+        .expect("send initialize");
+    let _ = read_response(&mut socket, 1).await;
+
+    let long_prompt = "Z".repeat(20_000);
+    socket
+        .send(WsMessage::Text(
+            json!({
+                "id":2,
+                "method":"session/new",
+                "params":{
+                    "prompt": long_prompt,
+                    "agent":"sonnet"
+                }
+            })
+            .to_string(),
+        ))
+        .await
+        .expect("send session/new");
+    let response = read_response(&mut socket, 2).await;
+
+    assert_eq!(
+        response.pointer("/result/accepted").and_then(|v| v.as_bool()),
+        Some(false)
+    );
+    assert_eq!(
+        response.pointer("/result/stopReason").and_then(|v| v.as_str()),
+        Some("context_limit")
+    );
+    assert!(
+        response.pointer("/result/usedChars").and_then(|v| v.as_u64()).unwrap_or(0)
+            > response.pointer("/result/limitChars").and_then(|v| v.as_u64()).unwrap_or(16_000),
+        "usedChars should exceed limit when rejection occurs"
+    );
+
+    // ensure no session/update arrives for a rejected creation
+    let maybe_update = tokio::time::timeout(std::time::Duration::from_millis(300), socket.next()).await;
+    assert!(maybe_update.is_err(), "no session/update should be emitted for rejected session/new");
+
+    handle.abort();
+}

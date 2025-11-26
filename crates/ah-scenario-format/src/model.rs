@@ -20,6 +20,12 @@ pub struct Scenario {
     pub server: Option<ServerConfig>,
     #[serde(default)]
     pub timeline: Vec<TimelineEvent>,
+    /// Legacy timeline syntax (used by existing ACP fixtures).
+    #[serde(default, rename = "events")]
+    pub legacy_events: Vec<LegacyScenarioEvent>,
+    /// Legacy assertions section used by ACP fixtures.
+    #[serde(default, rename = "assertions")]
+    pub legacy_assertions: Vec<LegacyAssertion>,
     pub expect: Option<ExpectConfig>,
 }
 
@@ -201,6 +207,31 @@ pub struct TextAssertions {
 #[serde(rename_all = "camelCase")]
 pub struct JsonAssertions {
     pub file: Option<Vec<JsonFileAssertion>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegacyScenarioEvent {
+    #[serde(rename = "at_ms")]
+    pub at_ms: u64,
+    pub kind: String,
+    pub value: Option<String>,
+    pub message: Option<String>,
+    pub text: Option<String>,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegacyAssertion {
+    pub kind: String,
+    pub event: Option<LegacyAssertEvent>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegacyAssertEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub status: Option<String>,
+    pub message_contains: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
