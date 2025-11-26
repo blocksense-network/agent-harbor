@@ -1679,6 +1679,7 @@ async fn seed_history_stdio(
 }
 
 fn session_to_json(session: &Session) -> Value {
+    let read_only = matches!(session.status, SessionStatus::Paused);
     json!({
         "id": session.id,
         "tenantId": session.tenant_id,
@@ -1686,6 +1687,8 @@ fn session_to_json(session: &Session) -> Value {
         "status": session.status.to_string(),
         "prompt": session.task.prompt,
         "workspace": session.workspace.mount_path,
+        "workspaceReadOnly": read_only,
+        "snapshotProvider": session.workspace.snapshot_provider,
         "agent": session.agent.display_name.clone().unwrap_or_else(|| session.agent.model.clone()),
         "links": {
             "events": session.links.events,

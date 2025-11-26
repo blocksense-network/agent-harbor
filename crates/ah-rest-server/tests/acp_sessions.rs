@@ -215,6 +215,60 @@ async fn acp_session_new_infers_tenant_from_jwt() {
 }
 
 #[tokio::test]
+async fn acp_session_load_paused_marks_workspace_read_only() {
+    let (acp_url, handle) = spawn_acp_server_basic().await;
+    let acp_url = format!("{}?api_key=secret", acp_url);
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
+
+    socket
+        .send(WsMessage::Text(
+            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+        ))
+        .await
+        .expect("init");
+    let _ = read_response(&mut socket, 1).await;
+
+    socket
+        .send(WsMessage::Text(
+            json!({"id":2,"method":"session/new","params":{"prompt":"pause me","agent":"sonnet"}})
+                .to_string(),
+        ))
+        .await
+        .expect("session/new");
+    let created = read_response(&mut socket, 2).await;
+    let session_id = created.pointer("/result/sessionId").and_then(|v| v.as_str()).unwrap();
+
+    socket
+        .send(WsMessage::Text(
+            json!({"id":3,"method":"session/pause","params":{"sessionId":session_id}}).to_string(),
+        ))
+        .await
+        .expect("pause");
+    let _ = read_response(&mut socket, 3).await;
+
+    socket
+        .send(WsMessage::Text(
+            json!({"id":4,"method":"session/load","params":{"sessionId":session_id}}).to_string(),
+        ))
+        .await
+        .expect("session/load");
+    let loaded = read_response(&mut socket, 4).await;
+
+    assert_eq!(
+        loaded.pointer("/result/session/status").and_then(|v| v.as_str()),
+        Some("paused")
+    );
+    assert_eq!(
+        loaded.pointer("/result/session/workspaceReadOnly").and_then(|v| v.as_bool()),
+        Some(true),
+        "paused session load should report read-only workspace"
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
 async fn acp_session_new_respects_context_limit() {
     let (acp_url, handle) = spawn_acp_server_basic().await;
     let acp_url = format!("{}?api_key=secret", acp_url);
