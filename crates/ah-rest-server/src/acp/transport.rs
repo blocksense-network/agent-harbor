@@ -10,7 +10,10 @@
 //! dispatcher.
 
 use crate::{
-    acp::translator::{InitializeLite, JsonRpcTranslator},
+    acp::{
+        notify::Notifier,
+        translator::{InitializeLite, JsonRpcTranslator},
+    },
     auth::{AuthConfig, Claims},
     config::{AcpAuthPolicy, AcpConfig},
     error::{ServerError, ServerResult},
@@ -104,6 +107,7 @@ pub struct AcpTransportState {
     pub idle_timeout: Duration,
     pub config: AcpConfig,
     pub app_state: AppState,
+    pub notifier: Notifier,
 }
 
 /// SDK side that keeps both typed and raw params to avoid losing Harbor-specific fields.
@@ -253,6 +257,7 @@ pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
         auth_claims: None,
         ..Default::default()
     }));
+    context.lock().await.notifier = state.notifier.clone();
     let (dispatcher, _streams) = ValueDispatcher::<HarborAgentSide, OutgoingSide>::new();
     let driver = Arc::new(Mutex::new(dispatcher));
     let mut incoming_rx = driver.lock().await.take_incoming().fuse();
@@ -269,8 +274,11 @@ pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
             }
             _ = tick.tick() => {
                 let mut ctx = context.lock().await;
-                let flushed_events = flush_session_events_stdio(&mut ctx, &driver, &writer).await;
-                let flushed_pty = flush_pty_events_stdio(&mut ctx, &driver, &writer).await;
+                let notifier = ctx.notifier.clone();
+                let flushed_events =
+                    flush_session_events_stdio(&mut ctx, &driver, &writer, &notifier).await;
+                let flushed_pty =
+                    flush_pty_events_stdio(&mut ctx, &driver, &writer, &notifier).await;
                 if flushed_events || flushed_pty {
                     idle_timer.as_mut().reset(Instant::now() + idle_timeout);
                 }
@@ -414,6 +422,7 @@ async fn handle_socket(
         auth_claims: claims,
         ..Default::default()
     }));
+    context.lock().await.notifier = state.notifier.clone();
     let (dispatcher, _streams) = ValueDispatcher::<HarborAgentSide, OutgoingSide>::new();
     let driver = Arc::new(Mutex::new(dispatcher));
     let mut incoming_rx = driver.lock().await.take_incoming().fuse();
@@ -424,78 +433,81 @@ async fn handle_socket(
 
     loop {
         tokio::select! {
-            _ = &mut idle_timer => {
-                break;
-            }
-            _ = tick.tick() => {
-                let mut ctx_guard = context.lock().await;
-                let flushed_events = flush_session_events(&mut ctx_guard, &driver, &sender).await;
-                let flushed_pty = flush_pty_events(&mut ctx_guard, &driver, &sender).await;
-                drop(ctx_guard);
-                if flushed_events || flushed_pty {
-                    idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
-                }
-            }
-            maybe_incoming = incoming_rx.next() => {
-                if let Some(message) = maybe_incoming {
-                    match message {
-                        IncomingMessage::Request { id, request } => {
-                            let result = route_wrapped_request(&state, &context, &sender, &driver, request, &headers).await;
-                            let outgoing = OutgoingMessage::Response {
-                                id,
-                                result: ResponseResult::from(result),
-                            };
-                            if send_outgoing(&driver, &sender, &outgoing).await.is_err() {
-                                break;
-                            }
-                            idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
-                        }
-                        IncomingMessage::Notification { notification } => {
-                            let _ = route_notification(&state, &context, &sender, &driver, notification, &headers).await;
-                            idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
-                        }
-                    }
-                } else {
+                _ = &mut idle_timer => {
                     break;
                 }
-            }
-            maybe_msg = receiver.next() => {
-                match maybe_msg {
-                    Some(Ok(msg)) => {
-                        match msg {
-                            WsMessage::Text(text) => {
-                                match serde_json::from_str::<Value>(&text) {
-                                    Ok(value) => {
-                                        let immediate = {
-                                            let mut guard = driver.lock().await;
-                                            guard.handle_json(value).await
-                                        };
-                                        if let Some(payload) = immediate {
-                                            if send_json(&sender, payload).await.is_err() {
-                                                break;
-                                            }
-                                        }
-                                        idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
-                                    }
-                                    Err(_) => {
-                                        let _ = send_json(&sender, json_error(Value::Null, -32700, "invalid_json")).await;
-                                    }
-                                }
-                            }
-                            WsMessage::Binary(bin) => {
-                                let mut guard = sender.lock().await;
-                                if guard.send(WsMessage::Binary(bin)).await.is_err() {
-                                    break;
-                                }
-                            }
-                            WsMessage::Close(_) => break,
-                            _ => {}
-                        }
-                    }
-                    Some(Err(_)) | None => break,
-                }
+                _ = tick.tick() => {
+            let mut ctx_guard = context.lock().await;
+                    let notifier = ctx_guard.notifier.clone();
+                    let flushed_events =
+                        flush_session_events(&mut ctx_guard, &driver, &sender, &notifier).await;
+                    let flushed_pty =
+                        flush_pty_events(&mut ctx_guard, &driver, &sender, &notifier).await;
+            drop(ctx_guard);
+            if flushed_events || flushed_pty {
+                idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
             }
         }
+                maybe_incoming = incoming_rx.next() => {
+                    if let Some(message) = maybe_incoming {
+                        match message {
+                            IncomingMessage::Request { id, request } => {
+                                let result = route_wrapped_request(&state, &context, &sender, &driver, request, &headers).await;
+                                let outgoing = OutgoingMessage::Response {
+                                    id,
+                                    result: ResponseResult::from(result),
+                                };
+                                if send_outgoing(&driver, &sender, &outgoing).await.is_err() {
+                                    break;
+                                }
+                                idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
+                            }
+                            IncomingMessage::Notification { notification } => {
+                                let _ = route_notification(&state, &context, &sender, &driver, notification, &headers).await;
+                                idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
+                            }
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                maybe_msg = receiver.next() => {
+                    match maybe_msg {
+                        Some(Ok(msg)) => {
+                            match msg {
+                                WsMessage::Text(text) => {
+                                    match serde_json::from_str::<Value>(&text) {
+                                        Ok(value) => {
+                                            let immediate = {
+                                                let mut guard = driver.lock().await;
+                                                guard.handle_json(value).await
+                                            };
+                                            if let Some(payload) = immediate {
+                                                if send_json(&sender, payload).await.is_err() {
+                                                    break;
+                                                }
+                                            }
+                                            idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
+                                        }
+                                        Err(_) => {
+                                            let _ = send_json(&sender, json_error(Value::Null, -32700, "invalid_json")).await;
+                                        }
+                                    }
+                                }
+                                WsMessage::Binary(bin) => {
+                                    let mut guard = sender.lock().await;
+                                    if guard.send(WsMessage::Binary(bin)).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                WsMessage::Close(_) => break,
+                                _ => {}
+                            }
+                        }
+                        Some(Err(_)) | None => break,
+                    }
+                }
+            }
     }
 }
 
@@ -588,7 +600,11 @@ async fn route_wrapped_request(
             }
             "ah/terminal/detach" => {
                 drop(guard);
-                handle_terminal_detach(driver, sender, request.raw)
+                let notifier = {
+                    let g = ctx.lock().await;
+                    g.notifier.clone()
+                };
+                handle_terminal_detach(driver, sender, request.raw, &notifier)
                     .await
                     .map_err(server_error_to_rpc)
             }
@@ -730,7 +746,11 @@ async fn route_request_stdio(
             }
             "ah/terminal/detach" => {
                 drop(guard);
-                handle_terminal_detach_stdio(driver, writer, request.raw)
+                let notifier = {
+                    let g = ctx.lock().await;
+                    g.notifier.clone()
+                };
+                handle_terminal_detach_stdio(driver, writer, request.raw, &notifier)
                     .await
                     .map_err(server_error_to_rpc)
             }
@@ -769,6 +789,7 @@ struct AcpSessionContext {
     /// Cached execution commands derived from recorded tool events to avoid trusting
     /// client-supplied follow commands.
     execution_commands: HashMap<String, HashMap<String, String>>,
+    notifier: Notifier,
 }
 
 fn json_error(id: Value, code: i64, message: &str) -> Value {
@@ -918,7 +939,7 @@ async fn handle_session_new(
 
     if let Some(session) = state.app_state.session_store.get_session(&session_id).await? {
         subscribe_session(ctx, &state.app_state, &session_id, driver, sender).await;
-        let _ = seed_history(&state.app_state, &session_id, driver, sender).await;
+        let _ = seed_history(&state.app_state, &session_id, driver, sender, &ctx.notifier).await;
         ctx.sessions.insert(session_id.clone());
         let _ = state
             .app_state
@@ -981,7 +1002,8 @@ async fn handle_session_new_stdio(
 
     if let Some(session) = state.app_state.session_store.get_session(&session_id).await? {
         subscribe_session_stdio(ctx, &state.app_state, &session_id, driver, writer).await;
-        let _ = seed_history_stdio(&state.app_state, &session_id, driver, writer).await;
+        let _ =
+            seed_history_stdio(&state.app_state, &session_id, driver, writer, &ctx.notifier).await;
         ctx.sessions.insert(session_id.clone());
         let _ = state
             .app_state
@@ -1094,8 +1116,9 @@ async fn handle_terminal_follow(
 
     let cmd = follower_command(execution_id, session_id, &cmd_string);
 
+    let notifier = ctx.notifier.clone();
     let update = terminal_follow_params(session_id, execution_id, &cmd);
-    let _ = send_session_notification(driver, sender, update).await;
+    let _ = send_session_notification(driver, sender, update, &notifier).await;
 
     // Attempt to stream PTY backlog + live updates when available.
     if let Some(controller) = &state.app_state.task_controller {
@@ -1110,12 +1133,14 @@ async fn handle_terminal_follow(
                             driver,
                             sender,
                             pty_to_params(session_id, &msg),
+                            &notifier,
                         )
                         .await;
                     }
                 }
                 let sender_clone = Arc::clone(sender);
                 let driver_clone = driver.clone();
+                let notifier_clone = notifier.clone();
                 let session = session_id.to_string();
                 tokio::spawn(async move {
                     while let Ok(msg) = rx.recv().await {
@@ -1127,6 +1152,7 @@ async fn handle_terminal_follow(
                                 &driver_clone,
                                 &sender_clone,
                                 pty_to_params(&session, &msg),
+                                &notifier_clone,
                             )
                             .await;
                         }
@@ -1173,8 +1199,9 @@ async fn handle_terminal_follow_stdio(
 
     let cmd = follower_command(execution_id, session_id, &cmd_string);
 
+    let notifier = ctx.notifier.clone();
     let update = terminal_follow_params(session_id, execution_id, &cmd);
-    let _ = send_session_notification_stdout(driver, writer, update).await;
+    let _ = send_session_notification_stdout(driver, writer, update, &notifier).await;
 
     if let Some(controller) = &state.app_state.task_controller {
         match controller.subscribe_pty(session_id).await {
@@ -1188,12 +1215,14 @@ async fn handle_terminal_follow_stdio(
                             driver,
                             writer,
                             pty_to_params(session_id, &msg),
+                            &notifier,
                         )
                         .await;
                     }
                 }
                 let driver_clone = driver.clone();
                 let writer_clone = writer.clone();
+                let notifier_clone = notifier.clone();
                 let session = session_id.to_string();
                 tokio::spawn(async move {
                     while let Ok(msg) = rx.recv().await {
@@ -1205,6 +1234,7 @@ async fn handle_terminal_follow_stdio(
                                 &driver_clone,
                                 &writer_clone,
                                 pty_to_params(&session, &msg),
+                                &notifier_clone,
                             )
                             .await;
                         }
@@ -1224,6 +1254,7 @@ async fn handle_terminal_detach(
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
+    notifier: &Notifier,
 ) -> ServerResult<Value> {
     let session_id = params
         .get("sessionId")
@@ -1235,7 +1266,7 @@ async fn handle_terminal_detach(
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
 
     let update = terminal_detach_params(session_id, execution_id);
-    let _ = send_session_notification(driver, sender, update).await;
+    let _ = send_session_notification(driver, sender, update, notifier).await;
 
     Ok(json!({ "sessionId": session_id, "executionId": execution_id, "detached": true }))
 }
@@ -1244,6 +1275,7 @@ async fn handle_terminal_detach_stdio(
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
+    notifier: &Notifier,
 ) -> ServerResult<Value> {
     let session_id = params
         .get("sessionId")
@@ -1255,7 +1287,7 @@ async fn handle_terminal_detach_stdio(
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
 
     let update = terminal_detach_params(session_id, execution_id);
-    let _ = send_session_notification_stdout(driver, writer, update).await;
+    let _ = send_session_notification_stdout(driver, writer, update, notifier).await;
 
     Ok(json!({ "sessionId": session_id, "executionId": execution_id, "detached": true }))
 }
@@ -1308,7 +1340,7 @@ async fn handle_session_load(
 
     if let Some(session) = state.app_state.session_store.get_session(session_id).await? {
         subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
-        let _ = seed_history(&state.app_state, session_id, driver, sender).await;
+        let _ = seed_history(&state.app_state, session_id, driver, sender, &ctx.notifier).await;
         ctx.sessions.insert(session_id.to_string());
         Ok(json!({
             "session": session_to_json(&session.session),
@@ -1332,7 +1364,8 @@ async fn handle_session_load_stdio(
 
     if let Some(session) = state.app_state.session_store.get_session(session_id).await? {
         subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
-        let _ = seed_history_stdio(&state.app_state, session_id, driver, writer).await;
+        let _ =
+            seed_history_stdio(&state.app_state, session_id, driver, writer, &ctx.notifier).await;
         ctx.sessions.insert(session_id.to_string());
         Ok(json!({
             "session": session_to_json(&session.session),
@@ -1395,7 +1428,8 @@ async fn handle_session_prompt(
     }
 
     subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
-    let _ = seed_history(&state.app_state, session_id, driver, sender).await;
+    let notifier = ctx.notifier.clone();
+    let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
     if matches!(
         session.session.status,
@@ -1494,7 +1528,8 @@ async fn handle_session_prompt_stdio(
     }
 
     subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
-    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer).await;
+    let notifier = ctx.notifier.clone();
+    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
     if matches!(
         session.session.status,
@@ -1556,7 +1591,8 @@ async fn handle_session_cancel(
     };
 
     subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
-    let _ = seed_history(&state.app_state, session_id, driver, sender).await;
+    let notifier = ctx.notifier.clone();
+    let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     // best-effort task stop via TaskController if available
@@ -1601,7 +1637,8 @@ async fn handle_session_cancel_stdio(
     };
 
     subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
-    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer).await;
+    let notifier = ctx.notifier.clone();
+    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     if let Some(controller) = &state.app_state.task_controller {
@@ -1645,7 +1682,8 @@ async fn handle_session_pause(
     };
 
     subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
-    let _ = seed_history(&state.app_state, session_id, driver, sender).await;
+    let notifier = ctx.notifier.clone();
+    let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Paused;
@@ -1689,7 +1727,8 @@ async fn handle_session_pause_stdio(
     };
 
     subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
-    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer).await;
+    let notifier = ctx.notifier.clone();
+    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Paused;
@@ -1733,7 +1772,8 @@ async fn handle_session_resume(
     };
 
     subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
-    let _ = seed_history(&state.app_state, session_id, driver, sender).await;
+    let notifier = ctx.notifier.clone();
+    let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Running;
@@ -1777,7 +1817,8 @@ async fn handle_session_resume_stdio(
     };
 
     subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
-    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer).await;
+    let notifier = ctx.notifier.clone();
+    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Running;
@@ -1820,9 +1861,13 @@ async fn subscribe_session(
         if let Some(controller) = &app_state.task_controller {
             if let Ok((backlog, rx)) = controller.subscribe_pty(session_id).await {
                 for msg in backlog {
-                    let _ =
-                        send_session_notification(driver, sender, pty_to_params(session_id, &msg))
-                            .await;
+                    let _ = send_session_notification(
+                        driver,
+                        sender,
+                        pty_to_params(session_id, &msg),
+                        &ctx.notifier,
+                    )
+                    .await;
                 }
                 ctx.pty_receivers.insert(session_id.to_string(), rx);
             }
@@ -1850,6 +1895,7 @@ async fn subscribe_session_stdio(
                         driver,
                         writer,
                         pty_to_params(session_id, &msg),
+                        &ctx.notifier,
                     )
                     .await;
                 }
@@ -1864,6 +1910,7 @@ async fn seed_history(
     session_id: &str,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    notifier: &Notifier,
 ) -> Result<(), ()> {
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
         for event in events {
@@ -1871,7 +1918,7 @@ async fn seed_history(
                 "sessionId": session_id,
                 "event": event_to_json(session_id, &event),
             });
-            send_session_notification(driver, sender, params).await?;
+            send_session_notification(driver, sender, params, notifier).await?;
         }
     }
     Ok(())
@@ -1882,6 +1929,7 @@ async fn seed_history_stdio(
     session_id: &str,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
+    notifier: &Notifier,
 ) -> Result<(), ()> {
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
         for event in events {
@@ -1889,7 +1937,7 @@ async fn seed_history_stdio(
                 "sessionId": session_id,
                 "event": event_to_json(session_id, &event),
             });
-            send_session_notification_stdout(driver, writer, params).await?;
+            send_session_notification_stdout(driver, writer, params, notifier).await?;
         }
     }
     Ok(())
@@ -1918,6 +1966,7 @@ async fn flush_session_events(
     ctx: &mut AcpSessionContext,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    notifier: &Notifier,
 ) -> bool {
     let mut sent = false;
     let mut dead_sessions = Vec::new();
@@ -1946,7 +1995,7 @@ async fn flush_session_events(
             "sessionId": session_id,
             "event": event_to_json(&session_id, &event),
         });
-        if send_session_notification(driver, sender, update).await.is_err() {
+        if send_session_notification(driver, sender, update, notifier).await.is_err() {
             dead_sessions.push(session_id);
         } else {
             sent = true;
@@ -1964,6 +2013,7 @@ async fn flush_session_events_stdio(
     ctx: &mut AcpSessionContext,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
+    notifier: &Notifier,
 ) -> bool {
     let mut sent = false;
     let mut dead_sessions = Vec::new();
@@ -1992,7 +2042,10 @@ async fn flush_session_events_stdio(
             "sessionId": session_id,
             "event": event_to_json(&session_id, &event),
         });
-        if send_session_notification_stdout(driver, writer, update).await.is_err() {
+        if send_session_notification_stdout(driver, writer, update, notifier)
+            .await
+            .is_err()
+        {
             dead_sessions.push(session_id);
         } else {
             sent = true;
@@ -2010,6 +2063,7 @@ async fn flush_pty_events(
     ctx: &mut AcpSessionContext,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    notifier: &Notifier,
 ) -> bool {
     let mut sent = false;
     let mut dead = Vec::new();
@@ -2019,7 +2073,7 @@ async fn flush_pty_events(
             match rx.try_recv() {
                 Ok(msg) => {
                     let update = pty_to_params(session_id, &msg);
-                    if send_session_notification(driver, sender, update).await.is_err() {
+                    if send_session_notification(driver, sender, update, notifier).await.is_err() {
                         dead.push(session_id.clone());
                         break;
                     }
@@ -2046,6 +2100,7 @@ async fn flush_pty_events_stdio(
     ctx: &mut AcpSessionContext,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
+    notifier: &Notifier,
 ) -> bool {
     let mut sent = false;
     let mut dead = Vec::new();
@@ -2055,7 +2110,10 @@ async fn flush_pty_events_stdio(
             match rx.try_recv() {
                 Ok(msg) => {
                     let update = pty_to_params(session_id, &msg);
-                    if send_session_notification_stdout(driver, writer, update).await.is_err() {
+                    if send_session_notification_stdout(driver, writer, update, notifier)
+                        .await
+                        .is_err()
+                    {
                         dead.push(session_id.clone());
                         break;
                     }
@@ -2336,7 +2394,9 @@ async fn send_session_notification(
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
+    _notifier: &Notifier,
 ) -> Result<(), ()> {
+    // Temporary: still using dispatcher path; notifier hook reserved for future
     let message = OutgoingMessage::Notification {
         method: Arc::from("session/update"),
         params: Some(params),
@@ -2371,6 +2431,7 @@ async fn send_session_notification_stdout(
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
+    _notifier: &Notifier,
 ) -> Result<(), ()> {
     let message = OutgoingMessage::Notification {
         method: Arc::from("session/update"),
