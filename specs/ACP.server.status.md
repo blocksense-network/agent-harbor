@@ -227,7 +227,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - `session/cancel` best-effort calls `TaskController::stop_task` when available to mirror REST cancellation.
 - Backpressure coverage added via `acp_prompt_backpressure` which blasts prompts while delaying reads to ensure the gateway keeps streaming and does not deadlock.
 - Scenario fixture `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` added to mirror the prompt turn timeline; harness assertions now execute via the mock playback store’s legacy `events`/`assertions` support.
-- Prompt injection now targets the live PTY via the task-manager socket: the socket protocol is a bidirectional SSZ envelope, `ah agent record` listens for `InjectInput` frames and writes them to the PTY, and the REST `TaskExecutor::inject_message` forwards ACP prompts over that channel (with newline termination) in addition to logging.
+- Prompt injection now targets the live PTY via the task-manager socket: the socket protocol is a bidirectional SSZ envelope, `ah agent record` listens for `InjectInput` frames and writes them to the PTY, and the REST `TaskExecutor::inject_message` forwards ACP prompts over that channel (with newline termination) in addition to logging. The socket now also carries `PtyData`/`PtyResize` envelopes from the recorder to seed the follower/backlog channel for Milestone 5.3. Recorder-side PTY bytes are now buffered inside `TaskSocketHub` (backlog + broadcast) but no consumer is wired yet; follower hookup remains outstanding.
 
 #### Key Implementation Files
 

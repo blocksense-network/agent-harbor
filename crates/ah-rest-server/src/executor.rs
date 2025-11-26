@@ -117,6 +117,7 @@ pub struct TaskExecutor {
     task_manager_listener: Arc<Mutex<Option<Arc<UnixListener>>>>,
     recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
     accept_loop_running: Arc<Mutex<bool>>,
+    task_socket_hub: Arc<crate::task_socket::TaskSocketHub>,
 }
 
 impl TaskExecutor {
@@ -152,6 +153,7 @@ impl TaskExecutor {
             task_manager_listener: Arc::new(Mutex::new(None)),
             recorder_senders: Arc::new(Mutex::new(HashMap::new())),
             accept_loop_running: Arc::new(Mutex::new(false)),
+            task_socket_hub: Arc::new(crate::task_socket::TaskSocketHub::new()),
         }
     }
 
@@ -176,18 +178,21 @@ impl TaskExecutor {
 
         let recorder_senders = Arc::clone(&self.recorder_senders);
         let accept_loop_running = Arc::clone(&self.accept_loop_running);
+        let hub_root = Arc::clone(&self.task_socket_hub);
+        let listener_root = Arc::clone(&listener);
         tokio::spawn(async move {
             loop {
                 if !*accept_loop_running.lock().await {
                     break;
                 }
 
-                match listener.accept().await {
+                match listener_root.accept().await {
                     Ok((stream, _addr)) => {
                         let recorder_senders = Arc::clone(&recorder_senders);
+                        let hub = Arc::clone(&hub_root);
                         tokio::spawn(async move {
                             if let Err(e) =
-                                handle_recorder_connection(stream, recorder_senders).await
+                                handle_recorder_connection(stream, recorder_senders, hub).await
                             {
                                 error!("Recorder connection handling failed: {}", e);
                             }
@@ -297,6 +302,7 @@ impl TaskExecutor {
             task_manager_listener: Arc::clone(&self.task_manager_listener),
             recorder_senders: Arc::clone(&self.recorder_senders),
             accept_loop_running: Arc::clone(&self.accept_loop_running),
+            task_socket_hub: Arc::clone(&self.task_socket_hub),
         });
 
         tokio::spawn(async move {
@@ -604,6 +610,7 @@ impl TaskExecutor {
 async fn handle_recorder_connection(
     mut stream: UnixStream,
     recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
+    hub: Arc<crate::task_socket::TaskSocketHub>,
 ) -> anyhow::Result<()> {
     // Read session id (length prefixed)
     let mut len_buf = [0u8; 4];
@@ -646,15 +653,33 @@ async fn handle_recorder_connection(
         }
 
         // Decode either the new envelope or legacy session event for logging
-        if let Ok(TaskManagerMessage::SessionEvent(_event)) =
-            <TaskManagerMessage as ssz::Decode>::from_ssz_bytes(&buf)
-        {
-            debug!("Recorder {} reported event", session_id);
-            continue;
-        }
-
-        if let Ok(_event) = <SessionEvent as ssz::Decode>::from_ssz_bytes(&buf) {
-            debug!("Recorder {} reported legacy event", session_id);
+        match <TaskManagerMessage as ssz::Decode>::from_ssz_bytes(&buf) {
+            Ok(TaskManagerMessage::SessionEvent(_event)) => {
+                debug!("Recorder {} reported event", session_id);
+            }
+            Ok(TaskManagerMessage::InjectInput(_)) => {
+                debug!(
+                    "Recorder {} sent unexpected InjectInput (ignored)",
+                    session_id
+                );
+            }
+            Ok(TaskManagerMessage::PtyData(bytes)) => {
+                hub.record(&session_id, TaskManagerMessage::PtyData(bytes)).await;
+            }
+            Ok(TaskManagerMessage::PtyResize(resize)) => {
+                hub.record(&session_id, TaskManagerMessage::PtyResize(resize)).await;
+            }
+            Err(_) => {
+                if let Ok(_event) = <SessionEvent as ssz::Decode>::from_ssz_bytes(&buf) {
+                    debug!("Recorder {} reported legacy event", session_id);
+                } else {
+                    debug!(
+                        "Recorder {} sent undecodable payload ({} bytes)",
+                        session_id,
+                        buf.len()
+                    );
+                }
+            }
         }
     }
 

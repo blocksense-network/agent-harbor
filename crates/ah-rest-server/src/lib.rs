@@ -20,6 +20,7 @@ pub mod models;
 pub mod server;
 pub mod services;
 pub mod state;
+pub mod task_socket;
 
 pub use config::ServerConfig;
 pub use error::{ServerError, ServerResult};
