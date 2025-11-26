@@ -1054,7 +1054,11 @@ async fn handle_session_list(
     let filters = FilterQuery {
         status: params.get("status").and_then(|v| v.as_str()).map(|s| s.to_string()),
         agent: params.get("agent").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        project_id: params.get("projectId").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        project_id: params
+            .get("projectId")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| ctx.auth_claims.as_ref().and_then(|c| c.project_id.clone())),
         tenant_id: params
             .get("tenantId")
             .and_then(|v| v.as_str())

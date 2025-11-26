@@ -10,7 +10,8 @@
 
 use crate::config::{AcpConfig, AcpTransportMode};
 use agent_client_protocol::{AgentCapabilities, McpCapabilities, PromptCapabilities};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
+use tracing::warn;
 
 /// Translator utilities for JSON-RPC payloads.
 #[derive(Debug, Default, Clone)]
@@ -65,6 +66,24 @@ impl JsonRpcTranslator {
     }
 
     pub fn ignore_unknown_caps(input: &Value) -> AgentCapabilities {
+        if let Some(map) = input.pointer("/capabilities").and_then(|v| v.as_object()) {
+            log_unknown_fields(
+                map,
+                &["loadSession", "promptCapabilities", "mcp", "_meta"],
+                "capabilities",
+            );
+            if let Some(prompt) = map.get("promptCapabilities").and_then(|v| v.as_object()) {
+                log_unknown_fields(
+                    prompt,
+                    &["image", "audio", "embeddedContext", "meta"],
+                    "capabilities.promptCapabilities",
+                );
+            }
+            if let Some(mcp) = map.get("mcp").and_then(|v| v.as_object()) {
+                log_unknown_fields(mcp, &["http", "sse", "meta"], "capabilities.mcp");
+            }
+        }
+
         let load_session = input
             .pointer("/capabilities/loadSession")
             .and_then(|v| v.as_bool())
@@ -104,4 +123,66 @@ fn harbor_meta_caps(transports: Vec<String>) -> Value {
             "transports": transports
         }
     })
+}
+
+fn log_unknown_fields(map: &Map<String, Value>, known: &[&str], context: &str) {
+    for key in map.keys() {
+        if !known.iter().any(|k| k == key) {
+            warn!(%context, %key, "Unknown capability flag ignored: {key}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tracing_test::traced_test;
+
+    #[traced_test]
+    #[test]
+    fn unknown_capabilities_emit_warnings_and_preserve_known_fields() {
+        let noisy = json!({
+            "capabilities": {
+                "loadSession": true,
+                "promptCapabilities": { "image": true, "unexpectedPrompt": 1 },
+                "mcp": { "http": true, "future": false },
+                "unexpectedRoot": "foo"
+            }
+        });
+
+        let caps = JsonRpcTranslator::ignore_unknown_caps(&noisy);
+        assert!(caps.load_session, "known flags should round-trip");
+        assert!(caps.mcp_capabilities.http);
+        assert!(caps.prompt_capabilities.image);
+
+        logs_assert(|lines: &[&str]| {
+            lines
+                .iter()
+                .find(|line| {
+                    line.contains("Unknown capability flag ignored")
+                        && line.contains("unexpectedRoot")
+                })
+                .map(|_| Ok(()))
+                .unwrap_or_else(|| Err("expected warning for unexpectedRoot".to_string()))
+        });
+
+        logs_assert(|lines: &[&str]| {
+            lines
+                .iter()
+                .find(|line| {
+                    line.contains("capabilities.promptCapabilities")
+                        && line.contains("unexpectedPrompt")
+                })
+                .map(|_| Ok(()))
+                .unwrap_or_else(|| Err("expected warning for prompt capability".to_string()))
+        });
+
+        logs_assert(|lines: &[&str]| {
+            lines
+                .iter()
+                .find(|line| line.contains("capabilities.mcp") && line.contains("future"))
+                .map(|_| Ok(()))
+                .unwrap_or_else(|| Err("expected warning for mcp capability".to_string()))
+        });
+    }
 }
