@@ -48,11 +48,17 @@ impl JsonRpcTranslator {
     }
 
     pub fn initialize_response(caps: &AgentCapabilities) -> Value {
+        let transports = caps
+            .meta
+            .as_ref()
+            .and_then(|m| m.pointer("/agent.harbor/transports").cloned())
+            .unwrap_or_else(|| json!(["websocket"]));
         json!({
             "capabilities": {
                 "loadSession": caps.load_session,
                 "promptCapabilities": caps.prompt_capabilities,
                 "mcp": caps.mcp_capabilities,
+                "transports": transports,
                 "_meta": caps.meta.clone().unwrap_or(json!({}))
             }
         })
@@ -73,10 +79,7 @@ impl JsonRpcTranslator {
         caps.load_session = load_session;
         caps.prompt_capabilities = serde_json::from_value(prompt_caps).unwrap_or_default();
         caps.mcp_capabilities = serde_json::from_value(mcp_caps).unwrap_or_default();
-        caps.meta = input
-            .pointer("/capabilities/_meta")
-            .cloned()
-            .or_else(|| Some(json!({})));
+        caps.meta = input.pointer("/capabilities/_meta").cloned().or_else(|| Some(json!({})));
         caps
     }
 }
