@@ -18,6 +18,12 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 4. Gate everything behind a config flag until all verification milestones pass.
 5. Treat Agent Harbor as the ACP **agent** that owns the authoritative workspace; only advertise `fs.readTextFile` / `fs.writeTextFile` when a session is explicitly configured for in-place editing.
 
+### Recent Progress (2025-11-26)
+
+- WebSocket and stdio transports now run through the SDK `ValueDispatcher`, preserving raw JSON params via `WrappedRequest` so Harbor-specific fields survive decoding.
+- Vendored SDK exports `WrappedRequest` (typed + raw) to propagate `_meta` and extension fields into handlers.
+- `session/new` translation now expects Harbor-specific fields (`repoUrl`, `branch`, `labels`, etc.) under `_meta` (prompt/agent stay at the root); ACP tests updated accordingly.
+
 ## Test Strategy
 
 - **Unit tests** for configuration, capability negotiation, and JSON-RPC translation live under `crates/ah-rest-server/src/acp`.
@@ -70,10 +76,10 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 #### Outstanding Tasks
 
-- [ ] Fill in transport/authentication logic per Milestone 1.
-- [ ] Replace the stub router with the real JSON-RPC runtime once the SDK is wired.
-- [ ] Add `agentclientprotocol/rust-sdk` as a workspace dependency and swap the echo loop for the SDK runtime.
-- [ ] Implement stdio transport plumbing for `ah agent access-point --stdio-acp`.
+- [x] Fill in transport/authentication logic per Milestone 1.
+- [x] Replace the stub router with the real JSON-RPC runtime once the SDK is wired.
+- [x] Add `agentclientprotocol/rust-sdk` as a workspace dependency and swap the echo loop for the SDK runtime.
+- [x] Implement stdio transport plumbing for `ah agent access-point --stdio-acp`.
 
 #### Verification
 
@@ -255,7 +261,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 - [ ] Wire `session/prompt` / `session/cancel` / pause/resume to guaranteed TaskManager delivery with execution-id correlation instead of best-effort logging/injection.
 - [ ] Derive follower commands and terminal streams from recorded executions (not client-supplied command strings) to avoid spoofing and align with recorder metadata.
-- [ ] Move session/prompt/cancel/pause/resume onto the SDK dispatcher path and send updates via `AgentSideConnection::notify`.
+- [ ] Move session/prompt/cancel/pause/resume onto the SDK dispatcher path and send updates via `AgentSideConnection::notify`. *(Progress: WebSocket/stdio now use the SDK `ValueDispatcher` with raw params preserved; notifications still emitted manually.)*
 
 #### Key Implementation Files
 

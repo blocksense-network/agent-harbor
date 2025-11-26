@@ -412,6 +412,15 @@ pub enum IncomingMessage<Local: Side> {
     Notification { notification: Local::InNotification },
 }
 
+/// Wrapper that carries both the typed request/notification and the raw params
+/// (JSON object) used to decode it. Useful for embedders that need access to
+/// extension fields not represented in the schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WrappedRequest<T> {
+    pub typed: T,
+    pub raw: serde_json::Value,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum OutgoingMessage<Local: Side, Remote: Side> {
