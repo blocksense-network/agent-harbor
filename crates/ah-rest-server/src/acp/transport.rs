@@ -12,7 +12,7 @@
 use crate::{
     acp::translator::{AcpCapabilities, JsonRpcTranslator},
     auth::{AuthConfig, Claims},
-    config::AcpConfig,
+    config::{AcpAuthPolicy, AcpConfig},
     error::{ServerError, ServerResult},
     services::SessionService,
     state::AppState,
@@ -103,7 +103,7 @@ async fn acp_connect(
     };
 
     // Authenticate
-    let claims = match authenticate(&state.auth, &query, &headers) {
+    let claims = match authenticate(&state.auth, state.config.auth_policy, &query, &headers) {
         Ok(claims) => claims,
         Err(err) => {
             drop(permit);
@@ -112,14 +112,19 @@ async fn acp_connect(
         }
     };
 
-    ws.on_upgrade(move |socket| handle_socket(socket, state, permit, claims))
+    let header_clone = headers.clone();
+    ws.on_upgrade(move |socket| handle_socket(socket, state, permit, claims, header_clone))
 }
 
 fn authenticate(
     auth: &AuthConfig,
+    policy: AcpAuthPolicy,
     query: &AcpQuery,
     headers: &HeaderMap,
 ) -> Result<Option<Claims>, ServerError> {
+    if matches!(policy, AcpAuthPolicy::Anonymous) {
+        return Ok(None);
+    }
     // Query bearer token takes precedence for test harness convenience
     if let Some(token) = &query.bearer_token {
         return auth.validate_jwt(token).map(Some);
@@ -156,6 +161,7 @@ async fn handle_socket(
     state: Arc<AcpTransportState>,
     _permit: tokio::sync::OwnedSemaphorePermit,
     claims: Option<Claims>,
+    headers: HeaderMap,
 ) {
     let (sender, mut receiver) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
@@ -186,7 +192,7 @@ async fn handle_socket(
                             WsMessage::Text(text) => {
                                 match serde_json::from_str::<Value>(&text) {
                                     Ok(value) => {
-                                        let response = handle_rpc(&state, &mut context, &sender, value).await;
+                                        let response = handle_rpc(&state, &mut context, &sender, value, &headers).await;
                                         if let Some(payload) = response {
                                             if send_json(&sender, payload).await.is_err() {
                                                 break;
@@ -244,6 +250,7 @@ async fn handle_rpc(
     ctx: &mut AcpSessionContext,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     request: Value,
+    headers: &HeaderMap,
 ) -> Option<Value> {
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
@@ -291,6 +298,10 @@ async fn handle_rpc(
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
         "session/resume" => match handle_session_resume(state, ctx, sender, params).await {
+            Ok(result) => Some(rpc_response(id, result)),
+            Err(err) => Some(json_error(id, -32000, &err.to_string())),
+        },
+        "authenticate" => match handle_authenticate(state, ctx, params, &headers).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
@@ -373,6 +384,33 @@ async fn handle_session_new(
     } else {
         Err(ServerError::SessionNotFound(session_id))
     }
+}
+
+async fn handle_authenticate(
+    state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
+    params: Value,
+    headers: &HeaderMap,
+) -> ServerResult<Value> {
+    let query = AcpQuery {
+        api_key: params
+            .get("apiKey")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        bearer_token: params
+            .get("token")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    };
+
+    let claims = authenticate(&state.auth, state.config.auth_policy, &query, headers)?;
+    ctx.auth_claims = claims.clone();
+
+    Ok(json!({
+        "authenticated": true,
+        "tenantId": claims.as_ref().and_then(|c| c.tenant_id.clone()),
+        "projectId": claims.as_ref().and_then(|c| c.project_id.clone())
+    }))
 }
 
 async fn handle_terminal_write(
