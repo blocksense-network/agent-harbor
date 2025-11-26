@@ -40,6 +40,10 @@ jobs:
             cf_project: agent-harbor-webui
             build_command: just webui-build
             dist_path: webui/app/dist
+          - label: Website
+            cf_project: agent-harbor
+            build_command: just website-build
+            dist_path: apps/agent-harbor.dev/out
     uses: ./.github/workflows/reusable-deploy-site.yml
     permissions:
       contents: read
