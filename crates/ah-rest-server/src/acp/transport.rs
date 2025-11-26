@@ -10,13 +10,14 @@
 //! - Echoes JSON-RPC requests by returning `{"id": <id>, "result": <params>}`.
 
 use crate::{
-    acp::translator::{AcpCapabilities, JsonRpcTranslator},
+    acp::translator::JsonRpcTranslator,
     auth::{AuthConfig, Claims},
     config::{AcpAuthPolicy, AcpConfig},
     error::{ServerError, ServerResult},
     services::SessionService,
     state::AppState,
 };
+use agent_client_protocol::AgentCapabilities;
 use axum::{
     Json, Router,
     extract::{
@@ -224,7 +225,7 @@ async fn handle_socket(
 
 #[derive(Default)]
 struct AcpSessionContext {
-    negotiated_caps: Option<AcpCapabilities>,
+    negotiated_caps: Option<AgentCapabilities>,
     sessions: HashSet<String>,
     receivers: HashMap<String, Receiver<SessionEvent>>,
     pty_receivers: HashMap<String, tokio::sync::broadcast::Receiver<TaskManagerMessage>>,
@@ -521,6 +522,13 @@ async fn handle_session_list(
     params: Value,
     ctx: &AcpSessionContext,
 ) -> ServerResult<Value> {
+    let offset = params
+        .get("offset")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        .min(u64::MAX);
+    let limit = params.get("limit").and_then(|v| v.as_u64());
+
     let filters = FilterQuery {
         status: params.get("status").and_then(|v| v.as_str()).map(|s| s.to_string()),
         agent: params.get("agent").and_then(|v| v.as_str()).map(|s| s.to_string()),
@@ -533,8 +541,13 @@ async fn handle_session_list(
     };
 
     let sessions = state.app_state.session_store.list_sessions(&filters).await?;
-    let items: Vec<Value> = sessions.iter().map(session_to_json).collect();
-    Ok(json!({ "items": items, "total": items.len() }))
+    let start = offset.min(sessions.len() as u64) as usize;
+    let end = limit
+        .map(|l| start.saturating_add(l as usize).min(sessions.len()))
+        .unwrap_or_else(|| sessions.len());
+
+    let items: Vec<Value> = sessions.iter().skip(start).take(end - start).map(session_to_json).collect();
+    Ok(json!({ "items": items, "total": sessions.len(), "offset": offset, "limit": limit }))
 }
 
 async fn handle_session_load(
