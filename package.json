@@ -1,5 +1,5 @@
 {
-  "name": "webui-workspace",
+  "name": "@agent-harbor/monorepo",
   "private": true,
   "workspaces": [
     "webui/app",

@@ -49,6 +49,28 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@agent-harbor/monorepo@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@agent-harbor/monorepo@workspace:."
+  dependencies:
+    "@eslint/js": "npm:^9.39.1"
+    "@typescript-eslint/eslint-plugin": "npm:^8.47.0"
+    "@typescript-eslint/parser": "npm:^8.47.0"
+    eslint: "npm:^9.39.1"
+    eslint-import-resolver-typescript: "npm:^4.4.4"
+    eslint-plugin-import-x: "npm:^4.16.1"
+    eslint-plugin-solid: "npm:^0.14.5"
+    globals: "npm:^16.5.0"
+    knip: "npm:^5.64.1"
+    prettier: "npm:3.6.2"
+    solid-js: "npm:^1.9.9"
+    typescript: "npm:5.9.3"
+    typescript-eslint: "npm:^8.47.0"
+    vite: "npm:^7.1.9"
+    wrangler: "npm:^4.49.1"
+  languageName: unknown
+  linkType: soft
+
 "@alloc/quick-lru@npm:^5.2.0":
   version: 5.2.0
   resolution: "@alloc/quick-lru@npm:5.2.0"
@@ -19860,28 +19882,6 @@ __metadata:
   checksum: 10c0/5ffbddf0e84bf1562ff86cf6fcf039c74edf09d78358a6904a09bbd4484e8bb6812dc385fe14330b715031892dcd8423f7a88278b57c9f5002c84c2860179add
   languageName: node
   linkType: hard
-
-"webui-workspace@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "webui-workspace@workspace:."
-  dependencies:
-    "@eslint/js": "npm:^9.39.1"
-    "@typescript-eslint/eslint-plugin": "npm:^8.47.0"
-    "@typescript-eslint/parser": "npm:^8.47.0"
-    eslint: "npm:^9.39.1"
-    eslint-import-resolver-typescript: "npm:^4.4.4"
-    eslint-plugin-import-x: "npm:^4.16.1"
-    eslint-plugin-solid: "npm:^0.14.5"
-    globals: "npm:^16.5.0"
-    knip: "npm:^5.64.1"
-    prettier: "npm:3.6.2"
-    solid-js: "npm:^1.9.9"
-    typescript: "npm:5.9.3"
-    typescript-eslint: "npm:^8.47.0"
-    vite: "npm:^7.1.9"
-    wrangler: "npm:^4.49.1"
-  languageName: unknown
-  linkType: soft
 
 "whatwg-encoding@npm:^3.1.1":
   version: 3.1.1
