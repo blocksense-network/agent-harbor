@@ -8,13 +8,11 @@
 
 pub mod config;
 pub mod error;
-pub mod fault;
 pub mod types;
 
 // Re-export key types for convenience
 pub use config::{CachePolicy, CaseSensitivity, FsConfig, FsLimits, MemoryPolicy};
 pub use error::FsError;
-pub use fault::{FaultErrno, FaultOp, FaultPolicy, FaultPolicySummary};
 pub use types::*;
 
 // Core implementation modules
@@ -24,6 +22,10 @@ pub mod vfs;
 
 // Re-export main types
 pub use vfs::{DirfdMapping, FsCore, PID};
+
+// Test-only mock implementations
+#[cfg(test)]
+pub mod testing;
 
 #[cfg(test)]
 mod tests {

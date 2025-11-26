@@ -5,8 +5,8 @@ use agentfs_proto::{Request, Response};
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use ssz::{Decode, Encode};
-use std::fs::{self, OpenOptions};
-use std::io::{self, Read};
+use std::fs::OpenOptions;
+use std::io;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 
@@ -55,13 +55,6 @@ enum Command {
         #[arg(long)]
         pid: u32,
     },
-    /// Apply a new fault-injection policy from a JSON file (use '-' for stdin)
-    FaultPolicySet {
-        #[arg(long)]
-        file: PathBuf,
-    },
-    /// Clear the currently installed fault policy
-    FaultPolicyClear,
 }
 
 #[allow(clippy::disallowed_methods)]
@@ -165,58 +158,9 @@ fn main() -> Result<()> {
                 other => return Err(anyhow!("unexpected response: {:?}", other)),
             }
         }
-        Command::FaultPolicySet { file } => {
-            let bytes = read_policy_spec(&file)?;
-            let response = send_request(&mount, Request::fault_policy_set(bytes))?;
-            match response {
-                Response::FaultPolicyStatus(status) => {
-                    println!(
-                        "FAULT_POLICY enabled={} active={} rules={}",
-                        status.enabled, status.active, status.rule_count
-                    );
-                }
-                Response::Error(err) => {
-                    return Err(anyhow!(
-                        "fault_policy_set failed: {} (errno={})",
-                        String::from_utf8_lossy(&err.error),
-                        err.code.unwrap_or_default()
-                    ));
-                }
-                other => return Err(anyhow!("unexpected response: {:?}", other)),
-            }
-        }
-        Command::FaultPolicyClear => {
-            let response = send_request(&mount, Request::fault_policy_clear())?;
-            match response {
-                Response::FaultPolicyStatus(status) => {
-                    println!(
-                        "FAULT_POLICY enabled={} active={} rules={}",
-                        status.enabled, status.active, status.rule_count
-                    );
-                }
-                Response::Error(err) => {
-                    return Err(anyhow!(
-                        "fault_policy_clear failed: {} (errno={})",
-                        String::from_utf8_lossy(&err.error),
-                        err.code.unwrap_or_default()
-                    ));
-                }
-                other => return Err(anyhow!("unexpected response: {:?}", other)),
-            }
-        }
     }
 
     Ok(())
-}
-
-fn read_policy_spec(path: &Path) -> Result<Vec<u8>> {
-    if path == Path::new("-") {
-        let mut buf = Vec::new();
-        io::stdin().read_to_end(&mut buf)?;
-        Ok(buf)
-    } else {
-        fs::read(path).with_context(|| format!("failed to read policy file {:?}", path))
-    }
 }
 
 fn send_request(mount: &Path, request: Request) -> Result<Response> {

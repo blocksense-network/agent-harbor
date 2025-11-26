@@ -19,8 +19,6 @@ pub enum Request {
     SnapshotExportRelease((Vec<u8>, SnapshotExportReleaseRequest)), // (version, request)
     BranchCreate((Vec<u8>, BranchCreateRequest)),     // (version, request)
     BranchBind((Vec<u8>, BranchBindRequest)),         // (version, request)
-    FaultPolicySet((Vec<u8>, FaultPolicySetRequest)), // (version, request)
-    FaultPolicyClear(Vec<u8>),                        // version
     FdOpen((Vec<u8>, FdOpenRequest)),                 // (version, request)
     FdDup((Vec<u8>, FdDupRequest)),                   // (version, request)
     DirOpen((Vec<u8>, DirOpenRequest)),               // (version, request)
@@ -120,7 +118,6 @@ pub enum Response {
     SnapshotExportRelease(SnapshotExportReleaseResponse),
     BranchCreate(BranchCreateResponse),
     BranchBind(BranchBindResponse),
-    FaultPolicyStatus(FaultPolicyStatusResponse),
     FdOpen(FdOpenResponse),
     FdDup(FdDupResponse),
     DirOpen(DirOpenResponse),
@@ -297,25 +294,11 @@ pub struct BranchBindRequest {
     pub pid: Option<u32>,
 }
 
-/// Request payload for updating the current fault policy
-#[derive(Clone, Debug, PartialEq, Encode, Decode)]
-pub struct FaultPolicySetRequest {
-    pub policy_json: Vec<u8>,
-}
-
 /// Branch bind response payload
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct BranchBindResponse {
     pub branch: Vec<u8>,
     pub pid: u32,
-}
-
-/// Response describing the currently active fault policy
-#[derive(Clone, Debug, PartialEq, Encode, Decode)]
-pub struct FaultPolicyStatusResponse {
-    pub enabled: bool,
-    pub active: bool,
-    pub rule_count: u32,
 }
 
 /// FdOpen request payload for interpose forwarding
@@ -1528,14 +1511,6 @@ impl Request {
         ))
     }
 
-    pub fn fault_policy_set(policy_json: Vec<u8>) -> Self {
-        Self::FaultPolicySet((b"1".to_vec(), FaultPolicySetRequest { policy_json }))
-    }
-
-    pub fn fault_policy_clear() -> Self {
-        Self::FaultPolicyClear(b"1".to_vec())
-    }
-
     pub fn fd_open(path: String, flags: u32, mode: u32) -> Self {
         Self::FdOpen((
             b"1".to_vec(),
@@ -2093,14 +2068,6 @@ impl Response {
 
     pub fn branch_bind(branch: Vec<u8>, pid: u32) -> Self {
         Self::BranchBind(BranchBindResponse { branch, pid })
-    }
-
-    pub fn fault_policy_status(enabled: bool, active: bool, rule_count: u32) -> Self {
-        Self::FaultPolicyStatus(FaultPolicyStatusResponse {
-            enabled,
-            active,
-            rule_count,
-        })
     }
 
     pub fn fd_open(fd: u32) -> Self {

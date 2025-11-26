@@ -244,7 +244,6 @@ pub(crate) struct User {
 pub struct FsCore {
     config: FsConfig,
     storage: Arc<dyn StorageBackend>,
-    fault_injector: Arc<crate::fault::FaultInjector>,
     backstore: Option<Box<dyn Backstore>>, // Backstore for overlay operations
     lower_fs: Option<Box<dyn LowerFs>>,    // Lower filesystem provider for overlay
     overlay_visible_subdir: Option<PathBuf>,
@@ -271,7 +270,7 @@ impl FsCore {
     /// Create a new FsCore instance with the given configuration
     pub fn new(config: FsConfig) -> FsResult<Self> {
         // Initialize storage backend based on backstore configuration
-        let base_storage: Arc<dyn StorageBackend> = match &config.backstore {
+        let storage: Arc<dyn StorageBackend> = match &config.backstore {
             crate::config::BackstoreMode::InMemory => {
                 Arc::new(crate::storage::InMemoryBackend::new())
             }
@@ -283,10 +282,6 @@ impl FsCore {
                 Arc::new(crate::storage::InMemoryBackend::new())
             }
         };
-        let fault_injector = Arc::new(crate::fault::FaultInjector::new());
-        let storage: Arc<dyn StorageBackend> = Arc::new(
-            crate::storage::FaultInjectingBackend::new(base_storage, fault_injector.clone()),
-        );
 
         // Initialize backstore for overlay operations or standalone backstore modes
         let backstore = if config.overlay.enabled
@@ -314,7 +309,6 @@ impl FsCore {
         let mut core = Self {
             config,
             storage,
-            fault_injector,
             backstore,
             lower_fs,
             nodes: Mutex::new(HashMap::new()),
@@ -346,23 +340,87 @@ impl FsCore {
         Ok(core)
     }
 
-    pub fn apply_fault_policy_from_json(
-        &self,
-        payload: &[u8],
-    ) -> FsResult<crate::fault::FaultPolicySummary> {
-        let policy = crate::fault::FaultPolicy::from_json_bytes(payload)
-            .map_err(|_| FsError::InvalidArgument)?;
-        self.fault_injector.set_policy(policy);
-        Ok(self.fault_injector.summary())
-    }
+    /// Create a new FsCore instance with a custom storage backend (test-only)
+    ///
+    /// This constructor allows tests to inject mock storage backends for fault injection
+    /// and error testing without going through the production storage initialization.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Filesystem configuration
+    /// * `storage` - Custom storage backend implementation (typically a mock)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use agentfs_core::testing::mock_storage::{MockStorageBackend, FailureBehavior};
+    /// use agentfs_core::storage::InMemoryBackend;
+    ///
+    /// let base = Arc::new(InMemoryBackend::new());
+    /// let mock = Arc::new(MockStorageBackend::with_behavior(
+    ///     base,
+    ///     FailureBehavior::FailAfter { op: "write", count: 5, error: eio_error() }
+    /// ));
+    ///
+    /// let core = FsCore::new_with_storage(FsConfig::default(), mock).unwrap();
+    /// ```
+    #[cfg(test)]
+    pub fn new_with_storage(config: FsConfig, storage: Arc<dyn StorageBackend>) -> FsResult<Self> {
+        // Initialize backstore for overlay operations or standalone backstore modes
+        let backstore = if config.overlay.enabled
+            || matches!(
+                config.backstore,
+                crate::config::BackstoreMode::RamDisk { .. }
+            ) {
+            Some(crate::storage::create_backstore(&config.backstore)?)
+        } else {
+            None
+        };
 
-    pub fn clear_fault_policy(&self) -> crate::fault::FaultPolicySummary {
-        self.fault_injector.clear();
-        self.fault_injector.summary()
-    }
+        // Initialize lower filesystem if overlay is enabled
+        let (lower_fs, overlay_visible_subdir) = if config.overlay.enabled {
+            if let Some(lower_root) = &config.overlay.lower_root {
+                let lower_fs = Some(crate::overlay::create_lower_fs(lower_root)?);
+                (lower_fs, config.overlay.visible_subdir.clone())
+            } else {
+                return Err(FsError::InvalidArgument);
+            }
+        } else {
+            (None, None)
+        };
 
-    pub fn fault_policy_summary(&self) -> crate::fault::FaultPolicySummary {
-        self.fault_injector.summary()
+        let mut core = Self {
+            config,
+            storage,
+            backstore,
+            lower_fs,
+            nodes: Mutex::new(HashMap::new()),
+            snapshots: Mutex::new(HashMap::new()),
+            branches: Mutex::new(HashMap::new()),
+            handles: Mutex::new(HashMap::new()),
+            next_node_id: Mutex::new(1),
+            next_handle_id: Mutex::new(1),
+            #[cfg(feature = "events")]
+            next_subscription_id: Mutex::new(1),
+            process_branches: Mutex::new(HashMap::new()),
+            process_identities: Mutex::new(HashMap::new()),
+            process_children: Mutex::new(HashMap::new()),
+            process_parents: Mutex::new(HashMap::new()),
+            process_dirfd_mappings: Mutex::new(HashMap::new()),
+            locks: Mutex::new(LockManager {
+                locks: HashMap::new(),
+            }),
+            #[cfg(feature = "events")]
+            event_subscriptions: Mutex::new(HashMap::new()),
+            permissions_tracing_enabled: std::env::var("AGENTFS_TRACE_PERMISSIONS")
+                .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
+            overlay_visible_subdir,
+        };
+
+        // Create root directory
+        core.create_root_directory()?;
+        Ok(core)
     }
 
     /// Get information about the current backstore configuration
