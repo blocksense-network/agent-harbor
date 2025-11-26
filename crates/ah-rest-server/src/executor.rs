@@ -183,6 +183,25 @@ impl TaskExecutor {
         Ok(())
     }
 
+    /// Inject a user/system message into the running session by recording it as a log event.
+    /// TODO: forward to live agent runtime once available.
+    pub async fn inject_message(&self, session_id: &str, message: &str) -> anyhow::Result<()> {
+        let ts = chrono::Utc::now().timestamp_millis() as u64;
+        let _ = self
+            .session_store
+            .add_session_event(
+                session_id,
+                SessionEvent::log(
+                    ah_rest_api_contract::SessionLogLevel::Info,
+                    format!("user: {}", message),
+                    None,
+                    ts,
+                ),
+            )
+            .await;
+        Ok(())
+    }
+
     /// Start the task executor
     ///
     /// This begins the background task processing loop
