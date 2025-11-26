@@ -451,6 +451,12 @@ pjdfs-file test_file mountpoint="/tmp/agentfs":
 pjdfs-cat category mountpoint="/tmp/agentfs":
     ./scripts/run-pjdfstest.sh "{{mountpoint}}" "{{category}}/"
 
+# Dedicated harness that sets up pjdfstest, mounts AgentFS, runs the
+# entire suite with logging/JSON summary, and unmounts on completion.
+# Usage: just test-pjdfstest-full [/tmp/agentfs]
+test-pjdfstest-full mountpoint="/tmp/agentfs":
+    ./scripts/test-pjdfstest-full.sh "{{mountpoint}}"
+
 # Run complete pjdfstest workflow: setup (if needed), mount, test, unmount
 # Usage: just test-pjdfstest-suite [mountpoint]
 #   mountpoint: Mount point for the filesystem (default: /tmp/agentfs)
