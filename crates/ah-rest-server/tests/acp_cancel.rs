@@ -37,9 +37,7 @@ async fn spawn_acp_server() -> (String, JoinHandle<()>) {
 #[tokio::test]
 async fn acp_session_cancel_streams_update() {
     let (acp_url, handle) = spawn_acp_server().await;
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     socket
         .send(WsMessage::Text(
@@ -108,10 +106,8 @@ async fn acp_session_cancel_streams_update() {
                 if let Some(err) = value.get("error") {
                     panic!("cancel error: {err}");
                 }
-                cancel_ok = value
-                    .pointer("/result/cancelled")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                cancel_ok =
+                    value.pointer("/result/cancelled").and_then(|v| v.as_bool()).unwrap_or(false);
                 break;
             } else if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
                 // consume stray updates before ack
@@ -129,9 +125,7 @@ async fn acp_session_cancel_streams_update() {
             if let WsMessage::Text(text) = msg.expect("frame") {
                 let value: serde_json::Value = serde_json::from_str(&text).expect("json");
                 if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-                    if value
-                        .pointer("/params/event/status")
-                        .and_then(|v| v.as_str())
+                    if value.pointer("/params/event/status").and_then(|v| v.as_str())
                         == Some("cancelled")
                     {
                         saw_cancel = true;

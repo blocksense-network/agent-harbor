@@ -16,9 +16,9 @@
 
 pub mod errors;
 pub mod gateway;
+pub mod recorder;
 pub mod translator;
 pub mod transport;
-pub mod recorder;
 
 pub use errors::{AcpError, AcpResult};
 pub use gateway::{AcpGateway, GatewayHandle};

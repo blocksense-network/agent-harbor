@@ -10,7 +10,7 @@ use ah_domain_types::{AgentSoftware, AgentSoftwareBuild};
 use ah_local_db::Database;
 use ah_rest_api_contract::*;
 use ah_scenario_format::{
-    LegacyAssertion, LegacyAssertEvent, LegacyScenarioEvent, PlaybackEventKind, PlaybackIterator,
+    LegacyAssertEvent, LegacyAssertion, LegacyScenarioEvent, PlaybackEventKind, PlaybackIterator,
     PlaybackOptions, Scenario, ScenarioLoader, ScenarioMatcher, ScenarioRecord, ScenarioSource,
 };
 use anyhow::Result;
@@ -165,8 +165,7 @@ impl ScenarioSessionStore {
                 if delay > 0 {
                     sleep(Duration::from_millis(delay)).await;
                 }
-                self.apply_playback_event(&session_id, scheduled.kind, scheduled.at_ms)
-                    .await?;
+                self.apply_playback_event(&session_id, scheduled.kind, scheduled.at_ms).await?;
             }
         } else if !scenario.legacy_events.is_empty() {
             let mut events = scenario.legacy_events.clone();
@@ -419,36 +418,30 @@ impl ScenarioSessionStore {
     ) -> Result<()> {
         match event.kind.as_str() {
             "status" => {
-                let status = match event
-                    .value
-                    .as_deref()
-                    .unwrap_or_default()
-                    .to_lowercase()
-                    .as_str()
-                {
-                    "queued" => SessionStatus::Queued,
-                    "provisioning" => SessionStatus::Provisioning,
-                    "running" => SessionStatus::Running,
-                    "pausing" => SessionStatus::Pausing,
-                    "paused" => SessionStatus::Paused,
-                    "resuming" => SessionStatus::Resuming,
-                    "stopping" => SessionStatus::Stopping,
-                    "stopped" => SessionStatus::Stopped,
-                    "completed" => SessionStatus::Completed,
-                    "failed" => SessionStatus::Failed,
-                    other => {
-                        tracing::warn!("unknown legacy status '{other}', defaulting to running");
-                        SessionStatus::Running
-                    }
-                };
+                let status =
+                    match event.value.as_deref().unwrap_or_default().to_lowercase().as_str() {
+                        "queued" => SessionStatus::Queued,
+                        "provisioning" => SessionStatus::Provisioning,
+                        "running" => SessionStatus::Running,
+                        "pausing" => SessionStatus::Pausing,
+                        "paused" => SessionStatus::Paused,
+                        "resuming" => SessionStatus::Resuming,
+                        "stopping" => SessionStatus::Stopping,
+                        "stopped" => SessionStatus::Stopped,
+                        "completed" => SessionStatus::Completed,
+                        "failed" => SessionStatus::Failed,
+                        other => {
+                            tracing::warn!(
+                                "unknown legacy status '{other}', defaulting to running"
+                            );
+                            SessionStatus::Running
+                        }
+                    };
                 self.update_status(session_id, status, event.at_ms).await?;
             }
             "log" => {
-                let message = event
-                    .message
-                    .clone()
-                    .or_else(|| event.value.clone())
-                    .unwrap_or_default();
+                let message =
+                    event.message.clone().or_else(|| event.value.clone()).unwrap_or_default();
                 self.push_event(
                     session_id,
                     SessionEvent::log(SessionLogLevel::Info, message, None, event.at_ms),
@@ -456,16 +449,9 @@ impl ScenarioSessionStore {
                 .await?;
             }
             "thought" => {
-                let text = event
-                    .text
-                    .clone()
-                    .or_else(|| event.value.clone())
-                    .unwrap_or_default();
-                self.push_event(
-                    session_id,
-                    SessionEvent::thought(text, None, event.at_ms),
-                )
-                .await?;
+                let text = event.text.clone().or_else(|| event.value.clone()).unwrap_or_default();
+                self.push_event(session_id, SessionEvent::thought(text, None, event.at_ms))
+                    .await?;
             }
             _ => tracing::warn!("Unhandled legacy event kind: {}", event.kind),
         }
@@ -699,10 +685,7 @@ impl SessionStore for ScenarioSessionStore {
         if changed_status {
             self.push_event(
                 session_id,
-                SessionEvent::status(
-                    session.session.status.clone(),
-                    current_timestamp(),
-                ),
+                SessionEvent::status(session.session.status.clone(), current_timestamp()),
             )
             .await?;
         }
