@@ -1,13 +1,12 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Transport layer for ACP (Milestone 1).
+//! Transport layer for ACP (SDK-backed).
 //!
-//! For now we expose a minimal WebSocket echo loop that:
-//! - Authenticates using the existing REST auth config (API key or JWT) passed
-//!   via `?api_key=` query param or `Authorization` header.
-//! - Applies a simple connection-limit guard and idle timeout.
-//! - Echoes JSON-RPC requests by returning `{"id": <id>, "result": <params>}`.
+//! WebSocket transport authenticates using the REST auth config (API key or JWT)
+//! passed via `?api_key=` query param or `Authorization` header, applies a
+//! connection-limit guard/idle timeout, and delegates JSON-RPC handling to the
+//! ACP runtime (currently a transitional handler; stdio plumbing still TODO).
 
 use crate::{
     acp::translator::JsonRpcTranslator,
