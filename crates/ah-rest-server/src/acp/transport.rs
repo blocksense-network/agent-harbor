@@ -41,7 +41,7 @@ use url::Url;
 use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 use ah_rest_api_contract::{
     CreateTaskRequest, FilterQuery, RepoConfig, RepoMode, RuntimeConfig, RuntimeType, Session,
-    SessionEvent, SessionToolStatus,
+    SessionEvent, SessionLogLevel, SessionStatus, SessionToolStatus,
 };
 
 #[derive(Clone)]
@@ -222,7 +222,9 @@ async fn handle_rpc(
             let result = JsonRpcTranslator::initialize_response(&caps);
             Some(rpc_response(id, result))
         }
-        "session/new" | "session/list" | "session/load" if ctx.negotiated_caps.is_none() => {
+        "session/new" | "session/list" | "session/load" | "session/prompt" | "session/cancel"
+            if ctx.negotiated_caps.is_none() =>
+        {
             Some(json_error(
                 id,
                 -32001,
@@ -238,6 +240,14 @@ async fn handle_rpc(
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
         "session/load" => match handle_session_load(state, ctx, params).await {
+            Ok(result) => Some(rpc_response(id, result)),
+            Err(err) => Some(json_error(id, -32000, &err.to_string())),
+        },
+        "session/prompt" => match handle_session_prompt(state, ctx, params).await {
+            Ok(result) => Some(rpc_response(id, result)),
+            Err(err) => Some(json_error(id, -32000, &err.to_string())),
+        },
+        "session/cancel" => match handle_session_cancel(state, ctx, params).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
@@ -341,7 +351,122 @@ async fn handle_session_load(
     }
 }
 
+async fn handle_session_prompt(
+    state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
+    params: Value,
+) -> ServerResult<Value> {
+    let session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
+    let message = params
+        .get("message")
+        .or_else(|| params.get("prompt"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("message is required".into()))?;
+
+    if let Some(mut session) = state
+        .app_state
+        .session_store
+        .get_session(session_id)
+        .await?
+    {
+        subscribe_session(ctx, &state.app_state, session_id);
+        ctx.sessions.insert(session_id.to_string());
+        if matches!(session.session.status, SessionStatus::Queued | SessionStatus::Provisioning) {
+            session.session.status = SessionStatus::Running;
+            state
+                .app_state
+                .session_store
+                .update_session(session_id, &session)
+                .await?;
+            state
+                .app_state
+                .session_store
+                .add_session_event(
+                    session_id,
+                    SessionEvent::status(
+                        SessionStatus::Running,
+                        chrono::Utc::now().timestamp_millis() as u64,
+                    ),
+                )
+                .await?;
+        }
+    } else {
+        return Err(ServerError::SessionNotFound(session_id.to_string()));
+    }
+
+    state
+        .app_state
+        .session_store
+        .add_session_event(
+            session_id,
+            SessionEvent::log(
+                SessionLogLevel::Info,
+                format!("user: {}", message),
+                None,
+                chrono::Utc::now().timestamp_millis() as u64,
+            ),
+        )
+        .await?;
+
+    Ok(json!({
+        "sessionId": session_id,
+        "accepted": true
+    }))
+}
+
+async fn handle_session_cancel(
+    state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
+    params: Value,
+) -> ServerResult<Value> {
+    let session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
+
+    let Some(mut session) = state
+        .app_state
+        .session_store
+        .get_session(session_id)
+        .await?
+    else {
+        return Err(ServerError::SessionNotFound(session_id.to_string()));
+    };
+
+    subscribe_session(ctx, &state.app_state, session_id);
+    ctx.sessions.insert(session_id.to_string());
+
+    session.session.status = SessionStatus::Cancelled;
+    state
+        .app_state
+        .session_store
+        .update_session(session_id, &session)
+        .await?;
+    state
+        .app_state
+        .session_store
+        .add_session_event(
+            session_id,
+            SessionEvent::status(
+                SessionStatus::Cancelled,
+                chrono::Utc::now().timestamp_millis() as u64,
+            ),
+        )
+        .await?;
+
+    Ok(json!({
+        "sessionId": session_id,
+        "cancelled": true
+    }))
+}
+
 fn subscribe_session(ctx: &mut AcpSessionContext, app_state: &AppState, session_id: &str) {
+    if ctx.receivers.contains_key(session_id) {
+        return;
+    }
     if let Some(receiver) = app_state.session_store.subscribe_session_events(session_id) {
         ctx.receivers.insert(session_id.to_string(), receiver);
     }
