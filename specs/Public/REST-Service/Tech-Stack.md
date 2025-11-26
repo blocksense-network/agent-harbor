@@ -42,6 +42,23 @@
 
 - De-facto async client; use in tests and any outbound calls. Enable `rustls-tls` feature instead of default `native-tls` to use rustls instead of OpenSSL. ([Docs.rs][9])
 
+**ACP gateway (JSON-RPC over WebSocket/stdio):** Feature-gated `acp` section in the `ah-rest-server` config. Defaults keep the gateway **disabled** (`enabled = false`) with a local-only WebSocket listener at `127.0.0.1:3031`, `transport = websocket`, and `auth_policy = inherit-rest` (reuses API key/JWT validation). Opt into `transport = stdio` for `ah agent access-point` sidecars; `auth_policy = anonymous` is reserved for air-gapped local development. A short primer and milestone tracker live in `specs/ACP.server.status.md`.
+
+When enabled, the gateway currently supports ACP `initialize`, `session/new`, `session/list`, and `session/load` RPCs mapped onto the existing REST session primitives. Lifecycle events are mirrored as `session/update` notifications using the same `SessionStore` event bus that powers REST SSE.
+
+Example configuration block:
+
+```
+[acp]
+enabled = false
+bind_addr = "127.0.0.1:3031"
+transport = "websocket"   # or "stdio"
+auth_policy = "inherit-rest"  # or "anonymous" (local-only)
+# Connection guards
+connection_limit = 32         # max concurrent ACP clients
+idle_timeout_secs = 30        # close idle sockets defensively
+```
+
 **Black-box HTTP mocking (tests):** **wiremock**
 
 - Parallel-safe in-process mock server; works great with reqwest/async. ([Docs.rs][10])
