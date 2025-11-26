@@ -203,6 +203,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] Enforce legacy Scenario Format fixtures (`events` + `assertions`) in the mock playback store so ACP scenario tests emit expected status/log/thought events and fail fast when assertions are missing.
 - [x] Add ACP `session/pause` / `session/resume` handlers that update session status and broadcast `session/update` events; verified with pause/resume scenario + RPC tests.
 - [x] TaskController exposes pause/resume/inject stubs so downstream TaskManager wiring can adopt ACP control paths without API churn.
+- [x] Database-backed TaskExecutor now updates session status for pause/resume and records status events, with unit tests covering the controller hooks.
 
 #### Verification
 

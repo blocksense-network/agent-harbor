@@ -9,7 +9,7 @@
 use crate::models::{DatabaseSessionStore, SessionStore};
 use ah_core::{AgentExecutionConfig, AgentExecutor};
 use ah_local_db::Database;
-use ah_rest_api_contract::{Session, SessionStatus};
+use ah_rest_api_contract::{Session, SessionEvent, SessionStatus};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -142,6 +142,45 @@ impl TaskExecutor {
             provisioning_lock: Arc::new(Mutex::new(())),
             agent_executor,
         }
+    }
+
+    /// Pause a running task by updating its session status to Paused.
+    pub async fn pause_task(&self, session_id: &str) -> anyhow::Result<()> {
+        if let Some(mut session) = self.session_store.get_session(session_id).await? {
+            session.session.status = SessionStatus::Paused;
+            self.session_store.update_session(session_id, &session).await?;
+            // Record a status event when possible
+            let _ = self
+                .session_store
+                .add_session_event(
+                    session_id,
+                    SessionEvent::status(
+                        SessionStatus::Paused,
+                        chrono::Utc::now().timestamp_millis() as u64,
+                    ),
+                )
+                .await;
+        }
+        Ok(())
+    }
+
+    /// Resume a paused task by updating its status to Running.
+    pub async fn resume_task(&self, session_id: &str) -> anyhow::Result<()> {
+        if let Some(mut session) = self.session_store.get_session(session_id).await? {
+            session.session.status = SessionStatus::Running;
+            self.session_store.update_session(session_id, &session).await?;
+            let _ = self
+                .session_store
+                .add_session_event(
+                    session_id,
+                    SessionEvent::status(
+                        SessionStatus::Running,
+                        chrono::Utc::now().timestamp_millis() as u64,
+                    ),
+                )
+                .await;
+        }
+        Ok(())
     }
 
     /// Start the task executor
