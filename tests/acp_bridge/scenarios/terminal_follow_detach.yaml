@@ -1,0 +1,20 @@
+name: terminal_follow_detach
+# ACP terminal follow/detach happy path
+transport: websocket
+initialize: {}
+auth: { api_key: secret }
+timeline:
+  - client: { id: 1, method: initialize, params: {} }
+  - server: { id: 1 }
+  - client: { id: 2, method: session/new, params: { prompt: "tty", agent: "sonnet" } }
+  - server: { id: 2 }
+  - client: { id: 3, method: _ah/terminal/follow, params: { sessionId: "$SESSION_ID", executionId: "exec-1", command: "echo hi" } }
+  - server: { method: session/update, params: { sessionId: "$SESSION_ID", event: { type: terminal_follow, executionId: "exec-1", command: "ah show-sandbox-execution \"echo hi\" --id exec-1 --session $SESSION_ID --follow" } } }
+  - server: { id: 3 }
+  - client: { id: 4, method: _ah/terminal/write, params: { sessionId: "$SESSION_ID", data: "aGk=" } }
+  - server: { id: 4, result: { accepted: true } }
+  - client: { id: 5, method: _ah/terminal/detach, params: { sessionId: "$SESSION_ID", executionId: "exec-1" } }
+  - server: { method: session/update, params: { sessionId: "$SESSION_ID", event: { type: terminal_detach, executionId: "exec-1" } } }
+  - server: { id: 5, result: { detached: true } }
+assertions:
+  # Assertions validated by acp_prompt_followers test harness instead of the scenario store.

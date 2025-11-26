@@ -150,6 +150,7 @@ async fn remote_task_manager_launches_task_against_mock_server() {
 #[tokio::test]
 async fn rest_client_streams_scenario_events() {
     let playback = ScenarioPlaybackOptions {
+        linger_after_timeline_secs: None,
         scenario_files: vec![scenario_fixture("simulation_smoke.yaml")],
         speed_multiplier: 0.25,
     };
@@ -179,6 +180,7 @@ async fn rest_client_streams_scenario_events() {
 #[tokio::test]
 async fn remote_task_manager_replays_scenario_fast() {
     let playback = ScenarioPlaybackOptions {
+        linger_after_timeline_secs: None,
         scenario_files: vec![scenario_fixture("long_running_demo.yaml")],
         speed_multiplier: 0.02,
     };

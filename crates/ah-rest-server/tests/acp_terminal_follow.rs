@@ -5,7 +5,6 @@ use base64::Engine;
 use common::acp::spawn_acp_server_basic;
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 mod common;
