@@ -64,6 +64,8 @@ pub struct AcpTransportState {
 pub struct AcpQuery {
     #[serde(rename = "api_key")]
     pub api_key: Option<String>,
+    #[serde(rename = "token")]
+    pub bearer_token: Option<String>,
 }
 
 pub fn router(state: AcpTransportState) -> Router {
@@ -108,6 +110,11 @@ fn authenticate(
     query: &AcpQuery,
     headers: &HeaderMap,
 ) -> Result<Option<Claims>, ServerError> {
+    // Query bearer token takes precedence for test harness convenience
+    if let Some(token) = &query.bearer_token {
+        return auth.validate_jwt(token).map(Some);
+    }
+
     // Prefer Authorization header
     if let Some(value) = headers.get(axum::http::header::AUTHORIZATION) {
         if let Ok(v) = value.to_str() {
@@ -254,7 +261,7 @@ async fn handle_rpc(
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
-        "session/list" => match handle_session_list(state, params).await {
+        "session/list" => match handle_session_list(state, params, ctx).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
@@ -360,6 +367,7 @@ async fn handle_session_new(
 async fn handle_session_list(
     state: &AcpTransportState,
     params: Value,
+    ctx: &AcpSessionContext,
 ) -> ServerResult<Value> {
     let filters = FilterQuery {
         status: params
@@ -377,7 +385,8 @@ async fn handle_session_list(
         tenant_id: params
             .get("tenantId")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
+            .map(|s| s.to_string())
+            .or_else(|| ctx.auth_claims.as_ref().and_then(|c| c.tenant_id.clone())),
     };
 
     let sessions = state.app_state.session_store.list_sessions(&filters).await?;
@@ -706,6 +715,8 @@ async fn seed_history(
 fn session_to_json(session: &Session) -> Value {
     json!({
         "id": session.id,
+        "tenantId": session.tenant_id,
+        "projectId": session.project_id,
         "status": session.status.to_string(),
         "prompt": session.task.prompt,
         "workspace": session.workspace.mount_path,
