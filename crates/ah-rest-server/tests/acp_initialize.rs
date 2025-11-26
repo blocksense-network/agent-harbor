@@ -3,7 +3,10 @@
 
 use ah_rest_server::acp::translator::{AcpCapabilities, JsonRpcTranslator};
 use ah_rest_server::config::{AcpConfig, AcpTransportMode};
-use ah_rest_server::{Server, ServerConfig, mock_dependencies::{MockServerDependencies, ScenarioPlaybackOptions}};
+use ah_rest_server::{
+    Server, ServerConfig,
+    mock_dependencies::{MockServerDependencies, ScenarioPlaybackOptions},
+};
 use futures::{SinkExt, StreamExt};
 use proptest::prelude::*;
 use serde_json::json;
@@ -108,9 +111,7 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
         .join("../../tests/acp_bridge/scenarios/initialize_and_auth.yaml");
     let (acp_url, handle) = spawn_acp_server_with_scenario(fixture).await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     // initialize
     socket
@@ -158,7 +159,9 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
                         value.pointer("/params/sessionId").and_then(|v| v.as_str()),
                         Some(session_id.as_str())
                     );
-                    if let Some(status) = value.pointer("/params/event/status").and_then(|v| v.as_str()) {
+                    if let Some(status) =
+                        value.pointer("/params/event/status").and_then(|v| v.as_str())
+                    {
                         if status == "running" {
                             saw_running = true;
                         }
@@ -173,7 +176,10 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
     }
 
     assert!(saw_running, "should observe running status from scenario");
-    assert!(saw_completed, "should observe completed status from scenario");
+    assert!(
+        saw_completed,
+        "should observe completed status from scenario"
+    );
 
     handle.abort();
 }

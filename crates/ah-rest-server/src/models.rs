@@ -137,10 +137,7 @@ impl SessionStore for InMemorySessionStore {
                     created_at: now,
                     updated_at: now,
                     logs: vec![],
-                    events: vec![SessionEvent::status(
-                        SessionStatus::Queued,
-                        now_ms,
-                    )],
+                    events: vec![SessionEvent::status(SessionStatus::Queued, now_ms)],
                 };
 
                 let mut sessions = self.sessions.write().await;
@@ -148,12 +145,10 @@ impl SessionStore for InMemorySessionStore {
                 drop(sessions);
 
                 let (tx, _) = broadcast::channel(128);
-                tx.send(SessionEvent::status(SessionStatus::Queued, now_ms))
-                    .ok();
+                tx.send(SessionEvent::status(SessionStatus::Queued, now_ms)).ok();
                 self.broadcasters.write().await.insert(session_id.clone(), tx);
 
                 session_ids.push(session_id.clone());
-
             }
         }
 
@@ -171,9 +166,7 @@ impl SessionStore for InMemorySessionStore {
         session: &InternalSession,
     ) -> anyhow::Result<()> {
         let mut sessions = self.sessions.write().await;
-        let previous = sessions
-            .get(session_id)
-            .map(|existing| existing.session.status.clone());
+        let previous = sessions.get(session_id).map(|existing| existing.session.status.clone());
         sessions.insert(session_id.to_string(), session.clone());
         drop(sessions);
 
@@ -510,11 +503,10 @@ impl SessionStore for DatabaseSessionStore {
 
                 {
                     // DB writes scoped to avoid holding the connection across awaits
-                    let conn = self
-                        .db
-                        .connection()
-                        .lock()
-                        .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+                    let conn =
+                        self.db.connection().lock().map_err(|e| {
+                            anyhow::anyhow!("Failed to get database connection: {}", e)
+                        })?;
                     let session_store = DbSessionStore::new(&conn);
                     let task_store = DbTaskStore::new(&conn);
 
@@ -628,18 +620,16 @@ impl SessionStore for DatabaseSessionStore {
         // If status changed, emit event
         let mut events_guard = self.events.write().await;
         let entry = events_guard.entry(session_id.to_string()).or_default();
-        if let Some(last) = entry.last() {
-            if let SessionEvent::Status(prev) = last {
-                if prev.status != session.session.status {
-                    let evt = SessionEvent::status(
-                        session.session.status.clone(),
-                        Utc::now().timestamp_millis() as u64,
-                    );
-                    entry.push(evt.clone());
-                    drop(events_guard);
-                    if let Some(sender) = self.broadcasters.read().await.get(session_id) {
-                        let _ = sender.send(evt);
-                    }
+        if let Some(SessionEvent::Status(prev)) = entry.last() {
+            if prev.status != session.session.status {
+                let evt = SessionEvent::status(
+                    session.session.status.clone(),
+                    Utc::now().timestamp_millis() as u64,
+                );
+                entry.push(evt.clone());
+                drop(events_guard);
+                if let Some(sender) = self.broadcasters.read().await.get(session_id) {
+                    let _ = sender.send(evt);
                 }
             }
         }
@@ -684,11 +674,7 @@ impl SessionStore for DatabaseSessionStore {
         Ok(sessions)
     }
 
-    async fn add_session_event(
-        &self,
-        session_id: &str,
-        event: SessionEvent,
-    ) -> anyhow::Result<()> {
+    async fn add_session_event(&self, session_id: &str, event: SessionEvent) -> anyhow::Result<()> {
         {
             let mut events = self.events.write().await;
             events.entry(session_id.to_string()).or_default().push(event.clone());
@@ -715,10 +701,7 @@ impl SessionStore for DatabaseSessionStore {
 
     async fn get_session_events(&self, _session_id: &str) -> anyhow::Result<Vec<SessionEvent>> {
         let events = self.events.read().await;
-        Ok(events
-            .get(_session_id)
-            .cloned()
-            .unwrap_or_default())
+        Ok(events.get(_session_id).cloned().unwrap_or_default())
     }
 
     fn subscribe_session_events(

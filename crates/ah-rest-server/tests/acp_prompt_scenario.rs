@@ -3,7 +3,10 @@
 
 use std::{net::TcpListener, path::PathBuf, time::Duration};
 
-use ah_rest_server::{Server, ServerConfig, mock_dependencies::{MockServerDependencies, ScenarioPlaybackOptions}};
+use ah_rest_server::{
+    Server, ServerConfig,
+    mock_dependencies::{MockServerDependencies, ScenarioPlaybackOptions},
+};
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
@@ -46,9 +49,7 @@ async fn acp_prompt_scenario_streams_events() {
         .join("../../tests/acp_bridge/scenarios/prompt_turn_basic.yaml");
     let (acp_url, handle) = spawn_acp_server_with_scenario(fixture).await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     socket
         .send(WsMessage::Text(
@@ -111,13 +112,19 @@ async fn acp_prompt_scenario_streams_events() {
                     if let Some(sid) = value.pointer("/params/sessionId").and_then(|v| v.as_str()) {
                         assert_eq!(sid, session_id);
                     }
-                    if let Some(event_type) = value.pointer("/params/event/type").and_then(|v| v.as_str()) {
+                    if let Some(event_type) =
+                        value.pointer("/params/event/type").and_then(|v| v.as_str())
+                    {
                         match event_type {
                             "status" => {
-                                if value.pointer("/params/event/status").and_then(|v| v.as_str()) == Some("running") {
+                                if value.pointer("/params/event/status").and_then(|v| v.as_str())
+                                    == Some("running")
+                                {
                                     saw_running = true;
                                 }
-                                if value.pointer("/params/event/status").and_then(|v| v.as_str()) == Some("completed") {
+                                if value.pointer("/params/event/status").and_then(|v| v.as_str())
+                                    == Some("completed")
+                                {
                                     saw_completed = true;
                                 }
                             }
