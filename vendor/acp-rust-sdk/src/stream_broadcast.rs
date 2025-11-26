@@ -145,6 +145,22 @@ impl StreamSender {
         self.0.try_broadcast(message).ok();
     }
 
+    /// Broadcasts an outgoing JSON value (used by custom transports that already
+    /// have a serialized JSON-RPC message).
+    pub(crate) fn outgoing_json(&self, value: &serde_json::Value) {
+        if self.0.receiver_count() == 0 {
+            return;
+        }
+        let message = StreamMessage {
+            direction: StreamMessageDirection::Outgoing,
+            message: StreamMessageContent::Response {
+                id: Id::Null,
+                result: Ok(Some(value.clone())),
+            },
+        };
+        self.0.try_broadcast(message).ok();
+    }
+
     /// Broadcasts an incoming request to all receivers.
     pub(crate) fn incoming_request(
         &self,
@@ -207,6 +223,12 @@ impl StreamSender {
         };
 
         self.0.try_broadcast(message).ok();
+    }
+}
+
+impl Clone for StreamSender {
+    fn clone(&self) -> Self {
+        StreamSender(self.0.clone())
     }
 }
 

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ah_rest_server::acp::translator::JsonRpcTranslator;
+use ah_rest_server::config::AcpAuthPolicy;
 use ah_rest_server::config::{AcpConfig, AcpTransportMode};
 use common::acp::spawn_acp_server_with_scenario;
-use ah_rest_server::config::AcpAuthPolicy;
 use futures::{SinkExt, StreamExt};
 use proptest::prelude::*;
 use serde_json::json;
@@ -156,9 +156,7 @@ async fn acp_authenticate_rpc_uses_payload_tokens() {
     )
     .await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     socket
         .send(WsMessage::Text(

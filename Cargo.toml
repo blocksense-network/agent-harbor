@@ -93,7 +93,7 @@ members = [
   "crates/ah-command-trace-client",
   "crates/ah-command-trace-e2e-tests",
   "crates/stackable-hooks",
-  "vendor/rust-sdk",
+  "vendor/acp-rust-sdk",
 ]
 exclude = ["vendor", "PoC", "tests/agentfs-daemon-backstore-integration"]
 resolver = "2"

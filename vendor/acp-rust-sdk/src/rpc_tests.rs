@@ -63,9 +63,7 @@ impl Client for TestClient {
     ) -> Result<RequestPermissionResponse, Error> {
         let responses = self.permission_responses.clone();
         let mut responses = responses.lock().unwrap();
-        let outcome = responses
-            .pop()
-            .unwrap_or(RequestPermissionOutcome::Cancelled);
+        let outcome = responses.pop().unwrap_or(RequestPermissionOutcome::Cancelled);
         Ok(RequestPermissionResponse {
             outcome,
             meta: None,
@@ -76,10 +74,7 @@ impl Client for TestClient {
         &self,
         arguments: WriteTextFileRequest,
     ) -> Result<WriteTextFileResponse, Error> {
-        self.written_files
-            .lock()
-            .unwrap()
-            .push((arguments.path, arguments.content));
+        self.written_files.lock().unwrap().push((arguments.path, arguments.content));
         Ok(WriteTextFileResponse::default())
     }
 
@@ -239,10 +234,7 @@ impl Agent for TestAgent {
     }
 
     async fn cancel(&self, args: CancelNotification) -> Result<(), Error> {
-        self.cancellations_received
-            .lock()
-            .unwrap()
-            .push(args.session_id);
+        self.cancellations_received.lock().unwrap().push(args.session_id);
         Ok(())
     }
 

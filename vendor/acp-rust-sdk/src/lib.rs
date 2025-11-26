@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::{AsyncRead, AsyncWrite, future::LocalBoxFuture};
-use rpc::{MessageHandler, Side};
+use rpc::{MessageHandler, RpcConnection};
 use std::sync::Arc;
 
 mod agent;
@@ -13,6 +13,9 @@ mod stream_broadcast;
 pub use agent::*;
 pub use agent_client_protocol_schema::*;
 pub use client::*;
+pub use rpc::{
+    Id, IncomingMessage, OutgoingMessage, ResponseResult, RpcDispatcher, Side, ValueDispatcher,
+};
 pub use stream_broadcast::{
     StreamMessage, StreamMessageContent, StreamMessageDirection, StreamReceiver,
 };
@@ -375,9 +378,6 @@ impl AgentSideConnection {
         self.conn.notify(method, params)
     }
 }
-
-// Re-export RpcConnection so embedders can build custom transports/adapters.
-pub use rpc::RpcConnection;
 
 #[async_trait::async_trait(?Send)]
 impl Client for AgentSideConnection {

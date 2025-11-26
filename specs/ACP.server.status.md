@@ -115,6 +115,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - [ ] Expand authentication to JWT claims-to-tenant mapping once tenant metadata is available.
 - [x] Handle ACP `authenticate` as an RPC (not just handshake) and advertise `_meta.agent.harbor` capabilities during `initialize`.
 - [x] Persist negotiated capabilities using SDK types instead of ad-hoc structs.
+- [ ] Wire ACP WebSocket/stdio transports to the SDK dispatcher (frames→Value→dispatcher) and remove the manual handler/echo loop.
 
 #### Verification
 
@@ -163,6 +164,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] Advertise `_meta.agent.harbor` capability blocks (workspace, snapshots, pipelines) during `initialize` per `specs/ACP.extensions.md`.
 - [x] Add explicit ACP `authenticate` RPC handling wired to `AuthConfig`, keeping handshake auth for transport setup.
 - [ ] Persist negotiated capabilities in shared state using SDK structs (remove bespoke capability structs).
+- [ ] Port initialize/auth handling to the SDK dispatcher once transport refactor lands.
 
 ---
 
@@ -250,6 +252,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 - [ ] Wire `session/prompt` / `session/cancel` / pause/resume to guaranteed TaskManager delivery with execution-id correlation instead of best-effort logging/injection.
 - [ ] Derive follower commands and terminal streams from recorded executions (not client-supplied command strings) to avoid spoofing and align with recorder metadata.
+- [ ] Move session/prompt/cancel/pause/resume onto the SDK dispatcher path and send updates via `AgentSideConnection::notify`.
 
 #### Key Implementation Files
 
@@ -566,3 +569,12 @@ Once all milestones are implemented and verified, update this status document wi
 
 1. Implementation details and source file references per milestone (mirroring other status files).
 2. Checklist updates (`[x]`) and remaining outstanding tasks.
+
+## Hand-off Notes (Dec 2025)
+
+- SDK is vendored as a submodule at `vendor/acp-rust-sdk` (remote `git@github.com:blocksense-network/acp-rust-sdk.git`, branch `agent-harbor`). We patched it to expose `AgentSideConnection::notify`, added a `RpcDispatcher` that operates on `serde_json::Value`, and added `StreamBroadcast::outgoing_json`. All SDK unit tests still pass (`cargo test -p agent-client-protocol`).
+- The ACP gateway now runs through the SDK dispatcher for **both WebSocket and stdio transports** (`acp/transport.rs`), so frames flow `JSON → ValueDispatcher → RpcDispatcher` with responses/notifications serialized via `outgoing_to_value`. Stdio framing reuses the same dispatcher on stdin/stdout.
+- Still needed: an `Agent` trait implementation that maps SDK request types to the existing session/prompt/cancel/pause/resume logic and emits updates via `notify` instead of the ad‑hoc router helpers.
+- `session/list` pagination (offset/limit) is implemented; project/tenant parity and ACP↔REST session ID cross-ref remain outstanding. Paused-session load semantics (read-only mounts) are also pending.
+- Follower safety: follower command construction still trusts client-supplied strings; must derive from recorded executions once the recorder bridge is wired (Milestones 5–7).
+- Warn lints: the vendored SDK still emits benign warnings (shadowed `Result`, unused dispatcher/broadcast helpers); clean these up or allow in CI.
