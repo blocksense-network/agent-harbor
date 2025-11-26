@@ -46,11 +46,14 @@ use tokio_tungstenite::tungstenite::Message as ClientMessage;
 use url::Url;
 
 use crate::acp::recorder::follower_command;
+use ah_core::task_manager_wire::TaskManagerMessage;
 use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 use ah_rest_api_contract::{
     CreateTaskRequest, FilterQuery, RepoConfig, RepoMode, RuntimeConfig, RuntimeType, Session,
     SessionEvent, SessionLogLevel, SessionStatus, SessionToolStatus,
 };
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as B64;
 
 /// Conservative context window guardrail for inbound ACP prompts.
 /// Matches the per-message cap to keep total user-provided text bounded
@@ -170,8 +173,9 @@ async fn handle_socket(
                 break;
             }
             _ = tick.tick() => {
-                let flushed = flush_session_events(&mut context, &sender).await;
-                if flushed {
+                let flushed_events = flush_session_events(&mut context, &sender).await;
+                let flushed_pty = flush_pty_events(&mut context, &sender).await;
+                if flushed_events || flushed_pty {
                     idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
                 }
             }
@@ -217,6 +221,7 @@ struct AcpSessionContext {
     negotiated_caps: Option<AcpCapabilities>,
     sessions: HashSet<String>,
     receivers: HashMap<String, Receiver<SessionEvent>>,
+    pty_receivers: HashMap<String, tokio::sync::broadcast::Receiver<TaskManagerMessage>>,
     auth_claims: Option<Claims>,
 }
 
@@ -331,7 +336,7 @@ async fn handle_session_new(
         .ok_or_else(|| ServerError::Internal("session creation returned no ids".into()))?;
 
     if let Some(session) = state.app_state.session_store.get_session(&session_id).await? {
-        subscribe_session(ctx, &state.app_state, &session_id);
+        subscribe_session(ctx, &state.app_state, &session_id, sender).await;
         let _ = seed_history(&state.app_state, &session_id, sender).await;
         ctx.sessions.insert(session_id.clone());
         let _ = state
@@ -391,7 +396,7 @@ async fn handle_session_load(
         .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
 
     if let Some(session) = state.app_state.session_store.get_session(session_id).await? {
-        subscribe_session(ctx, &state.app_state, session_id);
+        subscribe_session(ctx, &state.app_state, session_id, sender).await;
         let _ = seed_history(&state.app_state, session_id, sender).await;
         ctx.sessions.insert(session_id.to_string());
         Ok(json!({
@@ -453,7 +458,7 @@ async fn handle_session_prompt(
         }));
     }
 
-    subscribe_session(ctx, &state.app_state, session_id);
+    subscribe_session(ctx, &state.app_state, session_id, sender).await;
     let _ = seed_history(&state.app_state, session_id, sender).await;
     ctx.sessions.insert(session_id.to_string());
     if matches!(
@@ -515,7 +520,7 @@ async fn handle_session_cancel(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session(ctx, &state.app_state, session_id);
+    subscribe_session(ctx, &state.app_state, session_id, sender).await;
     let _ = seed_history(&state.app_state, session_id, sender).await;
     ctx.sessions.insert(session_id.to_string());
 
@@ -559,7 +564,7 @@ async fn handle_session_pause(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session(ctx, &state.app_state, session_id);
+    subscribe_session(ctx, &state.app_state, session_id, sender).await;
     let _ = seed_history(&state.app_state, session_id, sender).await;
     ctx.sessions.insert(session_id.to_string());
 
@@ -602,7 +607,7 @@ async fn handle_session_resume(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session(ctx, &state.app_state, session_id);
+    subscribe_session(ctx, &state.app_state, session_id, sender).await;
     let _ = seed_history(&state.app_state, session_id, sender).await;
     ctx.sessions.insert(session_id.to_string());
 
@@ -630,12 +635,26 @@ async fn handle_session_resume(
     }))
 }
 
-fn subscribe_session(ctx: &mut AcpSessionContext, app_state: &AppState, session_id: &str) {
-    if ctx.receivers.contains_key(session_id) {
-        return;
+async fn subscribe_session(
+    ctx: &mut AcpSessionContext,
+    app_state: &AppState,
+    session_id: &str,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+) {
+    if !ctx.receivers.contains_key(session_id) {
+        if let Some(receiver) = app_state.session_store.subscribe_session_events(session_id) {
+            ctx.receivers.insert(session_id.to_string(), receiver);
+        }
     }
-    if let Some(receiver) = app_state.session_store.subscribe_session_events(session_id) {
-        ctx.receivers.insert(session_id.to_string(), receiver);
+    if !ctx.pty_receivers.contains_key(session_id) {
+        if let Some(controller) = &app_state.task_controller {
+            if let Ok((backlog, rx)) = controller.subscribe_pty(session_id).await {
+                for msg in backlog {
+                    let _ = send_json(sender, pty_to_update(session_id, &msg)).await;
+                }
+                ctx.pty_receivers.insert(session_id.to_string(), rx);
+            }
+        }
     }
 }
 
@@ -716,6 +735,41 @@ async fn flush_session_events(
     sent
 }
 
+async fn flush_pty_events(
+    ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+) -> bool {
+    let mut sent = false;
+    let mut dead = Vec::new();
+
+    for (session_id, rx) in ctx.pty_receivers.iter_mut() {
+        loop {
+            match rx.try_recv() {
+                Ok(msg) => {
+                    let update = pty_to_update(session_id, &msg);
+                    if send_json(sender, update).await.is_err() {
+                        dead.push(session_id.clone());
+                        break;
+                    }
+                    sent = true;
+                }
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => break,
+                Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
+                    dead.push(session_id.clone());
+                    break;
+                }
+            }
+        }
+    }
+
+    for id in dead {
+        ctx.pty_receivers.remove(&id);
+    }
+
+    sent
+}
+
 fn event_to_json(session_id: &str, event: &SessionEvent) -> Value {
     match event {
         SessionEvent::Status(status) => json!({
@@ -782,11 +836,86 @@ fn event_to_json(session_id: &str, event: &SessionEvent) -> Value {
     }
 }
 
+fn pty_to_update(session_id: &str, msg: &TaskManagerMessage) -> Value {
+    match msg {
+        TaskManagerMessage::PtyData(bytes) => json!({
+            "method": "session/update",
+            "params": {
+                "sessionId": session_id,
+                "event": {
+                    "type": "terminal",
+                    "encoding": "base64",
+                    "data": B64.encode(bytes),
+                    "timestamp": chrono::Utc::now().timestamp_millis(),
+                }
+            }
+        }),
+        TaskManagerMessage::PtyResize((cols, rows)) => json!({
+            "method": "session/update",
+            "params": {
+                "sessionId": session_id,
+                "event": {
+                    "type": "terminal_resize",
+                    "cols": cols,
+                    "rows": rows,
+                    "timestamp": chrono::Utc::now().timestamp_millis(),
+                }
+            }
+        }),
+        _ => json!({
+            "method": "session/update",
+            "params": {
+                "sessionId": session_id,
+                "event": {
+                    "type": "terminal",
+                    "encoding": "base64",
+                    "data": "",
+                    "timestamp": chrono::Utc::now().timestamp_millis(),
+                }
+            }
+        }),
+    }
+}
+
 fn tool_status_str(status: &SessionToolStatus) -> &'static str {
     match status {
         SessionToolStatus::Started => "started",
         SessionToolStatus::Completed => "completed",
         SessionToolStatus::Failed => "failed",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pty_update_encodes_and_resizes() {
+        let data = TaskManagerMessage::PtyData(b"hi".to_vec());
+        let json = pty_to_update("sess", &data);
+        assert_eq!(
+            json.pointer("/params/event/type").and_then(|v| v.as_str()),
+            Some("terminal")
+        );
+        assert_eq!(
+            json.pointer("/params/event/data").and_then(|v| v.as_str()),
+            Some(B64.encode("hi").as_str())
+        );
+
+        let resize = TaskManagerMessage::PtyResize((120, 33));
+        let json = pty_to_update("sess", &resize);
+        assert_eq!(
+            json.pointer("/params/event/type").and_then(|v| v.as_str()),
+            Some("terminal_resize")
+        );
+        assert_eq!(
+            json.pointer("/params/event/cols").and_then(|v| v.as_u64()),
+            Some(120)
+        );
+        assert_eq!(
+            json.pointer("/params/event/rows").and_then(|v| v.as_u64()),
+            Some(33)
+        );
     }
 }
 
