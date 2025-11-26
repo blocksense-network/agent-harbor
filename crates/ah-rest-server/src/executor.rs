@@ -287,6 +287,28 @@ impl TaskExecutor {
         Ok(())
     }
 
+    /// Inject raw bytes into the session PTY (no newline).
+    pub async fn inject_bytes(&self, session_id: &str, bytes: &[u8]) -> anyhow::Result<()> {
+        let sender = {
+            let guard = self.recorder_senders.lock().await;
+            guard.get(session_id).cloned()
+        };
+        if let Some(tx) = sender {
+            if let Err(e) = tx.send(TaskManagerMessage::InjectInput(bytes.to_vec())) {
+                error!(
+                    "Failed to forward inject_bytes to recorder for {}: {}",
+                    session_id, e
+                );
+            }
+        } else {
+            debug!(
+                "No recorder sender found for {}; inject_bytes will be dropped",
+                session_id
+            );
+        }
+        Ok(())
+    }
+
     /// Subscribe to PTY backlog + live stream for a session.
     pub async fn subscribe_pty(
         &self,
@@ -747,6 +769,9 @@ mod tests {
         let db = Arc::new(Database::open_in_memory()?);
         let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
         let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
+        let socket_dir = tempfile::tempdir()?;
+        let prior_socket_dir = std::env::var("AH_SOCKET_DIR").ok();
+        std::env::set_var("AH_SOCKET_DIR", socket_dir.path());
 
         let ids = session_store.create_session(&make_request()).await?;
         let session_id = ids.first().cloned().expect("session id");
@@ -777,6 +802,12 @@ mod tests {
         match received {
             TaskManagerMessage::InjectInput(bytes) => assert_eq!(bytes, b"ping\n"),
             other => panic!("Unexpected message {:?}", other),
+        }
+
+        if let Some(prev) = prior_socket_dir {
+            std::env::set_var("AH_SOCKET_DIR", prev);
+        } else {
+            std::env::remove_var("AH_SOCKET_DIR");
         }
 
         Ok(())
@@ -829,6 +860,53 @@ mod tests {
             live,
             TaskManagerMessage::PtyData(ref bytes) if bytes == b"tail"
         ));
+
+        if let Some(prev) = prior_socket_dir {
+            std::env::set_var("AH_SOCKET_DIR", prev);
+        } else {
+            std::env::remove_var("AH_SOCKET_DIR");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inject_bytes_writes_raw_without_newline() -> anyhow::Result<()> {
+        let db = Arc::new(Database::open_in_memory()?);
+        let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
+        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
+        let socket_dir = tempfile::tempdir()?;
+        let prior_socket_dir = std::env::var("AH_SOCKET_DIR").ok();
+        std::env::set_var("AH_SOCKET_DIR", socket_dir.path());
+
+        let ids = session_store.create_session(&make_request()).await?;
+        let session_id = ids.first().cloned().expect("session id");
+
+        executor.ensure_task_manager_listener().await?;
+        let socket_path = task_manager_socket_path();
+
+        // Recorder simulation that captures injected bytes
+        let (msg_tx, msg_rx) = tokio::sync::oneshot::channel();
+        let session_clone = session_id.clone();
+        tokio::spawn(async move {
+            let mut stream = UnixStream::connect(&socket_path).await.unwrap();
+            let id_bytes = session_clone.as_bytes();
+            let mut frame = (id_bytes.len() as u32).to_le_bytes().to_vec();
+            frame.extend_from_slice(id_bytes);
+            stream.write_all(&frame).await.unwrap();
+
+            let msg = TaskManagerMessage::read_from(&mut stream).await.unwrap();
+            let _ = msg_tx.send(msg);
+        });
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        executor.inject_bytes(&session_id, b"raw").await?;
+
+        let received = timeout(Duration::from_secs(1), msg_rx).await??;
+        match received {
+            TaskManagerMessage::InjectInput(bytes) => assert_eq!(bytes, b"raw"),
+            other => panic!("Unexpected message {:?}", other),
+        }
 
         if let Some(prev) = prior_socket_dir {
             std::env::set_var("AH_SOCKET_DIR", prev);

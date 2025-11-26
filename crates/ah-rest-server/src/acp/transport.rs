@@ -294,6 +294,10 @@ async fn handle_rpc(
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
+        "_ah/terminal/write" => match handle_terminal_write(state, ctx, sender, params).await {
+            Ok(result) => Some(rpc_response(id, result)),
+            Err(err) => Some(json_error(id, -32000, &err.to_string())),
+        },
         _ => {
             let result = request.get("params").cloned().unwrap_or(Value::Null);
             Some(rpc_response(id, result))
@@ -361,6 +365,33 @@ async fn handle_session_new(
     } else {
         Err(ServerError::SessionNotFound(session_id))
     }
+}
+
+async fn handle_terminal_write(
+    state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    params: Value,
+) -> ServerResult<Value> {
+    let session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
+    let data_b64 = params
+        .get("data")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("data is required".into()))?;
+
+    let bytes = B64
+        .decode(data_b64)
+        .map_err(|_| ServerError::BadRequest("data must be base64".into()))?;
+
+    if let Some(controller) = &state.app_state.task_controller {
+        let _ = controller.inject_bytes(session_id, &bytes).await;
+    }
+
+    subscribe_session(ctx, &state.app_state, session_id, sender).await;
+    Ok(json!({"sessionId": session_id, "accepted": true}))
 }
 
 async fn handle_session_list(
