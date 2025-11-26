@@ -21,9 +21,10 @@ use crate::{
     state::AppState,
 };
 use agent_client_protocol::{
-    AgentCapabilities, AuthMethodId, AuthenticateRequest, ClientNotification, ClientRequest, Error,
-    ExtRequest, IncomingMessage, OutgoingMessage, ResponseResult, Side, ValueDispatcher,
-    WrappedRequest,
+    AgentCapabilities, AgentNotification, AgentSideConnection, AuthMethodId, AuthenticateRequest,
+    ClientNotification, ClientRequest, ContentBlock, Error, ExtRequest, IncomingMessage,
+    OutgoingMessage, ResponseResult, SessionId, SessionNotification, SessionUpdate, Side,
+    TextContent, ValueDispatcher, WrappedRequest,
 };
 use axum::{
     Json, Router,
@@ -790,6 +791,8 @@ struct AcpSessionContext {
     /// client-supplied follow commands.
     execution_commands: HashMap<String, HashMap<String, String>>,
     notifier: Notifier,
+    /// Optional typed SDK connection used for outbound notifications once seeded per transport.
+    sdk_conn: Option<AgentSideConnection>,
 }
 
 fn json_error(id: Value, code: i64, message: &str) -> Value {
@@ -2378,6 +2381,28 @@ fn terminal_detach_params(session_id: &str, execution_id: &str) -> Value {
     })
 }
 
+fn session_update_from_json(params: &Value) -> SessionNotification {
+    // Minimal lossy converter to bridge existing JSON into SDK typed updates; preserves event blob as meta.
+    let session_id =
+        params.get("sessionId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let event = params.get("event").cloned().unwrap_or(Value::Null);
+
+    // For now, wrap the entire event JSON as a text block so clients still receive it until we do full mapping.
+    let update = SessionUpdate::AgentMessageChunk {
+        content: ContentBlock::Text(TextContent {
+            annotations: None,
+            text: event.to_string(),
+            meta: None,
+        }),
+    };
+
+    SessionNotification {
+        session_id: SessionId(session_id.into()),
+        update,
+        meta: None,
+    }
+}
+
 fn tool_status_str(status: &SessionToolStatus) -> &'static str {
     match status {
         SessionToolStatus::Started => "started",
@@ -2481,8 +2506,15 @@ async fn send_session_notification(
     params: Value,
     notifier: &Notifier,
 ) -> Result<(), ()> {
-    // notify path to be wired once typed session/update payloads are used.
-    let _ = notifier.notify("session/update", None).await;
+    // Legacy dispatcher path; typed notify path is handled via notifier.
+    let _ = notifier
+        .notify(
+            "sessionUpdate",
+            Some(AgentNotification::SessionNotification(
+                session_update_from_json(&params),
+            )),
+        )
+        .await;
     let message = OutgoingMessage::Notification {
         method: Arc::from("session/update"),
         params: Some(params),
@@ -2519,7 +2551,14 @@ async fn send_session_notification_stdout(
     params: Value,
     notifier: &Notifier,
 ) -> Result<(), ()> {
-    let _ = notifier.notify("session/update", None).await;
+    let _ = notifier
+        .notify(
+            "sessionUpdate",
+            Some(AgentNotification::SessionNotification(
+                session_update_from_json(&params),
+            )),
+        )
+        .await;
     let message = OutgoingMessage::Notification {
         method: Arc::from("session/update"),
         params: Some(params),
