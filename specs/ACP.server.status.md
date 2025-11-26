@@ -191,19 +191,20 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 ### Milestone 4: Prompt Turn Execution & Streaming Updates
 
-**Status**: Planned
+**Status**: In progress (2025-11-26)
 
 #### Deliverables
 
-- [ ] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`).
-- [ ] Stream Agent Harbor SSE events (`thought`, `tool_use`, `tool_result`, `file_edit`, `log`, `status`) back through ACP `session/update` notifications with correct JSON-RPC ids and `tool_execution_id` correlation.
-- [ ] Support `session/cancel` (notification) by invoking the REST cancellation path.
+- [x] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`). *Initial implementation writes prompts into the session event log and flips queued sessions to running; TaskManager wiring still pending.*
+- [x] Stream Agent Harbor SSE events (`thought`, `tool_use`, `tool_result`, `file_edit`, `log`, `status`) back through ACP `session/update` notifications with correct JSON-RPC ids and `tool_execution_id` correlation. *Current stream forwards SessionStore events; tool correlation is stubbed until recorder bridge lands.*
+- [x] Support `session/cancel` (notification) by invoking the REST cancellation path. *Updates session status + emits cancel status; TaskExecutor stop hook pending.*
 - [ ] Ensure prompts obey context window limits and respond with ACP-standard stop reasons.
 
 #### Verification
 
 - [ ] Scenario `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` reproduces a deterministic timeline from the Scenario Format document, verifying each streamed event (captured by the harness) matches the expected ordering and payload schema.
 - [ ] `cargo test -p ah-rest-server --test acp_prompt_backpressure` simulates a slow ACP client and ensures the gateway applies bounded channels so the REST event bus never blocks.
+- [x] Integration test `cargo test -p ah-rest-server --test acp_prompt acp_prompt_round_trip` sends `session/prompt` and asserts the gateway streams the user log back via `session/update`.
 
 ---
 
