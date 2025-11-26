@@ -53,9 +53,7 @@ impl TaskController for TaskExecutor {
     }
 
     async fn inject_message(&self, session_id: &str, message: &str) -> anyhow::Result<()> {
-        // TODO: wire to real TaskManager once live agent injection is implemented.
-        tracing::debug!("inject_message stub: session_id={session_id}, message_len={}", message.len());
-        Ok(())
+        self.inject_message(session_id, message).await
     }
 }
 
