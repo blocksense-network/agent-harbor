@@ -198,7 +198,9 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`). *Current implementation logs user prompts, enforces 16k-char cap, flips queued sessions to running, and seeds history for fast scenarios; TaskManager injector wiring still pending.*
 - [x] Stream Agent Harbor SSE events (`thought`, `tool_use`, `tool_result`, `file_edit`, `log`, `status`) back through ACP `session/update` notifications with correct JSON-RPC ids and `tool_execution_id` correlation. *Current stream forwards SessionStore events; tool correlation is stubbed until recorder bridge lands.*
 - [x] Support `session/cancel` (notification) by invoking the REST cancellation path. *Updates session status, emits cancelled status, and best-effort calls `TaskController::stop_task` when available.*
-- [ ] Ensure prompts obey context window limits and respond with ACP-standard stop reasons.
+- [x] Ensure prompts obey context window limits and respond with ACP-standard stop reasons.
+- [x] Reject over-budget `session/new` prompts with `stopReason: context_limit` and no side effects on the session store.
+- [x] Enforce legacy Scenario Format fixtures (`events` + `assertions`) in the mock playback store so ACP scenario tests emit expected status/log/thought events and fail fast when assertions are missing.
 
 #### Verification
 
@@ -206,6 +208,9 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] `cargo test -p ah-rest-server --test acp_prompt_backpressure` simulates a slow ACP client and ensures the gateway applies bounded channels so the REST event bus never blocks.
 - [x] Integration test `cargo test -p ah-rest-server --test acp_prompt acp_prompt_round_trip` sends `session/prompt` and asserts the gateway streams the user log back via `session/update`.
 - [x] Integration test `cargo test -p ah-rest-server --test acp_cancel acp_session_cancel_streams_update` verifies `session/cancel` emits a cancelled status and acknowledges the request.
+- [x] `cargo test -p ah-rest-server --test acp_prompt acp_prompt_rejects_on_context_limit` rejects over-budget prompts with `stopReason: context_limit` and avoids echoing them into session logs.
+- [x] `cargo test -p ah-rest-server --test acp_sessions acp_session_new_respects_context_limit` rejects oversized initial prompts with `stopReason: context_limit` and suppresses `session/update` fanout.
+- [ ] Scenario playback assertions are exercised automatically in CI once ACP-specific fixtures supply `assertions:` blocks (mock store now evaluates them).
 
 #### Implementation Details (current)
 
@@ -213,7 +218,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Event fanout now de-duplicates subscriptions per connection, seeds historical events on subscription (for fast scenario playback), and continues to flush broadcast events on idle ticks; lagged/closed channels are pruned defensively.
 - `session/cancel` best-effort calls `TaskController::stop_task` when available to mirror REST cancellation.
 - Backpressure coverage added via `acp_prompt_backpressure` which blasts prompts while delaying reads to ensure the gateway keeps streaming and does not deadlock.
-- Scenario fixture `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` added to mirror the prompt turn timeline; harness assertions to be wired next.
+- Scenario fixture `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` added to mirror the prompt turn timeline; harness assertions now execute via the mock playback store’s legacy `events`/`assertions` support.
 
 #### Key Implementation Files
 
