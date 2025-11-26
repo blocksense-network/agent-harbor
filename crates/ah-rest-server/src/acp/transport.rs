@@ -11,7 +11,7 @@
 
 use crate::{
     acp::translator::{AcpCapabilities, JsonRpcTranslator},
-    auth::AuthConfig,
+    auth::{AuthConfig, Claims},
     config::AcpConfig,
     error::{ServerError, ServerResult},
     services::SessionService,
@@ -91,35 +91,38 @@ async fn acp_connect(
     };
 
     // Authenticate
-    if let Err(err) = authenticate(&state.auth, &query, &headers) {
-        drop(permit);
-        let status = StatusCode::UNAUTHORIZED;
-        return (status, Json(err.to_problem())).into_response();
-    }
+    let claims = match authenticate(&state.auth, &query, &headers) {
+        Ok(claims) => claims,
+        Err(err) => {
+            drop(permit);
+            let status = StatusCode::UNAUTHORIZED;
+            return (status, Json(err.to_problem())).into_response();
+        }
+    };
 
-    ws.on_upgrade(move |socket| handle_socket(socket, state, permit))
+    ws.on_upgrade(move |socket| handle_socket(socket, state, permit, claims))
 }
 
 fn authenticate(
     auth: &AuthConfig,
     query: &AcpQuery,
     headers: &HeaderMap,
-) -> Result<(), ServerError> {
+) -> Result<Option<Claims>, ServerError> {
     // Prefer Authorization header
     if let Some(value) = headers.get(axum::http::header::AUTHORIZATION) {
         if let Ok(v) = value.to_str() {
             if let Some(stripped) = v.strip_prefix("ApiKey ") {
-                return auth.validate_api_key(stripped);
+                return auth.validate_api_key(stripped).map(|_| None);
             }
             if let Some(stripped) = v.strip_prefix("Bearer ") {
-                return auth.validate_jwt(stripped).map(|_| ());
+                return auth.validate_jwt(stripped).map(Some);
             }
         }
     }
 
     // Fallback to query param for convenience in tests
     if let Some(key) = &query.api_key {
-        return auth.validate_api_key(key);
+        return auth.validate_api_key(key).map(|_| None);
     }
 
     if auth.requires_auth() {
@@ -127,7 +130,7 @@ fn authenticate(
             "Missing or invalid authorization header".to_string(),
         ))
     } else {
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -135,10 +138,12 @@ async fn handle_socket(
     socket: WebSocket,
     state: Arc<AcpTransportState>,
     _permit: tokio::sync::OwnedSemaphorePermit,
+    claims: Option<Claims>,
 ) {
     let (sender, mut receiver) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
     let mut context = AcpSessionContext::default();
+    context.auth_claims = claims;
     let idle_timer = sleep(state.idle_timeout);
     tokio::pin!(idle_timer);
     let mut tick = interval(Duration::from_millis(100));
@@ -196,6 +201,7 @@ struct AcpSessionContext {
     negotiated_caps: Option<AcpCapabilities>,
     sessions: HashSet<String>,
     receivers: HashMap<String, Receiver<SessionEvent>>,
+    auth_claims: Option<Claims>,
 }
 
 fn rpc_response(id: Value, result: Value) -> Value {
@@ -302,7 +308,19 @@ async fn handle_session_new(
         }));
     }
 
-    let request = translate_create_request(params)?;
+    let mut request = translate_create_request(params)?;
+    if request.tenant_id.is_none() {
+        request.tenant_id = ctx
+            .auth_claims
+            .as_ref()
+            .and_then(|c| c.tenant_id.clone());
+    }
+    if request.project_id.is_none() {
+        request.project_id = ctx
+            .auth_claims
+            .as_ref()
+            .and_then(|c| c.project_id.clone());
+    }
     let service = SessionService::new(Arc::clone(&state.app_state.session_store));
     let response = service.create_session(&request).await?;
     let session_id = response
@@ -329,6 +347,8 @@ async fn handle_session_new(
         Ok(json!({
             "sessionId": session_id,
             "status": session.session.status.to_string(),
+            "tenantId": session.session.tenant_id,
+            "projectId": session.session.project_id,
             "workspace": session.session.workspace.mount_path,
             "agent": session.session.agent.display_name.clone().unwrap_or_else(|| session.session.agent.model.clone()),
         }))
