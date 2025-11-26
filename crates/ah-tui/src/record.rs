@@ -14,7 +14,7 @@ use crate::viewer::{
     ViewerConfig, build_session_viewer_view_model, handle_mouse_click_for_view,
     launch_task_from_instruction, render_view_frame, update_row_metadata_with_autofollow,
 };
-use ah_core;
+use ah_core::task_manager_wire::TaskManagerMessage;
 use ah_recorder::{
     AhrWriter, PtyEvent, PtyRecorder, PtyRecorderConfig, RecordingSession, TerminalState,
     WriterConfig,
@@ -24,7 +24,6 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::event::{Event, MouseButton, MouseEventKind};
 use ratatui;
-use ssz::Encode;
 use std::env;
 // no std::os::fd items needed currently
 use std::path::PathBuf;
@@ -33,8 +32,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::thread;
-use tokio::io::AsyncWriteExt;
-use tokio::net::UnixStream;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{UnixStream, unix::OwnedReadHalf, unix::OwnedWriteHalf};
 use tokio::{signal, sync::mpsc};
 use tracing::error;
 use tracing::{debug, info, trace, warn};
@@ -142,36 +141,10 @@ pub struct BranchPointsArgs {
 }
 
 /// Send an SSE event through the unnamed pipe
-async fn send_sse_event(sender: &mut Option<UnixStream>, event: SessionEvent) -> Result<()> {
+async fn send_sse_event(sender: &mut Option<OwnedWriteHalf>, event: SessionEvent) -> Result<()> {
     if let Some(sender) = sender {
-        // Create a readable version of the event for logging
-        let event_description = match &event {
-            SessionEvent::Error(e) => {
-                format!("Error({})", String::from_utf8_lossy(&e.message))
-            }
-            SessionEvent::Status(s) => {
-                format!("Status({:?})", s.status)
-            }
-            SessionEvent::FileEdit(_) => "FileEdit".to_string(),
-            SessionEvent::ToolUse(_) => "ToolUse".to_string(),
-            SessionEvent::ToolResult(_) => "ToolResult".to_string(),
-            SessionEvent::Log(_) => "Log".to_string(),
-            SessionEvent::Thought(_) => "Thought".to_string(),
-        };
-        debug!(
-            "send_sse_event: sending event via task manager socket: {}",
-            event_description
-        );
-        // Serialize event to SSZ (using JSON encoding for compatibility)
-        let ssz_bytes = event.as_ssz_bytes();
-        // Length-prefix the SSZ data
-        let len_bytes = (ssz_bytes.len() as u32).to_le_bytes();
-        let mut data = len_bytes.to_vec();
-        data.extend_from_slice(&ssz_bytes);
-
-        // Send through socket
-        sender.write_all(&data).await?;
-        debug!("send_sse_event: sent SSZ-encoded SSE event successfully");
+        let msg = TaskManagerMessage::SessionEvent(event);
+        msg.write_to(sender).await?;
     } else {
         debug!("send_sse_event: no sender available, event not sent");
     }
@@ -460,33 +433,60 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         env::var("AH_RECORDER_IPC_SOCKET")
     );
 
+    // Channel for inbound inject messages coming from task manager socket
+    let (tm_inject_tx, mut tm_inject_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+
     // Set up task manager socket for event streaming and coordination
-    let mut events_sender = if let Some(task_manager_socket) = args.task_manager_socket.as_ref() {
+    let mut events_sender: Option<OwnedWriteHalf> = if let Some(task_manager_socket) =
+        args.task_manager_socket.as_ref()
+    {
         debug!(
             "Setting up task manager socket for event streaming, path: {}",
             task_manager_socket
         );
         // Connect to the task manager socket
         match UnixStream::connect(task_manager_socket).await {
-            Ok(mut stream) => {
+            Ok(stream) => {
                 // First, send the session ID (length-prefixed)
                 let session_id = args.session_id.as_ref().unwrap_or(&"unknown".to_string()).clone();
                 let session_id_bytes = session_id.as_bytes();
                 let session_id_len = session_id_bytes.len() as u32;
                 let len_bytes = session_id_len.to_le_bytes();
 
-                if let Err(e) = stream.write_all(&len_bytes).await {
+                let (mut reader, mut writer) = stream.into_split();
+
+                if let Err(e) = writer.write_all(&len_bytes).await {
                     warn!(
                         "Failed to send session ID length to task manager socket: {}",
                         e
                     );
                     None
-                } else if let Err(e) = stream.write_all(session_id_bytes).await {
+                } else if let Err(e) = writer.write_all(session_id_bytes).await {
                     warn!("Failed to send session ID to task manager socket: {}", e);
                     None
                 } else {
                     info!("Task manager event streaming socket established");
-                    Some(stream)
+
+                    // Spawn listener for inbound inject messages
+                    let inject_tx = tm_inject_tx.clone();
+                    tokio::spawn(async move {
+                        loop {
+                            match TaskManagerMessage::read_from(&mut reader).await {
+                                Ok(TaskManagerMessage::InjectInput(bytes)) => {
+                                    let _ = inject_tx.send(bytes);
+                                }
+                                Ok(TaskManagerMessage::SessionEvent(_)) => {
+                                    // We don't expect events coming back; ignore safely.
+                                }
+                                Err(e) => {
+                                    warn!("Task manager socket read failed: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    });
+
+                    Some(writer)
                 }
             }
             Err(e) => {
@@ -778,6 +778,15 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                         }
                         _ => {}
                     }
+                }
+            }
+            // Handle injected bytes coming from task manager socket (e.g., ACP prompt injection)
+            injected = tm_inject_rx.recv() => {
+                if let Some(bytes) = injected {
+                    debug!("Received injected input from task manager ({} bytes)", bytes.len());
+                    let _ = session.write_input(&bytes);
+                } else {
+                    debug!("Task manager inject channel closed");
                 }
             }
             // Process PTY events directly from the session

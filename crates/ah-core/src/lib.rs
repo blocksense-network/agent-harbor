@@ -30,6 +30,7 @@ pub mod task;
 pub mod task_config;
 pub mod task_manager;
 pub mod task_manager_init;
+pub mod task_manager_wire;
 pub mod workspace_files_enumerator;
 pub mod workspace_terms_enumerator;
 
