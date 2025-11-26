@@ -43,14 +43,13 @@ async fn acp_session_list_scopes_to_jwt_tenant() {
 
     // helper to connect with optional bearer
     let connect_with_bearer = |token: Option<String>| async {
+        let mut url = format!("{acp_url}?api_key=secret");
         if let Some(tok) = token {
             let encoded: String = form_urlencoded::byte_serialize(tok.as_bytes()).collect();
-            let url = format!("{acp_url}?token={encoded}&api_key=secret");
-            tokio_tungstenite::connect_async(url).await.expect("connect").0
-        } else {
-            let url = format!("{acp_url}?api_key=secret");
-            tokio_tungstenite::connect_async(url).await.expect("connect").0
+            url.push_str("&token=");
+            url.push_str(&encoded);
         }
+        tokio_tungstenite::connect_async(url).await.expect("connect").0
     };
 
     // anonymous creates session with no tenant

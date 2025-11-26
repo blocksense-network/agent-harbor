@@ -5,14 +5,9 @@ use common::acp::spawn_acp_server_basic;
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::time::Duration;
-use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 mod common;
-
-async fn spawn_acp_server() -> (String, JoinHandle<()>) {
-    spawn_acp_server_basic().await
-}
 
 async fn read_response(
     socket: &mut tokio_tungstenite::WebSocketStream<
@@ -34,7 +29,7 @@ async fn read_response(
 
 #[tokio::test]
 async fn acp_prompt_round_trip() {
-    let (acp_url, handle) = spawn_acp_server().await;
+    let (acp_url, handle) = spawn_acp_server_basic().await;
     let acp_url = format!("{}?api_key=secret", acp_url);
 
     let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
@@ -126,7 +121,7 @@ async fn acp_prompt_round_trip() {
 
 #[tokio::test]
 async fn acp_prompt_rejects_on_context_limit() {
-    let (acp_url, handle) = spawn_acp_server().await;
+    let (acp_url, handle) = spawn_acp_server_basic().await;
     let acp_url = format!("{}?api_key=secret", acp_url);
 
     let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");

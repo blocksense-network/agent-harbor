@@ -475,8 +475,10 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                                 Ok(TaskManagerMessage::InjectInput(bytes)) => {
                                     let _ = inject_tx.send(bytes);
                                 }
-                                Ok(TaskManagerMessage::SessionEvent(_)) => {
-                                    // We don't expect events coming back; ignore safely.
+                                Ok(TaskManagerMessage::SessionEvent(_))
+                                | Ok(TaskManagerMessage::PtyData(_))
+                                | Ok(TaskManagerMessage::PtyResize(_)) => {
+                                    // Recorder should not receive these; ignore
                                 }
                                 Err(e) => {
                                     warn!("Task manager socket read failed: {}", e);
@@ -826,24 +828,34 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                         }
 
                         // Extract data for activity detection if SSE streaming is enabled
-                        if events_sender.is_some() {
-                            if let PtyEvent::Data(data) = &pty_event {
-                                // Try to decode as UTF-8 and accumulate
-                                if let Ok(text) = std::str::from_utf8(data) {
-                                    pty_data_buffer.push_str(text);
+                        if let Some(sender) = events_sender.as_mut() {
+                            match &pty_event {
+                                PtyEvent::Data(data) => {
+                                    // forward raw PTY bytes over task manager socket for followers
+                                    let _ = TaskManagerMessage::PtyData(data.clone()).write_to(sender).await;
 
-                                    // Look for agent activity patterns (basic heuristics)
-                                    detect_and_send_agent_events(&mut events_sender, &pty_data_buffer).await;
+                                    // Try to decode as UTF-8 and accumulate for heuristics
+                                    if let Ok(text) = std::str::from_utf8(data) {
+                                        pty_data_buffer.push_str(text);
 
-                                    // Limit buffer size to prevent unbounded growth
-                                    if pty_data_buffer.len() > 10000 {
-                                        // Keep only the last 5000 characters
-                                        let keep_len = 5000;
-                                        if pty_data_buffer.len() > keep_len {
-                                            pty_data_buffer = pty_data_buffer.chars().rev().take(keep_len).collect::<String>().chars().rev().collect();
+                                        // Look for agent activity patterns (basic heuristics)
+                                        detect_and_send_agent_events(&mut events_sender, &pty_data_buffer).await;
+
+                                        // Limit buffer size to prevent unbounded growth
+                                        if pty_data_buffer.len() > 10000 {
+                                            // Keep only the last 5000 characters
+                                            let keep_len = 5000;
+                                            if pty_data_buffer.len() > keep_len {
+                                                pty_data_buffer = pty_data_buffer.chars().rev().take(keep_len).collect::<String>().chars().rev().collect();
+                                            }
                                         }
                                     }
                                 }
+                                PtyEvent::Resize { cols, rows } => {
+                                    let resize = TaskManagerMessage::PtyResize((*cols, *rows));
+                                    let _ = resize.write_to(sender).await;
+                                }
+                                _ => {}
                             }
                         }
                     }
