@@ -1,17 +1,15 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use std::net::TcpListener;
-
-use ah_rest_server::{
-    Server, ServerConfig, auth::Claims, mock_dependencies::MockServerDependencies,
-};
+use ah_rest_server::auth::Claims;
+use common::acp::spawn_acp_server;
 use futures::{SinkExt, StreamExt};
 use jsonwebtoken::{EncodingKey, Header};
 use serde_json::json;
-use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use url::form_urlencoded;
+
+mod common;
 
 async fn read_response(
     socket: &mut tokio_tungstenite::WebSocketStream<
@@ -31,36 +29,16 @@ async fn read_response(
     panic!("response with id {} not received", target_id);
 }
 
-async fn spawn_acp_server(configure: impl Fn(&mut ServerConfig)) -> (String, JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
-    let addr = listener.local_addr().unwrap();
-    drop(listener);
-
-    let acp_listener = TcpListener::bind("127.0.0.1:0").expect("bind");
-    let acp_addr = acp_listener.local_addr().unwrap();
-    drop(acp_listener);
-
-    let mut config = ServerConfig::default();
-    config.bind_addr = addr;
-    config.enable_cors = true;
-    config.acp.enabled = true;
-    config.acp.bind_addr = acp_addr;
-    configure(&mut config);
-
-    let deps = MockServerDependencies::new(config.clone()).await.expect("deps");
-    let server = Server::with_state(config, deps.into_state()).await.expect("server");
-    let handle = tokio::spawn(async move { server.run().await.expect("server run") });
-    let acp_url = format!("ws://{}/acp/v1/connect", acp_addr);
-    (acp_url, handle)
-}
-
 #[tokio::test]
 async fn acp_session_list_scopes_to_jwt_tenant() {
     let jwt_secret = "scope-secret";
-    let (acp_url, handle) = spawn_acp_server(|cfg| {
-        cfg.jwt_secret = Some(jwt_secret.to_string());
-        cfg.api_key = Some("secret".into());
-    })
+    let (acp_url, handle) = spawn_acp_server(
+        |cfg| {
+            cfg.jwt_secret = Some(jwt_secret.to_string());
+            cfg.api_key = Some("secret".into());
+        },
+        None,
+    )
     .await;
 
     // helper to connect with optional bearer
