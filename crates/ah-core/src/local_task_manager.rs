@@ -14,6 +14,7 @@ use crate::db::DatabaseManager;
 use crate::task_manager::{
     SaveDraftResult, TaskEvent, TaskLaunchParams, TaskLaunchResult, TaskManager,
 };
+use crate::task_manager_wire::{TaskManagerMessage, task_manager_socket_path};
 use ah_domain_types::{AgentChoice, LogLevel, TaskExecution, TaskInfo, TaskState, ToolStatus};
 use ah_local_db::models::DraftRecord;
 use ah_mux_core::Multiplexer;
@@ -24,7 +25,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::AsyncReadExt;
 use tokio::net::UnixListener;
 use tokio::net::UnixStream;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 /// Generic Local task manager implementation that executes tasks through a multiplexer
 ///
@@ -40,6 +41,8 @@ pub struct GenericLocalTaskManager<M: Multiplexer + Send + Sync + 'static> {
     shared_listener: Arc<Mutex<Option<Arc<UnixListener>>>>,
     /// Broadcast channels for distributing events to task subscribers
     event_senders: Arc<Mutex<HashMap<String, broadcast::Sender<TaskEvent>>>>,
+    /// Channels for sending control/input messages back to recorders
+    recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
     /// Flag to track if the accept loop is running
     accept_loop_running: Arc<Mutex<bool>>,
     /// Handle to the accept loop task
@@ -57,6 +60,7 @@ where
         let multiplexer = AwMultiplexer::new(multiplexer);
         let shared_listener = Arc::new(Mutex::new(None));
         let event_senders = Arc::new(Mutex::new(HashMap::new()));
+        let recorder_senders = Arc::new(Mutex::new(HashMap::new()));
         let accept_loop_running = Arc::new(Mutex::new(false));
         let accept_loop_handle = Arc::new(Mutex::new(None));
         Ok(Self {
@@ -65,6 +69,7 @@ where
             multiplexer,
             shared_listener,
             event_senders,
+            recorder_senders,
             accept_loop_running,
             accept_loop_handle,
         })
@@ -114,11 +119,18 @@ where
         // Clone the necessary Arcs for the accept loop
         let shared_listener = Arc::clone(&self.shared_listener);
         let event_senders = Arc::clone(&self.event_senders);
+        let recorder_senders = Arc::clone(&self.recorder_senders);
         let accept_loop_running = Arc::clone(&self.accept_loop_running);
 
         // Start the accept loop
         let handle = tokio::spawn(async move {
-            Self::run_accept_loop(shared_listener, event_senders, accept_loop_running).await;
+            Self::run_accept_loop(
+                shared_listener,
+                event_senders,
+                recorder_senders,
+                accept_loop_running,
+            )
+            .await;
         });
 
         // Store the handle
@@ -134,6 +146,7 @@ where
     async fn run_accept_loop(
         shared_listener: Arc<Mutex<Option<Arc<UnixListener>>>>,
         event_senders: Arc<Mutex<HashMap<String, broadcast::Sender<TaskEvent>>>>,
+        recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
         accept_loop_running: Arc<Mutex<bool>>,
     ) {
         // For simplicity, accept connections sequentially (not concurrently)
@@ -158,9 +171,10 @@ where
 
                     // Clone the event_senders for the connection handler
                     let event_senders = Arc::clone(&event_senders);
+                    let recorder_senders = Arc::clone(&recorder_senders);
 
                     // Handle this connection (sequentially for now)
-                    Self::handle_recorder_connection(stream, event_senders).await;
+                    Self::handle_recorder_connection(stream, event_senders, recorder_senders).await;
                 }
                 Some(Err(e)) => {
                     tracing::warn!("Failed to accept connection: {}", e);
@@ -186,10 +200,30 @@ where
         tracing::debug!("Accept loop ended");
     }
 
+    /// Inject raw bytes into the running recorder PTY for the given session, if connected.
+    pub async fn inject_input(&self, task_id: &str, bytes: &[u8]) -> anyhow::Result<()> {
+        let sender = {
+            let guard = self.recorder_senders.lock().unwrap();
+            guard.get(task_id).cloned()
+        };
+
+        if let Some(tx) = sender {
+            tx.send(TaskManagerMessage::InjectInput(bytes.to_vec()))
+                .map_err(|e| anyhow::anyhow!("failed to queue inject message: {}", e))?;
+        } else {
+            tracing::warn!(
+                "No recorder connection available for task {}; cannot inject input",
+                task_id
+            );
+        }
+        Ok(())
+    }
+
     /// Handle a single recorder connection
     async fn handle_recorder_connection(
         mut stream: UnixStream,
         event_senders: Arc<Mutex<HashMap<String, broadcast::Sender<TaskEvent>>>>,
+        recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
     ) {
         // First, read the session ID (length-prefixed)
         let session_id = match Self::read_session_id(&mut stream).await {
@@ -201,6 +235,34 @@ where
         };
 
         tracing::debug!("Recorder connected for session: {}", session_id);
+
+        // Split stream for bidirectional use
+        let (mut reader, mut writer) = stream.into_split();
+
+        // Register a sender for control messages back to this recorder
+        let (tx, mut rx) = mpsc::unbounded_channel::<TaskManagerMessage>();
+        {
+            let mut senders = recorder_senders.lock().unwrap();
+            senders.insert(session_id.clone(), tx);
+        }
+
+        // Writer task
+        let writer_session = session_id.clone();
+        let writer_senders = Arc::clone(&recorder_senders);
+        let writer_handle = tokio::spawn(async move {
+            while let Some(msg) = rx.recv().await {
+                if let Err(e) = msg.write_to(&mut writer).await {
+                    tracing::warn!(
+                        "Failed to write message to recorder {}: {}",
+                        writer_session,
+                        e
+                    );
+                    break;
+                }
+            }
+            let mut guard = writer_senders.lock().unwrap();
+            guard.remove(&writer_session);
+        });
 
         // Get the broadcast sender for this session
         let sender = {
@@ -217,101 +279,90 @@ where
 
         // Now read events from the stream and broadcast them
         loop {
-            // Read length-prefixed SSZ-encoded event from socket
             let mut len_buf = [0u8; 4];
-            match stream.read_exact(&mut len_buf).await {
-                Ok(_) => {
-                    let len = u32::from_le_bytes(len_buf) as usize;
-                    let mut event_buf = vec![0u8; len];
-                    match stream.read_exact(&mut event_buf).await {
-                        Ok(_) => {
-                            // Decode SSZ event
-                            use ah_rest_api_contract::types::SessionEvent;
-                            use ssz::Decode;
-                            match <SessionEvent as Decode>::from_ssz_bytes(&event_buf) {
-                                Ok(session_event) => {
-                                    // Create a readable version of the session event for logging
-                                    let event_description = match &session_event {
-                                        ah_rest_api_contract::types::SessionEvent::Error(e) => {
-                                            format!(
-                                                "Error({})",
-                                                String::from_utf8_lossy(&e.message)
-                                            )
-                                        }
-                                        ah_rest_api_contract::types::SessionEvent::Status(s) => {
-                                            format!("Status({:?})", s.status)
-                                        }
-                                        ah_rest_api_contract::types::SessionEvent::FileEdit(_) => {
-                                            "FileEdit".to_string()
-                                        }
-                                        ah_rest_api_contract::types::SessionEvent::ToolUse(_) => {
-                                            "ToolUse".to_string()
-                                        }
-                                        ah_rest_api_contract::types::SessionEvent::ToolResult(
-                                            _,
-                                        ) => "ToolResult".to_string(),
-                                        ah_rest_api_contract::types::SessionEvent::Log(_) => {
-                                            "Log".to_string()
-                                        }
-                                        ah_rest_api_contract::types::SessionEvent::Thought(_) => {
-                                            "Thought".to_string()
-                                        }
-                                    };
-                                    tracing::debug!(
-                                        "Received session event from recorder for session {}: {}",
-                                        session_id,
-                                        event_description
-                                    );
-                                    // Convert SessionEvent to TaskEvent
-                                    if let Some(task_event) =
-                                        session_event_to_task_event(session_event)
-                                    {
-                                        tracing::debug!(
-                                            "Converted to task event for session {}: {:?}",
-                                            session_id,
-                                            task_event
-                                        );
-                                        // Send to all subscribers (ignore send errors - subscribers may have dropped)
-                                        let send_result = sender.send(task_event);
-                                        tracing::debug!(
-                                            "Broadcast task event to subscribers for session {} (receivers: {})",
-                                            session_id,
-                                            send_result.unwrap_or(0)
-                                        );
-                                    } else {
-                                        tracing::debug!(
-                                            "Session event converted to None for session {}",
-                                            session_id
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to decode SSZ session event for session {}: {:?}",
-                                        session_id,
-                                        e
-                                    );
-                                    break;
-                                }
+            if let Err(e) = reader.read_exact(&mut len_buf).await {
+                tracing::debug!("Socket read error for session {}: {}", session_id, e);
+                break;
+            }
+            let len = u32::from_le_bytes(len_buf) as usize;
+            let mut buf = vec![0u8; len];
+            if let Err(e) = reader.read_exact(&mut buf).await {
+                tracing::warn!(
+                    "Failed to read event data from socket for session {}: {}",
+                    session_id,
+                    e
+                );
+                break;
+            }
+
+            // First try the new envelope format, fall back to legacy SessionEvent
+            match <TaskManagerMessage as ssz::Decode>::from_ssz_bytes(&buf) {
+                Ok(TaskManagerMessage::SessionEvent(session_event)) => {
+                    // Create a readable version of the session event for logging
+                    let event_description = match &session_event {
+                        ah_rest_api_contract::types::SessionEvent::Error(e) => {
+                            format!("Error({})", String::from_utf8_lossy(&e.message))
+                        }
+                        ah_rest_api_contract::types::SessionEvent::Status(s) => {
+                            format!("Status({:?})", s.status)
+                        }
+                        ah_rest_api_contract::types::SessionEvent::FileEdit(_) => {
+                            "FileEdit".to_string()
+                        }
+                        ah_rest_api_contract::types::SessionEvent::ToolUse(_) => {
+                            "ToolUse".to_string()
+                        }
+                        ah_rest_api_contract::types::SessionEvent::ToolResult(_) => {
+                            "ToolResult".to_string()
+                        }
+                        ah_rest_api_contract::types::SessionEvent::Log(_) => "Log".to_string(),
+                        ah_rest_api_contract::types::SessionEvent::Thought(_) => {
+                            "Thought".to_string()
+                        }
+                    };
+                    tracing::debug!(
+                        "Received session event from recorder for session {}: {}",
+                        session_id,
+                        event_description
+                    );
+                    if let Some(task_event) = session_event_to_task_event(session_event) {
+                        let _ = sender.send(task_event);
+                    }
+                }
+                Ok(TaskManagerMessage::InjectInput(_)) => {
+                    tracing::warn!(
+                        "Unexpected InjectInput from recorder for session {}",
+                        session_id
+                    );
+                }
+                Err(_) => {
+                    match <ah_rest_api_contract::types::SessionEvent as ssz::Decode>::from_ssz_bytes(
+                        &buf,
+                    ) {
+                        Ok(session_event) => {
+                            if let Some(task_event) = session_event_to_task_event(session_event) {
+                                let _ = sender.send(task_event);
                             }
                         }
-                        Err(e) => {
+                        Err(e2) => {
                             tracing::warn!(
-                                "Failed to read event data from socket for session {}: {}",
+                                "Failed to decode message from recorder for session {}: {:?}",
                                 session_id,
-                                e
+                                e2
                             );
                             break;
                         }
                     }
                 }
-                Err(e) => {
-                    // Socket closed or error
-                    tracing::debug!("Socket read error for session {}: {}", session_id, e);
-                    break;
-                }
             }
         }
+
+        // Ensure sender mapping is cleaned up if writer task hasn't already
+        {
+            let mut guard = recorder_senders.lock().unwrap();
+            guard.remove(&session_id);
+        }
+        let _ = writer_handle.await;
 
         tracing::debug!("Recorder connection closed for session: {}", session_id);
     }
@@ -328,54 +379,6 @@ where
 
         String::from_utf8(id_buf).map_err(|e| anyhow::anyhow!("Invalid UTF-8 in session ID: {}", e))
     }
-}
-
-/// Get the base directory for AH sockets following OS conventions
-fn socket_dir() -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-
-    // Choose base directory based on OS
-    let base_dir = if cfg!(target_os = "linux") {
-        // Linux: prefer XDG_RUNTIME_DIR, fallback to /tmp
-        std::env::var("XDG_RUNTIME_DIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
-            .join("ah")
-    } else if cfg!(target_os = "macos") {
-        // macOS: use TMPDIR
-        std::env::var("TMPDIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
-            .join("ah")
-    } else {
-        // Other Unix-like systems: /tmp
-        std::path::PathBuf::from("/tmp").join("ah")
-    };
-
-    // Create directory with proper permissions if it doesn't exist
-    if !base_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&base_dir) {
-            tracing::warn!(
-                "Failed to create socket directory {}: {}",
-                base_dir.display(),
-                e
-            );
-        } else {
-            // Set permissions to 0700 (owner read/write/execute only)
-            if let Ok(metadata) = std::fs::metadata(&base_dir) {
-                let mut perms = metadata.permissions();
-                perms.set_mode(0o700);
-                let _ = std::fs::set_permissions(&base_dir, perms);
-            }
-        }
-    }
-
-    base_dir
-}
-
-/// Get the task manager socket path for event streaming from recorders
-fn task_manager_socket_path() -> std::path::PathBuf {
-    socket_dir().join("task-manager.sock")
 }
 
 #[async_trait]

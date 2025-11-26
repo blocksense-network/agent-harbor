@@ -877,6 +877,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "ethereum_ssz",
  "futures",
  "hyper 1.8.1",
  "jsonwebtoken",

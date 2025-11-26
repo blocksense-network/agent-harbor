@@ -78,6 +78,7 @@ tower_governor = "0.4"
 # SSE streaming
 futures = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
+ssz = { package = "ethereum_ssz", version = "0.8" }
 
 # URL handling
 url = { workspace = true }

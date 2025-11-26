@@ -217,6 +217,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] `cargo test -p ah-rest-server --test acp_sessions acp_session_new_respects_context_limit` rejects oversized initial prompts with `stopReason: context_limit` and suppresses `session/update` fanout.
 - [x] Scenario `tests/acp_bridge/scenarios/initialize_and_auth.yaml` + integration test `cargo test -p ah-rest-server --test acp_initialize_and_auth_scenario_succeeds` validate the initialize/auth handshake and streamed status transitions using legacy `events`/`assertions`.
 - [x] Scenario `tests/acp_bridge/scenarios/pause_resume.yaml` + integration tests `cargo test -p ah-rest-server --test acp_pause_resume acp_pause_resume_status_streams` and `cargo test -p ah-rest-server --test acp_pause_resume acp_pause_and_resume_rpcs_emit_status` validate paused → resumed → completed status streaming and the new pause/resume RPCs.
+- [x] Unit test `cargo test -p ah-rest-server inject_message_forwards_to_recorder_socket` spins up the task-manager socket, simulates a recorder client, and asserts injected bytes reach the PTY channel.
 - [ ] Scenario playback assertions are exercised automatically in CI once ACP-specific fixtures supply `assertions:` blocks (mock store now evaluates them).
 
 #### Implementation Details (current)
@@ -226,6 +227,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - `session/cancel` best-effort calls `TaskController::stop_task` when available to mirror REST cancellation.
 - Backpressure coverage added via `acp_prompt_backpressure` which blasts prompts while delaying reads to ensure the gateway keeps streaming and does not deadlock.
 - Scenario fixture `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` added to mirror the prompt turn timeline; harness assertions now execute via the mock playback store’s legacy `events`/`assertions` support.
+- Prompt injection now targets the live PTY via the task-manager socket: the socket protocol is a bidirectional SSZ envelope, `ah agent record` listens for `InjectInput` frames and writes them to the PTY, and the REST `TaskExecutor::inject_message` forwards ACP prompts over that channel (with newline termination) in addition to logging.
 
 #### Key Implementation Files
 
