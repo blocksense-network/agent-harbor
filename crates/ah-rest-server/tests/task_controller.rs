@@ -1,11 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_rest_server::{
-    dependencies::TaskController,
-    executor::TaskExecutor,
-    models::{DatabaseSessionStore, SessionStore},
-};
+use ah_rest_server::{executor::TaskExecutor, models::{DatabaseSessionStore, SessionStore}};
 use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 use ah_local_db::Database;
 use ah_rest_api_contract::{
