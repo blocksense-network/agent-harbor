@@ -34,8 +34,8 @@ jobs:
         include:
           - label: Docs site
             cf_project: agent-harbor-docs
-            build_command: yarn workspace site build
-            dist_path: docs/site/out
+            build_command: yarn workspace @agent-harbor/docs.agent-harbor.dev build
+            dist_path: apps/docs.agent-harbor.dev/out
           - label: WebUI
             cf_project: agent-harbor-webui
             build_command: just webui-build

@@ -7,7 +7,7 @@
     "webui/mock-server",
     "webui/e2e-tests",
     "electron-app",
-    "docs/site"
+    "apps/docs.agent-harbor.dev"
   ],
   "scripts": {
     "knip": "knip"

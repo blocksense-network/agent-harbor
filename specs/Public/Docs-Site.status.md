@@ -4,22 +4,22 @@ This document tracks the implementation status of the [Docs-Site-PRD.md](Docs-Si
 
 Goal: deliver a production-ready documentation site (Next.js 15 + Nextra 4) that renders in-repo Markdown/MDX with fast navigation, offline search (Pagefind), and a low-friction contributor workflow.
 
-Current status: foundation drafted — Nextra scaffold exists (`docs/site/app/layout.tsx`, `mdx-components.tsx`, `next.config.mjs`); TypeScript migration complete; homepage stub present, but navigation, content pages, branding, and contributor flows remain to be built.
+Current status: foundation drafted — Nextra scaffold exists (`apps/docs.agent-harbor.dev/app/layout.tsx`, `mdx-components.tsx`, `next.config.mjs`); TypeScript migration complete; homepage stub present, but navigation, content pages, branding, and contributor flows remain to be built.
 Test results: not run (docs site build/search tests not yet wired into CI for this iteration).
 
 ### Status Summary
 
 - Structure: Next.js App Router with Nextra Docs layout is present; `Layout` renders `getPageMap` for sidebar generation. Migrated to TypeScript (`layout.tsx`). Needs repo-specific `docsRepositoryBase`, logo, theme toggle, and banner slot.
-- Content: Only `docs/site/app/page.mdx`; no section pages, `_meta.json` ordering, or in-page TOC headings.
+- Content: Only `apps/docs.agent-harbor.dev/app/page.mdx`; no section pages, `_meta.json` ordering, or in-page TOC headings.
 - Branding/metadata: Header uses Nextra defaults; `docsRepositoryBase` still points to the Nextra repo; no favicon/logo/title/OG metadata.
 - Search/export: Pagefind dependency and script exist; build script copies `_pagefind` to `out/` directory. CI/export should enforce fresh `_pagefind` artifacts.
 - Tooling: Site migrated to TypeScript (`tsconfig.json`, `next-env.d.ts`); ESLint config added. Uses default Next webpack (Turbopack not pursued due to PnP incompatibility); no `just` targets, CI jobs, or smoke/e2e tests.
 - Authoring workflow: No on-site contributing page; commands and MDX conventions undocumented; edit-link target not wired to this repo.
-- Deployment/versioning: Static export in `docs/site/out` from `yarn workspace site build` (Next.js `output: 'export'`) is the sole deployable; CI deployment to Cloudflare Pages is configured via `deploy-sites` workflow (deploys on PRs and main branch with PR preview comments). Version surfacing should use Nextra's built-in versions support where available, and older docs stay reachable via permalinked Cloudflare deployments. Flows for major releases and off-cycle corrections must be documented.
+- Deployment/versioning: Static export in `apps/docs.agent-harbor.dev/out` from `yarn workspace site build` (Next.js `output: 'export'`) is the sole deployable; CI deployment to Cloudflare Pages is configured via `deploy-sites` workflow (deploys on PRs and main branch with PR preview comments). Version surfacing should use Nextra's built-in versions support where available, and older docs stay reachable via permalinked Cloudflare deployments. Flows for major releases and off-cycle corrections must be documented.
 
 ### Plan
 
-- [ ] Brand assets & metadata: add favicon, logo, typography (font loading), HTML title/description/OG metadata, theme-color; wire `docsRepositoryBase` in `docs/site/app/layout.tsx`.
+- [ ] Brand assets & metadata: add favicon, logo, typography (font loading), HTML title/description/OG metadata, theme-color; wire `docsRepositoryBase` in `apps/docs.agent-harbor.dev/app/layout.tsx`.
 - [ ] Content & navigation: implement `_meta.json` ordering and section pages for Homepage, Quick Start, TUI, WebUI, AgentFS, Recorder, API, Contributing; add TOCs/breadcrumbs where supported and ensure cross-links to existing repo docs/specs; prefer Nextra defaults where they satisfy needs.
 - [x] Migrate the docs site to TypeScript (typed MDX where possible); keep compatibility with Nextra 4 App Router and search/index build.
 - [x] Linting (ESLint + Prettier): ESLint and Prettier are configured; pre-commit hooks enforce formatting and linting on all files including docs site. ESLint includes TypeScript resolver for `docs/*/tsconfig*.json`.
@@ -32,15 +32,15 @@ Test results: not run (docs site build/search tests not yet wired into CI for th
 
 ### Key Source Files (current scaffold)
 
-- `docs/site/app/layout.tsx`: wraps Nextra `Layout`/`Navbar` and `getPageMap`; placeholder `docsRepositoryBase` still references the Nextra repo. Migrated to TypeScript.
-- `docs/site/app/page.mdx`: homepage stub; should become hero + tiles per PRD "Homepage" inventory item.
-- `docs/site/mdx-components.tsx`: merges Nextra theme components with custom MDX components; entry point for adding custom shortcodes. Migrated to TypeScript.
-- `docs/site/next.config.mjs`: Nextra wrapper; static export configuration.
-- `docs/site/package.json`: scripts for `dev`, `build`, and `build:pagefind`; Pagefind dependency already present. Build script copies `_pagefind` to `out/`.
-- `docs/site/public/_pagefind/*`: prior local build artifacts; should be regenerated in CI.
-- `docs/site/app/globals.css`: global styling baseline; will need branding tokens when palette/typography are defined.
-- `docs/site/tsconfig.json`: TypeScript configuration for the docs site.
-- `docs/site/next-env.d.ts`: Next.js TypeScript environment declarations.
+- `apps/docs.agent-harbor.dev/app/layout.tsx`: wraps Nextra `Layout`/`Navbar` and `getPageMap`; placeholder `docsRepositoryBase` still references the Nextra repo. Migrated to TypeScript.
+- `apps/docs.agent-harbor.dev/app/page.mdx`: homepage stub; should become hero + tiles per PRD "Homepage" inventory item.
+- `apps/docs.agent-harbor.dev/mdx-components.tsx`: merges Nextra theme components with custom MDX components; entry point for adding custom shortcodes. Migrated to TypeScript.
+- `apps/docs.agent-harbor.dev/next.config.mjs`: Nextra wrapper; static export configuration.
+- `apps/docs.agent-harbor.dev/package.json`: scripts for `dev`, `build`, and `build:pagefind`; Pagefind dependency already present. Build script copies `_pagefind` to `out/`.
+- `apps/docs.agent-harbor.dev/public/_pagefind/*`: prior local build artifacts; should be regenerated in CI.
+- `apps/docs.agent-harbor.dev/app/globals.css`: global styling baseline; will need branding tokens when palette/typography are defined.
+- `apps/docs.agent-harbor.dev/tsconfig.json`: TypeScript configuration for the docs site.
+- `apps/docs.agent-harbor.dev/next-env.d.ts`: Next.js TypeScript environment declarations.
 
 ### Additional Work Items
 
