@@ -592,6 +592,10 @@ async fn handle_session_pause(
         )
         .await?;
 
+    if let Some(controller) = &state.app_state.task_controller {
+        let _ = controller.pause_task(session_id).await;
+    }
+
     Ok(json!({
         "sessionId": session_id,
         "status": "paused"
@@ -639,6 +643,10 @@ async fn handle_session_resume(
             ),
         )
         .await?;
+
+    if let Some(controller) = &state.app_state.task_controller {
+        let _ = controller.resume_task(session_id).await;
+    }
 
     Ok(json!({
         "sessionId": session_id,
