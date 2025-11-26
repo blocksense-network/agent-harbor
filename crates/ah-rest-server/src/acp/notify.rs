@@ -38,8 +38,10 @@ impl Notifier {
         let guard = self.inner.lock().await;
         if let Some(conn) = guard.as_ref() {
             conn.notify(method, params).map_err(|_e| ())?;
+            Ok(())
+        } else {
+            Err(())
         }
-        Ok(())
     }
 }
 
