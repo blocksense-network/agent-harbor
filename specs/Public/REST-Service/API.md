@@ -209,6 +209,17 @@ Example session with recent events:
 
 **Purpose:** The `recent_events` field enables SSR to pre-populate active task cards with the last 3 events, ensuring cards never show "Waiting for agent activity" and maintain fixed height from initial page load.
 
+
+#### Stream Session PTY
+
+- `GET /api/v1/sessions/{id}/pty`
+
+Streams PTY backlog followed by live terminal output for a session. Events are Server-Sent Events with `event: pty` and JSON payloads:
+- `type: "terminal"`, `encoding: "base64"`, `data`: base64-encoded bytes, `timestamp` (ms)
+- `type: "terminal_resize"`, `cols`, `rows`, `timestamp`
+
+Auth: same as other session endpoints (API key/JWT/tenant scoped). Intended for follower terminals and dashboards that do not use ACP.
+
 #### Get Session
 
 - `GET /api/v1/sessions/{id}` → session details including current status, workspace summary, recent events, and change statistics.
