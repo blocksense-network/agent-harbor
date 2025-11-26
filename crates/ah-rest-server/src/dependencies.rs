@@ -20,6 +20,16 @@ pub trait TaskController: Send + Sync {
     /// Stop a running task/session
     async fn stop_task(&self, session_id: &str) -> anyhow::Result<()>;
 
+    /// Pause a running task/session (best-effort; may be a no-op if backend lacks support).
+    async fn pause_task(&self, _session_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Resume a paused task/session (best-effort; may be a no-op if backend lacks support).
+    async fn resume_task(&self, _session_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     /// Inject a user/system message into a running task (best-effort, may noop if backend
     /// does not support live message delivery yet).
     async fn inject_message(&self, _session_id: &str, _message: &str) -> anyhow::Result<()> {
@@ -31,6 +41,16 @@ pub trait TaskController: Send + Sync {
 impl TaskController for TaskExecutor {
     async fn stop_task(&self, session_id: &str) -> anyhow::Result<()> {
         self.stop_task(session_id).await?;
+        Ok(())
+    }
+
+    async fn pause_task(&self, session_id: &str) -> anyhow::Result<()> {
+        tracing::debug!("pause_task stub for session_id={session_id}");
+        Ok(())
+    }
+
+    async fn resume_task(&self, session_id: &str) -> anyhow::Result<()> {
+        tracing::debug!("resume_task stub for session_id={session_id}");
         Ok(())
     }
 
