@@ -72,6 +72,8 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 - [ ] Fill in transport/authentication logic per Milestone 1.
 - [ ] Replace the stub router with the real JSON-RPC runtime once the SDK is wired.
+- [ ] Add `agentclientprotocol/rust-sdk` as a workspace dependency and swap the echo loop for the SDK runtime.
+- [ ] Implement stdio transport plumbing for `ah agent access-point --stdio-acp`.
 
 #### Verification
 
@@ -111,6 +113,8 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 - [ ] Replace echo handler with SDK-backed JSON-RPC runtime and stdio transport plumbing.
 - [ ] Expand authentication to JWT claims-to-tenant mapping once tenant metadata is available.
+- [x] Handle ACP `authenticate` as an RPC (not just handshake) and advertise `_meta.agent.harbor` capabilities during `initialize`.
+- [ ] Persist negotiated capabilities using SDK types instead of ad-hoc structs.
 
 #### Verification
 
@@ -139,6 +143,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - [ ] Scenario `tests/acp_bridge/scenarios/initialize_and_auth.yaml` replays the full handshake and asserts (via harness assertions) that `session/update` advertises the negotiated capabilities.
 - [x] Unit test `cargo test -p ah-rest-server acp_initialize_caps_roundtrip` validates we correctly convert between SDK structs and internal enums (including path normalization to absolute paths per ACP requirements).
 - [ ] Property test (proptest) ensures unknown capability flags are safely ignored yet logged.
+- [x] Unit test `cargo test -p ah-rest-server acp_authenticate_rpc_uses_payload_tokens` exercises the new `authenticate` RPC and checks capability advertisement includes `_meta.agent.harbor`.
 
 #### Compatibility Matrix (Harbor ↔ ACP core)
 
@@ -152,6 +157,12 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 #### Session Context Snapshot
 
 Each WebSocket connection records the negotiated capabilities and a set of session subscriptions in `AcpSessionContext`; all session RPCs are gated on a completed `initialize` call. Event subscriptions are seeded with a synthetic status notification so clients see the current lifecycle immediately after `session/new` or `session/load`.
+
+#### Outstanding Tasks
+
+- [x] Advertise `_meta.agent.harbor` capability blocks (workspace, snapshots, pipelines) during `initialize` per `specs/ACP.extensions.md`.
+- [x] Add explicit ACP `authenticate` RPC handling wired to `AuthConfig`, keeping handshake auth for transport setup.
+- [ ] Persist negotiated capabilities in shared state using SDK structs (remove bespoke capability structs).
 
 ---
 
@@ -174,15 +185,16 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Added scenario fixture `tests/acp_bridge/scenarios/session_new_and_load.yaml` to drive the mock playback store and keep Scenario Format coverage aligned with the new RPCs.
 - Session RPCs are gated on prior `initialize`, reusing the negotiated capabilities captured in `AcpSessionContext`.
 
+#### Outstanding Tasks
+
+- [ ] Support loading paused sessions by mounting the existing workspace snapshot read-only and exposing its metadata back to the ACP client.
+- [ ] Extend the Scenario Format with `userActions.pause_session` / `userActions.resume_session` primitives so harnesses can express pausing/resuming via REST or ACP semantics.
+- [ ] Create an ACP↔REST session ID cross-reference table/migration instead of reusing raw session IDs.
+- [ ] Implement pagination and project/tenant parity in `session/list` to mirror REST responses.
+
 #### Verification
 
 - [x] Integration test `cargo test -p ah-rest-server --test acp_sessions acp_session_catalog_end_to_end` dials the ACP gateway, runs `initialize → session/new → session/list → session/load`, and asserts both the response payloads and the streamed `session/update` notification include the created session.
-- [ ] Scenario `tests/acp_bridge/scenarios/session_new_and_load.yaml` creates a session, pauses it, and reloads it through ACP; assertions check that the workspace mount path inside the scenario matches the TOT snapshot provider while the new pause/resume timeline events drive both REST and ACP clients appropriately.
-- [ ] Integration test `cargo test -p ah-rest-server --test acp_session_catalog` uses the mock TaskManager backend to create sessions via REST and ensure ACP `session/list` mirrors them (including pagination).
-- [ ] Database migration test ensures the cross-reference table enforces foreign keys and cleans up orphaned rows when sessions are deleted.
-
-#### Verification
-
 - [ ] Scenario `tests/acp_bridge/scenarios/session_new_and_load.yaml` creates a session, pauses it, and reloads it through ACP; assertions check that the workspace mount path inside the scenario matches the TOT snapshot provider while the new pause/resume timeline events drive both REST and ACP clients appropriately.
 - [ ] Integration test `cargo test -p ah-rest-server --test acp_session_catalog` uses the mock TaskManager backend to create sessions via REST and ensure ACP `session/list` mirrors them (including pagination).
 - [ ] Database migration test ensures the cross-reference table enforces foreign keys and cleans up orphaned rows when sessions are deleted.
@@ -233,6 +245,11 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Added REST SSE endpoint `/api/v1/sessions/{id}/pty` streaming PTY backlog + live output (`event: pty`, base64 payloads and resizes) to mirror ACP terminal updates for non-ACP clients. `_ah/terminal/detach` ACP notification emits a `terminal_detach` event on the update stream. Scenario stub `tests/acp_bridge/scenarios/terminal_follow_detach.yaml` documents the happy path for follow/write/detach; UI wiring remains.
 - Added REST SSE endpoint `/api/v1/sessions/{id}/pty` streaming PTY backlog + live output (`event: pty`, base64 payloads and resizes) to mirror ACP terminal updates for non-ACP clients. `_ah/terminal/detach` ACP notification emits a `terminal_detach` event on the update stream.
 
+#### Outstanding Tasks
+
+- [ ] Wire `session/prompt` / `session/cancel` / pause/resume to guaranteed TaskManager delivery with execution-id correlation instead of best-effort logging/injection.
+- [ ] Derive follower commands and terminal streams from recorded executions (not client-supplied command strings) to avoid spoofing and align with recorder metadata.
+
 #### Key Implementation Files
 
 - `crates/ah-rest-server/src/acp/transport.rs` — prompt/cancel handlers, event flush tweaks.
@@ -258,6 +275,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [ ] Add basic regression tests (`ah-command-trace-e2e-tests`) that prove the shim loads, rewrites commands, and fails open when env injection or sockets are unavailable.
 - [ ] Automatically create filesystem snapshots after every tool execution and after every file write detected by the shim. For file writes, capture the diff against the previous snapshot for the affected file and emit it as an ACP `diff` content block (or via REST diff endpoints) so clients can show before/after views without re-reading the workspace.
 - [ ] Track writes to agent session files (per agent type) and maintain a mapping between the snapshot taken for those writes and the session file update event. This mapping allows restoring session files to the correct state when a snapshot is restored or branched.
+- [ ] Derive follower commands from recorded executions (not caller-supplied), replay PTY backlog via recorder sockets, and support multiple simultaneous followers.
 
 #### Implementation Details (current)
 
