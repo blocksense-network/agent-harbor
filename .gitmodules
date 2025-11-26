@@ -10,3 +10,7 @@
 [submodule "vendor/rust-sdk"]
 	path = vendor/rust-sdk
 	url = https://github.com/agentclientprotocol/rust-sdk
+[submodule "vendor/acp-rust-sdk"]
+    path = vendor/acp-rust-sdk
+    url = git@github.com:blocksense-network/acp-rust-sdk.git
+    branch = agent-harbor

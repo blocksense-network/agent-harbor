@@ -105,7 +105,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 
 # ACP runtime (vendored)
-agent-client-protocol = { path = "../../vendor/rust-sdk" }
+agent-client-protocol = { path = "../../vendor/acp-rust-sdk" }
 tokio-tungstenite = "0.23"
 tungstenite = "0.23"
 proptest = "1.4"

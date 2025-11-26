@@ -71,26 +71,33 @@ impl AcpGateway {
     /// Run the gateway. In Milestone 0 this serves a stub route that returns a
     /// 501 to make the binding observable without changing behavior.
     pub async fn run(self) -> AcpResult<()> {
-        if let Some(listener) = self.listener {
-            let auth = AuthConfig {
-                api_key: self.state.config.api_key.clone(),
-                jwt_secret: self.state.config.jwt_secret.clone(),
-            };
-            let permits =
-                std::sync::Arc::new(tokio::sync::Semaphore::new(self._config.connection_limit));
-            let idle = std::time::Duration::from_secs(self._config.idle_timeout_secs);
+        let auth = AuthConfig {
+            api_key: self.state.config.api_key.clone(),
+            jwt_secret: self.state.config.jwt_secret.clone(),
+        };
+        let permits =
+            std::sync::Arc::new(tokio::sync::Semaphore::new(self._config.connection_limit));
+        let idle = std::time::Duration::from_secs(self._config.idle_timeout_secs);
+        let transport_state = transport::AcpTransportState {
+            auth,
+            permits,
+            idle_timeout: idle,
+            config: self._config.clone(),
+            app_state: self.state.clone(),
+        };
 
-            let app = transport::router(transport::AcpTransportState {
-                auth,
-                permits,
-                idle_timeout: idle,
-                config: self._config.clone(),
-                app_state: self.state.clone(),
-            });
-            axum::serve(listener, app).await?;
+        match self._config.transport {
+            crate::config::AcpTransportMode::WebSocket => {
+                if let Some(listener) = self.listener {
+                    let app = transport::router(transport_state);
+                    axum::serve(listener, app).await?;
+                }
+            }
+            crate::config::AcpTransportMode::Stdio => {
+                transport::run_stdio(transport_state).await?;
+            }
         }
 
-        // Stdio transport will be wired up in Milestone 1.
         Ok(())
     }
 }

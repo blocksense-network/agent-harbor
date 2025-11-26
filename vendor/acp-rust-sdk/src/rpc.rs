@@ -23,18 +23,144 @@ use futures::{
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
 use serde_json::value::RawValue;
 
 use super::stream_broadcast::{StreamBroadcast, StreamReceiver, StreamSender};
+
+/// Stateless dispatcher that converts JSON-RPC messages into typed requests/notifications
+/// and produces responses as `serde_json::Value`. This allows embedders to supply their own
+/// transport/framing (e.g., WebSocket text frames) while reusing the SDK's decoding/dispatch
+/// logic.
+pub struct RpcDispatcher<Local: Side, Remote: Side> {
+    _marker: std::marker::PhantomData<(Local, Remote)>,
+}
+
+impl<Local: Side, Remote: Side> Default for RpcDispatcher<Local, Remote> {
+    fn default() -> Self {
+        Self {
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<Local: Side, Remote: Side> RpcDispatcher<Local, Remote> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Handle a parsed JSON-RPC message. Returns an optional response payload to send.
+    pub(crate) async fn handle_value(
+        &mut self,
+        value: Value,
+        incoming_tx: &UnboundedSender<IncomingMessage<Local>>,
+        pending_responses: &Arc<Mutex<HashMap<Id, PendingResponse>>>,
+        broadcast: &StreamSender,
+    ) -> Option<Value> {
+        match serde_json::from_value::<RawIncomingOwned>(value) {
+            Ok(message) => {
+                let params_raw = message
+                    .params
+                    .as_ref()
+                    .and_then(|v| serde_json::to_string(v).ok())
+                    .and_then(|s| RawValue::from_string(s).ok());
+                let result_raw = message
+                    .result
+                    .as_ref()
+                    .and_then(|v| serde_json::to_string(v).ok())
+                    .and_then(|s| RawValue::from_string(s).ok());
+                let borrowed = RawIncomingMessage {
+                    id: message.id,
+                    method: message.method.as_deref(),
+                    params: params_raw.as_deref(),
+                    result: result_raw.as_deref(),
+                    error: message.error,
+                };
+                self.handle_raw(borrowed, incoming_tx, pending_responses, broadcast).await
+            }
+            Err(err) => {
+                log::debug!("Error decoding message: {}", err);
+                None
+            }
+        }
+    }
+
+    async fn handle_raw<'a>(
+        &mut self,
+        message: RawIncomingMessage<'a>,
+        incoming_tx: &UnboundedSender<IncomingMessage<Local>>,
+        pending_responses: &Arc<Mutex<HashMap<Id, PendingResponse>>>,
+        broadcast: &StreamSender,
+    ) -> Option<Value> {
+        if let Some(id) = message.id.clone() {
+            if let Some(method) = message.method.clone() {
+                // Request
+                match Local::decode_request(method, message.params) {
+                    Ok(request) => {
+                        broadcast.incoming_request(id.clone(), method, &request);
+                        let _ =
+                            incoming_tx.unbounded_send(IncomingMessage::Request { id, request });
+                    }
+                    Err(err) => {
+                        broadcast.incoming_response(id.clone(), Err(&err));
+                        let response = OutgoingMessage::<Local, Remote>::Response {
+                            id,
+                            result: ResponseResult::Error(err),
+                        };
+                        return Some(serde_json::to_value(JsonRpcMessage::wrap(&response)).ok()?);
+                    }
+                }
+            } else if let Some(pending_response) = pending_responses.lock().remove(&id) {
+                // Response
+                if let Some(result_value) = message.result {
+                    broadcast.incoming_response(id.clone(), Ok(Some(result_value)));
+                    let result = (pending_response.deserialize)(result_value);
+                    pending_response.respond.send(result).ok();
+                } else if let Some(error) = message.error {
+                    broadcast.incoming_response(id.clone(), Err(&error));
+                    pending_response.respond.send(Err(error)).ok();
+                } else {
+                    broadcast.incoming_response(id.clone(), Ok(None));
+                    let result = (pending_response.deserialize)(
+                        &RawValue::from_string("null".into()).unwrap(),
+                    );
+                    pending_response.respond.send(result).ok();
+                }
+            } else {
+                log::error!("received response for unknown request id: {id:?}");
+            }
+        } else if let Some(method) = message.method {
+            // Notification
+            match Local::decode_notification(method, message.params) {
+                Ok(notification) => {
+                    broadcast.incoming_notification(method, &notification);
+                    let _ =
+                        incoming_tx.unbounded_send(IncomingMessage::Notification { notification });
+                }
+                Err(err) => log::debug!("Error decoding notification: {}", err),
+            }
+        }
+        None
+    }
+
+    /// Format an outgoing message (response/notification) as JSON value.
+    pub fn outgoing_to_value(
+        &self,
+        message: &OutgoingMessage<Local, Remote>,
+    ) -> Result<Value, Error> {
+        serde_json::to_value(JsonRpcMessage::wrap(message)).map_err(Error::into_internal_error)
+    }
+}
 
 pub struct RpcConnection<Local: Side, Remote: Side> {
     outgoing_tx: UnboundedSender<OutgoingMessage<Local, Remote>>,
     pending_responses: Arc<Mutex<HashMap<Id, PendingResponse>>>,
     next_id: AtomicI64,
     broadcast: StreamBroadcast,
+    dispatcher: Arc<Mutex<RpcDispatcher<Local, Remote>>>,
 }
 
-struct PendingResponse {
+pub(crate) struct PendingResponse {
     deserialize: fn(&serde_json::value::RawValue) -> Result<Box<dyn Any + Send>, Error>,
     respond: oneshot::Sender<Result<Box<dyn Any + Send>, Error>>,
 }
@@ -58,9 +184,11 @@ where
 
         let pending_responses = Arc::new(Mutex::new(HashMap::default()));
         let (broadcast_tx, broadcast) = StreamBroadcast::new();
+        let dispatcher = Arc::new(Mutex::new(RpcDispatcher::new()));
 
         let io_task = {
             let pending_responses = pending_responses.clone();
+            let dispatcher = dispatcher.clone();
             async move {
                 let result = Self::handle_io(
                     incoming_tx,
@@ -69,6 +197,7 @@ where
                     incoming_bytes,
                     pending_responses.clone(),
                     broadcast_tx,
+                    dispatcher,
                 )
                 .await;
                 pending_responses.lock().clear();
@@ -83,6 +212,7 @@ where
             pending_responses,
             next_id: AtomicI64::new(0),
             broadcast,
+            dispatcher,
         };
 
         (this, io_task)
@@ -117,11 +247,9 @@ where
             id.clone(),
             PendingResponse {
                 deserialize: |value| {
-                    serde_json::from_str::<Out>(value.get())
-                        .map(|out| Box::new(out) as _)
-                        .map_err(|_| {
-                            Error::internal_error().with_data("failed to deserialize response")
-                        })
+                    serde_json::from_str::<Out>(value.get()).map(|out| Box::new(out) as _).map_err(
+                        |_| Error::internal_error().with_data("failed to deserialize response"),
+                    )
                 },
                 respond: tx,
             },
@@ -156,6 +284,7 @@ where
         incoming_bytes: impl Unpin + AsyncRead,
         pending_responses: Arc<Mutex<HashMap<Id, PendingResponse>>>,
         broadcast: StreamSender,
+        dispatcher: Arc<Mutex<RpcDispatcher<Local, Remote>>>,
     ) -> Result<()> {
         // TODO: Create nicer abstraction for broadcast
         let mut input_reader = BufReader::new(incoming_bytes);
@@ -181,68 +310,17 @@ where
                     }
                     log::trace!("recv: {}", &incoming_line);
 
-                    match serde_json::from_str::<RawIncomingMessage>(&incoming_line) {
-                        Ok(message) => {
-                            if let Some(id) = message.id {
-                                if let Some(method) = message.method {
-                                    // Request
-                                    match Local::decode_request(method, message.params) {
-                                        Ok(request) => {
-                                            broadcast.incoming_request(id.clone(), method, &request);
-                                            incoming_tx.unbounded_send(IncomingMessage::Request { id, request }).ok();
-                                        }
-                                        Err(err) => {
-                                            outgoing_line.clear();
-                                            let error_response = OutgoingMessage::<Local, Remote>::Response {
-                                                id,
-                                                result: ResponseResult::Error(err),
-                                            };
-
-                                            serde_json::to_writer(&mut outgoing_line, &JsonRpcMessage::wrap(&error_response))?;
-                                            log::trace!("send: {}", String::from_utf8_lossy(&outgoing_line));
-                                            outgoing_line.push(b'\n');
-                                            outgoing_bytes.write_all(&outgoing_line).await.ok();
-                                            broadcast.outgoing(&error_response);
-                                        }
-                                    }
-                                } else if let Some(pending_response) = pending_responses.lock().remove(&id) {
-                                    // Response
-                                    if let Some(result_value) = message.result {
-                                        broadcast.incoming_response(id, Ok(Some(result_value)));
-
-                                        let result = (pending_response.deserialize)(result_value);
-                                        pending_response.respond.send(result).ok();
-                                    } else if let Some(error) = message.error {
-                                        broadcast.incoming_response(id, Err(&error));
-
-                                        pending_response.respond.send(Err(error)).ok();
-                                    } else {
-                                        broadcast.incoming_response(id, Ok(None));
-
-                                        let result = (pending_response.deserialize)(&RawValue::from_string("null".into()).unwrap());
-                                        pending_response.respond.send(result).ok();
-                                    }
-                                } else {
-                                    log::error!("received response for unknown request id: {id:?}");
-                                }
-                            } else if let Some(method) = message.method {
-                                // Notification
-                                match Local::decode_notification(method, message.params) {
-                                    Ok(notification) => {
-                                        broadcast.incoming_notification(method, &notification);
-                                        incoming_tx.unbounded_send(IncomingMessage::Notification { notification }).ok();
-                                    }
-                                    Err(err) => {
-                                        log::error!("failed to decode {:?}: {err}", message.params);
-                                    }
-                                }
-                            } else {
-                                log::error!("received message with neither id nor method");
-                            }
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&incoming_line) {
+                        if let Some(response) = dispatcher.lock().handle_value(value, &incoming_tx, &pending_responses, &broadcast).await {
+                            outgoing_line.clear();
+                            serde_json::to_writer(&mut outgoing_line, &response).map_err(Error::into_internal_error)?;
+                            log::trace!("send: {}", String::from_utf8_lossy(&outgoing_line));
+                            outgoing_line.push(b'\n');
+                            outgoing_bytes.write_all(&outgoing_line).await.ok();
+                            broadcast.outgoing_json(&response);
                         }
-                        Err(error) => {
-                            log::error!("failed to parse incoming message: {error}. Raw: {incoming_line}");
-                        }
+                    } else {
+                        log::debug!("failed to parse incoming message: {}", incoming_line.trim());
                     }
                     incoming_line.clear();
                 }
@@ -317,7 +395,19 @@ struct RawIncomingMessage<'a> {
     error: Option<Error>,
 }
 
-enum IncomingMessage<Local: Side> {
+#[derive(Deserialize)]
+struct RawIncomingOwned {
+    id: Option<Id>,
+    method: Option<String>,
+    params: Option<serde_json::Value>,
+    result: Option<serde_json::Value>,
+    error: Option<Error>,
+}
+
+/// Incoming message decoded for a given side. Exposed so embedders can drive
+/// the dispatcher using custom transports (e.g., WebSockets) while reusing the
+/// SDK's decoding and handler wiring.
+pub enum IncomingMessage<Local: Side> {
     Request { id: Id, request: Local::InRequest },
     Notification { notification: Local::InNotification },
 }
@@ -352,6 +442,74 @@ pub struct JsonRpcMessage<M> {
     jsonrpc: &'static str,
     #[serde(flatten)]
     message: M,
+}
+
+/// Helper that exposes a Value-based driver around the dispatcher so custom
+/// transports (WebSockets, HTTP streaming, etc.) can feed parsed JSON values
+/// into the SDK without using the built-in line-oriented IO task. The driver
+/// keeps the same request/notification decoding semantics and surfaces decoded
+/// messages via an `UnboundedReceiver`.
+pub struct ValueDispatcher<Local: Side, Remote: Side> {
+    dispatcher: RpcDispatcher<Local, Remote>,
+    incoming_tx: UnboundedSender<IncomingMessage<Local>>,
+    incoming_rx: Option<UnboundedReceiver<IncomingMessage<Local>>>,
+    pending_responses: Arc<Mutex<HashMap<Id, PendingResponse>>>,
+    broadcast: StreamSender,
+}
+
+impl<Local: Side, Remote: Side> ValueDispatcher<Local, Remote> {
+    /// Create a new value-driven dispatcher alongside a receiver for decoded
+    /// incoming messages and a stream receiver for broadcast/telemetry.
+    pub fn new() -> (Self, StreamReceiver) {
+        let (incoming_tx, incoming_rx) = mpsc::unbounded();
+        let pending_responses = Arc::new(Mutex::new(HashMap::default()));
+        let (broadcast, broadcast_state) = StreamBroadcast::new();
+        let rx = broadcast_state.receiver();
+        (
+            Self {
+                dispatcher: RpcDispatcher::new(),
+                incoming_tx,
+                incoming_rx: Some(incoming_rx),
+                pending_responses,
+                broadcast,
+            },
+            rx,
+        )
+    }
+}
+
+impl<Local: Side, Remote: Side> ValueDispatcher<Local, Remote> {
+    /// Feed a parsed JSON value into the dispatcher. Returns an optional JSON
+    /// value that should be sent back to the remote peer immediately (e.g.,
+    /// decoding errors or responses to requests initiated by the local side).
+    pub async fn handle_json(&mut self, value: Value) -> Option<Value> {
+        self.dispatcher
+            .handle_value(
+                value,
+                &self.incoming_tx,
+                &self.pending_responses,
+                &self.broadcast,
+            )
+            .await
+    }
+
+    /// Return the receiver for decoded incoming messages.
+    pub fn take_incoming(&mut self) -> UnboundedReceiver<IncomingMessage<Local>> {
+        self.incoming_rx.take().unwrap_or_else(|| mpsc::unbounded().1)
+    }
+
+    /// Format an outgoing message (response/notification) as a JSON value.
+    pub fn outgoing_to_value(
+        &self,
+        message: &OutgoingMessage<Local, Remote>,
+    ) -> Result<Value, Error> {
+        self.dispatcher.outgoing_to_value(message)
+    }
+
+    /// Access the broadcast stream sender (useful for tests/telemetry).
+    pub(crate) fn broadcast(&self) -> StreamSender {
+        self.broadcast.clone()
+    }
 }
 
 impl<M> JsonRpcMessage<M> {
