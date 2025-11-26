@@ -28,6 +28,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - Added ACP pagination regression test (`acp_session_list_pagination`) to lock in offset/limit slicing on `session/list`.
 - Prompt/cancel/pause/resume now require a live `TaskController` and propagate errors instead of silently best-effort delivery; mock dependencies ship a lightweight controller so scenario/integration tests still run.
 - Terminal follow now derives follower commands strictly from recorder/tool metadata; when metadata is missing (mock sessions), a synthetic `tool_use` event is recorded instead of trusting raw client strings.
+- Send-safe notifier path added: per-connection SDK `AgentSideConnection::notify` now runs on a dedicated single-thread runtime behind a channel, so we can migrate `session/update` to typed SDK notifications when ready without `Send` issues.
 
 ## Test Strategy
 
