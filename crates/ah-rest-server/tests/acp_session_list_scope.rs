@@ -114,22 +114,17 @@ async fn acp_session_list_scopes_to_jwt_tenant() {
         ))
         .await
         .unwrap();
-    let list = socket2.next().await.unwrap().unwrap();
-    if let WsMessage::Text(text) = list {
-        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        let items = value.pointer("/result/items").and_then(|v| v.as_array()).unwrap();
-        assert_eq!(items.len(), 1);
-        assert_eq!(
-            items[0].get("id").and_then(|v| v.as_str()),
-            Some(tenant_session_id.as_str())
-        );
-        assert_eq!(
-            items[0].get("tenantId").and_then(|v| v.as_str()),
-            Some("tenant-1")
-        );
-    } else {
-        panic!("unexpected frame");
-    }
+    let list = read_response(&mut socket2, 12).await;
+    let items = list.pointer("/result/items").and_then(|v| v.as_array()).unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].get("id").and_then(|v| v.as_str()),
+        Some(tenant_session_id.as_str())
+    );
+    assert_eq!(
+        items[0].get("tenantId").and_then(|v| v.as_str()),
+        Some("tenant-1")
+    );
 
     handle.abort();
 }
