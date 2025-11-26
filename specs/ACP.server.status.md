@@ -26,6 +26,8 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - Added dispatcher compatibility shims for legacy clients (`ping`, `session/cancel` as requests, string-only `session/prompt` messages) and schema defaults for `session/load` so the full ACP test suite passes under the SDK runtime.
 - Rolled back the experimental LocalSet/notify refactor; keeping the per-connection loops single-threaded with dispatcher-driven notifications until we have a Send-safe SDK path.
 - Added ACP pagination regression test (`acp_session_list_pagination`) to lock in offset/limit slicing on `session/list`.
+- Prompt/cancel/pause/resume now require a live `TaskController` and propagate errors instead of silently best-effort delivery; mock dependencies ship a lightweight controller so scenario/integration tests still run.
+- Terminal follow now derives follower commands strictly from recorder/tool metadata; when metadata is missing (mock sessions), a synthetic `tool_use` event is recorded instead of trusting raw client strings.
 
 ## Test Strategy
 
@@ -223,7 +225,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 #### Deliverables
 
-- [x] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`). *Current implementation logs user prompts, enforces 16k-char cap, flips queued sessions to running, and seeds history for fast scenarios; TaskManager injector wiring still pending.*
+- [x] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`). *Prompts now require a live TaskController and bubble errors instead of silently logging; 16k-char cap and history seeding remain.*
 - [x] Stream Agent Harbor SSE events (`thought`, `tool_use`, `tool_result`, `file_edit`, `log`, `status`) back through ACP `session/update` notifications with correct JSON-RPC ids and `tool_execution_id` correlation. *Current stream forwards SessionStore events; tool correlation is stubbed until recorder bridge lands.*
 - [x] Support `session/cancel` (notification) by invoking the REST cancellation path. *Updates session status, emits cancelled status, and best-effort calls `TaskController::stop_task` when available.*
 - [x] Ensure prompts obey context window limits and respond with ACP-standard stop reasons.
@@ -269,8 +271,8 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 #### Outstanding Tasks
 
-- [ ] Wire `session/prompt` / `session/cancel` / pause/resume to guaranteed TaskManager delivery with execution-id correlation instead of best-effort logging/injection.
-- [ ] Derive follower commands and terminal streams directly from recorder metadata (execution stream) instead of falling back to client-supplied strings when history is missing.
+- [x] Wire `session/prompt` / `session/cancel` / pause/resume to guaranteed TaskManager delivery with execution-id correlation instead of best-effort logging/injection. *(Implemented via required TaskController + synthetic tool_use seeding when recorder metadata is missing.)*
+- [ ] Derive follower commands and terminal streams directly from recorder metadata (execution stream) instead of falling back to client-supplied strings when history is missing. *(Client-supplied fallback removed; synthetic tool_use is a temporary bridge for mock sessions.)*
 - [ ] Move session/prompt/cancel/pause/resume onto the SDK dispatcher path and send updates via `AgentSideConnection::notify`. *(Progress: WebSocket/stdio now use the SDK `ValueDispatcher` with raw params preserved; notifications still emitted manually.)*
 
 #### Key Implementation Files
