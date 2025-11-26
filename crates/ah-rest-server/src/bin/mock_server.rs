@@ -36,6 +36,10 @@ struct Args {
     /// Playback speed multiplier (e.g. 0.2 for 5× faster, 2.0 for slower)
     #[arg(long = "scenario-speed", default_value_t = 1.0)]
     scenario_speed: f64,
+
+    /// Seconds to keep connections open after a scenario timeline completes (helps tests capture trailing events)
+    #[arg(long = "scenario-linger-secs")]
+    scenario_linger_secs: Option<f64>,
 }
 
 #[tokio::main]
@@ -58,6 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         speed_multiplier: args.scenario_speed.max(0.01),
         ..Default::default()
     };
+    playback.linger_after_timeline_secs = args.scenario_linger_secs;
     if !args.scenarios.is_empty() {
         playback.scenario_files = args.scenarios.clone();
     } else if let Ok(env_path) = std::env::var("AH_SCENARIO_DIR") {
