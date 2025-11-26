@@ -201,6 +201,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] Ensure prompts obey context window limits and respond with ACP-standard stop reasons.
 - [x] Reject over-budget `session/new` prompts with `stopReason: context_limit` and no side effects on the session store.
 - [x] Enforce legacy Scenario Format fixtures (`events` + `assertions`) in the mock playback store so ACP scenario tests emit expected status/log/thought events and fail fast when assertions are missing.
+- [x] Add ACP `session/pause` / `session/resume` handlers that update session status and broadcast `session/update` events; verified with pause/resume scenario + RPC tests.
 
 #### Verification
 
@@ -211,6 +212,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] `cargo test -p ah-rest-server --test acp_prompt acp_prompt_rejects_on_context_limit` rejects over-budget prompts with `stopReason: context_limit` and avoids echoing them into session logs.
 - [x] `cargo test -p ah-rest-server --test acp_sessions acp_session_new_respects_context_limit` rejects oversized initial prompts with `stopReason: context_limit` and suppresses `session/update` fanout.
 - [x] Scenario `tests/acp_bridge/scenarios/initialize_and_auth.yaml` + integration test `cargo test -p ah-rest-server --test acp_initialize_and_auth_scenario_succeeds` validate the initialize/auth handshake and streamed status transitions using legacy `events`/`assertions`.
+- [x] Scenario `tests/acp_bridge/scenarios/pause_resume.yaml` + integration tests `cargo test -p ah-rest-server --test acp_pause_resume acp_pause_resume_status_streams` and `cargo test -p ah-rest-server --test acp_pause_resume acp_pause_and_resume_rpcs_emit_status` validate paused → resumed → completed status streaming and the new pause/resume RPCs.
 - [ ] Scenario playback assertions are exercised automatically in CI once ACP-specific fixtures supply `assertions:` blocks (mock store now evaluates them).
 
 #### Implementation Details (current)
