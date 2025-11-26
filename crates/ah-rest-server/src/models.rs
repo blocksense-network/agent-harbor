@@ -152,7 +152,8 @@ impl SessionStore for InMemorySessionStore {
                     .ok();
                 self.broadcasters.write().await.insert(session_id.clone(), tx);
 
-                session_ids.push(session_id);
+                session_ids.push(session_id.clone());
+
             }
         }
 
@@ -314,11 +315,17 @@ fn map_log_level(level: LogLevel) -> SessionLogLevel {
 /// Database-backed session store implementation
 pub struct DatabaseSessionStore {
     db: Arc<Database>,
+    events: tokio::sync::RwLock<HashMap<String, Vec<SessionEvent>>>,
+    broadcasters: tokio::sync::RwLock<HashMap<String, broadcast::Sender<SessionEvent>>>,
 }
 
 impl DatabaseSessionStore {
     pub fn new(db: Arc<Database>) -> Self {
-        Self { db }
+        Self {
+            db,
+            events: tokio::sync::RwLock::new(HashMap::new()),
+            broadcasters: tokio::sync::RwLock::new(HashMap::new()),
+        }
     }
 
     /// Convert API contract SessionStatus to database string
@@ -487,13 +494,6 @@ impl SessionStore for DatabaseSessionStore {
     async fn create_session(&self, request: &CreateTaskRequest) -> anyhow::Result<Vec<String>> {
         let mut session_ids = Vec::new();
 
-        // Get database connection
-        let conn = self
-            .db
-            .connection()
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
-
         for agent_config in &request.agents {
             for instance in 0..agent_config.count {
                 let session_id = if request.agents.len() == 1 && agent_config.count == 1 {
@@ -508,62 +508,83 @@ impl SessionStore for DatabaseSessionStore {
                     format!("{}-{}-{}", uuid::Uuid::new_v4(), agent_index, instance)
                 };
 
-                // Create session record
-                let session_record = SessionRecord {
-                    id: session_id.clone(),
-                    repo_id: None,
-                    workspace_id: None,
-                    agent_id: None,
-                    runtime_id: None,
-                    multiplexer_kind: Some("tmux".to_string()),
-                    mux_session: None,
-                    mux_window: None,
-                    pane_left: None,
-                    pane_right: None,
-                    pid_agent: None,
-                    status: "queued".to_string(),
-                    log_path: None,
-                    workspace_path: None,
-                    started_at: Utc::now().to_rfc3339(),
-                    ended_at: None,
-                    agent_config: Some(
-                        serde_json::to_string(agent_config).unwrap_or("{}".to_string()),
-                    ),
-                    runtime_config: Some(
-                        serde_json::to_string(&request.runtime).unwrap_or("{}".to_string()),
-                    ),
-                };
+                {
+                    // DB writes scoped to avoid holding the connection across awaits
+                    let conn = self
+                        .db
+                        .connection()
+                        .lock()
+                        .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+                    let session_store = DbSessionStore::new(&conn);
+                    let task_store = DbTaskStore::new(&conn);
 
-                let session_store = DbSessionStore::new(&conn);
-                session_store.insert(&session_record)?;
+                    let session_record = SessionRecord {
+                        id: session_id.clone(),
+                        repo_id: None,
+                        workspace_id: None,
+                        agent_id: None,
+                        runtime_id: None,
+                        multiplexer_kind: Some("tmux".to_string()),
+                        mux_session: None,
+                        mux_window: None,
+                        pane_left: None,
+                        pane_right: None,
+                        pid_agent: None,
+                        status: "queued".to_string(),
+                        log_path: None,
+                        workspace_path: None,
+                        started_at: Utc::now().to_rfc3339(),
+                        ended_at: None,
+                        agent_config: Some(
+                            serde_json::to_string(agent_config).unwrap_or("{}".to_string()),
+                        ),
+                        runtime_config: Some(
+                            serde_json::to_string(&request.runtime).unwrap_or("{}".to_string()),
+                        ),
+                    };
+                    session_store.insert(&session_record)?;
 
-                // Create task record
-                let task_record = TaskRecord {
-                    id: 0, // Will be set by database
-                    session_id: session_id.clone(),
-                    prompt: request.prompt.clone(),
-                    repo_url: request.repo.url.as_ref().map(|u| u.to_string()),
-                    branch: request.repo.branch.clone(),
-                    commit: request.repo.commit.clone(),
-                    delivery: None, // TODO: Map delivery config
-                    instances: None,
-                    labels: if request.labels.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            serde_json::to_string(&request.labels).unwrap_or("default".to_string()),
-                        )
-                    },
-                    browser_automation: 1, // Default enabled
-                    browser_profile: None,
-                    chatgpt_username: None,
-                    codex_workspace: None,
-                };
+                    let task_record = TaskRecord {
+                        id: 0, // Will be set by database
+                        session_id: session_id.clone(),
+                        prompt: request.prompt.clone(),
+                        repo_url: request.repo.url.as_ref().map(|u| u.to_string()),
+                        branch: request.repo.branch.clone(),
+                        commit: request.repo.commit.clone(),
+                        delivery: None, // TODO: Map delivery config
+                        instances: None,
+                        labels: if request.labels.is_empty() {
+                            None
+                        } else {
+                            Some(
+                                serde_json::to_string(&request.labels)
+                                    .unwrap_or("default".to_string()),
+                            )
+                        },
+                        browser_automation: 1, // Default enabled
+                        browser_profile: None,
+                        chatgpt_username: None,
+                        codex_workspace: None,
+                    };
+                    task_store.insert(&task_record)?;
+                }
 
-                let task_store = DbTaskStore::new(&conn);
-                task_store.insert(&task_record)?;
+                session_ids.push(session_id.clone());
 
-                session_ids.push(session_id);
+                // Seed per-session event history and broadcaster (in-memory)
+                let (tx, _) = broadcast::channel(128);
+                let status_event = SessionEvent::status(
+                    SessionStatus::Queued,
+                    Utc::now().timestamp_millis() as u64,
+                );
+                {
+                    let mut events = self.events.write().await;
+                    events.insert(session_id.clone(), vec![status_event.clone()]);
+                }
+                self.broadcasters.write().await.insert(session_id.clone(), tx);
+                if let Some(sender) = self.broadcasters.read().await.get(&session_id) {
+                    let _ = sender.send(status_event);
+                }
             }
         }
 
@@ -590,17 +611,39 @@ impl SessionStore for DatabaseSessionStore {
 
     async fn update_session(
         &self,
-        _session_id: &str,
+        session_id: &str,
         session: &InternalSession,
     ) -> anyhow::Result<()> {
         let record = Self::internal_session_to_record(session);
-        let conn = self
-            .db
-            .connection()
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
-        let session_store = DbSessionStore::new(&conn);
-        session_store.update(&record)?;
+        {
+            let conn = self
+                .db
+                .connection()
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+            let session_store = DbSessionStore::new(&conn);
+            session_store.update(&record)?;
+        }
+
+        // If status changed, emit event
+        let mut events_guard = self.events.write().await;
+        let entry = events_guard.entry(session_id.to_string()).or_default();
+        if let Some(last) = entry.last() {
+            if let SessionEvent::Status(prev) = last {
+                if prev.status != session.session.status {
+                    let evt = SessionEvent::status(
+                        session.session.status.clone(),
+                        Utc::now().timestamp_millis() as u64,
+                    );
+                    entry.push(evt.clone());
+                    drop(events_guard);
+                    if let Some(sender) = self.broadcasters.read().await.get(session_id) {
+                        let _ = sender.send(evt);
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -643,10 +686,16 @@ impl SessionStore for DatabaseSessionStore {
 
     async fn add_session_event(
         &self,
-        _session_id: &str,
-        _event: SessionEvent,
+        session_id: &str,
+        event: SessionEvent,
     ) -> anyhow::Result<()> {
-        // TODO: Implement event storage in database
+        {
+            let mut events = self.events.write().await;
+            events.entry(session_id.to_string()).or_default().push(event.clone());
+        }
+        if let Some(sender) = self.broadcasters.read().await.get(session_id) {
+            let _ = sender.send(event);
+        }
         Ok(())
     }
 
@@ -665,7 +714,20 @@ impl SessionStore for DatabaseSessionStore {
     }
 
     async fn get_session_events(&self, _session_id: &str) -> anyhow::Result<Vec<SessionEvent>> {
-        // TODO: Implement event retrieval from database
-        Ok(vec![])
+        let events = self.events.read().await;
+        Ok(events
+            .get(_session_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    fn subscribe_session_events(
+        &self,
+        session_id: &str,
+    ) -> Option<broadcast::Receiver<SessionEvent>> {
+        self.broadcasters
+            .try_read()
+            .ok()
+            .and_then(|map| map.get(session_id).map(|tx| tx.subscribe()))
     }
 }
