@@ -10,7 +10,7 @@ timeline:
       program: bash
       env:
         # Allow tests to locate the built ah binary supplied by the harness
-        AH_BIN: "${AH_BIN:-}"
+        AH_BIN: '${AH_BIN:-}'
       args:
         - -lc
         - |

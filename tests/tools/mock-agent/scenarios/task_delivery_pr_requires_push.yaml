@@ -12,17 +12,17 @@ timeline:
         - create
         - pr-branch
         - --prompt
-        - "PR delivery requires push"
+        - 'PR delivery requires push'
         - --delivery
         - pr
         - --target-branch
         - main
         - --non-interactive
         - --push-to-remote
-        - "false"
+        - 'false'
       expect:
         exitCode: 1
-        stderrContains: "requires pushing"
+        stderrContains: 'requires pushing'
   - assertGit:
       branch: pr-branch
       exists: false
