@@ -298,7 +298,7 @@ async fn handle_rpc(
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
-        "_ah/terminal/follow" => match handle_terminal_follow(sender, params).await {
+        "_ah/terminal/follow" => match handle_terminal_follow(state, sender, params).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
@@ -403,6 +403,7 @@ async fn handle_terminal_write(
 }
 
 async fn handle_terminal_follow(
+    state: &AcpTransportState,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -423,6 +424,37 @@ async fn handle_terminal_follow(
 
     let update = terminal_follow_update(session_id, execution_id, &cmd);
     let _ = send_json(sender, update).await;
+
+    // Attempt to stream PTY backlog + live updates when available.
+    if let Some(controller) = &state.app_state.task_controller {
+        match controller.subscribe_pty(session_id).await {
+            Ok((backlog, mut rx)) => {
+                for msg in backlog {
+                    if matches!(
+                        msg,
+                        TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
+                    ) {
+                        let _ = send_json(sender, pty_to_update(session_id, &msg)).await;
+                    }
+                }
+                let sender_clone = Arc::clone(sender);
+                let session = session_id.to_string();
+                tokio::spawn(async move {
+                    while let Ok(msg) = rx.recv().await {
+                        if matches!(
+                            msg,
+                            TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
+                        ) {
+                            let _ = send_json(&sender_clone, pty_to_update(&session, &msg)).await;
+                        }
+                    }
+                });
+            }
+            Err(err) => {
+                tracing::debug!("PTY subscribe unavailable for {}: {}", session_id, err);
+            }
+        }
+    }
 
     Ok(json!({ "sessionId": session_id, "executionId": execution_id, "command": cmd }))
 }
