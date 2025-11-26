@@ -574,7 +574,8 @@ async fn route_wrapped_request(
             }
             "ah/terminal/follow" => {
                 drop(guard);
-                handle_terminal_follow(state, driver, sender, request.raw)
+                let mut guard = ctx.lock().await;
+                handle_terminal_follow(state, &mut guard, driver, sender, request.raw)
                     .await
                     .map_err(server_error_to_rpc)
             }
@@ -715,7 +716,8 @@ async fn route_request_stdio(
             }
             "ah/terminal/follow" => {
                 drop(guard);
-                handle_terminal_follow_stdio(state, driver, writer, request.raw)
+                let mut guard = ctx.lock().await;
+                handle_terminal_follow_stdio(state, &mut guard, driver, writer, request.raw)
                     .await
                     .map_err(server_error_to_rpc)
             }
@@ -764,6 +766,9 @@ struct AcpSessionContext {
     receivers: HashMap<String, Receiver<SessionEvent>>,
     pty_receivers: HashMap<String, tokio::sync::broadcast::Receiver<TaskManagerMessage>>,
     auth_claims: Option<Claims>,
+    /// Cached execution commands derived from recorded tool events to avoid trusting
+    /// client-supplied follow commands.
+    execution_commands: HashMap<String, HashMap<String, String>>,
 }
 
 fn json_error(id: Value, code: i64, message: &str) -> Value {
@@ -805,13 +810,21 @@ fn tool_event_command(tool_name: &[u8], tool_args: &[u8]) -> Option<String> {
 /// with an execution id. Falls back to the client-supplied value when history
 /// is unavailable.
 async fn resolve_execution_command(
+    ctx: &mut AcpSessionContext,
     app_state: &AppState,
     session_id: &str,
     execution_id: &str,
     provided: Option<&str>,
 ) -> Option<String> {
+    if let Some(cmd) = ctx.execution_commands.get(session_id).and_then(|m| m.get(execution_id)) {
+        return Some(cmd.clone());
+    }
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
         if let Some(cmd) = command_from_events(&events, execution_id) {
+            ctx.execution_commands
+                .entry(session_id.to_string())
+                .or_default()
+                .insert(execution_id.to_string(), cmd.clone());
             return Some(cmd);
         }
     }
@@ -1052,6 +1065,7 @@ async fn handle_terminal_write_stdio(
 
 async fn handle_terminal_follow(
     state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
@@ -1065,6 +1079,7 @@ async fn handle_terminal_follow(
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
     let cmd_string = resolve_execution_command(
+        ctx,
         &state.app_state,
         session_id,
         execution_id,
@@ -1129,6 +1144,7 @@ async fn handle_terminal_follow(
 
 async fn handle_terminal_follow_stdio(
     state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
@@ -1142,6 +1158,7 @@ async fn handle_terminal_follow_stdio(
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
     let cmd_string = resolve_execution_command(
+        ctx,
         &state.app_state,
         session_id,
         execution_id,
@@ -1904,28 +1921,35 @@ async fn flush_session_events(
 ) -> bool {
     let mut sent = false;
     let mut dead_sessions = Vec::new();
+    let ids: Vec<String> = ctx.receivers.keys().cloned().collect();
+    let mut buffered: Vec<(String, SessionEvent)> = Vec::new();
 
-    for (session_id, receiver) in ctx.receivers.iter_mut() {
-        loop {
-            match receiver.try_recv() {
-                Ok(event) => {
-                    let update = json!({
-                        "sessionId": session_id,
-                        "event": event_to_json(session_id, &event),
-                    });
-                    if send_session_notification(driver, sender, update).await.is_err() {
+    for session_id in &ids {
+        if let Some(receiver) = ctx.receivers.get_mut(session_id) {
+            loop {
+                match receiver.try_recv() {
+                    Ok(event) => buffered.push((session_id.clone(), event)),
+                    Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
+                    Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
                         dead_sessions.push(session_id.clone());
                         break;
                     }
-                    sent = true;
+                    Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => break,
                 }
-                Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
-                Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
-                    dead_sessions.push(session_id.clone());
-                    break;
-                }
-                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => break,
             }
+        }
+    }
+
+    for (session_id, event) in buffered {
+        cache_execution_command(&mut ctx.execution_commands, &session_id, &event);
+        let update = json!({
+            "sessionId": session_id,
+            "event": event_to_json(&session_id, &event),
+        });
+        if send_session_notification(driver, sender, update).await.is_err() {
+            dead_sessions.push(session_id);
+        } else {
+            sent = true;
         }
     }
 
@@ -1943,28 +1967,35 @@ async fn flush_session_events_stdio(
 ) -> bool {
     let mut sent = false;
     let mut dead_sessions = Vec::new();
+    let ids: Vec<String> = ctx.receivers.keys().cloned().collect();
+    let mut buffered: Vec<(String, SessionEvent)> = Vec::new();
 
-    for (session_id, receiver) in ctx.receivers.iter_mut() {
-        loop {
-            match receiver.try_recv() {
-                Ok(event) => {
-                    let update = json!({
-                        "sessionId": session_id,
-                        "event": event_to_json(session_id, &event),
-                    });
-                    if send_session_notification_stdout(driver, writer, update).await.is_err() {
+    for session_id in &ids {
+        if let Some(receiver) = ctx.receivers.get_mut(session_id) {
+            loop {
+                match receiver.try_recv() {
+                    Ok(event) => buffered.push((session_id.clone(), event)),
+                    Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
+                    Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
                         dead_sessions.push(session_id.clone());
                         break;
                     }
-                    sent = true;
+                    Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => break,
                 }
-                Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
-                Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
-                    dead_sessions.push(session_id.clone());
-                    break;
-                }
-                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => break,
             }
+        }
+    }
+
+    for (session_id, event) in buffered {
+        cache_execution_command(&mut ctx.execution_commands, &session_id, &event);
+        let update = json!({
+            "sessionId": session_id,
+            "event": event_to_json(&session_id, &event),
+        });
+        if send_session_notification_stdout(driver, writer, update).await.is_err() {
+            dead_sessions.push(session_id);
+        } else {
+            sent = true;
         }
     }
 
@@ -2120,6 +2151,32 @@ fn event_to_json(session_id: &str, event: &SessionEvent) -> Value {
             "removed": edit.lines_removed,
             "timestamp": edit.timestamp,
         }),
+    }
+}
+
+fn cache_execution_command(
+    commands: &mut HashMap<String, HashMap<String, String>>,
+    session_id: &str,
+    event: &SessionEvent,
+) {
+    match event {
+        SessionEvent::ToolUse(ev) => {
+            if let Some(cmd) = tool_event_command(&ev.tool_name, &ev.tool_args) {
+                commands.entry(session_id.to_string()).or_default().insert(
+                    String::from_utf8_lossy(&ev.tool_execution_id).to_string(),
+                    cmd,
+                );
+            }
+        }
+        SessionEvent::ToolResult(ev) => {
+            if let Some(cmd) = tool_event_command(&ev.tool_name, &[]) {
+                commands.entry(session_id.to_string()).or_default().insert(
+                    String::from_utf8_lossy(&ev.tool_execution_id).to_string(),
+                    cmd,
+                );
+            }
+        }
+        _ => {}
     }
 }
 
