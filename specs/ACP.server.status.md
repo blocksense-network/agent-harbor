@@ -265,6 +265,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - No runtime wiring yet; this helper will be consumed by the upcoming recorder-to-ACP bridge and IDE follower channel.
 - Scenario playback now honors a `linger_after_timeline_secs` option (exposed in `MockServerDependencies` and the `ah-rest-server-mock` CLI via `--scenario-linger-secs`) to keep connections open after scripted timelines, preventing premature teardown while follower terminals drain trailing PTY bytes.
 - Added an ACP scenario-driven follower test (`acp_prompt_followers`) that replays `tests/acp_bridge/scenarios/terminal_follow_detach.yaml` against the live gateway, asserting both `_ah/terminal/follow` and `_ah/terminal/detach` updates surface as `session/update` notifications. The fixture now uses placeholders so session IDs returned by the server are applied at runtime; the test harness consumes the scenario timeline to drive the WebSocket while letting the server execute normally.
+- ACP gateway now streams PTY backlog + live data/resizes from the TaskManager socket to ACP clients after `_ah/terminal/follow`, using the recorder task socket hub (`TaskManagerMessage::PtyData`/`PtyResize`). This wires prompt-injection-followers to the live TTY instead of log-only.
 
 #### Key Implementation Files
 
