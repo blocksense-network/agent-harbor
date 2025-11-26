@@ -4,8 +4,7 @@
 use std::net::TcpListener;
 
 use ah_rest_server::{
-    auth::Claims, Server, ServerConfig,
-    mock_dependencies::MockServerDependencies,
+    Server, ServerConfig, auth::Claims, mock_dependencies::MockServerDependencies,
 };
 use futures::{SinkExt, StreamExt};
 use jsonwebtoken::{EncodingKey, Header};
@@ -15,7 +14,9 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use url::form_urlencoded;
 
 async fn read_response(
-    socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
     target_id: i64,
 ) -> serde_json::Value {
     while let Some(msg) = socket.next().await {
@@ -67,23 +68,19 @@ async fn acp_session_list_scopes_to_jwt_tenant() {
         if let Some(tok) = token {
             let encoded: String = form_urlencoded::byte_serialize(tok.as_bytes()).collect();
             let url = format!("{acp_url}?token={encoded}&api_key=secret");
-            tokio_tungstenite::connect_async(url)
-                .await
-                .expect("connect")
-                .0
+            tokio_tungstenite::connect_async(url).await.expect("connect").0
         } else {
             let url = format!("{acp_url}?api_key=secret");
-            tokio_tungstenite::connect_async(url)
-                .await
-                .expect("connect")
-                .0
+            tokio_tungstenite::connect_async(url).await.expect("connect").0
         }
     };
 
     // anonymous creates session with no tenant
     let mut socket1 = connect_with_bearer(None).await;
     socket1
-        .send(WsMessage::Text(json!({"id":1,"method":"initialize","params":{}}).to_string()))
+        .send(WsMessage::Text(
+            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+        ))
         .await
         .unwrap();
     let _ = socket1.next().await;
@@ -113,7 +110,9 @@ async fn acp_session_list_scopes_to_jwt_tenant() {
     .unwrap();
     let mut socket2 = connect_with_bearer(Some(token)).await;
     socket2
-        .send(WsMessage::Text(json!({"id":10,"method":"initialize","params":{}}).to_string()))
+        .send(WsMessage::Text(
+            json!({"id":10,"method":"initialize","params":{}}).to_string(),
+        ))
         .await
         .unwrap();
     let _ = socket2.next().await;
@@ -141,10 +140,7 @@ async fn acp_session_list_scopes_to_jwt_tenant() {
     let list = socket2.next().await.unwrap().unwrap();
     if let WsMessage::Text(text) = list {
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        let items = value
-            .pointer("/result/items")
-            .and_then(|v| v.as_array())
-            .unwrap();
+        let items = value.pointer("/result/items").and_then(|v| v.as_array()).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(
             items[0].get("id").and_then(|v| v.as_str()),

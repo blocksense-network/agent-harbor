@@ -4,8 +4,8 @@
 use std::net::TcpListener;
 
 use ah_rest_server::{Server, ServerConfig, mock_dependencies::MockServerDependencies};
-use serde_json::{Value, json};
 use futures::{SinkExt, StreamExt};
+use serde_json::{Value, json};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
@@ -35,7 +35,9 @@ async fn spawn_acp_server() -> (String, JoinHandle<()>) {
 }
 
 async fn read_response(
-    socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
     target_id: i64,
 ) -> Value {
     while let Some(msg) = socket.next().await {
@@ -54,9 +56,7 @@ async fn read_response(
 async fn acp_session_catalog_end_to_end() {
     let (acp_url, handle) = spawn_acp_server().await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     // initialize
     socket
@@ -67,8 +67,7 @@ async fn acp_session_catalog_end_to_end() {
         .expect("send initialize");
     let init = read_response(&mut socket, 1).await;
     assert_eq!(
-        init.pointer("/result/capabilities/transports/0")
-            .and_then(|v| v.as_str()),
+        init.pointer("/result/capabilities/transports/0").and_then(|v| v.as_str()),
         Some("websocket")
     );
 
@@ -118,9 +117,7 @@ async fn acp_session_catalog_end_to_end() {
     .await
     .expect("session/update timeout");
     assert_eq!(
-        update
-            .pointer("/params/sessionId")
-            .and_then(|v| v.as_str()),
+        update.pointer("/params/sessionId").and_then(|v| v.as_str()),
         Some(session_id.as_str())
     );
 
@@ -132,12 +129,10 @@ async fn acp_session_catalog_end_to_end() {
         .await
         .expect("send session/list");
     let list = read_response(&mut socket, 3).await;
-    let items = list
-        .pointer("/result/items")
-        .and_then(|v| v.as_array())
-        .expect("items");
+    let items = list.pointer("/result/items").and_then(|v| v.as_array()).expect("items");
     assert!(
-        items.iter()
+        items
+            .iter()
             .any(|item| item.get("id").and_then(|v| v.as_str()) == Some(session_id.as_str())),
         "session list should contain created session"
     );
@@ -145,16 +140,13 @@ async fn acp_session_catalog_end_to_end() {
     // load session
     socket
         .send(WsMessage::Text(
-            json!({"id":4,"method":"session/load","params":{"sessionId":session_id}})
-                .to_string(),
+            json!({"id":4,"method":"session/load","params":{"sessionId":session_id}}).to_string(),
         ))
         .await
         .expect("send session/load");
     let loaded = read_response(&mut socket, 4).await;
     assert_eq!(
-        loaded
-            .pointer("/result/session/id")
-            .and_then(|v| v.as_str()),
+        loaded.pointer("/result/session/id").and_then(|v| v.as_str()),
         Some(items[0].get("id").and_then(|v| v.as_str()).unwrap())
     );
 
@@ -163,9 +155,9 @@ async fn acp_session_catalog_end_to_end() {
 
 #[tokio::test]
 async fn acp_session_new_infers_tenant_from_jwt() {
-    use tungstenite::client::IntoClientRequest;
-    use jsonwebtoken::{EncodingKey, Header};
     use ah_rest_server::auth::Claims;
+    use jsonwebtoken::{EncodingKey, Header};
+    use tungstenite::client::IntoClientRequest;
 
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().unwrap();
@@ -202,13 +194,12 @@ async fn acp_session_new_infers_tenant_from_jwt() {
     .expect("jwt");
 
     let mut request = acp_url.into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("Authorization", format!("Bearer {}", token).parse().unwrap());
+    request.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {}", token).parse().unwrap(),
+    );
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(request)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(request).await.expect("connect");
 
     socket
         .send(WsMessage::Text(
@@ -249,9 +240,7 @@ async fn acp_session_new_infers_tenant_from_jwt() {
 async fn acp_session_new_respects_context_limit() {
     let (acp_url, handle) = spawn_acp_server().await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     socket
         .send(WsMessage::Text(
@@ -288,13 +277,20 @@ async fn acp_session_new_respects_context_limit() {
     );
     assert!(
         response.pointer("/result/usedChars").and_then(|v| v.as_u64()).unwrap_or(0)
-            > response.pointer("/result/limitChars").and_then(|v| v.as_u64()).unwrap_or(16_000),
+            > response
+                .pointer("/result/limitChars")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(16_000),
         "usedChars should exceed limit when rejection occurs"
     );
 
     // ensure no session/update arrives for a rejected creation
-    let maybe_update = tokio::time::timeout(std::time::Duration::from_millis(300), socket.next()).await;
-    assert!(maybe_update.is_err(), "no session/update should be emitted for rejected session/new");
+    let maybe_update =
+        tokio::time::timeout(std::time::Duration::from_millis(300), socket.next()).await;
+    assert!(
+        maybe_update.is_err(),
+        "no session/update should be emitted for rejected session/new"
+    );
 
     handle.abort();
 }

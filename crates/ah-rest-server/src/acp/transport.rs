@@ -27,23 +27,30 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
-use futures::{SinkExt, StreamExt};
 use futures::stream::SplitSink;
+use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{collections::{HashMap, HashSet}, sync::Arc, time::Duration};
-use tokio::{sync::{Mutex, Semaphore}, time::{Instant, interval, sleep}};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::sync::broadcast::Receiver;
+use tokio::{
+    sync::{Mutex, Semaphore},
+    time::{Instant, interval, sleep},
+};
 use tokio_tungstenite;
 use tokio_tungstenite::tungstenite::Message as ClientMessage;
 use url::Url;
 
+use crate::acp::recorder::follower_command;
 use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
 use ah_rest_api_contract::{
     CreateTaskRequest, FilterQuery, RepoConfig, RepoMode, RuntimeConfig, RuntimeType, Session,
     SessionEvent, SessionLogLevel, SessionStatus, SessionToolStatus,
 };
-use crate::acp::recorder::follower_command;
 
 /// Conservative context window guardrail for inbound ACP prompts.
 /// Matches the per-message cap to keep total user-provided text bounded
@@ -149,8 +156,10 @@ async fn handle_socket(
 ) {
     let (sender, mut receiver) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
-    let mut context = AcpSessionContext::default();
-    context.auth_claims = claims;
+    let mut context = AcpSessionContext {
+        auth_claims: claims,
+        ..Default::default()
+    };
     let idle_timer = sleep(state.idle_timeout);
     tokio::pin!(idle_timer);
     let mut tick = interval(Duration::from_millis(100));
@@ -242,13 +251,8 @@ async fn handle_rpc(
             let result = JsonRpcTranslator::initialize_response(&caps);
             Some(rpc_response(id, result))
         }
-        "session/new"
-        | "session/list"
-        | "session/load"
-        | "session/prompt"
-        | "session/cancel"
-        | "session/pause"
-        | "session/resume"
+        "session/new" | "session/list" | "session/load" | "session/prompt" | "session/cancel"
+        | "session/pause" | "session/resume"
             if ctx.negotiated_caps.is_none() =>
         {
             Some(json_error(
@@ -298,11 +302,7 @@ async fn handle_session_new(
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
-    let prompt = params
-        .get("prompt")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_string();
+    let prompt = params.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     let prompt_len = prompt.chars().count();
     if prompt_len > MAX_CONTEXT_CHARS {
         return Ok(json!({
@@ -317,16 +317,10 @@ async fn handle_session_new(
 
     let mut request = translate_create_request(params)?;
     if request.tenant_id.is_none() {
-        request.tenant_id = ctx
-            .auth_claims
-            .as_ref()
-            .and_then(|c| c.tenant_id.clone());
+        request.tenant_id = ctx.auth_claims.as_ref().and_then(|c| c.tenant_id.clone());
     }
     if request.project_id.is_none() {
-        request.project_id = ctx
-            .auth_claims
-            .as_ref()
-            .and_then(|c| c.project_id.clone());
+        request.project_id = ctx.auth_claims.as_ref().and_then(|c| c.project_id.clone());
     }
     let service = SessionService::new(Arc::clone(&state.app_state.session_store));
     let response = service.create_session(&request).await?;
@@ -370,18 +364,9 @@ async fn handle_session_list(
     ctx: &AcpSessionContext,
 ) -> ServerResult<Value> {
     let filters = FilterQuery {
-        status: params
-            .get("status")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        agent: params
-            .get("agent")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        project_id: params
-            .get("projectId")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
+        status: params.get("status").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        agent: params.get("agent").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        project_id: params.get("projectId").and_then(|v| v.as_str()).map(|s| s.to_string()),
         tenant_id: params
             .get("tenantId")
             .and_then(|v| v.as_str())
@@ -405,12 +390,7 @@ async fn handle_session_load(
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
 
-    if let Some(session) = state
-        .app_state
-        .session_store
-        .get_session(session_id)
-        .await?
-    {
+    if let Some(session) = state.app_state.session_store.get_session(session_id).await? {
         subscribe_session(ctx, &state.app_state, session_id);
         let _ = seed_history(&state.app_state, session_id, sender).await;
         ctx.sessions.insert(session_id.to_string());
@@ -451,12 +431,7 @@ async fn handle_session_prompt(
         }));
     }
 
-    let Some(mut session) = state
-        .app_state
-        .session_store
-        .get_session(session_id)
-        .await?
-    else {
+    let Some(mut session) = state.app_state.session_store.get_session(session_id).await? else {
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
@@ -481,13 +456,12 @@ async fn handle_session_prompt(
     subscribe_session(ctx, &state.app_state, session_id);
     let _ = seed_history(&state.app_state, session_id, sender).await;
     ctx.sessions.insert(session_id.to_string());
-    if matches!(session.session.status, SessionStatus::Queued | SessionStatus::Provisioning) {
+    if matches!(
+        session.session.status,
+        SessionStatus::Queued | SessionStatus::Provisioning
+    ) {
         session.session.status = SessionStatus::Running;
-        state
-            .app_state
-            .session_store
-            .update_session(session_id, &session)
-            .await?;
+        state.app_state.session_store.update_session(session_id, &session).await?;
         state
             .app_state
             .session_store
@@ -537,12 +511,7 @@ async fn handle_session_cancel(
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
 
-    let Some(mut session) = state
-        .app_state
-        .session_store
-        .get_session(session_id)
-        .await?
-    else {
+    let Some(mut session) = state.app_state.session_store.get_session(session_id).await? else {
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
@@ -556,11 +525,7 @@ async fn handle_session_cancel(
     }
 
     session.session.status = SessionStatus::Cancelled;
-    state
-        .app_state
-        .session_store
-        .update_session(session_id, &session)
-        .await?;
+    state.app_state.session_store.update_session(session_id, &session).await?;
     state
         .app_state
         .session_store
@@ -590,12 +555,7 @@ async fn handle_session_pause(
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
 
-    let Some(mut session) = state
-        .app_state
-        .session_store
-        .get_session(session_id)
-        .await?
-    else {
+    let Some(mut session) = state.app_state.session_store.get_session(session_id).await? else {
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
@@ -604,11 +564,7 @@ async fn handle_session_pause(
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Paused;
-    state
-        .app_state
-        .session_store
-        .update_session(session_id, &session)
-        .await?;
+    state.app_state.session_store.update_session(session_id, &session).await?;
     state
         .app_state
         .session_store
@@ -642,12 +598,7 @@ async fn handle_session_resume(
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
 
-    let Some(mut session) = state
-        .app_state
-        .session_store
-        .get_session(session_id)
-        .await?
-    else {
+    let Some(mut session) = state.app_state.session_store.get_session(session_id).await? else {
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
@@ -656,11 +607,7 @@ async fn handle_session_resume(
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Running;
-    state
-        .app_state
-        .session_store
-        .update_session(session_id, &session)
-        .await?;
+    state.app_state.session_store.update_session(session_id, &session).await?;
     state
         .app_state
         .session_store
@@ -849,10 +796,7 @@ async fn send_json(
 ) -> Result<(), ()> {
     let text = serde_json::to_string(&payload).map_err(|_| ())?;
     let mut guard = sender.lock().await;
-    guard
-        .send(WsMessage::Text(text))
-        .await
-        .map_err(|_| ())
+    guard.send(WsMessage::Text(text)).await.map_err(|_| ())
 }
 
 async fn current_context_chars(
@@ -875,11 +819,7 @@ async fn current_context_chars(
 }
 
 fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
-    let prompt = params
-        .get("prompt")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_string();
+    let prompt = params.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     if prompt.trim().is_empty() {
         return Err(ServerError::BadRequest(
             "prompt is required for session/new".into(),
@@ -897,22 +837,19 @@ fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
         ));
     }
 
-    let repo_url = params
-        .get("repoUrl")
-        .and_then(|v| v.as_str())
-        .and_then(|s| Url::parse(s).ok());
+    let repo_url = params.get("repoUrl").and_then(|v| v.as_str()).and_then(|s| Url::parse(s).ok());
     let repo = RepoConfig {
-        mode: if repo_url.is_some() { RepoMode::Git } else { RepoMode::None },
+        mode: if repo_url.is_some() {
+            RepoMode::Git
+        } else {
+            RepoMode::None
+        },
         url: repo_url,
         branch: params.get("branch").and_then(|v| v.as_str()).map(|s| s.to_string()),
         commit: None,
     };
 
-    let agent_model = params
-        .get("agent")
-        .and_then(|v| v.as_str())
-        .unwrap_or("sonnet")
-        .to_string();
+    let agent_model = params.get("agent").and_then(|v| v.as_str()).unwrap_or("sonnet").to_string();
 
     let agent = AgentChoice {
         agent: AgentSoftwareBuild {
@@ -942,14 +879,8 @@ fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
         .unwrap_or_default();
 
     Ok(CreateTaskRequest {
-        tenant_id: params
-            .get("tenantId")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        project_id: params
-            .get("projectId")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
+        tenant_id: params.get("tenantId").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        project_id: params.get("projectId").and_then(|v| v.as_str()).map(|s| s.to_string()),
         prompt,
         repo,
         runtime,

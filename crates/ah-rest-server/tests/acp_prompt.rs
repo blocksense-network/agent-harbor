@@ -6,9 +6,9 @@ use std::net::TcpListener;
 use ah_rest_server::{Server, ServerConfig, mock_dependencies::MockServerDependencies};
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use std::time::Duration;
 
 async fn spawn_acp_server() -> (String, JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -36,7 +36,9 @@ async fn spawn_acp_server() -> (String, JoinHandle<()>) {
 }
 
 async fn read_response(
-    socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
     target_id: i64,
 ) -> Value {
     while let Some(msg) = socket.next().await {
@@ -55,9 +57,7 @@ async fn read_response(
 async fn acp_prompt_round_trip() {
     let (acp_url, handle) = spawn_acp_server().await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     socket
         .send(WsMessage::Text(
@@ -104,7 +104,10 @@ async fn acp_prompt_round_trip() {
         .expect("send session/prompt");
 
     let prompt_ack = read_response(&mut socket, 3).await;
-    assert_eq!(prompt_ack.pointer("/result/accepted").and_then(|v| v.as_bool()), Some(true));
+    assert_eq!(
+        prompt_ack.pointer("/result/accepted").and_then(|v| v.as_bool()),
+        Some(true)
+    );
 
     // Expect the log event to flow back via session/update
     let update = tokio::time::timeout(std::time::Duration::from_secs(2), async {
@@ -114,9 +117,7 @@ async fn acp_prompt_round_trip() {
                 if let WsMessage::Text(text) = msg {
                     let value: Value = serde_json::from_str(&text).expect("json");
                     if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-                        if value
-                            .pointer("/params/event/type")
-                            .and_then(|v| v.as_str())
+                        if value.pointer("/params/event/type").and_then(|v| v.as_str())
                             == Some("log")
                         {
                             if let Some(message) =
@@ -136,9 +137,7 @@ async fn acp_prompt_round_trip() {
     .expect("session/update timeout");
 
     assert_eq!(
-        update
-            .pointer("/params/event/type")
-            .and_then(|v| v.as_str()),
+        update.pointer("/params/event/type").and_then(|v| v.as_str()),
         Some("log")
     );
 
@@ -149,9 +148,7 @@ async fn acp_prompt_round_trip() {
 async fn acp_prompt_rejects_on_context_limit() {
     let (acp_url, handle) = spawn_acp_server().await;
 
-    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url)
-        .await
-        .expect("connect");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&acp_url).await.expect("connect");
 
     socket
         .send(WsMessage::Text(
@@ -201,15 +198,11 @@ async fn acp_prompt_rejects_on_context_limit() {
 
     let prompt_ack = read_response(&mut socket, 3).await;
     assert_eq!(
-        prompt_ack
-            .pointer("/result/accepted")
-            .and_then(|v| v.as_bool()),
+        prompt_ack.pointer("/result/accepted").and_then(|v| v.as_bool()),
         Some(false)
     );
     assert_eq!(
-        prompt_ack
-            .pointer("/result/stopReason")
-            .and_then(|v| v.as_str()),
+        prompt_ack.pointer("/result/stopReason").and_then(|v| v.as_str()),
         Some("context_limit")
     );
     let limit = prompt_ack
@@ -230,9 +223,7 @@ async fn acp_prompt_rejects_on_context_limit() {
                 if let WsMessage::Text(text) = msg {
                     let value: Value = serde_json::from_str(&text).expect("json");
                     if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-                        if value
-                            .pointer("/params/event/type")
-                            .and_then(|v| v.as_str())
+                        if value.pointer("/params/event/type").and_then(|v| v.as_str())
                             == Some("log")
                         {
                             if let Some(message) =
