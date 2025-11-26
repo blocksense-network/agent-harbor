@@ -22,6 +22,10 @@ pub enum TaskManagerMessage {
     SessionEvent(SessionEvent),
     /// Task manager → recorder: raw bytes to inject into the running PTY
     InjectInput(Vec<u8>),
+    /// Recorder → task manager: raw PTY output bytes for follower/backlog
+    PtyData(Vec<u8>),
+    /// Recorder → task manager: terminal resize notification (cols, rows)
+    PtyResize((u16, u16)),
 }
 
 impl TaskManagerMessage {
@@ -132,5 +136,17 @@ mod tests {
         inject.write_to(&mut a).await.expect("write inject");
         let decoded = TaskManagerMessage::read_from(&mut b).await.expect("read inject");
         assert_eq!(decoded, inject);
+
+        let pty = TaskManagerMessage::PtyData(b"bytes".to_vec());
+        let (mut a, mut b) = duplex(1024);
+        pty.write_to(&mut a).await.expect("write pty");
+        let decoded = TaskManagerMessage::read_from(&mut b).await.expect("read pty");
+        assert_eq!(decoded, pty);
+
+        let resize = TaskManagerMessage::PtyResize((120, 40));
+        let (mut a, mut b) = duplex(1024);
+        resize.write_to(&mut a).await.expect("write resize");
+        let decoded = TaskManagerMessage::read_from(&mut b).await.expect("read resize");
+        assert_eq!(decoded, resize);
     }
 }

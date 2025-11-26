@@ -335,6 +335,12 @@ where
                         session_id
                     );
                 }
+                Ok(TaskManagerMessage::PtyData(_)) => {
+                    // follower plumbing not yet wired; ignore PTY bytes
+                }
+                Ok(TaskManagerMessage::PtyResize(_)) => {
+                    // follower plumbing not yet wired; ignore resize
+                }
                 Err(_) => {
                     match <ah_rest_api_contract::types::SessionEvent as ssz::Decode>::from_ssz_bytes(
                         &buf,
