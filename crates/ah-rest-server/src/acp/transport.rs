@@ -150,18 +150,45 @@ impl Side for HarborAgentSide {
         }
 
         let raw_clone = params_raw.clone();
-        let raw_value = serde_json::to_string(&params_raw).map_err(|_| Error::invalid_params())?;
+
+        // For prompt, synthesize the typed schema fields (`prompt` blocks) when only a
+        // string message is supplied, keeping `raw` intact for Harbor handlers.
+        let mut decode_value = params_raw.clone();
+        if method == "session/prompt" {
+            if let Some(message) = decode_value
+                .get("message")
+                .or_else(|| decode_value.get("prompt"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            {
+                let prompt_block = json!([{
+                    "type": "text",
+                    "text": message
+                }]);
+                if let Some(obj) = decode_value.as_object_mut() {
+                    obj.entry("prompt").or_insert(prompt_block);
+                }
+            }
+        }
+
+        let raw_value = serde_json::to_string(&decode_value).map_err(|_| Error::invalid_params())?;
         let raw_val = serde_json::value::RawValue::from_string(raw_value)
             .map_err(|_| Error::invalid_params())?;
 
-        // Extension methods that the SDK schema doesn't currently model.
-        if method == "session/list"
-            || method == "session/pause"
-            || method == "session/resume"
-            || method == "_ah/terminal/follow"
-            || method == "_ah/terminal/write"
-            || method == "_ah/terminal/detach"
-        {
+        // Extension methods that the SDK schema doesn't currently model (plus
+        // legacy request forms such as session/cancel).
+        let is_ext = matches!(
+            method,
+            "session/list"
+                | "session/pause"
+                | "session/resume"
+                | "session/cancel"
+                | "ping"
+                | "_ah/terminal/follow"
+                | "_ah/terminal/write"
+                | "_ah/terminal/detach"
+        );
+        if is_ext {
             return Ok(WrappedRequest {
                 typed: ClientRequest::ExtMethodRequest(ExtRequest {
                     method: method.trim_start_matches('_').into(),
@@ -531,6 +558,13 @@ async fn route_wrapped_request(
                 "session/list" => handle_session_list(state, request.raw, &guard)
                     .await
                     .map_err(server_error_to_rpc),
+                "session/cancel" => {
+                    drop(guard);
+                    let mut guard = ctx.lock().await;
+                    handle_session_cancel(state, &mut guard, driver, sender, request.raw)
+                        .await
+                        .map_err(server_error_to_rpc)
+                }
                 "session/pause" => {
                     drop(guard);
                     let mut guard = ctx.lock().await;
@@ -564,6 +598,7 @@ async fn route_wrapped_request(
                         .await
                         .map_err(server_error_to_rpc)
                 }
+                "ping" => Ok(request.raw),
                 _ => Err(Error::method_not_found()),
             }
         }
@@ -665,6 +700,13 @@ async fn route_request_stdio(
                 "session/list" => handle_session_list(state, request.raw, &guard)
                     .await
                     .map_err(server_error_to_rpc),
+                "session/cancel" => {
+                    drop(guard);
+                    let mut guard = ctx.lock().await;
+                    handle_session_cancel_stdio(state, &mut guard, driver, writer, request.raw)
+                        .await
+                        .map_err(server_error_to_rpc)
+                }
                 "session/pause" => {
                     drop(guard);
                     let mut guard = ctx.lock().await;
