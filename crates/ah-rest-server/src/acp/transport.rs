@@ -373,10 +373,12 @@ async fn handle_session_prompt(
         .ok_or_else(|| ServerError::BadRequest("message is required".into()))?;
     const MAX_PROMPT_CHARS: usize = 16000;
     if message.chars().count() > MAX_PROMPT_CHARS {
-        return Err(ServerError::BadRequest(format!(
-            "message exceeds max length of {} characters",
-            MAX_PROMPT_CHARS
-        )));
+        return Ok(json!({
+            "sessionId": session_id,
+            "accepted": false,
+            "stopReason": "context_limit",
+            "maxChars": MAX_PROMPT_CHARS
+        }));
     }
 
     if let Some(mut session) = state
