@@ -179,6 +179,7 @@ impl TaskExecutor {
         let recorder_senders = Arc::clone(&self.recorder_senders);
         let accept_loop_running = Arc::clone(&self.accept_loop_running);
         let hub_root = Arc::clone(&self.task_socket_hub);
+        let session_store = Arc::clone(&self.session_store) as Arc<dyn SessionStore>;
         let listener_root = Arc::clone(&listener);
         tokio::spawn(async move {
             loop {
@@ -190,9 +191,11 @@ impl TaskExecutor {
                     Ok((stream, _addr)) => {
                         let recorder_senders = Arc::clone(&recorder_senders);
                         let hub = Arc::clone(&hub_root);
+                        let store = Arc::clone(&session_store);
                         tokio::spawn(async move {
                             if let Err(e) =
-                                handle_recorder_connection(stream, recorder_senders, hub).await
+                                handle_recorder_connection(stream, recorder_senders, hub, store)
+                                    .await
                             {
                                 error!("Recorder connection handling failed: {}", e);
                             }
@@ -644,6 +647,7 @@ async fn handle_recorder_connection(
     mut stream: UnixStream,
     recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
     hub: Arc<crate::task_socket::TaskSocketHub>,
+    session_store: Arc<dyn SessionStore>,
 ) -> anyhow::Result<()> {
     // Read session id (length prefixed)
     let mut len_buf = [0u8; 4];
@@ -687,8 +691,8 @@ async fn handle_recorder_connection(
 
         // Decode either the new envelope or legacy session event for logging
         match <TaskManagerMessage as ssz::Decode>::from_ssz_bytes(&buf) {
-            Ok(TaskManagerMessage::SessionEvent(_event)) => {
-                debug!("Recorder {} reported event", session_id);
+            Ok(TaskManagerMessage::SessionEvent(event)) => {
+                let _ = session_store.add_session_event(&session_id, event).await;
             }
             Ok(TaskManagerMessage::InjectInput(_)) => {
                 debug!(
@@ -703,8 +707,8 @@ async fn handle_recorder_connection(
                 hub.record(&session_id, TaskManagerMessage::PtyResize(resize)).await;
             }
             Err(_) => {
-                if let Ok(_event) = <SessionEvent as ssz::Decode>::from_ssz_bytes(&buf) {
-                    debug!("Recorder {} reported legacy event", session_id);
+                if let Ok(event) = <SessionEvent as ssz::Decode>::from_ssz_bytes(&buf) {
+                    let _ = session_store.add_session_event(&session_id, event).await;
                 } else {
                     debug!(
                         "Recorder {} sent undecodable payload ({} bytes)",
@@ -716,6 +720,11 @@ async fn handle_recorder_connection(
         }
     }
 
+    {
+        let mut guard = recorder_senders.lock().await;
+        guard.remove(&session_id);
+    }
+
     let _ = writer_task.await;
     Ok(())
 }
@@ -723,14 +732,95 @@ async fn handle_recorder_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::InMemorySessionStore;
     use ah_domain_types::{AgentChoice, AgentSoftware, AgentSoftwareBuild};
-    use ah_rest_api_contract::{
-        CreateTaskRequest, RepoConfig, RepoMode, RuntimeConfig, RuntimeType,
-    };
-    use tempfile;
+    use ah_rest_api_contract::{CreateTaskRequest, RepoConfig, RepoMode, RuntimeConfig, RuntimeType};
+    use std::collections::HashMap;
+    use std::time::Duration;
     use tokio::io::AsyncWriteExt;
     use tokio::time::timeout;
+    use tempfile;
 
+    #[tokio::test]
+    async fn recorder_session_events_are_persisted_and_broadcast() -> anyhow::Result<()> {
+        let store = Arc::new(InMemorySessionStore::new());
+        let request = CreateTaskRequest {
+            tenant_id: None,
+            project_id: None,
+            prompt: "verify recorder events".into(),
+            repo: RepoConfig {
+                mode: RepoMode::None,
+                url: None,
+                branch: None,
+                commit: None,
+            },
+            runtime: RuntimeConfig {
+                runtime_type: RuntimeType::Local,
+                devcontainer_path: None,
+                resources: None,
+            },
+            workspace: None,
+            agents: vec![AgentChoice {
+                agent: AgentSoftwareBuild {
+                    software: AgentSoftware::Claude,
+                    version: "latest".into(),
+                },
+                model: "sonnet".into(),
+                count: 1,
+                settings: HashMap::new(),
+                display_name: None,
+            }],
+            delivery: None,
+            labels: HashMap::new(),
+            webhooks: vec![],
+        };
+        let session_id = store.create_session(&request).await?.pop().unwrap();
+
+        let recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let hub = Arc::new(crate::task_socket::TaskSocketHub::new());
+
+        let (mut client, server) = UnixStream::pair()?;
+        let store_clone = Arc::clone(&store) as Arc<dyn SessionStore>;
+        let handle = tokio::spawn(handle_recorder_connection(
+            server,
+            Arc::clone(&recorder_senders),
+            hub,
+            store_clone,
+        ));
+
+        // Write session id
+        let id_bytes = session_id.as_bytes();
+        client
+            .write_all(&(id_bytes.len() as u32).to_le_bytes())
+            .await?;
+        client.write_all(id_bytes).await?;
+
+        // Send a SessionEvent via TaskManagerMessage
+        let log = SessionEvent::log(
+            ah_rest_api_contract::SessionLogLevel::Info,
+            "recorder says hi".into(),
+            None,
+            chrono::Utc::now().timestamp_millis() as u64,
+        );
+        let envelope = TaskManagerMessage::SessionEvent(log.clone()).to_length_prefixed_bytes();
+        client.write_all(&envelope).await?;
+        client.shutdown().await?;
+        drop(client);
+
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("recorder handler should exit");
+
+        let events = store.get_session_events(&session_id).await?;
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SessionEvent::Log(ev) if ev.message == b"recorder says hi".to_vec())),
+            "log event from recorder should be stored and broadcast"
+        );
+        Ok(())
+    }
     fn make_request() -> CreateTaskRequest {
         CreateTaskRequest {
             tenant_id: None,
