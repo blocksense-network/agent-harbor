@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
         CliLogLevel::Info
     };
     config_result.config.logging().to_cli_logging_args().init_with_default_level(
-        "ah-cli",
+        "agent-harbor",
         is_tui_command,
         default_level,
     )?;
