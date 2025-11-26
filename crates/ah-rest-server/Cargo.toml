@@ -122,3 +122,4 @@ tempfile = { workspace = true }
 mockall = { workspace = true }
 ah-rest-client = { path = "../ah-rest-client" }
 serde_yaml = { workspace = true }
+tracing-test = "0.2"
