@@ -114,7 +114,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - [ ] Replace echo handler with SDK-backed JSON-RPC runtime and stdio transport plumbing.
 - [ ] Expand authentication to JWT claims-to-tenant mapping once tenant metadata is available.
 - [x] Handle ACP `authenticate` as an RPC (not just handshake) and advertise `_meta.agent.harbor` capabilities during `initialize`.
-- [ ] Persist negotiated capabilities using SDK types instead of ad-hoc structs.
+- [x] Persist negotiated capabilities using SDK types instead of ad-hoc structs.
 
 #### Verification
 
@@ -190,7 +190,8 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [ ] Support loading paused sessions by mounting the existing workspace snapshot read-only and exposing its metadata back to the ACP client.
 - [ ] Extend the Scenario Format with `userActions.pause_session` / `userActions.resume_session` primitives so harnesses can express pausing/resuming via REST or ACP semantics.
 - [ ] Create an ACP↔REST session ID cross-reference table/migration instead of reusing raw session IDs.
-- [ ] Implement pagination and project/tenant parity in `session/list` to mirror REST responses.
+- [x] Implement pagination (offset/limit) in `session/list` responses.
+- [ ] Implement project/tenant parity in `session/list` to mirror REST responses.
 
 #### Verification
 
