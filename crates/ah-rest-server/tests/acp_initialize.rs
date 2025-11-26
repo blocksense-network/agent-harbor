@@ -1,7 +1,7 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ah_rest_server::acp::translator::{AcpCapabilities, JsonRpcTranslator};
+use ah_rest_server::acp::translator::JsonRpcTranslator;
 use ah_rest_server::config::{AcpConfig, AcpTransportMode};
 use common::acp::spawn_acp_server_with_scenario;
 use ah_rest_server::config::AcpAuthPolicy;
@@ -18,58 +18,48 @@ fn acp_initialize_caps_roundtrip() {
     let mut cfg = AcpConfig::default();
     cfg.transport = AcpTransportMode::WebSocket;
     let caps = JsonRpcTranslator::negotiate_caps(&cfg);
-    assert_eq!(
-        caps,
-        AcpCapabilities {
-            transports: vec!["websocket".into()],
-            fs_read: false,
-            fs_write: false,
-            terminals: true
-        }
-    );
+    assert!(caps.load_session);
+    assert!(caps.mcp_capabilities.http);
 
     let payload = JsonRpcTranslator::initialize_response(&caps);
-    assert_eq!(payload["capabilities"]["transports"][0], "websocket");
-    assert_eq!(payload["capabilities"]["filesystem"]["readTextFile"], false);
+    assert_eq!(
+        payload
+            .pointer("/capabilities/_meta/agent.harbor/transports/0")
+            .and_then(|v| v.as_str()),
+        Some("websocket")
+    );
     assert!(payload["capabilities"]["_meta"]["agent.harbor"]["workspace"].is_object());
 
     // Unknown flags should be ignored
     let noisy = json!({
         "capabilities": {
-            "filesystem": {
-                "readTextFile": true,
-                "unknownFlag": true
-            },
-            "terminal": true,
-            "transports": ["websocket", "stdio"],
+            "loadSession": false,
+            "promptCapabilities": { "image": true },
+            "mcp": { "http": true },
+            "_meta": { "agent.harbor": { "workspace": { "supportsDiffs": true } } },
             "extra": {"foo":"bar"}
         }
     });
     let parsed = JsonRpcTranslator::ignore_unknown_caps(&noisy);
-    assert_eq!(parsed.transports, vec!["websocket", "stdio"]);
-    assert!(parsed.fs_read);
-    assert!(parsed.terminals);
+    assert!(!parsed.load_session, "loadSession should parse known flag");
+    assert!(parsed.mcp_capabilities.http);
 }
 
 proptest! {
     #[test]
-    fn unknown_capabilities_are_ignored_but_known_fields_respected(fs_read in proptest::bool::ANY, fs_write in proptest::bool::ANY) {
+    fn unknown_capabilities_are_ignored_but_known_fields_respected(load_session in proptest::bool::ANY) {
         let noisy = json!({
             "capabilities": {
-                "filesystem": {
-                    "readTextFile": fs_read,
-                    "writeTextFile": fs_write,
-                    "someFutureFlag": true
-                },
-                "terminal": true,
-                "transports": ["websocket"],
+                "loadSession": load_session,
+                "promptCapabilities": { "image": true, "someFutureFlag": true },
+                "mcp": { "http": true, "sse": true, "future": false },
+                "_meta": { "agent.harbor": { "workspace": { "supportsDiffs": true } } },
                 "experimental": {"foo": "bar"}
             }
         });
         let parsed = JsonRpcTranslator::ignore_unknown_caps(&noisy);
-        prop_assert_eq!(parsed.fs_read, fs_read);
-        prop_assert_eq!(parsed.fs_write, fs_write);
-        prop_assert!(parsed.transports.contains(&"websocket".into()));
+        prop_assert_eq!(parsed.load_session, load_session);
+        prop_assert!(parsed.mcp_capabilities.http);
     }
 }
 

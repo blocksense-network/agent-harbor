@@ -1,35 +1,16 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Placeholder translation helpers for ACP JSON-RPC payloads.
+//! ACP translation helpers built on the upstream SDK types.
 //!
-//! The ACP spec models messages in terms of thought/log/tool content blocks and
-//! lifecycle methods (`initialize`, `session/new`, `session/update`, ...). The
-//! real implementation will convert between the `agentclientprotocol/rust-sdk`
-//! types and the REST/task-manager domain models that already power Harbor.
+//! We currently only use the SDK data structures (e.g. `AgentCapabilities`) for
+//! capability negotiation; the full JSON-RPC runtime swap will follow. Keeping
+//! this layer thin makes it easier to graduate to the SDK transport without
+//! rewriting downstream code.
 
 use crate::config::{AcpConfig, AcpTransportMode};
+use agent_client_protocol::{AgentCapabilities, McpCapabilities, PromptCapabilities};
 use serde_json::{Value, json};
-
-/// Negotiated capability snapshot
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcpCapabilities {
-    pub transports: Vec<String>,
-    pub fs_read: bool,
-    pub fs_write: bool,
-    pub terminals: bool,
-}
-
-impl Default for AcpCapabilities {
-    fn default() -> Self {
-        Self {
-            transports: vec!["websocket".into()],
-            fs_read: false,
-            fs_write: false,
-            terminals: true,
-        }
-    }
-}
 
 /// Translator utilities for JSON-RPC payloads.
 #[derive(Debug, Default, Clone)]
@@ -44,81 +25,80 @@ impl JsonRpcTranslator {
         "ACP translator scaffold (Milestone 2)"
     }
 
-    pub fn negotiate_caps(config: &AcpConfig) -> AcpCapabilities {
+    pub fn negotiate_caps(config: &AcpConfig) -> AgentCapabilities {
         let mut transports = vec!["websocket".to_string()];
         if matches!(config.transport, AcpTransportMode::Stdio) {
             transports.push("stdio".to_string());
         }
-        AcpCapabilities {
-            transports,
-            fs_read: false,
-            fs_write: false,
-            terminals: true,
+        AgentCapabilities {
+            load_session: true,
+            prompt_capabilities: PromptCapabilities {
+                image: false,
+                audio: false,
+                embedded_context: false,
+                meta: None,
+            },
+            mcp_capabilities: McpCapabilities {
+                http: true,
+                sse: true,
+                meta: None,
+            },
+            meta: Some(harbor_meta_caps(transports)),
         }
     }
 
-    pub fn initialize_response(caps: &AcpCapabilities) -> Value {
+    pub fn initialize_response(caps: &AgentCapabilities) -> Value {
         json!({
             "capabilities": {
-                "transports": caps.transports,
-                "filesystem": {
-                    "readTextFile": caps.fs_read,
-                    "writeTextFile": caps.fs_write
-                },
-                "terminal": caps.terminals,
-                "_meta": {
-                    "agent.harbor": harbor_meta_caps()
-                }
+                "loadSession": caps.load_session,
+                "promptCapabilities": caps.prompt_capabilities,
+                "mcp": caps.mcp_capabilities,
+                "_meta": caps.meta.clone().unwrap_or(json!({}))
             }
         })
     }
 
-    pub fn ignore_unknown_caps(input: &Value) -> AcpCapabilities {
-        let transports = input
-            .get("capabilities")
-            .and_then(|c| c.get("transports"))
-            .and_then(|t| t.as_array())
-            .map(|arr| {
-                arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect::<Vec<_>>()
-            })
-            .unwrap_or_else(|| vec!["websocket".into()]);
-        let fs_read = input
-            .pointer("/capabilities/filesystem/readTextFile")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let fs_write = input
-            .pointer("/capabilities/filesystem/writeTextFile")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let terminals = input
-            .pointer("/capabilities/terminal")
+    pub fn ignore_unknown_caps(input: &Value) -> AgentCapabilities {
+        let load_session = input
+            .pointer("/capabilities/loadSession")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
+        let prompt_caps = input
+            .pointer("/capabilities/promptCapabilities")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        let mcp_caps = input.pointer("/capabilities/mcp").cloned().unwrap_or_else(|| json!({}));
 
-        AcpCapabilities {
-            transports,
-            fs_read,
-            fs_write,
-            terminals,
-        }
+        let mut caps = AgentCapabilities::default();
+        caps.load_session = load_session;
+        caps.prompt_capabilities = serde_json::from_value(prompt_caps).unwrap_or_default();
+        caps.mcp_capabilities = serde_json::from_value(mcp_caps).unwrap_or_default();
+        caps.meta = input
+            .pointer("/capabilities/_meta")
+            .cloned()
+            .or_else(|| Some(json!({})));
+        caps
     }
 }
 
-fn harbor_meta_caps() -> Value {
+fn harbor_meta_caps(transports: Vec<String>) -> Value {
     json!({
-        "workspace": {
-            "version": 1,
-            "supportsDiffs": true
-        },
-        "snapshots": {
-            "version": 1,
-            "supportsTimelineSeek": true,
-            "supportsBranching": true,
-            "supportsFollowPlayback": true
-        },
-        "pipelineIntrospection": {
-            "version": 1,
-            "supportsStepStreaming": true
+        "agent.harbor": {
+            "workspace": {
+                "version": 1,
+                "supportsDiffs": true
+            },
+            "snapshots": {
+                "version": 1,
+                "supportsTimelineSeek": true,
+                "supportsBranching": true,
+                "supportsFollowPlayback": true
+            },
+            "pipelineIntrospection": {
+                "version": 1,
+                "supportsStepStreaming": true
+            },
+            "transports": transports
         }
     })
 }
