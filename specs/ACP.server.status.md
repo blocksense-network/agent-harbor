@@ -141,9 +141,9 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 #### Verification
 
-- [ ] Scenario `tests/acp_bridge/scenarios/initialize_and_auth.yaml` replays the full handshake and asserts (via harness assertions) that `session/update` advertises the negotiated capabilities.
+- [x] Scenario `tests/acp_bridge/scenarios/initialize_and_auth.yaml` + `cargo test -p ah-rest-server --test acp_initialize` now asserts the `initialize` response advertises `_meta.agent.harbor` capabilities and websocket transport before driving the status playback.
 - [x] Unit test `cargo test -p ah-rest-server acp_initialize_caps_roundtrip` validates we correctly convert between SDK structs and internal enums (including path normalization to absolute paths per ACP requirements).
-- [ ] Property test (proptest) ensures unknown capability flags are safely ignored yet logged.
+- [x] Property + log test ensures unknown capability flags are safely ignored yet surfaced as warnings (`JsonRpcTranslator::ignore_unknown_caps`).
 - [x] Unit test `cargo test -p ah-rest-server acp_authenticate_rpc_uses_payload_tokens` exercises the new `authenticate` RPC and checks capability advertisement includes `_meta.agent.harbor`.
 
 #### Compatibility Matrix (Harbor ↔ ACP core)
@@ -163,7 +163,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 - [x] Advertise `_meta.agent.harbor` capability blocks (workspace, snapshots, pipelines) during `initialize` per `specs/ACP.extensions.md`.
 - [x] Add explicit ACP `authenticate` RPC handling wired to `AuthConfig`, keeping handshake auth for transport setup.
-- [ ] Persist negotiated capabilities in shared state using SDK structs (remove bespoke capability structs).
+- [x] Persist negotiated capabilities in shared state using SDK structs (remove bespoke capability structs).
 - [ ] Port initialize/auth handling to the SDK dispatcher once transport refactor lands.
 
 ---
@@ -184,6 +184,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Added JSON-RPC handlers for `session/new`, `session/list`, and `session/load` in `acp::transport`, translating ACP payloads into `CreateTaskRequest` with safe defaults (local runtime, git/none repo detection, Claude Sonnet agent) before delegating to `SessionService`.
 - Introduced per-connection session subscriptions: after creation or load the gateway subscribes to `SessionStore::subscribe_session_events`, re-broadcasting status/log/tool/file events as `session/update` notifications over WebSocket with idle-aware flushing.
 - In-memory session store now broadcasts lifecycle/log events (with initial queued status) so ACP clients receive immediate updates; log levels map to ACP log events.
+- Session list filtering now infers `tenantId` **and** `projectId` from JWT claims when omitted by the client, aligning ACP behavior with REST scoping expectations.
 - Added scenario fixture `tests/acp_bridge/scenarios/session_new_and_load.yaml` to drive the mock playback store and keep Scenario Format coverage aligned with the new RPCs.
 - Session RPCs are gated on prior `initialize`, reusing the negotiated capabilities captured in `AcpSessionContext`.
 
@@ -193,7 +194,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [ ] Extend the Scenario Format with `userActions.pause_session` / `userActions.resume_session` primitives so harnesses can express pausing/resuming via REST or ACP semantics.
 - [ ] Create an ACP↔REST session ID cross-reference table/migration instead of reusing raw session IDs.
 - [x] Implement pagination (offset/limit) in `session/list` responses.
-- [ ] Implement project/tenant parity in `session/list` to mirror REST responses.
+- [ ] Implement full project/tenant parity in `session/list` to mirror REST responses (claim inference completed; REST response shape parity still pending).
 
 #### Verification
 
