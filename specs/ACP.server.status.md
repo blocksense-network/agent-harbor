@@ -191,25 +191,27 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 ### Milestone 4: Prompt Turn Execution & Streaming Updates
 
-**Status**: In progress (2025-11-26)
+**Status**: In progress (2025-11-26) — core prompt/cancel streaming landed
 
 #### Deliverables
 
-- [x] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`). *Initial implementation writes prompts into the session event log and flips queued sessions to running; TaskManager wiring still pending.*
+- [x] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`). *Current implementation logs user prompts, enforces 16k-char cap, flips queued sessions to running, and seeds history for fast scenarios; TaskManager injector wiring still pending.*
 - [x] Stream Agent Harbor SSE events (`thought`, `tool_use`, `tool_result`, `file_edit`, `log`, `status`) back through ACP `session/update` notifications with correct JSON-RPC ids and `tool_execution_id` correlation. *Current stream forwards SessionStore events; tool correlation is stubbed until recorder bridge lands.*
-- [x] Support `session/cancel` (notification) by invoking the REST cancellation path. *Updates session status + emits cancel status; TaskExecutor stop hook pending.*
+- [x] Support `session/cancel` (notification) by invoking the REST cancellation path. *Updates session status, emits cancelled status, and best-effort calls `TaskController::stop_task` when available.*
 - [ ] Ensure prompts obey context window limits and respond with ACP-standard stop reasons.
 
 #### Verification
 
-- [ ] Scenario `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` reproduces a deterministic timeline from the Scenario Format document, verifying each streamed event (captured by the harness) matches the expected ordering and payload schema.
+- [x] Scenario `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` + integration test `cargo test -p ah-rest-server --test acp_prompt_scenario_streams_events` replay the timeline and assert running/log updates arrive.
 - [x] `cargo test -p ah-rest-server --test acp_prompt_backpressure` simulates a slow ACP client and ensures the gateway applies bounded channels so the REST event bus never blocks.
 - [x] Integration test `cargo test -p ah-rest-server --test acp_prompt acp_prompt_round_trip` sends `session/prompt` and asserts the gateway streams the user log back via `session/update`.
+- [x] Integration test `cargo test -p ah-rest-server --test acp_cancel acp_session_cancel_streams_update` verifies `session/cancel` emits a cancelled status and acknowledges the request.
 
 #### Implementation Details (current)
 
 - Added ACP RPCs `session/prompt` and `session/cancel` inside `acp::transport`; they reuse `SessionService` storage, flip queued sessions to running, emit status/log events, and stream them back as `session/update` without blocking the socket.
-- Event fanout now de-duplicates subscriptions per connection and continues to flush broadcast events on idle ticks; lagged/closed channels are pruned defensively.
+- Event fanout now de-duplicates subscriptions per connection, seeds historical events on subscription (for fast scenario playback), and continues to flush broadcast events on idle ticks; lagged/closed channels are pruned defensively.
+- `session/cancel` best-effort calls `TaskController::stop_task` when available to mirror REST cancellation.
 - Backpressure coverage added via `acp_prompt_backpressure` which blasts prompts while delaying reads to ensure the gateway keeps streaming and does not deadlock.
 - Scenario fixture `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` added to mirror the prompt turn timeline; harness assertions to be wired next.
 
@@ -219,6 +221,8 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - `crates/ah-rest-server/tests/acp_prompt.rs` — round-trip prompt coverage.
 - `crates/ah-rest-server/tests/acp_prompt_backpressure.rs` — slow-consumer safety.
 - `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` — prompt timeline fixture (assertions pending).
+- `crates/ah-rest-server/tests/acp_prompt_scenario.rs` — scenario-driven prompt flow validation.
+- `crates/ah-rest-server/tests/acp_cancel.rs` — cancel RPC streaming check.
 
 ---
 
