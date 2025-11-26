@@ -2598,6 +2598,103 @@ mod tests {
         assert!(sanitize_command("evil\ncmd").is_none());
         assert!(sanitize_command("evil\rcmd").is_none());
     }
+
+    #[test]
+    fn session_update_maps_status() {
+        let params = json!({
+            "sessionId": "sess",
+            "event": { "type": "status", "status": "running" }
+        });
+        let notif = session_update_from_json(&params);
+        assert_eq!(notif.session_id.0.as_ref(), "sess");
+        match notif.update {
+            SessionUpdate::AgentMessageChunk { content } => assert_eq!(content.text, "running"),
+            _ => panic!("expected AgentMessageChunk for status"),
+        }
+        assert!(notif.meta.is_some());
+    }
+
+    #[test]
+    fn session_update_maps_log_and_thought() {
+        let log = session_update_from_json(&json!({
+            "sessionId": "s1",
+            "event": { "type": "log", "message": "hello" }
+        }));
+        match log.update {
+            SessionUpdate::AgentMessageChunk { content } => assert_eq!(content.text, "hello"),
+            _ => panic!("expected log to map to AgentMessageChunk"),
+        }
+
+        let thought = session_update_from_json(&json!({
+            "sessionId": "s1",
+            "event": { "type": "thought", "text": "reason" }
+        }));
+        match thought.update {
+            SessionUpdate::AgentThoughtChunk { content } => assert_eq!(content.text, "reason"),
+            _ => panic!("expected thought to map to AgentThoughtChunk"),
+        }
+    }
+
+    #[test]
+    fn session_update_maps_tool_calls() {
+        let call = session_update_from_json(&json!({
+            "sessionId": "s1",
+            "event": {
+                "type": "tool_use",
+                "executionId": "exec-1",
+                "toolName": "echo",
+                "status": "running",
+                "args": "\"hi\""
+            }
+        }));
+        match call.update {
+            SessionUpdate::ToolCall(call) => {
+                assert_eq!(call.id.0.as_ref(), "exec-1");
+                assert_eq!(call.title, "echo");
+                assert_eq!(
+                    call.status,
+                    agent_client_protocol::ToolCallStatus::InProgress
+                );
+                assert_eq!(call.raw_input, Some(json!("\"hi\"")));
+            }
+            _ => panic!("expected ToolCall"),
+        }
+
+        let result = session_update_from_json(&json!({
+            "sessionId": "s1",
+            "event": {
+                "type": "tool_result",
+                "executionId": "exec-1",
+                "status": "completed",
+                "output": "{\"ok\":true}"
+            }
+        }));
+        match result.update {
+            SessionUpdate::ToolCallUpdate(update) => {
+                assert_eq!(update.id.0.as_ref(), "exec-1");
+                assert_eq!(
+                    update.fields.status,
+                    Some(agent_client_protocol::ToolCallStatus::Completed)
+                );
+                assert_eq!(update.fields.raw_output, Some(json!("{\"ok\":true}")));
+            }
+            _ => panic!("expected ToolCallUpdate"),
+        }
+    }
+
+    #[test]
+    fn session_update_maps_terminal() {
+        let follow = session_update_from_json(&json!({
+            "sessionId": "s1",
+            "event": { "type": "terminal_follow", "executionId": "exec" }
+        }));
+        match follow.update {
+            SessionUpdate::AgentMessageChunk { content } => {
+                assert!(content.text.contains("terminal"))
+            }
+            _ => panic!("expected terminal follow to map to AgentMessageChunk"),
+        }
+    }
 }
 
 async fn send_json(
