@@ -39,7 +39,7 @@ async fn acp_session_catalog_end_to_end() {
     // initialize
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .expect("send initialize");
@@ -58,9 +58,11 @@ async fn acp_session_catalog_end_to_end() {
                 "params":{
                     "prompt":"Write unit tests for ACP gateway",
                     "agent":"sonnet",
-                    "labels": {"suite":"acp"},
-                    "repoUrl": "https://example.com/mock.git",
-                    "branch":"main"
+                    "_meta": {
+                        "labels": {"suite":"acp"},
+                        "repoUrl": "https://example.com/mock.git",
+                        "branch":"main"
+                    }
                 }
             })
             .to_string(),
@@ -181,7 +183,7 @@ async fn acp_session_new_infers_tenant_from_jwt() {
 
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .expect("init");
@@ -223,7 +225,7 @@ async fn acp_session_load_paused_marks_workspace_read_only() {
 
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .expect("init");
@@ -277,7 +279,7 @@ async fn acp_session_new_respects_context_limit() {
 
     socket
         .send(WsMessage::Text(
-            json!({"id":1,"method":"initialize","params":{}}).to_string(),
+            json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}).to_string(),
         ))
         .await
         .expect("send initialize");
