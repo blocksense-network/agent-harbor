@@ -12,10 +12,10 @@ timeline:
         - create
         - push-no-remote
         - --prompt
-        - "Push should be skipped when disabled"
+        - 'Push should be skipped when disabled'
         - --non-interactive
         - --push-to-remote
-        - "false"
+        - 'false'
       expect:
         exitCode: 0
   - assertGit:
@@ -30,10 +30,10 @@ timeline:
         - create
         - push-branch
         - --prompt
-        - "Explicit push should succeed"
+        - 'Explicit push should succeed'
         - --non-interactive
         - --push-to-remote
-        - "true"
+        - 'true'
       expect:
         exitCode: 0
   - assertGit:

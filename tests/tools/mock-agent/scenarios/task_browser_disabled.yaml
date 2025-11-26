@@ -12,12 +12,12 @@ timeline:
         - create
         - browser-block
         - --prompt
-        - "browser path disabled"
+        - 'browser path disabled'
         - --browser-automation
-        - "true"
+        - 'true'
         - --non-interactive
         - --push-to-remote
-        - "false"
+        - 'false'
       expect:
         exitCode: 1
-        stderrContains: "Browser automation is disabled"
+        stderrContains: 'Browser automation is disabled'

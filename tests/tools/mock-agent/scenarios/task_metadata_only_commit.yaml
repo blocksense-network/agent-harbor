@@ -12,22 +12,22 @@ timeline:
         - create
         - metadata-only
         - --prompt
-        - "Metadata only task"
+        - 'Metadata only task'
         - --non-interactive
         - --push-to-remote
-        - "false"
+        - 'false'
         - --create-task-files
-        - "no"
+        - 'no'
         - --create-metadata-commits
-        - "yes"
+        - 'yes'
       expect:
         exitCode: 0
         fs:
           notExists:
-            - ".agents/tasks/metadata-only"
+            - '.agents/tasks/metadata-only'
   - assertGit:
       branch: metadata-only
       exists: true
       commitsAheadOf: main
       commitCount: 1
-      headMessageContains: "Start-Agent-Branch: metadata-only"
+      headMessageContains: 'Start-Agent-Branch: metadata-only'
