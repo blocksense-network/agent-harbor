@@ -99,7 +99,10 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
 
     socket
         .send(WsMessage::Text(
-            serde_json::to_string(&json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}})).unwrap(),
+            serde_json::to_string(
+                &json!({"id":1,"method":"initialize","params":{"protocolVersion":"1.0"}}),
+            )
+            .unwrap(),
         ))
         .await
         .expect("init");
