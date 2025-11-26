@@ -229,7 +229,13 @@ async fn handle_rpc(
             let result = JsonRpcTranslator::initialize_response(&caps);
             Some(rpc_response(id, result))
         }
-        "session/new" | "session/list" | "session/load" | "session/prompt" | "session/cancel"
+        "session/new"
+        | "session/list"
+        | "session/load"
+        | "session/prompt"
+        | "session/cancel"
+        | "session/pause"
+        | "session/resume"
             if ctx.negotiated_caps.is_none() =>
         {
             Some(json_error(
@@ -255,6 +261,14 @@ async fn handle_rpc(
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
         "session/cancel" => match handle_session_cancel(state, ctx, sender, params).await {
+            Ok(result) => Some(rpc_response(id, result)),
+            Err(err) => Some(json_error(id, -32000, &err.to_string())),
+        },
+        "session/pause" => match handle_session_pause(state, ctx, sender, params).await {
+            Ok(result) => Some(rpc_response(id, result)),
+            Err(err) => Some(json_error(id, -32000, &err.to_string())),
+        },
+        "session/resume" => match handle_session_resume(state, ctx, sender, params).await {
             Ok(result) => Some(rpc_response(id, result)),
             Err(err) => Some(json_error(id, -32000, &err.to_string())),
         },
@@ -528,6 +542,102 @@ async fn handle_session_cancel(
     Ok(json!({
         "sessionId": session_id,
         "cancelled": true
+    }))
+}
+
+async fn handle_session_pause(
+    state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    params: Value,
+) -> ServerResult<Value> {
+    let session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
+
+    let Some(mut session) = state
+        .app_state
+        .session_store
+        .get_session(session_id)
+        .await?
+    else {
+        return Err(ServerError::SessionNotFound(session_id.to_string()));
+    };
+
+    subscribe_session(ctx, &state.app_state, session_id);
+    let _ = seed_history(&state.app_state, session_id, sender).await;
+    ctx.sessions.insert(session_id.to_string());
+
+    session.session.status = SessionStatus::Paused;
+    state
+        .app_state
+        .session_store
+        .update_session(session_id, &session)
+        .await?;
+    state
+        .app_state
+        .session_store
+        .add_session_event(
+            session_id,
+            SessionEvent::status(
+                SessionStatus::Paused,
+                chrono::Utc::now().timestamp_millis() as u64,
+            ),
+        )
+        .await?;
+
+    Ok(json!({
+        "sessionId": session_id,
+        "status": "paused"
+    }))
+}
+
+async fn handle_session_resume(
+    state: &AcpTransportState,
+    ctx: &mut AcpSessionContext,
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    params: Value,
+) -> ServerResult<Value> {
+    let session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
+
+    let Some(mut session) = state
+        .app_state
+        .session_store
+        .get_session(session_id)
+        .await?
+    else {
+        return Err(ServerError::SessionNotFound(session_id.to_string()));
+    };
+
+    subscribe_session(ctx, &state.app_state, session_id);
+    let _ = seed_history(&state.app_state, session_id, sender).await;
+    ctx.sessions.insert(session_id.to_string());
+
+    session.session.status = SessionStatus::Running;
+    state
+        .app_state
+        .session_store
+        .update_session(session_id, &session)
+        .await?;
+    state
+        .app_state
+        .session_store
+        .add_session_event(
+            session_id,
+            SessionEvent::status(
+                SessionStatus::Running,
+                chrono::Utc::now().timestamp_millis() as u64,
+            ),
+        )
+        .await?;
+
+    Ok(json!({
+        "sessionId": session_id,
+        "status": "running"
     }))
 }
 
