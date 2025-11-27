@@ -279,7 +279,7 @@
                 pjdfstest = pjdfstest;
                 sosumi-docs-downloader = sosumi-docs-downloader.packages.${system}.sosumi-docs-downloader;
                 codetracer-python-recorder = codetracerPythonRecorderForSystem system;
-                default = ah-script;
+                default = ah-binary;
               }
             );
 
