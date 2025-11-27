@@ -1,9 +1,8 @@
 # Agent Harbor
 
-[![CI Status](https://img.shields.io/github/actions/workflow/status/blocksense/agent-harbor/ci.yml?branch=main&style=for-the-badge)](https://github.com/blocksense/agent-harbor/actions)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/blocksense-network/agent-harbor/ci-badge.yml?branch=main&style=for-the-badge)](https://github.com/blocksense-network/agent-harbor/actions/workflows/ci.yml?query=event%3Amerge_group)
 [![License](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=for-the-badge)](https://opensource.org/license/agpl-v3)
-[![Latest Release](https://img.shields.io/github/v/release/blocksense/agent-harbor?style=for-the-badge)](https://github.com/blocksense/agent-harbor/releases)
-[![Docs](https://img.shields.io/badge/Docs-Docusaurus-blue?style=for-the-badge)](https://blocksense.network/agent-harbor)
+[![Docs](https://img.shields.io/badge/Docs-Nextra-blue?style=for-the-badge&logo=nextra)](https://docs.agent-harbor.dev)
 
 **Instantly spawn dozens of YOLO agents in the most advanced local sandbox for macOS and Linux. Steer them with precision with agent session forking.**
 
