@@ -1366,13 +1366,27 @@ impl ViewModel {
                         return true;
                     }
                     CardFocusElement::GoButton => {
+                        let default_split_mode = self.settings.default_split_mode();
+
+                        // Use advanced options from draft card, or defaults if not configured
+                        let advanced_options = card
+                            .advanced_options
+                            .clone()
+                            .or_else(|| Some(AdvancedLaunchOptions::default()));
+
+                        tracing::info!(
+                            "TUI direct go button launch: idx={}, split_mode={:?}, advanced_options={:?} (from config)",
+                            idx,
+                            default_split_mode,
+                            advanced_options
+                        );
                         return self.launch_task(
                             idx,
-                            ah_core::SplitMode::None,
+                            default_split_mode,
                             false,
                             None,
                             None,
-                            None,
+                            advanced_options,
                         );
                     }
                     CardFocusElement::AdvancedOptionsButton => {
@@ -1404,6 +1418,14 @@ impl ViewModel {
         working_copy_mode: Option<ah_core::WorkingCopyMode>,
         advanced_options: Option<AdvancedLaunchOptions>,
     ) -> bool {
+        tracing::info!(
+            "TUI launch_task: draft_card_index={}, split_mode={:?}, focus={}, advanced_options={}",
+            draft_card_index,
+            split_mode,
+            focus,
+            advanced_options.is_some()
+        );
+
         // Get the specified draft card
         if let Some(card) = self.draft_cards.get(draft_card_index) {
             // Validate that description and models are provided
@@ -1449,6 +1471,10 @@ impl ViewModel {
 
             // Add advanced launch options if provided
             if let Some(options) = &advanced_options {
+                tracing::debug!(
+                    "TUI launch_task: Applying advanced options to builder: {:?}",
+                    options
+                );
                 builder = builder
                     .sandbox_profile(options.sandbox_profile.clone())
                     .fs_snapshots(options.fs_snapshots.clone())
@@ -1470,6 +1496,8 @@ impl ViewModel {
                     .notifications(options.notifications)
                     .labels(options.labels.clone())
                     .fleet(options.fleet.clone());
+            } else {
+                tracing::debug!("TUI launch_task: No advanced options to apply");
             }
 
             builder = builder.task_id(card.id.clone()); // Use the draft card's stable ID
@@ -1603,6 +1631,9 @@ impl ViewModel {
             };
             self.status_bar.status_message = Some(message.to_string());
 
+            // Save the advanced options before removing the card so we can preserve them
+            let card_advanced_options = card.advanced_options.clone();
+
             // Remove the draft card that was just dispatched
             self.draft_cards.remove(draft_card_index);
 
@@ -1616,7 +1647,7 @@ impl ViewModel {
                     selected_agents: card_agents, // Keep the same models
                     created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 };
-                let new_card = create_draft_card_from_task(
+                let mut new_card = create_draft_card_from_task(
                     empty_draft_task,
                     CardFocusElement::TaskDescription,
                     Some(self.repositories_enumerator.clone()),
@@ -1625,6 +1656,8 @@ impl ViewModel {
                     Arc::clone(&self.workspace_workflows),
                     Arc::clone(&self.workspace_terms),
                 );
+                // Preserve the advanced options from the previous draft card
+                new_card.advanced_options = card_advanced_options;
                 self.draft_cards.push(new_card);
             }
 
@@ -1638,12 +1671,20 @@ impl ViewModel {
     }
 
     /// Launch a task with the selected launch option
+    /// This function is used for ALL launch scenarios (keyboard shortcuts, modal actions, etc.)
+    /// and ALWAYS uses the advanced options stored in the draft card
     fn launch_task_with_option(&mut self, draft_id: String, selected_option: String) {
+        tracing::debug!(
+            "TUI launch_task_with_option: draft_id={}, option={}",
+            draft_id,
+            selected_option
+        );
+
         // Find the draft card by ID
         if let Some(draft_index) = self.draft_cards.iter().position(|card| card.id == draft_id) {
             // Parse the selected option to determine split mode and focus
             let (split_mode, focus) = match selected_option.as_str() {
-                "Launch in new tab (t)" => (ah_core::SplitMode::None, false),
+                "Launch in new tab (t)" | "Go (Enter)" => (ah_core::SplitMode::None, false),
                 "Launch in split view (s)" => (ah_core::SplitMode::Auto, false),
                 "Launch in horizontal split (h)" => (ah_core::SplitMode::Horizontal, false),
                 "Launch in vertical split (v)" => (ah_core::SplitMode::Vertical, false),
@@ -1656,16 +1697,23 @@ impl ViewModel {
                 _ => (ah_core::SplitMode::Auto, false), // Default fallback
             };
 
-            // Get the advanced launch options from the modal if it's open
-            let advanced_options = self.active_modal.as_ref().and_then(|modal| {
-                if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
-                    Some(view_model.config.clone())
-                } else {
-                    None
-                }
-            });
+            // Save the user's split mode choice as the session default preference
+            // (only for the current TUI session - not persisted to disk)
+            self.settings.default_split_mode = Some(split_mode);
+            tracing::info!(
+                "🔧 TUI: Updated session split mode preference: {:?}",
+                split_mode
+            );
 
-            // Launch the task with the determined parameters
+            // Get advanced options from the draft card, or use defaults if not configured
+            // This ensures consistent behavior whether the user has opened the advanced options modal or not
+            let advanced_options = self
+                .draft_cards
+                .get(draft_index)
+                .and_then(|card| card.advanced_options.clone())
+                .or_else(|| Some(AdvancedLaunchOptions::default()));
+
+            // Launch the task with the determined split mode, focus, and advanced options from card
             self.launch_task(draft_index, split_mode, focus, None, None, advanced_options);
         }
     }
@@ -1745,6 +1793,7 @@ impl ViewModel {
             }
             ModalType::LaunchOptions { view_model } => {
                 // Launch the task with the selected options
+                // Advanced options are already saved to the draft card when modal closes
                 self.launch_task_with_option(view_model.draft_id.clone(), selected_option);
             }
             _ => {} // Other modal types don't need selection handling
@@ -2687,14 +2736,20 @@ impl ViewModel {
                                 KeyboardOperationResult::Handled
                             }
                             CardFocusElement::GoButton => {
+                                let default_split_mode = self.settings.default_split_mode();
+                                // Use advanced options from draft card, or defaults if not configured
+                                let advanced_options = card
+                                    .advanced_options
+                                    .clone()
+                                    .or_else(|| Some(AdvancedLaunchOptions::default()));
                                 // Launch the task
                                 if self.launch_task(
                                     draft_index,
-                                    ah_core::SplitMode::None,
+                                    default_split_mode,
                                     false,
                                     None,
                                     None,
-                                    None,
+                                    advanced_options,
                                 ) {
                                     KeyboardOperationResult::Handled
                                 } else {
@@ -2771,13 +2826,19 @@ impl ViewModel {
                             if card.focus_element == CardFocusElement::TaskDescription
                                 || card.focus_element == CardFocusElement::GoButton
                             {
+                                let default_split_mode = self.settings.default_split_mode();
+                                // Use advanced options from draft card, or defaults if not configured
+                                let advanced_options = card
+                                    .advanced_options
+                                    .clone()
+                                    .or_else(|| Some(AdvancedLaunchOptions::default()));
                                 if self.launch_task(
                                     draft_index,
-                                    ah_core::SplitMode::None,
+                                    default_split_mode,
                                     false,
                                     None,
                                     None,
-                                    None,
+                                    advanced_options,
                                 ) {
                                     KeyboardOperationResult::Handled
                                 } else {
@@ -2807,13 +2868,18 @@ impl ViewModel {
                     starting_point,
                     working_copy_mode,
                 } => {
+                    // Use advanced options from draft card, or defaults if not configured
+                    let advanced_options = card
+                        .advanced_options
+                        .clone()
+                        .or_else(|| Some(AdvancedLaunchOptions::default()));
                     if self.launch_task(
                         draft_index,
                         split_mode,
                         focus,
                         starting_point,
                         working_copy_mode,
-                        None,
+                        advanced_options,
                     ) {
                         KeyboardOperationResult::Handled
                     } else {
@@ -3702,13 +3768,19 @@ impl ViewModel {
                             }
                             CardFocusElement::GoButton => {
                                 // Launch the task
+                                let default_split_mode = self.settings.default_split_mode();
+                                // Use advanced options from draft card, or defaults if not configured
+                                let advanced_options = card
+                                    .advanced_options
+                                    .clone()
+                                    .or_else(|| Some(AdvancedLaunchOptions::default()));
                                 self.launch_task(
                                     idx,
-                                    ah_core::SplitMode::None,
+                                    default_split_mode,
                                     false,
                                     None,
                                     None,
-                                    None,
+                                    advanced_options,
                                 );
                                 return true;
                             }
@@ -5642,7 +5714,14 @@ impl ViewModel {
             MouseAction::LaunchTask => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
                 self.change_focus(DashboardFocusState::DraftTask(0));
-                self.launch_task(0, ah_core::SplitMode::None, false, None, None, None);
+                let default_split_mode = self.settings.default_split_mode();
+                // Use advanced options from draft card, or defaults if not configured
+                let advanced_options = self
+                    .draft_cards
+                    .first()
+                    .and_then(|card| card.advanced_options.clone())
+                    .or_else(|| Some(AdvancedLaunchOptions::default()));
+                self.launch_task(0, default_split_mode, false, None, None, advanced_options);
             }
             MouseAction::ActivateAdvancedOptionsModal => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
@@ -5848,6 +5927,15 @@ impl ViewModel {
         );
         trace!("current modal_state: {:?}", self.modal_state);
         trace!("active_modal is_some: {}", self.active_modal.is_some());
+
+        // Load existing advanced options from the draft card, or use defaults
+        let config = self
+            .draft_cards
+            .iter()
+            .find(|card| card.id == draft_id)
+            .and_then(|card| card.advanced_options.clone())
+            .unwrap_or_default();
+
         let modal = ModalViewModel {
             title: "Advanced Launch Options".to_string(),
             input_value: String::new(),
@@ -5856,7 +5944,7 @@ impl ViewModel {
             modal_type: ModalType::LaunchOptions {
                 view_model: LaunchOptionsViewModel {
                     draft_id,
-                    config: AdvancedLaunchOptions::default(),
+                    config,
                     active_column: LaunchOptionsColumn::Options,
                     selected_option_index: 0,
                     selected_action_index: 0,
@@ -5872,6 +5960,24 @@ impl ViewModel {
 
     /// Close the current modal
     pub fn close_modal(&mut self) {
+        // Save advanced options back to draft card when closing Launch Options modal
+        if let Some(modal) = &self.active_modal {
+            if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                // Find the draft card and save the config
+                if let Some(card) =
+                    self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
+                {
+                    card.advanced_options = Some(view_model.config.clone());
+                    tracing::error!(
+                        "💾 Saved advanced options to draft card: {} (interactive={}, sandbox={:?})",
+                        view_model.draft_id,
+                        view_model.config.interactive_mode,
+                        view_model.config.sandbox_profile
+                    );
+                }
+            }
+        }
+
         self.modal_state = ModalState::None;
         self.active_modal = None;
         self.exit_confirmation_armed = false;
@@ -6586,6 +6692,7 @@ pub fn create_draft_card_from_task(
         last_saved_generation: 0,
         pending_save_request_id: None,
         pending_save_invalidated: false,
+        advanced_options: None, // No advanced options by default
         repositories_enumerator,
         branches_enumerator,
         autocomplete,
@@ -6728,6 +6835,7 @@ fn create_draft_card_view_models(
                 last_saved_generation: 0,
                 pending_save_request_id: None,
                 pending_save_invalidated: false,
+                advanced_options: None, // No advanced options by default
                 repositories_enumerator: None,
                 branches_enumerator: None,
                 autocomplete: panic!("This function should not be used"),
