@@ -33,6 +33,15 @@ impl UnixSocketIO for HookSafeIO {
 
             let mut addr: libc::sockaddr_un = std::mem::zeroed();
             addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+            // macOS requires the length field to be populated or connect(2) may
+            // return EINVAL. We set it to the size of the family plus the path
+            // (including trailing NUL) as recommended by the man page.
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            {
+                let len =
+                    std::mem::size_of::<libc::sa_family_t>() + path_cstr.as_bytes_with_nul().len();
+                addr.sun_len = len as u8;
+            }
 
             let path_bytes = path_cstr.as_bytes_with_nul();
             if path_bytes.len() > addr.sun_path.len() {
