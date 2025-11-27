@@ -6,7 +6,8 @@
   "ignorePaths": [
     "specs/Initial Developer Input/**",
     "repomix.md",
-    ".obsidian/**"
+    ".obsidian/**",
+    "vendor/acp-rust-sdk/**"
   ],
   "words": [
     "fiemap",
