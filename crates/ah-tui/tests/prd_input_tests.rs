@@ -678,6 +678,12 @@ mod keyboard {
 
     #[test]
     fn escape_closes_modal() {
+        // See also: modal_focus_restoration_tests.rs for comprehensive tests on
+        // focus restoration behavior when modals are dismissed with ESC:
+        // - Repository/Branch/Model modals restore focus to their respective selectors
+        // - Launch options modal returns focus to task description
+        // - Multiple modal dismissals maintain correct focus
+        // - Focus restoration works from different starting button states
         let mut vm = new_view_model();
         vm.open_modal(ah_tui::view_model::ModalState::RepositorySearch);
         assert_eq!(
@@ -1055,6 +1061,8 @@ mod mouse {
 
     #[test]
     fn clicking_repository_button_opens_modal() {
+        // See also: modal_focus_restoration_tests.rs for tests verifying that
+        // when this modal is closed with ESC, focus returns to RepositorySelector
         let mut vm = new_view_model();
 
         click(
@@ -1725,6 +1733,8 @@ mod mouse {
 
     #[test]
     fn mouse_scroll_in_modal_changes_selection() {
+        // See also: modal_focus_restoration_tests.rs for tests verifying that
+        // when model modal is closed with ESC, focus returns to ModelSelector
         let mut vm = new_view_model();
 
         // Check for loaded agents

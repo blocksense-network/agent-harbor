@@ -199,7 +199,18 @@ The agent selection dialog provides advanced agent configuration:
   - `Enter`: Close the dialog with the current model and count selections:
     - If the currently selected model has count zero: select ONLY this model with count 1, remove all other model selections
     - If the currently selected model has non-zero count: keep all current non-zero count models with their counts
-  - `Esc`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place. Focus returns to the model picker button in both cases.
+  - `Esc`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place. Focus returns to the model picker button.
+
+#### Modal Focus Restoration
+
+When modals are dismissed with ESC, focus is restored based on the modal type to optimize the user workflow:
+
+- **Model Selection Modal**: Returns focus to the model picker button, allowing immediate re-adjustment of model selection
+- **Repository/Branch Selection Modals**: Return focus to their respective selector buttons
+- **Launch Options Modal**: Returns focus to the task description textarea, allowing the user to immediately continue editing their prompt after reviewing or adjusting launch options
+- **Settings Modal**: Returns focus to the previously focused element
+
+This context-aware focus restoration ensures a smooth editing workflow where dismissing a modal returns the user to the most logical next action point.
 
 ### Multi-Agent Task Launching
 
@@ -646,7 +657,7 @@ The right column provides launch action selection with keyboard shortcuts:
 
 **Launch Menu Navigation**: Arrow keys navigate between launch options. Enter selects the highlighted option. Single letters (t/s/h/v) or capitals (T/S/H/V) can be typed directly to select when modal is visible.
 
-- **Modal dismissal**: ESC closes without launching
+- **Modal dismissal**: ESC closes without launching and returns focus to the task description textarea, allowing the user to immediately continue editing their prompt
 - **Default focus**: Left column options when modal opens
 - **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed
 
