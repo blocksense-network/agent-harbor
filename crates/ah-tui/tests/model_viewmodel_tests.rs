@@ -1037,11 +1037,11 @@ mod viewmodel_tests {
                 "Modal should be dismissed"
             );
 
-            // Focus should return to the advanced options button
+            // Focus should return to the prompt input (task description)
             assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
             assert_eq!(
                 vm.draft_cards[0].focus_element,
-                CardFocusElement::AdvancedOptionsButton
+                CardFocusElement::TaskDescription
             );
         }
 
