@@ -21,6 +21,10 @@ path = "src/bin/spawn_tree.rs"
 name = "mixed_output"
 path = "src/bin/mixed_output.rs"
 
+[[bin]]
+name = "passthrough_controlled"
+path = "src/bin/passthrough_controlled.rs"
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -38,6 +42,8 @@ futures = "0.3"
 libc = "0.2"
 ah-command-trace-proto = { workspace = true }
 ah-command-trace-server = { workspace = true }
+portable-pty = "0.8"
+anyhow = "1.0"
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
