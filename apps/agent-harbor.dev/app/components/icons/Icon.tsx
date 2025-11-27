@@ -47,6 +47,25 @@ export function IconFilter(props: IconProps) {
   );
 }
 
+export function IconAntiHalting(props: IconProps) {
+  return (
+    <svg
+      className={props.className || 'w-6 h-6'}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M5 3H19M5 21H19M6 3L12 12L18 3M6 21L12 12L18 21"
+      ></path>
+      <path fill="currentColor" stroke="none" d="M10 15H14L18 21H6Z"></path>
+    </svg>
+  );
+}
+
 export function IconLock(props: IconProps) {
   return (
     <svg

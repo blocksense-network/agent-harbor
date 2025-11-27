@@ -7,7 +7,7 @@ import { ReactElement } from 'react';
 import SandboxDemo from '../demos/SandboxDemo';
 import AgentDashboard from '../demos/AgentDashboard';
 import TaskManager from '../demos/TaskManager';
-import { IconSandbox, IconFilter } from '../icons/Icon';
+import { IconSandbox, IconFilter, IconAntiHalting } from '../icons/Icon';
 
 export interface Feature {
   icon: ReactElement;
@@ -38,7 +38,7 @@ export const features: Feature[] = [
     reverse: true,
   },
   {
-    icon: <IconSandbox />,
+    icon: <IconAntiHalting />,
     title: 'Anti-halting features for long-horizon tasks',
     features: [
       'Supervisor agents step in and reprompt stuck agents. Quality control agents automatically rollback and fork when results go off-spec',
