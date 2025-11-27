@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 [package]
-name = "e2e-stackable-hooks"
+name = "e2e-auto-propagation-shim"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,14 +11,6 @@ stackable-hooks = { path = "../../crates/stackable-hooks" }
 libc = "0.2"
 ctor = "0.2"
 
-[[bin]]
-name = "test-program"
-path = "src/bin/test_program.rs"
-
-[[bin]]
-name = "call_real_demo"
-path = "src/bin/call_real_demo.rs"
-
-[[bin]]
-name = "propagation-test"
-path = "src/bin/propagation_test.rs"
+[lib]
+name = "auto_propagation_shim"
+crate-type = ["cdylib"]
