@@ -125,11 +125,11 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 #### Outstanding Tasks
 
-- [ ] Replace echo handler with SDK-backed JSON-RPC runtime and stdio transport plumbing.
+- [x] Replace echo handler with SDK-backed JSON-RPC runtime and stdio transport plumbing.
 - [ ] Expand authentication to JWT claims-to-tenant mapping once tenant metadata is available.
 - [x] Handle ACP `authenticate` as an RPC (not just handshake) and advertise `_meta.agent.harbor` capabilities during `initialize`.
 - [x] Persist negotiated capabilities using SDK types instead of ad-hoc structs.
-- [ ] Wire ACP WebSocket/stdio transports to the SDK dispatcher (frames→Value→dispatcher) and remove the manual handler/echo loop.
+- [x] Wire ACP WebSocket/stdio transports to the SDK dispatcher (frames→Value→dispatcher) and remove the manual handler/echo loop.
 
 #### Verification
 
@@ -179,7 +179,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [x] Advertise `_meta.agent.harbor` capability blocks (workspace, snapshots, pipelines) during `initialize` per `specs/ACP.extensions.md`.
 - [x] Add explicit ACP `authenticate` RPC handling wired to `AuthConfig`, keeping handshake auth for transport setup.
 - [x] Persist negotiated capabilities in shared state using SDK structs (remove bespoke capability structs).
-- [ ] Port initialize/auth handling to the SDK dispatcher once transport refactor lands.
+- [x] Port initialize/auth handling to the SDK dispatcher once transport refactor lands.
 
 ---
 
