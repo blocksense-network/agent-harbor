@@ -512,6 +512,7 @@ name = "ah-config-types"
 version = "0.1.0"
 dependencies = [
  "ah-domain-types",
+ "ah-mux-core",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -740,6 +741,7 @@ dependencies = [
 name = "ah-mux-core"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
  "thiserror 1.0.69",
 ]
@@ -979,6 +981,7 @@ dependencies = [
  "ah-core",
  "ah-domain-types",
  "ah-mux",
+ "ah-mux-core",
  "ah-recorder",
  "ah-repo",
  "ah-rest-api-contract",
@@ -1016,6 +1019,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tokio-util",
+ "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
  "tui-testing",
@@ -1036,6 +1040,7 @@ dependencies = [
  "ah-mux-core",
  "serde",
  "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]

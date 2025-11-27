@@ -155,6 +155,10 @@ pub struct TaskEntryViewModel {
     pub pending_save_request_id: Option<u64>,         // Request id for in-flight save, if any
     pub pending_save_invalidated: bool, // Indicates content changed since request started
 
+    // Advanced launch options configured via the Advanced Options modal
+    // When None, default options will be used when launching
+    pub advanced_options: Option<crate::view_model::agents_selector_model::AdvancedLaunchOptions>,
+
     // Optional enumerators (None for agent record/replay scenarios)
     pub repositories_enumerator: Option<Arc<dyn ah_core::RepositoriesEnumerator>>,
     pub branches_enumerator: Option<Arc<dyn ah_core::BranchesEnumerator>>,
