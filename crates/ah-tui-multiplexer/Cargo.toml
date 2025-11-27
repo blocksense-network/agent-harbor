@@ -13,3 +13,4 @@ ah-mux-core = { workspace = true }
 ah-mux = { workspace = true }
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+tracing = { workspace = true }

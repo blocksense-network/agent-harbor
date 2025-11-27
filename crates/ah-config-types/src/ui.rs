@@ -6,6 +6,9 @@
 use ah_domain_types::{AgentChoice, ExperimentalFeature};
 use serde::{Deserialize, Serialize};
 
+// Import SplitMode for the configuration
+use ah_mux_core::SplitMode;
+
 /// Root-level UI configuration that gets flattened into the main config.
 /// This contains all top-level keys related to UI and general application settings.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -43,6 +46,8 @@ pub struct UiRoot {
     pub default_agents: Option<Vec<AgentChoice>>,
     /// Experimental features to enable (can be overridden by CLI)
     pub experimental_features: Option<Vec<ExperimentalFeature>>,
+    /// Default split mode for TUI task launches
+    pub default_split_mode: Option<SplitMode>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, PartialEq)]

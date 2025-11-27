@@ -16,7 +16,10 @@ pub enum SplitDirection {
     Vertical,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum SplitMode {
     /// No splitting - create new window
     None,

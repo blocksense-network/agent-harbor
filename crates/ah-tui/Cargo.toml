@@ -20,6 +20,7 @@ ah-core = { workspace = true }
 ah-workflows = { workspace = true }
 ah-recorder = { workspace = true }
 ah-mux = { workspace = true }
+ah-mux-core = { workspace = true }
 config-core = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-util = "0.7"
@@ -49,6 +50,7 @@ unic-langid = "0.9"
 ctrlc = "3.4"
 uuid = { version = "1.0", features = ["v4"] }
 tempfile = "3.0"
+toml = "0.8"
 ssz_rs = "0.9"
 interprocess = { version = "2.0", features = ["tokio"] }
 ethereum_ssz = { workspace = true }

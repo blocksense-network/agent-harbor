@@ -1415,6 +1415,9 @@ impl ViewModel {
             };
             self.status_bar.status_message = Some(message.to_string());
 
+            // Save the advanced options before removing the card so we can preserve them
+            let card_advanced_options = card.advanced_options.clone();
+
             // Remove the draft card that was just dispatched
             self.draft_cards.remove(draft_card_index);
 
@@ -1428,7 +1431,7 @@ impl ViewModel {
                     selected_agents: card_agents, // Keep the same models
                     created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 };
-                let new_card = create_draft_card_from_task(
+                let mut new_card = create_draft_card_from_task(
                     empty_draft_task,
                     CardFocusElement::TaskDescription,
                     Some(self.repositories_enumerator.clone()),
@@ -1437,6 +1440,8 @@ impl ViewModel {
                     Arc::clone(&self.workspace_workflows),
                     Arc::clone(&self.workspace_terms),
                 );
+                // Preserve the advanced options from the previous draft card
+                new_card.advanced_options = card_advanced_options;
                 self.draft_cards.push(new_card);
             }
 
@@ -2424,13 +2429,16 @@ impl ViewModel {
                             }
                             CardFocusElement::GoButton => {
                                 // Launch the task
+                                // Use advanced options from draft card, or defaults if not configured
+                                let advanced_options = card.advanced_options.clone()
+                                    .or_else(|| Some(super::agents_selector_model::AdvancedLaunchOptions::default()));
                                 if self.launch_task(
                                     draft_index,
                                     ah_core::SplitMode::None,
                                     false,
                                     None,
                                     None,
-                                    None,
+                                    advanced_options,
                                 ) {
                                     KeyboardOperationResult::Handled
                                 } else {
@@ -2498,13 +2506,16 @@ impl ViewModel {
                             if card.focus_element == CardFocusElement::TaskDescription
                                 || card.focus_element == CardFocusElement::GoButton
                             {
+                                // Use advanced options from draft card, or defaults if not configured
+                                let advanced_options = card.advanced_options.clone()
+                                    .or_else(|| Some(super::agents_selector_model::AdvancedLaunchOptions::default()));
                                 if self.launch_task(
                                     draft_index,
                                     ah_core::SplitMode::None,
                                     false,
                                     None,
                                     None,
-                                    None,
+                                    advanced_options,
                                 ) {
                                     KeyboardOperationResult::Handled
                                 } else {
@@ -2525,13 +2536,17 @@ impl ViewModel {
                     starting_point,
                     working_copy_mode,
                 } => {
+                    // Use advanced options from draft card, or defaults if not configured
+                    let advanced_options = card.advanced_options.clone().or_else(|| {
+                        Some(super::agents_selector_model::AdvancedLaunchOptions::default())
+                    });
                     if self.launch_task(
                         draft_index,
                         split_mode,
                         focus,
                         starting_point,
                         working_copy_mode,
-                        None,
+                        advanced_options,
                     ) {
                         KeyboardOperationResult::Handled
                     } else {
@@ -4953,7 +4968,22 @@ impl ViewModel {
             MouseAction::LaunchTask => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
                 self.change_focus(DashboardFocusState::DraftTask(0));
-                self.launch_task(0, ah_core::SplitMode::None, false, None, None, None);
+                // Use advanced options from draft card, or defaults if not configured
+                let advanced_options = self
+                    .draft_cards
+                    .first()
+                    .and_then(|card| card.advanced_options.clone())
+                    .or_else(|| {
+                        Some(super::agents_selector_model::AdvancedLaunchOptions::default())
+                    });
+                self.launch_task(
+                    0,
+                    ah_core::SplitMode::None,
+                    false,
+                    None,
+                    None,
+                    advanced_options,
+                );
             }
             MouseAction::FocusDraftTextarea(_idx) => {
                 self.close_autocomplete_if_leaving_textarea(DashboardFocusState::DraftTask(0));
@@ -5828,6 +5858,7 @@ pub fn create_draft_card_from_task(
         last_saved_generation: 0,
         pending_save_request_id: None,
         pending_save_invalidated: false,
+        advanced_options: None, // No advanced options by default
         repositories_enumerator,
         branches_enumerator,
         autocomplete,
@@ -5969,6 +6000,7 @@ fn create_draft_card_view_models(
                 last_saved_generation: 0,
                 pending_save_request_id: None,
                 pending_save_invalidated: false,
+                advanced_options: None, // No advanced options by default
                 repositories_enumerator: None,
                 branches_enumerator: None,
                 autocomplete: panic!("This function should not be used"),
