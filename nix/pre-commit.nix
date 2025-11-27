@@ -147,7 +147,7 @@
               settings = {
                 allFeatures = true;
                 denyWarnings = true;
-                extraArgs = "--tests --all-targets";
+                extraArgs = "--workspace --exclude agent-client-protocol --tests --all-targets";
                 offline = false;
               };
             };
