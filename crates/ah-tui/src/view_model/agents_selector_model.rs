@@ -337,16 +337,27 @@ impl ViewModel {
                 }
             }
 
-            // For model selection modals, focus should return to the model picker button
-            if let Some(modal) = &self.active_modal {
-                if matches!(modal.modal_type, ModalType::AgentSelection { .. }) {
-                    self.change_focus(DashboardFocusState::DraftTask(0));
-                    if let Some(card) = self.draft_cards.get_mut(0) {
-                        card.focus_element = CardFocusElement::ModelSelector;
-                    }
+            // Determine which focus element to restore based on modal type
+            let focus_element_to_restore = if let Some(modal) = &self.active_modal {
+                match modal.modal_type {
+                    ModalType::AgentSelection { .. } => Some(CardFocusElement::ModelSelector),
+                    ModalType::LaunchOptions { .. } => Some(CardFocusElement::TaskDescription),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
+            self.close_modal();
+
+            // Restore focus after closing the modal
+            if let Some(focus_element) = focus_element_to_restore {
+                self.change_focus(DashboardFocusState::DraftTask(0));
+                if let Some(card) = self.draft_cards.get_mut(0) {
+                    card.focus_element = focus_element;
                 }
             }
-            self.close_modal();
+
             return true;
         }
 
