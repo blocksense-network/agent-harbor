@@ -2022,7 +2022,7 @@ impl Default for AdvancedLaunchOptions {
             allow_containers: false,
             allow_vms: false,
             allow_web_search: false,
-            interactive_mode: false,
+            interactive_mode: true,
             output_format: "text".to_string(),
             record_output: false,
             timeout: "".to_string(),
