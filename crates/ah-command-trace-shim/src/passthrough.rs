@@ -37,9 +37,14 @@ impl PassthroughConfig {
         if is_truthy(std::env::var(ENV_SKIP).ok().as_deref()) {
             return None;
         }
-        if !is_truthy(std::env::var(ENV_PASSTHROUGH).ok().as_deref().or(Some("0"))) {
+        let passthrough = is_truthy(std::env::var(ENV_PASSTHROUGH).ok().as_deref().or(Some("0")));
+        if !passthrough {
             return None;
         }
+        // Prevent the marker from leaking into grandchildren; once we decide to run
+        // in passthrough mode inside the agent process, clear the flag so indirect
+        // children fall back to capture-only semantics.
+        std::env::remove_var(ENV_PASSTHROUGH);
 
         let session = std::env::var(ENV_SESSION_SOCKET).ok()?;
         let ah = std::env::var(ENV_AH_PATH).ok().unwrap_or_else(|| "ah".into());
@@ -253,5 +258,7 @@ mod tests {
         let cfg = PassthroughConfig::from_env().expect("config");
         assert_eq!(cfg.session_socket.to_str().unwrap(), "/tmp/sock");
         assert!(cfg.parent_socket.is_some());
+        // The marker should be cleared so children do not inherit passthrough mode.
+        assert!(std::env::var(ENV_PASSTHROUGH).is_err());
     }
 }

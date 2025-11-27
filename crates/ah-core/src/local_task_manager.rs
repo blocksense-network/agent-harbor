@@ -341,6 +341,9 @@ where
                 Ok(TaskManagerMessage::PtyResize(_)) => {
                     // follower plumbing not yet wired; ignore resize
                 }
+                Ok(TaskManagerMessage::CommandChunk(_)) => {
+                    // piped output not handled in local manager yet
+                }
                 Err(_) => {
                     match <ah_rest_api_contract::types::SessionEvent as ssz::Decode>::from_ssz_bytes(
                         &buf,
