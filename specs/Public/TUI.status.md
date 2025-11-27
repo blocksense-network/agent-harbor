@@ -169,6 +169,42 @@ The TUI implementation provides these core capabilities:
   - `crates/ah-tui/src/test_runtime.rs` - Deterministic test execution engine
   - `crates/ah-tui-test/src/main.rs` - Interactive and automated test runners
 
+**T2.5. Advanced Launch Options & Session Persistence** ✅ **COMPLETED** (November 27, 2025)
+
+- **Deliverables**:
+  - ✅ Advanced options modal with two-column layout (options + launch shortcuts)
+  - ✅ Session-only persistence for advanced options in draft cards
+  - ✅ Split mode preference memory (session-only, not persisted to disk)
+  - ✅ Advanced options preserved across task launches within session
+  - ✅ Comprehensive keyboard shortcuts (t/s/h/v/T/S/H/V) from modal
+  - ✅ Consistent behavior across all launch methods (keyboard, modal, Go button)
+
+- **Test Coverage**:
+  - ✅ Advanced options stored in draft card when modal closed
+  - ✅ Advanced options applied to TaskLaunchParams correctly
+  - ✅ Advanced options preserved when new draft card created after launch
+  - ✅ Split mode preference remembered and applied as default
+  - ✅ Keyboard shortcuts work from both modal and textarea
+  - ✅ All launch methods use consistent advanced options flow
+
+- **Implementation Details**:
+  - **Advanced Options Storage**: Stored in `TaskEntryViewModel.advanced_options` field, persisting for the session
+  - **Split Mode Memory**: Stored in `Settings.default_split_mode` (session-only, not written to disk)
+  - **Disk Persistence Removed**: Removed `Settings::save_default_split_mode()` to prevent configuration file pollution
+  - **Consistent Launch Flow**: All launch paths retrieve options from draft card or use defaults
+  - **Options Flow**: Configure → Store in Card → Launch with Options
+
+- **Architecture**:
+  - **Before**: Advanced options extracted from modal at launch time → inconsistent behavior based on launch method
+  - **After**: Advanced options stored in draft card state → consistent across all launch methods
+  - **Benefits**: Session-only storage prevents config pollution while maintaining convenience; configure once, launch multiple times
+
+- **Key Source Files**:
+  - `crates/ah-tui/src/view_model/agents_selector_model.rs` - Launch flow and advanced options handling
+  - `crates/ah-tui/src/view_model/dashboard_model.rs` - Dashboard launch implementation
+  - `crates/ah-tui/src/view_model/task_entry.rs` - TaskEntryViewModel with advanced_options field
+  - `crates/ah-tui/src/settings.rs` - Settings with session-only default_split_mode
+
 - **Integration Points**:
   - Testing framework can be extended for all future TUI features
   - MVVM architecture ready for real-time updates and session monitoring
