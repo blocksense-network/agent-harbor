@@ -577,6 +577,9 @@ impl Multiplexer for WezTermMultiplexer {
             SplitDirection::Vertical => {
                 cmd.arg("--right"); // Vertical split creates right pane
             }
+            SplitDirection::Auto => {
+                cmd.arg("split-pane").arg("--bottom"); // Fall back to horizontal split for now
+            }
         }
 
         // Set percentage if provided

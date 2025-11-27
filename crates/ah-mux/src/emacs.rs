@@ -119,6 +119,7 @@ impl Multiplexer for EmacsMultiplexer {
         let func = match dir {
             SplitDirection::Vertical => "split-window-right",
             SplitDirection::Horizontal => "split-window-below",
+            SplitDirection::Auto => "session-add-below", // Fall back to horizontal split for now
         };
 
         let elisp = format!("({})", func);

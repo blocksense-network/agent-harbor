@@ -119,7 +119,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         let split_direction = match config.split_mode {
             SplitMode::Horizontal => SplitDirection::Horizontal,
             SplitMode::Vertical => SplitDirection::Vertical,
-            SplitMode::Auto | SplitMode::None => SplitDirection::Horizontal, // Default to horizontal
+            SplitMode::Auto | SplitMode::None => SplitDirection::Auto,
         };
 
         let agent_pane = self.mux.split_pane(
@@ -201,7 +201,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                 let split_direction = match config.split_mode {
                     SplitMode::Horizontal => SplitDirection::Horizontal,
                     SplitMode::Vertical => SplitDirection::Vertical,
-                    SplitMode::Auto => SplitDirection::Horizontal, // Default to horizontal
+                    SplitMode::Auto => SplitDirection::Auto,
                     SplitMode::None => unreachable!(),
                 };
 
@@ -227,7 +227,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         let split_direction = match config.split_mode {
             SplitMode::Horizontal => SplitDirection::Horizontal,
             SplitMode::Vertical => SplitDirection::Vertical,
-            SplitMode::Auto | SplitMode::None => SplitDirection::Horizontal, // Default to horizontal
+            SplitMode::Auto | SplitMode::None => SplitDirection::Auto, // Default to horizontal
         };
 
         // Split for agent pane with the agent command
