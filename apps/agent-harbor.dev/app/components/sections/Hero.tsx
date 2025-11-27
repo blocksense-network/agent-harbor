@@ -33,8 +33,8 @@ export default function Hero() {
 
         <p className="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed mb-10">
           <span className="font-mono font-bold text-brand">Agent Harbor</span> is the vibe
-          engineering harness built for long-horizon tasks. Orchestrate dozens of Claude, Claude,
-          Gemini and Codex agents, with an advanced local sandbox and effortless rollbacks.
+          engineering harness built for long-horizon tasks. Orchestrate dozens of Claude, Gemini and
+          Codex agents, with an advanced local sandbox and effortless rollbacks.
         </p>
 
         <div className="flex flex-col sm:flex-row justify-center gap-4">
