@@ -7,6 +7,12 @@ version = "0.1.0"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "Process-level interposition helpers with stackable hook dispatch"
+build = "build.rs"
+
+[features]
+default = ["propagation-hooks"]
+propagation-hooks = []
+propagation-hooks-env-control = []
 
 [dependencies]
 ctor = "0.2"

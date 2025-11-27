@@ -99,7 +99,7 @@ unsafe fn get_propagation_registry() -> *mut PropagationRegistry {
     let sym_name = CString::new("__STACKABLE_PROPAGATION_REGISTRY").unwrap();
     let ptr = libc::dlsym(libc::RTLD_DEFAULT, sym_name.as_ptr());
     if ptr.is_null() {
-        &mut __STACKABLE_PROPAGATION_REGISTRY as *mut _
+        core::ptr::addr_of_mut!(__STACKABLE_PROPAGATION_REGISTRY)
     } else {
         ptr as *mut PropagationRegistry
     }

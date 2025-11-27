@@ -64,6 +64,27 @@ hook! {
 }
 ```
 
+### Attaching to Existing Dispatch
+
+When another crate (such as the built-in auto-propagation hooks) already
+defines the interposed symbol, use `hook!` to register additional logic
+without redefining the exported function. This avoids duplicate symbol
+definitions on Linux while keeping macOS behavior identical.
+
+```rust
+hook! {
+    priority: 5,
+    unsafe fn execve(
+        pathname: *const libc::c_char,
+        argv: *const *mut libc::c_char,
+        envp: *const *mut libc::c_char
+    ) -> libc::c_int => my_execve_observer {
+        log_spawn(pathname);
+        stackable_hooks::call_next!(pathname, argv, envp)
+    }
+}
+```
+
 ### Calling Through the Chain
 
 - `call_next!(args...)` - Calls the next hook in the chain, or the real function if no more hooks
@@ -86,9 +107,9 @@ This is useful when you need to call the original function without triggering ho
 - Avoiding recursion when hooks internally need to call the same function
 - Testing or debugging scenarios
 
-### Controlling Hook Execution (macOS only)
+### Controlling Hook Execution (macOS & Linux)
 
-On macOS, you can dynamically enable or disable all hooks at runtime:
+You can dynamically enable or disable all hooks at runtime:
 
 ```rust
 // Disable all hooks temporarily
@@ -107,7 +128,9 @@ This is useful for:
 - Cleanup or shutdown sequences
 - Debugging or troubleshooting
 
-**Note:** On Linux, hooks are always enabled and cannot be disabled.
+This API is available on both macOS (`DYLD_INSERT_LIBRARIES`) and Linux
+(`LD_PRELOAD`). Hooks are enabled automatically during library initialization.
+When disabled, calls immediately fall through to the original system functions.
 
 ## Auto-Propagation
 
@@ -134,6 +157,15 @@ To disable:
 ```rust
 stackable_hooks::disable_auto_propagation();
 ```
+
+### Propagation Hook Configuration
+
+- `propagation-hooks` (enabled by default) builds the low-priority subprocess
+  hooks that keep `LD_PRELOAD`/`DYLD_INSERT_LIBRARIES` in sync for children.
+- `propagation-hooks-env-control` (opt-in) enables a runtime guard that honors
+  the `STACKABLE_PROPAGATION_HOOKS` environment variable. Set it to `0`, `false`,
+  or `off` to disable the propagation hooks without rebuilding; omit it or set
+  any other value to keep propagation enabled.
 
 ## Injecting Your Library
 
