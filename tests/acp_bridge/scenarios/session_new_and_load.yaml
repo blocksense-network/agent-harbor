@@ -1,18 +1,21 @@
-name: "session_new_and_load"
-description: "Creates a session, streams a running status, then completes so ACP session/list + load can observe lifecycle."
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: 'session_new_and_load'
+description: 'Creates a session, streams a running status, then completes so ACP session/list + load can observe lifecycle.'
 events:
   - at_ms: 0
     kind: status
-    value: "queued"
+    value: 'queued'
   - at_ms: 50
     kind: log
-    message: "session created via ACP"
+    message: 'session created via ACP'
   - at_ms: 100
     kind: status
-    value: "running"
+    value: 'running'
   - at_ms: 150
     kind: thought
-    text: "warming up mock tools"
+    text: 'warming up mock tools'
   - at_ms: 200
     kind: status
-    value: "completed"
+    value: 'completed'

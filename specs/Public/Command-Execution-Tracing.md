@@ -33,7 +33,7 @@ This passthrough mode gives us byte-perfect recordings for the exact processes t
 
 ### Indirect Child Processes
 
-Processes spawned *inside* the recorded command (e.g., scripts forking helpers) are still intercepted by the existing interpose shims described below. Their stdout/stderr streams are attributed and forwarded to the same recorder so observers see a complete picture, regardless of whether the bytes originated in the top-level command or a nested child.
+Processes spawned _inside_ the recorded command (e.g., scripts forking helpers) are still intercepted by the existing interpose shims described below. Their stdout/stderr streams are attributed and forwarded to the same recorder so observers see a complete picture, regardless of whether the bytes originated in the top-level command or a nested child.
 
 ## Goals
 

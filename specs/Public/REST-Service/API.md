@@ -209,12 +209,12 @@ Example session with recent events:
 
 **Purpose:** The `recent_events` field enables SSR to pre-populate active task cards with the last 3 events, ensuring cards never show "Waiting for agent activity" and maintain fixed height from initial page load.
 
-
 #### Stream Session PTY
 
 - `GET /api/v1/sessions/{id}/pty`
 
 Streams PTY backlog followed by live terminal output for a session. Events are Server-Sent Events with `event: pty` and JSON payloads:
+
 - `type: "terminal"`, `encoding: "base64"`, `data`: base64-encoded bytes, `timestamp` (ms)
 - `type: "terminal_resize"`, `cols`, `rows`, `timestamp`
 
@@ -352,10 +352,10 @@ Additional event types for agent activity:
 }
 ```
 
-  - `oldTextHead` / `newTextHead` contain the first 200 lines (clamped to the 64 KiB limit).  
-  - `oldTextTail` / `newTextTail` contain the last 50 lines.  
-  - `truncated: true` indicates the payload is partial.  
-  - `fullDiffUrl` points to the REST endpoint where the complete diff can be retrieved (clients should honor auth headers when requesting it).
+- `oldTextHead` / `newTextHead` contain the first 200 lines (clamped to the 64 KiB limit).
+- `oldTextTail` / `newTextTail` contain the last 50 lines.
+- `truncated: true` indicates the payload is partial.
+- `fullDiffUrl` points to the REST endpoint where the complete diff can be retrieved (clients should honor auth headers when requesting it).
 - When the diff fits under the thresholds, the traditional `oldText` / `newText` fields are used and `truncated` is omitted.
 
 **Tool Execution ID (`tool_execution_id`)**: A unique identifier assigned to each tool execution, used to correlate `tool_use`, `tool_result`, and related `log` events when multiple tools are running concurrently. This field is optional for `log` events (set to `null` when the log is not associated with a specific tool execution).
@@ -1404,12 +1404,10 @@ Additional workspace endpoints (for IDE integration and advanced features):
 - `GET /api/v1/sessions/{sessionId}/executions/{executionId}/pipelines/{pipelineId}/steps/{stepId}/stream`
 
   Streams stdout or stderr for the selected step. Query parameters:
-
   - `stream`: `stdout` or `stderr` (required)
   - `follow`: `true|false` (default `false`). When `true`, the server keeps streaming live bytes until the step exits; otherwise it emits the recorded bytes and closes.
 
   Streams use SSE (same transport as `/logs`), include base64-encoded byte chunks plus timestamps, and respect tenant redaction policies.
-
 
 #### Event Ingestion (leader → server)
 
