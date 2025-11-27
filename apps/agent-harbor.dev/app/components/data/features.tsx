@@ -31,7 +31,7 @@ export const features: Feature[] = [
     icon: <IconFilter />,
     title: 'Combine any model with any agent',
     features: [
-      'Spin up multiple instances of Claude, Codex or your favourite agent, hooked up to your models of choice',
+      'Spin up multiple instances of Claude, Codex or your favorite agent, hooked up to your models of choice',
       'Select the best result automatically from a council of agents, or manually',
     ],
     demo: <AgentDashboard />,
