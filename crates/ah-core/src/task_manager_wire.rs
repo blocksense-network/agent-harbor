@@ -26,6 +26,17 @@ pub enum TaskManagerMessage {
     PtyData(Vec<u8>),
     /// Recorder → task manager: terminal resize notification (cols, rows)
     PtyResize((u16, u16)),
+    /// Recorder → task manager: piped command output chunk (non-PTY)
+    /// `stream` is 0 = stdout, 1 = stderr.
+    CommandChunk(CommandChunkPayload),
+}
+
+/// Payload for non-PTY command output chunks.
+#[derive(Clone, Debug, PartialEq, Eq, SszEncode, SszDecode)]
+pub struct CommandChunkPayload {
+    pub execution_id: Vec<u8>,
+    pub stream: u8,
+    pub data: Vec<u8>,
 }
 
 impl TaskManagerMessage {

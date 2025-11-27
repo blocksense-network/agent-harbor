@@ -301,7 +301,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [ ] Teach the shim to keep forwarding stdout/stderr from indirect child processes (existing interception path) so nested commands remain visible in the recording.
 - [ ] Expose the session socket to followers: implement the `ah show-sandbox-execution` CLI integration plus an ACP hook that tells IDEs how to attach (including execution IDs, backlog replay, and live streaming).
 - [ ] Harden the recorder to handle multiple simultaneous followers, late joins (send backlog), and input injection from followers routed through the `inject_message` bridge back to the running process.
-- [ ] Add basic regression tests (`ah-command-trace-e2e-tests`) that prove the shim loads, rewrites commands, and fails open when env injection or sockets are unavailable.
+- [x] Add basic regression tests (`ah-command-trace-e2e-tests`) that prove the shim loads, rewrites commands, and fails open when env injection or sockets are unavailable.
 - [ ] Automatically create filesystem snapshots after every tool execution and after every file write detected by the shim. For file writes, capture the diff against the previous snapshot for the affected file and emit it as an ACP `diff` content block (or via REST diff endpoints) so clients can show before/after views without re-reading the workspace.
 - [ ] Track writes to agent session files (per agent type) and maintain a mapping between the snapshot taken for those writes and the session file update event. This mapping allows restoring session files to the correct state when a snapshot is restored or branched.
 - [ ] Derive follower commands from recorded executions (not caller-supplied), replay PTY backlog via recorder sockets, and support multiple simultaneous followers.
@@ -319,6 +319,12 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 - Added recorder bridge scaffold (`acp::recorder`) with a single source of truth for constructing follower commands (`ah show-sandbox-execution ... --id <exec> --session <session> --follow`), matching the design described in this milestone.
 - No runtime wiring yet; this helper will be consumed by the upcoming recorder-to-ACP bridge and IDE follower channel.
+- macOS shim handshake now sets `sockaddr_un.sun_len` in the hook-safe client I/O path, restoring successful Unix socket connections to the command-trace server; the previously failing `shim_injection_smoke` coverage now passes on macOS.
+- Shim runtime mode detection is now explicit: presence of `AH_CMDTRACE_PASSTHROUGH=1` triggers passthrough/root-agent behaviour, and the shim clears this env var as soon as it boots so indirect children fall back to capture-only mode. This keeps one shared shim artifact while preventing unintended rewrites in descendants.
+- New integration test (`agent_like_process_captures_all_children`) launches a faux agent under the production shim and SSZ server, spawning direct execs, shell pipelines, and Python subprocesses; it asserts CommandStart events are observed for all paths, tightening coverage for real-world agent process trees.
+- Task manager now ingests recorder CommandChunk messages (non-PTY stdout/stderr) and broadcasts them through the same backlog/live pipeline as PTY data; ACP terminal updates and REST SSE `/pty` now carry both PTY and piped output immediately, improving IDE/TUI freshness.
+- CommandChunk output is also persisted as `SessionEvent::Log` (stdout→info, stderr→error) with `executionId`, so ACP/REST subscribers receive piped output via `session/update` without needing a follower attachment.
+- On tool start (`SessionEvent::ToolUse` Started), the ACP gateway now emits an automatic `terminal_follow` update containing the canonical `ah show-sandbox-execution ...` command, so clients can launch follower terminals immediately without extra RPCs.
 - Scenario playback now honors a `linger_after_timeline_secs` option (exposed in `MockServerDependencies` and the `ah-rest-server-mock` CLI via `--scenario-linger-secs`) to keep connections open after scripted timelines, preventing premature teardown while follower terminals drain trailing PTY bytes.
 - Added an ACP scenario-driven follower test (`acp_prompt_followers`) that replays `tests/acp_bridge/scenarios/terminal_follow_detach.yaml` against the live gateway, asserting both `_ah/terminal/follow` and `_ah/terminal/detach` updates surface as `session/update` notifications. The fixture now uses placeholders so session IDs returned by the server are applied at runtime; the test harness consumes the scenario timeline to drive the WebSocket while letting the server execute normally.
 - ACP gateway now streams PTY backlog + live data/resizes from the TaskManager socket to ACP clients after `_ah/terminal/follow`, using the recorder task socket hub (`TaskManagerMessage::PtyData`/`PtyResize`). This wires prompt-injection-followers to the live TTY instead of log-only.
@@ -328,6 +334,11 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 #### Key Implementation Files
 
 - `crates/ah-rest-server/src/acp/recorder.rs` — follower command builder utility and unit test.
+- `crates/ah-rest-server/src/executor.rs` — task-manager socket ingestion; CommandChunk fanout into PTY backlog and SessionEvent logs.
+- `crates/ah-rest-server/src/acp/transport.rs` — auto `terminal_follow` notifications on tool start; terminal event serialization covers CommandChunk.
+- `crates/ah-rest-server/src/handlers/sessions.rs` — REST SSE `/pty` streams both PTY data and CommandChunk output.
+- `crates/ah-core/src/task_manager_wire.rs` — adds CommandChunk payload variant.
+- `crates/ah-tui/src/record.rs` — tolerant of new CommandChunk messages on the task-manager socket.
 
 ##### Sub-milestones
 
@@ -339,8 +350,9 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 - #### Verification
 
-- [x] Integration test `cargo test -p ah-rest-server --test acp_prompt_followers` drives `_ah/terminal/follow/write/detach` over ACP and validates the streamed `terminal_follow`/`terminal_detach` updates plus write acknowledgements.
+- [x] Integration test `cargo test -p ah-rest-server --test acp_prompt_followers` drives `_ah/terminal/follow/write/detach` over ACP, validates streamed `terminal_follow`/`terminal_detach` updates, and now also covers auto follow notifications and CommandChunk terminal serialization.
 - [x] Recorder harness tests in `ah-command-trace-e2e-tests` cover piped vs PTY passthrough, backlog + late follower replay, stderr interleaving, input injection, abrupt kill with transcript capture, slow-follower backlog, and SIGKILL backlog (with ACK wait).
+- [x] Integration test `cargo test -p ah-command-trace-e2e-tests --test agent_capture -- --nocapture` exercises a faux agent tree and ensures CommandStart/CommandChunk reach the server.
 - [ ] Promote slow-follower and SIGKILL cases into CI gating once recorder socket handshakes/backpressure are hardened.
 - [ ] Scenario `tests/acp_bridge/scenarios/passthrough_recorder.yaml` launches a tool via the shim, verifies the rewritten command, and asserts that SSE/`.ahr` output matches the original PTY stream.
 - [ ] Unit tests cover shim rewrite logic on Linux/macOS, socket negotiation, environment injection from `ah agent start`, and failure modes (recorder unavailable → fail open).

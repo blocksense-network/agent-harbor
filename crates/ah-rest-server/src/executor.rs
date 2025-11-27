@@ -706,6 +706,22 @@ async fn handle_recorder_connection(
             Ok(TaskManagerMessage::PtyResize(resize)) => {
                 hub.record(&session_id, TaskManagerMessage::PtyResize(resize)).await;
             }
+            Ok(TaskManagerMessage::CommandChunk(chunk)) => {
+                // Fanout to terminal followers/backlog
+                hub.record(&session_id, TaskManagerMessage::CommandChunk(chunk.clone())).await;
+
+                // Also emit a log event so REST/ACP subscribers see piped output immediately.
+                let level = if chunk.stream == 1 {
+                    ah_rest_api_contract::SessionLogLevel::Error
+                } else {
+                    ah_rest_api_contract::SessionLogLevel::Info
+                };
+                let message = String::from_utf8_lossy(&chunk.data).to_string();
+                let tool_execution_id = String::from_utf8_lossy(&chunk.execution_id).to_string();
+                let ts = chrono::Utc::now().timestamp_millis() as u64;
+                let log_evt = SessionEvent::log(level, message, Some(tool_execution_id), ts);
+                let _ = session_store.add_session_event(&session_id, log_evt).await;
+            }
             Err(_) => {
                 if let Ok(event) = <SessionEvent as ssz::Decode>::from_ssz_bytes(&buf) {
                     let _ = session_store.add_session_event(&session_id, event).await;
