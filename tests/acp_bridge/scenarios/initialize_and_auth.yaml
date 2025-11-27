@@ -1,15 +1,18 @@
-name: "initialize_and_auth"
-description: "Minimal initialize + auth handshake placeholder for ACP gateway"
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: 'initialize_and_auth'
+description: 'Minimal initialize + auth handshake placeholder for ACP gateway'
 events:
   - at_ms: 0
     kind: status
-    value: "queued"
+    value: 'queued'
   - at_ms: 5
     kind: status
-    value: "running"
+    value: 'running'
   - at_ms: 10
     kind: status
-    value: "completed"
+    value: 'completed'
 assertions:
   - kind: has_event
     event:

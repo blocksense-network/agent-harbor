@@ -1,3 +1,6 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 name: CI
 
 on:
@@ -13,7 +16,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "ci-${{ github.ref }}"
+  group: 'ci-${{ github.ref }}'
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

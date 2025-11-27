@@ -1,6 +1,9 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 name: Accepted Protocol Changes [Staff Only]
 description: Zed Staff Only
-type: "Feature"
+type: 'Feature'
 body:
   - type: textarea
     attributes:

@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A simple ACP client for educational purposes.
 //!
 //! The client starts an agent as a subprocess and communicates with it over stdio. Run the client like this:

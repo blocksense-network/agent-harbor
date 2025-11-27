@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A simple ACP agent server for educational purposes.
 //!
 //! The agent communicates with clients over stdio. To run it with logging:
