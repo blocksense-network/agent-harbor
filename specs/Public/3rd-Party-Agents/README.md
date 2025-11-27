@@ -25,7 +25,7 @@ Therefore, Agent Harbor needs a consistent way to:
 
 ## 3. Research Tasks
 
-1. **Protocol deep-dive**  
+1. **Protocol deep-dive**
    - Study `resources/acp-specs/docs/protocol/content.mdx` and related sections (initialization, prompt-turns) to catalog every media/content type the client might send.
    - Note size limits, streaming modes, and whether ACP clients expect push/pull semantics for attachments.
 
@@ -35,20 +35,20 @@ Therefore, Agent Harbor needs a consistent way to:
    - If unsupported, identify what would be required (e.g., implementing `multipart/form-data` upload to a cloud API or staging files in a particular directory).
    - Record any sandboxes/perms needed (e.g., converting audio may require `ffmpeg` inside the sandbox).
 
-3. **Staging & lifecycle design**  
+3. **Staging & lifecycle design**
    - Propose a standard layout for temporary media files under the session workspace (`/workspace/.ah-media/…` or similar).
    - Define metadata we track per attachment (source hash, MIME type, size, ACL) for auditing.
    - Decide how long artifacts persist (per session, per snapshot) and how they integrate with time-travel (e.g., snapshots should capture corresponding media files).
 
-4. **Streaming pathway investigation**  
+4. **Streaming pathway investigation**
    - Determine whether ACP clients ever stream audio/video (e.g., microphone capture). If yes, identify whether we need a passthrough TTY-like channel, or if staging to disk is sufficient.
    - Map these flows onto the command-execution tracing/recorder stack so recorded sessions include the context needed to reproduce the agent behavior.
 
-5. **Security & policy considerations**  
+5. **Security & policy considerations**
    - Evaluate size limits, MIME validation, virus scanning requirements, and tenant policies for media uploads.
    - Document how redaction or encryption should work if sensitive media is present.
 
-6. **Client UX alignment**  
+6. **Client UX alignment**
    - Survey target IDEs (VS Code, Cursor, WebUI) to understand how they display/collect media inputs today. Capture screenshots or behavior summaries where possible.
    - Ensure our REST/API responses surface enough metadata for IDEs to correlate attachments with Harbor’s staging paths (e.g., provide a `harborMediaId` they can reference later).
 
@@ -73,4 +73,3 @@ Therefore, Agent Harbor needs a consistent way to:
 1. Assign owners for each research task above (ACP protocol review, per-agent audits, staging design, etc.).
 2. Track findings in this document (sections per agent/content type).
 3. Once the research solidifies, translate outcomes into actionable tickets/milestones in `specs/ACP.server.status.md` and associated implementation specs.
-

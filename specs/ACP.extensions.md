@@ -401,8 +401,18 @@ Response:
         "endedAt": "2025-02-01T12:35:05Z",
         "bytes": { "stdout": 8192, "stderr": 0 },
         "steps": [
-          { "stepId": "pipe-01HV…:1", "command": "npm run build", "stdoutBytes": 4096, "stderrBytes": 0 },
-          { "stepId": "pipe-01HV…:2", "command": "grep ERROR", "stdoutBytes": 4096, "stderrBytes": 0 }
+          {
+            "stepId": "pipe-01HV…:1",
+            "command": "npm run build",
+            "stdoutBytes": 4096,
+            "stderrBytes": 0
+          },
+          {
+            "stepId": "pipe-01HV…:2",
+            "command": "grep ERROR",
+            "stdoutBytes": 4096,
+            "stderrBytes": 0
+          }
         ]
       }
     ]
@@ -450,15 +460,15 @@ The client consumes the `streamId` using ACP’s streaming transport (SSE/WebSoc
 
 These ride on the regular `session/update` SSE/WebSocket stream with `update.type = "custom"` and `customType = "harbor/*"`:
 
-| Notification                   | Payload                                                         | Purpose                                                                                                                                  |
-| ------------------------------ | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `harbor/snapshot_created`      | `{ "sessionId", "snapshot": {…}, "reason": "auto \| manual \| branch_point" }` | Fired whenever Harbor captures a snapshot (auto or manual). Enables IDE indicators for branch points. |
-| `harbor/branch_created`        | `{ "branch": {…}, "newSessions": ["sess-…", …] }`               | Notifies UI that a branch + new sessions exist.                                                                                          |
-| `harbor/branch_updated`        | `{ "branch": {…} }`                                             | Status changes (running, paused, merged).                                                                                                |
-| `harbor/branch_deleted`        | `{ "branchId" }`                                                | Cleanup confirmation.                                                                                                                    |
-| `harbor/timeline_checkpoint`   | `{ "sessionId", "executionId", "byteOffset", "label", "kind" }` | Mirrors recorder `REC_SNAPSHOT` / `REC_MARK` events so clients can draw timeline handles even before a full FS snapshot is materialized. |
-| `harbor/pipeline_detected`     | `{ "sessionId", "executionId", "pipelineId", "steps": ["pipe-…:1", …] }` | Notifies clients that a new pipeline (and its steps) has been recorded so they can populate UI menus immediately. |
-| `harbor/pipeline_step_updated` | `{ "sessionId", "executionId", "pipelineId", "step": {…} }`     | Sends incremental updates (bytes, status, timestamps) for a step so IDEs can update progress bars and completion state. |
+| Notification                   | Payload                                                                        | Purpose                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `harbor/snapshot_created`      | `{ "sessionId", "snapshot": {…}, "reason": "auto \| manual \| branch_point" }` | Fired whenever Harbor captures a snapshot (auto or manual). Enables IDE indicators for branch points.                                    |
+| `harbor/branch_created`        | `{ "branch": {…}, "newSessions": ["sess-…", …] }`                              | Notifies UI that a branch + new sessions exist.                                                                                          |
+| `harbor/branch_updated`        | `{ "branch": {…} }`                                                            | Status changes (running, paused, merged).                                                                                                |
+| `harbor/branch_deleted`        | `{ "branchId" }`                                                               | Cleanup confirmation.                                                                                                                    |
+| `harbor/timeline_checkpoint`   | `{ "sessionId", "executionId", "byteOffset", "label", "kind" }`                | Mirrors recorder `REC_SNAPSHOT` / `REC_MARK` events so clients can draw timeline handles even before a full FS snapshot is materialized. |
+| `harbor/pipeline_detected`     | `{ "sessionId", "executionId", "pipelineId", "steps": ["pipe-…:1", …] }`       | Notifies clients that a new pipeline (and its steps) has been recorded so they can populate UI menus immediately.                        |
+| `harbor/pipeline_step_updated` | `{ "sessionId", "executionId", "pipelineId", "step": {…} }`                    | Sends incremental updates (bytes, status, timestamps) for a step so IDEs can update progress bars and completion state.                  |
 
 Clients use these notifications to render gutter markers, time-travel scrubbers, and branch trees without polling.
 
