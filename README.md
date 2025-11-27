@@ -54,6 +54,11 @@ Here is the fastest way to get an agent working on your project.
 
 ### 1\. Install Agent Harbor
 
+> [!IMPORTANT]
+> More (classic `Linux` / `MacOS` / `Windows`) packages are to come soon :tm:
+
+<!-- TODO: bring back when we have stable packages -->
+<!--
 #### macOS
 
 ```bash
@@ -71,18 +76,18 @@ curl -sL https://install.agent-harbor.com | bash
 #### Windows
 
 Coming Soon
+-->
 
-#### Building from Source (with Nix)
+#### Nix-enabled OS (`MacOS`, `Linux`)
 
-If you have [Nix](https://nixos.org/) installed, you can build and run the latest version from source:
+Install [Nix](https://nixos.org/download) on your system and install the application
 
 ```bash
-# Build and run the TUI
-nix run github:blocksense/agent-harbor
-
-# Or, enter a dev shell to get all commands
-nix develop github:blocksense/agent-harbor
+nix profile install github:blocksense-network/agent-harbor
 ```
+
+> [!NOTE]
+> Make sure you've enabled [flake support](https://wiki.nixos.org/wiki/Flakes#Setup)
 
 ### 2\. Launch the TUI Dashboard
 
