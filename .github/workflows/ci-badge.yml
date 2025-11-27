@@ -1,0 +1,17 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: CI Badge
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    steps:
+      - name: CI Status
+        run: echo "Main branch is healthy (validated via Merge Queue)"
