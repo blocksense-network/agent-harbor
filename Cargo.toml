@@ -110,7 +110,9 @@ serde_yaml = "0.9"
 toml = "0.8"
 
 # Command trace shim dependencies
-stackable-hooks = { path = "crates/stackable-hooks" }
+stackable-hooks = { path = "crates/stackable-hooks", features = [
+  "propagation-hooks",
+] }
 ctor = "0.2"
 scopeguard = "1.2"
 
