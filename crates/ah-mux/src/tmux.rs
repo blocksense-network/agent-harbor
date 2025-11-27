@@ -218,6 +218,7 @@ impl Multiplexer for TmuxMultiplexer {
         match dir {
             SplitDirection::Horizontal => args.push("-h".to_string()),
             SplitDirection::Vertical => args.push("-v".to_string()),
+            SplitDirection::Auto => args.push("-h".to_string()), // Fall back to horizontal split for now
         }
 
         // Add size percentage if specified

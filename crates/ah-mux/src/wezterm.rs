@@ -125,6 +125,9 @@ impl Multiplexer for WezTermMultiplexer {
             SplitDirection::Vertical => {
                 cmd.arg("split-pane").arg("--right");
             }
+            SplitDirection::Auto => {
+                cmd.arg("split-pane").arg("--bottom"); // Fall back to horizontal split for now
+            }
         }
 
         if let Some(pct) = percent {

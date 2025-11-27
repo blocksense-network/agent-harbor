@@ -144,6 +144,7 @@ impl Multiplexer for WindowsTerminalMultiplexer {
         let dir_flag = match dir {
             SplitDirection::Vertical => "-H".to_string(),
             SplitDirection::Horizontal => "-V".to_string(),
+            SplitDirection::Auto => "-V".to_string(), // Fall back to horizontal split for now
         };
         args.push(dir_flag);
 

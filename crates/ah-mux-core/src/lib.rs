@@ -14,6 +14,7 @@ pub type PaneId = String;
 pub enum SplitDirection {
     Horizontal,
     Vertical,
+    Auto, // Might not be supproted by all muxes
 }
 
 #[derive(

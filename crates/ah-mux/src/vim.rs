@@ -184,6 +184,7 @@ file {}
         let cmd = match dir {
             SplitDirection::Vertical => "vsplit",
             SplitDirection::Horizontal => "split",
+            SplitDirection::Auto => "split", // Fall back to horizontal split for now
         };
 
         let script = format!("{}\n", cmd);

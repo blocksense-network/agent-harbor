@@ -127,6 +127,7 @@ vim.cmd("file {}")
         let cmd = match dir {
             SplitDirection::Vertical => "vsplit",
             SplitDirection::Horizontal => "split",
+            SplitDirection::Auto => "split", // Fall back to horizontal split for now
         };
 
         let lua_code = format!(r#"vim.cmd("{}")"#, cmd);

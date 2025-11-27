@@ -207,6 +207,7 @@ impl Multiplexer for TilixMultiplexer {
         let action = match dir {
             SplitDirection::Vertical => "session-add-down",
             SplitDirection::Horizontal => "session-add-right",
+            SplitDirection::Auto => "session-add-down", // Fall back to horizontal split for now
         };
 
         debug!("Using Tilix action: {}", action);
@@ -238,6 +239,7 @@ impl Multiplexer for TilixMultiplexer {
             match dir {
                 SplitDirection::Horizontal => "h",
                 SplitDirection::Vertical => "v",
+                SplitDirection::Auto => "a",
             },
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

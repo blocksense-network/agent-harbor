@@ -246,6 +246,7 @@ impl Multiplexer for ZellijMultiplexer {
         let direction = match dir {
             SplitDirection::Horizontal => "down",
             SplitDirection::Vertical => "right",
+            SplitDirection::Auto => "down", // Fall back to horizontal split for now
         };
         cmd.arg("--direction").arg(direction);
 
