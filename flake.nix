@@ -45,6 +45,10 @@
       url = "https://github.com/pjd/pjdfstest/archive/master.tar.gz";
       flake = false;
     };
+    codetracer-python-recorder = {
+      url = "github:metacraft-labs/codetracer-python-recorder?dir=nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -57,6 +61,7 @@
       codex,
       sosumi-docs-downloader,
       pjdfstest-src,
+      codetracer-python-recorder,
       flake-parts,
       ...
     }:
@@ -78,6 +83,9 @@
         flake =
           let
             forAllSystems = nixpkgs.lib.genAttrs systems;
+
+            # CodeTracer Python recorder package (available for both packages and devShells)
+            codetracerPythonRecorderForSystem = system: codetracer-python-recorder.packages.${system}.codetracer-python-recorder;
 
             # AI coding agent packages (shared between packages and devShells)
             aiCodingAgentsForSystem =
@@ -178,6 +186,7 @@
                   root = ./.;
                   fileset = rustWorkspaceFiles;
                 };
+
                 # Build the ah and ah-fs-snapshot-daemon binaries from the workspace
                 ah-binary = pkgs.rustPlatform.buildRustPackage rec {
                   pname = "agent-harbor-cli";
@@ -269,6 +278,7 @@
                 legacy-cloud-agent-utils = legacy-cloud-agent-utils;
                 pjdfstest = pjdfstest;
                 sosumi-docs-downloader = sosumi-docs-downloader.packages.${system}.sosumi-docs-downloader;
+                codetracer-python-recorder = codetracerPythonRecorderForSystem system;
                 default = ah-script;
               }
             );
@@ -283,6 +293,9 @@
                 };
                 isLinux = pkgs.stdenv.isLinux;
                 isDarwin = pkgs.stdenv.isDarwin;
+
+                # CodeTracer Python recorder
+                codetracerPythonRecorder = codetracer-python-recorder.packages.${system}.codetracer-python-recorder;
 
                 # Yarn plugins
                 yarnOutdated = pkgs.fetchurl {
@@ -302,6 +315,7 @@
                     ps.ptyprocess
                     ps.pytest
                     ps.pyzmq
+                    codetracerPythonRecorder
                   ]))
                   pkgs.ruby
                   pkgs.bundler
@@ -376,6 +390,9 @@
                   pkgs.pkg-config
                   pkgs.openssl.dev
                   pkgs.zlib.dev
+
+                  # CodeTracer Python recorder
+                  codetracerPythonRecorder
                 ];
 
                 ah-mux-test-tools =

@@ -88,6 +88,28 @@
         "type": "github"
       }
     },
+    "codetracer-python-recorder": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "dir": "nix",
+        "lastModified": 1764231644,
+        "narHash": "sha256-VggBqpTRXisMhANXEMwQr2gvFpo01JlxJ7JhdHrnIoI=",
+        "owner": "metacraft-labs",
+        "repo": "codetracer-python-recorder",
+        "rev": "dde412ed90bce1d02a99185337c3766866c0c53f",
+        "type": "github"
+      },
+      "original": {
+        "dir": "nix",
+        "owner": "metacraft-labs",
+        "repo": "codetracer-python-recorder",
+        "type": "github"
+      }
+    },
     "codex": {
       "inputs": {
         "flake-utils": [
@@ -991,6 +1013,7 @@
     },
     "root": {
       "inputs": {
+        "codetracer-python-recorder": "codetracer-python-recorder",
         "codex": "codex",
         "flake-parts": [
           "nixos-modules",
