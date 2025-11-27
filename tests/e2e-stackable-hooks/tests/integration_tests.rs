@@ -345,3 +345,144 @@ fn get_call_real_shim_path() -> PathBuf {
 
     path
 }
+
+/// Get the path to the propagation test program
+#[allow(dead_code)]
+fn get_propagation_test_path() -> PathBuf {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+    let mut path = PathBuf::from(manifest_dir);
+    path.push("..");
+    path.push("..");
+    path.push("target");
+    path.push(&profile);
+    path.push("propagation-test");
+    path
+}
+
+/// Get the path to the auto-propagation shim library
+#[allow(dead_code)]
+fn get_auto_propagation_shim_path() -> PathBuf {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+    let mut path = PathBuf::from(manifest_dir);
+    path.push("..");
+    path.push("..");
+    path.push("target");
+    path.push(&profile);
+    #[cfg(target_os = "macos")]
+    path.push("libauto_propagation_shim.dylib");
+    #[cfg(not(target_os = "macos"))]
+    path.push("libauto_propagation_shim.so");
+    path
+}
+
+/// Test that auto-propagation works when enabled
+#[test]
+#[cfg(target_os = "macos")]
+fn test_auto_propagation_enabled() {
+    let test_program = get_propagation_test_path();
+    let shim_library = get_auto_propagation_shim_path();
+
+    let output = Command::new(&test_program)
+        .with_shim_libraries(&[shim_library])
+        .env("TEST_AUTO_PROPAGATION", "1") // Enable auto-propagation
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("Failed to run propagation test");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Verify the shim was loaded in the parent
+    assert!(
+        stderr.contains("[PROPAGATION-SHIM] Library loaded"),
+        "Shim should be loaded in parent.\nStderr: {}",
+        stderr
+    );
+
+    // Verify auto-propagation was enabled
+    assert!(
+        stderr.contains("[PROPAGATION-SHIM] Auto-propagation enabled"),
+        "Auto-propagation should be enabled.\nStderr: {}",
+        stderr
+    );
+
+    // Verify the hook was called in the parent
+    assert!(
+        stderr.contains("[PROPAGATION-SHIM] getpid() hooked"),
+        "Hook should be called in parent.\nStderr: {}",
+        stderr
+    );
+
+    // Verify the shim was loaded in the child (due to auto-propagation)
+    // The library loads BEFORE the child main() starts, so we look for a second occurrence
+    let load_count = stderr.matches("[PROPAGATION-SHIM] Library loaded").count();
+    assert!(
+        load_count >= 2,
+        "Library should be loaded in both parent and child (expected 2+ loads, found {}).\nStderr: {}",
+        load_count,
+        stderr
+    );
+
+    // Verify the child marker exists
+    assert!(
+        stderr.contains("[CHILD]"),
+        "Could not find child process marker.\nStderr: {}",
+        stderr
+    );
+
+    assert!(
+        output.status.success(),
+        "Test should succeed.\nStderr: {}",
+        stderr
+    );
+}
+
+/// Test that auto-propagation doesn't happen when disabled
+#[test]
+#[cfg(target_os = "macos")]
+fn test_auto_propagation_disabled() {
+    let test_program = get_propagation_test_path();
+    let shim_library = get_auto_propagation_shim_path();
+
+    let output = Command::new(&test_program)
+        .with_shim_libraries(&[shim_library])
+        // Don't set TEST_AUTO_PROPAGATION, so it remains disabled
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("Failed to run propagation test");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Verify the shim was loaded in the parent
+    assert!(
+        stderr.contains("[PROPAGATION-SHIM] Library loaded"),
+        "Shim should be loaded in parent.\nStderr: {}",
+        stderr
+    );
+
+    // Verify auto-propagation was NOT enabled
+    assert!(
+        !stderr.contains("[PROPAGATION-SHIM] Auto-propagation enabled"),
+        "Auto-propagation should not be enabled.\nStderr: {}",
+        stderr
+    );
+
+    // Count how many times the library was loaded
+    let load_count = stderr.matches("[PROPAGATION-SHIM] Library loaded").count();
+
+    // With auto-propagation disabled, the library should only be loaded once (parent)
+    assert_eq!(
+        load_count, 1,
+        "Library should only be loaded once (in parent) when auto-propagation is disabled.\nStderr: {}",
+        stderr
+    );
+
+    assert!(
+        output.status.success(),
+        "Test should succeed.\nStderr: {}",
+        stderr
+    );
+}
