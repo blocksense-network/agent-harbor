@@ -147,7 +147,7 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
   - Branch Selector: Fuzzy search through repository branches
   - Agent Multi-Selector: Multi-select interface with instance counts and +/- controls
   - **Characteristics**: Full-screen overlay, dedicated input box, ESC to cancel, Enter to confirm
-- **Advanced Options Menu**: Gear button (⚙️) opens a menu displaying launch options with visible keyboard shortcuts:
+- **Advanced Options Menu**: Gear button (⚙️) opens a modal displaying launch options with visible keyboard shortcuts. Options are stored in the draft card and persist for the session. Split mode selections (t/s/h/v/T/S/H/V) are remembered and applied as the default for subsequent launches via Enter or Go button.
 - TAB navigation between controls (Repository → Branch → Model → Go → Advanced Options → wrap around)
 - Multiple draft tasks supported - users can create several draft tasks in progress
 - Auto-save drafts to local storage and restore across sessions (debounced, 500ms delay)
@@ -584,7 +584,7 @@ Right click is left for the native terminal UI to handle in order to preserve it
 
 #### Advanced Task Launch Options Modal
 
-The advanced task launch options modal provides comprehensive control over task execution parameters, exposing the full range of options available in the `ah task` and `ah agent start` commands. These options affect only the currently launched task and are not persisted globally.
+The advanced task launch options modal provides comprehensive control over task execution parameters, exposing the full range of options available in the `ah task` and `ah agent start` commands. These options are stored in the draft card and persist for the current TUI session. When you launch a task, the options are preserved for the next draft card, making it easy to launch multiple tasks with the same configuration. Split mode preferences are also remembered for the session. Neither advanced options nor split mode preferences are persisted to disk - they reset when the TUI restarts.
 
 - **Modal Activation**: Click gear button (⚙️) or press Ctrl+Enter when in draft textarea
 - **Modal Layout**: Two-column layout with options on the left and launch shortcuts/menu on the right
@@ -649,6 +649,16 @@ The right column provides launch action selection with keyboard shortcuts:
 - **Modal dismissal**: ESC closes without launching
 - **Default focus**: Left column options when modal opens
 - **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed
+
+##### Session Persistence Behavior
+
+- **Advanced Options Preservation**: When you configure advanced options and launch a task, those options are automatically applied to the next draft card. This allows you to quickly launch multiple tasks with the same configuration without repeatedly opening the modal. Each draft card maintains its own advanced options, so if you create multiple draft cards (Ctrl+N), each can have different options configured.
+
+- **Split Mode Memory**: The TUI remembers your last selected split mode (t/s/h/v/T/S/H/V) for the current session. When you press Enter or click "Go" without opening the advanced options modal, the task launches using your last selected split mode. This provides a convenient workflow where you can select your preferred split mode once and then launch multiple tasks with the same layout.
+
+- **Session-Only Storage**: Both advanced options and split mode preferences are stored only in memory during the TUI session. They are not written to configuration files and will reset to defaults when you restart the TUI. This design prevents temporary launch preferences from polluting persistent configuration while still providing convenience within a session.
+
+- **Default Behavior**: If no split mode has been selected in the current session, pressing Enter or clicking "Go" uses the configured default split mode from your settings. The first time you use a split mode shortcut (t/s/h/v/T/S/H/V), that becomes the session default.
 
 ##### Configuration Policies as Top-Level Options
 
