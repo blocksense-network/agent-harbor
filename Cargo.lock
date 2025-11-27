@@ -452,10 +452,12 @@ version = "0.1.0"
 dependencies = [
  "ah-command-trace-proto",
  "ah-command-trace-server",
+ "anyhow",
  "core-foundation 0.10.1",
  "futures",
  "libc",
  "nix 0.29.0",
+ "portable-pty",
  "serde",
  "serde_json",
  "tempfile",
