@@ -59,6 +59,11 @@ impl PassthroughConfig {
     /// Build argv/envp buffers for the rewritten exec. The original argv/envp
     /// pointers are walked to construct the `--cmd` payload while preserving
     /// the existing environment (plus a skip guard to avoid recursion).
+    ///
+    /// # Safety
+    /// Caller must ensure `argv`/`envp` remain valid null-terminated arrays
+    /// for the duration of this call and that the resulting buffers are used
+    /// immediately in an exec/posix_spawn path without being freed.
     pub unsafe fn rewrite(
         &self,
         argv: *const *mut c_char,
@@ -71,15 +76,16 @@ impl PassthroughConfig {
 
         let cmd_string = render_cmd_string(&original_args);
 
-        let mut argv_storage = Vec::<CString>::new();
-        argv_storage.push(self.ah_path.clone());
-        argv_storage.push(CString::new("agent").ok()?);
-        argv_storage.push(CString::new("record").ok()?);
-        argv_storage.push(CString::new("--passthrough").ok()?);
-        argv_storage.push(CString::new("--cmd").ok()?);
-        argv_storage.push(CString::new(cmd_string).ok()?);
-        argv_storage.push(CString::new("--session-socket").ok()?);
-        argv_storage.push(self.session_socket.clone());
+        let mut argv_storage = vec![
+            self.ah_path.clone(),
+            CString::new("agent").ok()?,
+            CString::new("record").ok()?,
+            CString::new("--passthrough").ok()?,
+            CString::new("--cmd").ok()?,
+            CString::new(cmd_string).ok()?,
+            CString::new("--session-socket").ok()?,
+            self.session_socket.clone(),
+        ];
         if let Some(parent) = &self.parent_socket {
             argv_storage.push(CString::new("--parent-recorder-socket").ok()?);
             argv_storage.push(parent.clone());
@@ -233,11 +239,8 @@ mod tests {
 
     #[test]
     fn render_cmd_string_joins_args() {
-        let cmd = render_cmd_string(&vec![
-            b"python3".to_vec(),
-            b"main.py".to_vec(),
-            b"--flag".to_vec(),
-        ]);
+        let cmd =
+            render_cmd_string(&[b"python3".to_vec(), b"main.py".to_vec(), b"--flag".to_vec()]);
         assert_eq!(cmd, "python3 main.py --flag");
     }
 

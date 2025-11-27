@@ -91,16 +91,15 @@ async fn acp_prompt_round_trip() {
                 let msg = msg.expect("frame");
                 if let WsMessage::Text(text) = msg {
                     let value: Value = serde_json::from_str(&text).expect("json");
-                    if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-                        if value.pointer("/params/event/type").and_then(|v| v.as_str())
+                    if value.get("method").and_then(|v| v.as_str()) == Some("session/update")
+                        && value.pointer("/params/event/type").and_then(|v| v.as_str())
                             == Some("log")
+                    {
+                        if let Some(message) =
+                            value.pointer("/params/event/message").and_then(|v| v.as_str())
                         {
-                            if let Some(message) =
-                                value.pointer("/params/event/message").and_then(|v| v.as_str())
-                            {
-                                if message.contains("please run the tests") {
-                                    return value;
-                                }
+                            if message.contains("please run the tests") {
+                                return value;
                             }
                         }
                     }
@@ -198,16 +197,15 @@ async fn acp_prompt_rejects_on_context_limit() {
                 let msg = msg.expect("frame");
                 if let WsMessage::Text(text) = msg {
                     let value: Value = serde_json::from_str(&text).expect("json");
-                    if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-                        if value.pointer("/params/event/type").and_then(|v| v.as_str())
+                    if value.get("method").and_then(|v| v.as_str()) == Some("session/update")
+                        && value.pointer("/params/event/type").and_then(|v| v.as_str())
                             == Some("log")
+                    {
+                        if let Some(message) =
+                            value.pointer("/params/event/message").and_then(|v| v.as_str())
                         {
-                            if let Some(message) =
-                                value.pointer("/params/event/message").and_then(|v| v.as_str())
-                            {
-                                if message.contains("second-turn-too-long") {
-                                    return Some(value);
-                                }
+                            if message.contains("second-turn-too-long") {
+                                return Some(value);
                             }
                         }
                     }

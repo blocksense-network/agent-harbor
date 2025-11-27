@@ -1,11 +1,13 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
+#![allow(dead_code)]
 
 use std::net::TcpListener;
 use std::path::PathBuf;
 
 use ah_rest_server::{
     Server, ServerConfig,
+    config::AcpConfig,
     mock_dependencies::{MockServerDependencies, ScenarioPlaybackOptions},
 };
 use tokio::task::JoinHandle;
@@ -20,12 +22,19 @@ fn base_config() -> (ServerConfig, std::net::SocketAddr, std::net::SocketAddr) {
     let acp_addr = acp_listener.local_addr().unwrap();
     drop(acp_listener);
 
-    let mut config = ServerConfig::default();
-    config.bind_addr = addr;
-    config.enable_cors = true;
-    config.api_key = Some("secret".into());
-    config.acp.enabled = true;
-    config.acp.bind_addr = acp_addr;
+    let acp_cfg = AcpConfig {
+        enabled: true,
+        bind_addr: acp_addr,
+        ..AcpConfig::default()
+    };
+
+    let config = ServerConfig {
+        bind_addr: addr,
+        enable_cors: true,
+        api_key: Some("secret".into()),
+        acp: acp_cfg,
+        ..ServerConfig::default()
+    };
 
     (config, addr, acp_addr)
 }

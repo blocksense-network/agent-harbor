@@ -153,13 +153,13 @@ mod tests {
         fn drop(&mut self) {
             if std::thread::panicking() {
                 if let Ok(meta) = metadata(&self.path) {
-                    eprintln!(
+                    tracing::info!(
                         "test log available at {} ({} bytes)",
                         self.path.display(),
                         meta.len()
                     );
                 } else {
-                    eprintln!("test log available at {}", self.path.display());
+                    tracing::info!("test log available at {}", self.path.display());
                 }
             }
         }
