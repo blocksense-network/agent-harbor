@@ -16,7 +16,7 @@ export default function SandboxDemo() {
         <p className="mb-2">
           <span className="text-purple-400">➜</span> <span className="text-white">~</span> ah
         </p>
-        <p className="text-gray-500 mb-4">Initializing CoW filesystem... Done (12ms)</p>
+        <p className="text-gray-500 mb-4">Initializing CoW file system... Done (12ms)</p>
         <p className="text-gray-500 mb-4">Snapshot 0x8F2A created.</p>
         <div className="bg-gray-950/80 p-4 rounded border-l-2 border-brand">
           <p className="text-gray-300">Agent starting environment clone...</p>
