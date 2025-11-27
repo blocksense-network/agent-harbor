@@ -5,6 +5,9 @@ include = ["specs/**/*.md", "apps/docs.agent-harbor.dev/**/*.md"]
 exclude = [
   # Vendor directory (external dependencies, not our code)
   ".*/vendor/.*",
+  "vendor/acp-rust-sdk/.*",
+  # macOS sandbox blog intermittently fails TLS/caching in CI
+  "https://lapcatsoftware.com/articles/2023/6/1.html.*",
   # External blog tends to fail TLS/cert checks intermittently
   "https://www.trio.so/.*",
   # Absolute, site-scoped doc paths used as examples in specs
@@ -81,3 +84,6 @@ exclude = [
 ]
 max_concurrency = 8
 timeout = 20
+
+# Skip entire file trees (relative to repo root)
+exclude_path = ["vendor/acp-rust-sdk/**"]
