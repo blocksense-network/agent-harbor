@@ -1,45 +1,157 @@
 # stackable-hooks
 
-`stackable-hooks` is our in-tree evolution of
-[redhook](https://github.com/geofft/redhook). It keeps the familiar
-`hook!` / `real!` macros but adds two critical macOS upgrades:
+Process-level function interposition library for Unix systems, providing
+stackable hook dispatch and automatic propagation to child processes.
 
-1. **Dead-strip proof interpose entries** – Every trampoline lives in
-   `__DATA,__interpose` and is marked `#[used]`, so `-dead_strip` builds
-   can’t discard our hooks.
-2. **Stackable dispatch** – Multiple shim dylibs can hook the same
-   symbol inside one process. Dyld still chooses a single trampoline, but
-   all other shims register their hooks in a shared registry. The winning
-   trampoline becomes the dispatcher and chains every registered hook
-   before calling the real libc function.
+## Features
+
+- **Stackable dispatch** – Multiple libraries can hook the same function,
+  and all hooks execute in priority order
+- **Dead-strip proof** – Works reliably even with aggressive linker optimizations
+- **Auto-propagation** – Per-library control over propagating hooks to child processes
+- **Cross-platform** – Supports macOS (via `DYLD_INSERT_LIBRARIES`) and Linux (via `LD_PRELOAD`)
 
 ## Usage
+
+Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 stackable-hooks = { path = "crates/stackable-hooks" }
+ctor = "0.2"
 
 [lib]
 crate-type = ["cdylib"]
 ```
 
+### Basic Hook
+
 ```rust
-stackable_hooks::hook! {
-    unsafe fn write(fd: libc::c_int, buf: *const libc::c_void, len: libc::size_t)
-        -> libc::ssize_t => my_write {
+use stackable_hooks::hook;
+
+hook! {
+    unsafe fn write(
+        fd: libc::c_int,
+        buf: *const libc::c_void,
+        len: libc::size_t
+    ) -> libc::ssize_t => my_write {
+        // Call the next hook in the chain (or the real function)
         let result = stackable_hooks::call_next!(fd, buf, len);
+
+        // Your custom logic here
         if result > 0 {
-            forward_to_recorder(fd, buf, result as usize);
+            log_write(fd, buf, result as usize);
         }
+
         result
     }
 }
 ```
 
-On macOS every interposer shares the same dispatcher/registry pair, so
-order is deterministic (registration order) yet resilient—any shim can
-drop out without breaking the rest. On Linux / glibc targets the macros
-fall back to the classic `LD_PRELOAD` behavior provided by redhook.
+### Priority Hooks
 
-`stackable-hooks` inherits the BSD-2-Clause license. See
-[COPYING](COPYING) for details.
+Control execution order with priorities (lower numbers execute first):
+
+```rust
+hook! {
+    priority: 10,
+    unsafe fn open(
+        path: *const libc::c_char,
+        flags: libc::c_int
+    ) -> libc::c_int => my_open {
+        stackable_hooks::call_next!(path, flags)
+    }
+}
+```
+
+### Calling Through the Chain
+
+- `call_next!(args...)` - Calls the next hook in the chain, or the real function if no more hooks
+- `call_real!(function_name, args...)` - Bypasses all remaining hooks and calls the original function directly
+
+**Important:** `call_real!` can be called from **anywhere** in your code, not just inside hooks:
+
+```rust
+use stackable_hooks::call_real;
+
+// From application code - bypasses all hooks
+unsafe {
+    let result = call_real!(read, fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len());
+}
+```
+
+This is useful when you need to call the original function without triggering hooks, for example:
+
+- Performance-critical paths that should bypass instrumentation
+- Avoiding recursion when hooks internally need to call the same function
+- Testing or debugging scenarios
+
+### Controlling Hook Execution (macOS only)
+
+On macOS, you can dynamically enable or disable all hooks at runtime:
+
+```rust
+// Disable all hooks temporarily
+stackable_hooks::disable_hooks();
+
+// ... perform operations without any hook interception ...
+
+// Re-enable hooks
+stackable_hooks::enable_hooks();
+```
+
+When hooks are disabled, all hooked functions call the original system functions directly.
+This is useful for:
+
+- Performance-critical sections where hook overhead is unacceptable
+- Cleanup or shutdown sequences
+- Debugging or troubleshooting
+
+**Note:** On Linux, hooks are always enabled and cannot be disabled.
+
+## Auto-Propagation
+
+Each library can independently choose whether to propagate to child processes.
+This is useful for ensuring hooks apply across an entire process tree.
+
+```rust
+#[ctor::ctor]
+fn init() {
+    // Enable propagation for THIS library only
+    stackable_hooks::enable_auto_propagation();
+}
+```
+
+When enabled:
+
+- Your library's path is registered in a shared registry
+- Subprocess spawning functions (`execve`, `posix_spawn`, etc.) are hooked at low priority
+- Only libraries that opted in are added to `LD_PRELOAD`/`DYLD_INSERT_LIBRARIES` for child processes
+- Other libraries can independently choose their propagation preference
+
+To disable:
+
+```rust
+stackable_hooks::disable_auto_propagation();
+```
+
+## Injecting Your Library
+
+### macOS
+
+```bash
+DYLD_INSERT_LIBRARIES=/path/to/your/lib.dylib ./your-program
+```
+
+### Linux
+
+```bash
+LD_PRELOAD=/path/to/your/lib.so ./your-program
+```
+
+## License
+
+BSD 2-Clause License. See [COPYING](COPYING) for details.
+
+Original interposition concept inspired by similar libraries in the ecosystem.
+Extended with stackable dispatch, auto-propagation, and macOS optimizations.

@@ -34,12 +34,58 @@ thread_local! {
     static HOOK_DEPTH: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
+/// Enable hooks to start intercepting function calls.
+///
+/// On macOS, hooks are automatically enabled during library initialization, but can
+/// be manually controlled if needed. On Linux, hooks are always enabled.
+///
+/// # Example
+///
+/// ```rust
+/// // Re-enable hooks after temporarily disabling them
+/// stackable_hooks::enable_hooks();
+/// ```
 pub fn enable_hooks() {
     RUNTIME_READY.store(true, Ordering::Release);
 }
 
+/// Disable hooks to stop intercepting function calls.
+///
+/// When hooks are disabled, hooked functions will call the original system functions
+/// directly without executing any hook logic. This can be useful for temporarily
+/// bypassing all hooks in performance-critical sections or during cleanup.
+///
+/// # Example
+///
+/// ```rust
+/// // Temporarily disable all hooks
+/// stackable_hooks::disable_hooks();
+/// // ... perform operations without hooks ...
+/// stackable_hooks::enable_hooks();
+/// ```
+pub fn disable_hooks() {
+    RUNTIME_READY.store(false, Ordering::Release);
+}
+
 pub fn hooks_enabled() -> bool {
     RUNTIME_READY.load(Ordering::Acquire)
+}
+
+/// Automatically enable hooks during library initialization.
+///
+/// This constructor runs alongside hook registration constructors. While the exact
+/// order is undefined, this is safe because:
+/// - Hook registration modifies the shared registry (thread-safe via mutex)
+/// - The dispatcher reads from the registry on each call
+/// - If a hook registers after enabling, it's still added to the registry and will
+///   be called on subsequent function calls
+///
+/// The only minor edge case is if a hooked function is called during initialization
+/// before all hooks have registered - those hooks will miss that specific call. This
+/// is acceptable and would occur even with manual enabling.
+#[ctor::ctor]
+fn auto_enable_hooks() {
+    enable_hooks();
 }
 
 #[repr(C)]
@@ -355,6 +401,7 @@ macro_rules! __stackable_hook_impl {
                 real_fn($($v),*)
             }
 
+            #[allow(clippy::too_many_arguments)]
             unsafe fn [<__stackable_call_chain_ $real_fn>](
                 shared: *mut [<__StackableShared_ $real_fn>],
                 start: *mut [<__StackableNode_ $real_fn>],
@@ -377,6 +424,7 @@ macro_rules! __stackable_hook_impl {
             }
 
             #[allow(non_snake_case)]
+            #[allow(clippy::too_many_arguments)]
             pub unsafe extern "C" fn [<__stackable_call_next_ $real_fn>](
                 node: *mut [<__StackableNode_ $real_fn>],
                 $($v : $t),*
