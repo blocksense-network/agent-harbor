@@ -4,7 +4,7 @@
  */
 
 import Image from 'next/image';
-import { IconDiscord, IconTwitter, IconGitHub } from '../icons/Icon';
+import { IconTwitter } from '../icons/Icon';
 
 export default function Footer() {
   return (
@@ -26,27 +26,27 @@ export default function Footer() {
         </div>
 
         <div className="flex items-center gap-6">
-          <a
+          {/* <a
             href="#"
             className="text-gray-500 hover:text-brand transition-colors"
             aria-label="Discord"
           >
             <IconDiscord />
-          </a>
+          </a> */}
           <a
-            href="#"
+            href="https://x.com/agent_harbor"
             className="text-gray-500 hover:text-brand transition-colors"
             aria-label="X (Twitter)"
           >
             <IconTwitter />
           </a>
-          <a
+          {/* <a
             href="#"
             className="text-gray-500 hover:text-brand transition-colors"
             aria-label="GitHub"
           >
             <IconGitHub />
-          </a>
+          </a> */}
         </div>
       </div>
     </footer>
