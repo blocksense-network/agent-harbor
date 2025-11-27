@@ -2024,7 +2024,7 @@ impl Default for AdvancedLaunchOptions {
             allow_web_search: false,
             interactive_mode: false,
             output_format: "text".to_string(),
-            record_output: true,
+            record_output: false,
             timeout: "".to_string(),
             llm_provider: "".to_string(),
             environment_variables: vec![],
