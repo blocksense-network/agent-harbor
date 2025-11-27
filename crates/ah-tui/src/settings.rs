@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ah_domain_types::AgentChoice;
+use ah_mux_core::SplitMode;
 use serde::{Deserialize, Serialize};
 
 /// Font style for displaying symbols and icons
@@ -1700,6 +1701,15 @@ pub struct Settings {
     /// Default agent selections for new tasks
     pub default_agents: Option<Vec<AgentChoice>>,
 
+    /// Default split mode for task launches
+    ///
+    /// This is loaded from the config file at TUI startup. During a TUI session,
+    /// when the user selects a different split mode (via keyboard shortcut or modal),
+    /// this field is updated in-memory to remember the preference for subsequent
+    /// direct launches within the same session. The preference is NOT persisted to disk,
+    /// so each TUI restart will reload the original config value.
+    pub default_split_mode: Option<SplitMode>,
+
     /// Whether mouse support is enabled (default: true)
     pub mouse_enabled: Option<bool>,
 }
@@ -1714,6 +1724,7 @@ impl Default for Settings {
             workspace_terms_menu: Some(true),
             keymap: Some(KeymapConfig::default()),
             default_agents: None,
+            default_split_mode: Some(SplitMode::None), // Default to no splitting
             mouse_enabled: Some(true),
         }
     }
@@ -1736,6 +1747,15 @@ impl Settings {
                 if !agents.is_empty() {
                     settings.default_agents = Some(agents);
                 }
+            }
+        }
+
+        // Extract default split mode if configured
+        if let Some(default_split_mode_config) = config.json.get("default-split-mode") {
+            if let Ok(split_mode) =
+                serde_json::from_value::<SplitMode>(default_split_mode_config.clone())
+            {
+                settings.default_split_mode = Some(split_mode);
             }
         }
 
@@ -1770,6 +1790,11 @@ impl Settings {
     /// Get whether mouse support is enabled (default true)
     pub fn mouse_enabled(&self) -> bool {
         self.mouse_enabled.unwrap_or(true)
+    }
+
+    /// Get the default split mode, with fallback to None
+    pub fn default_split_mode(&self) -> SplitMode {
+        self.default_split_mode.unwrap_or(SplitMode::None)
     }
 
     /// Get the keymap configuration, with default fallback

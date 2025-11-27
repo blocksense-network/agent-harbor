@@ -1274,6 +1274,7 @@ impl SessionViewerViewModel {
             last_saved_generation: 0,
             pending_save_request_id: None,
             pending_save_invalidated: false,
+            advanced_options: None, // No advanced options for session viewer
             repositories_enumerator: None,
             branches_enumerator: None,
             autocomplete: InlineAutocomplete::with_dependencies(deps.clone()),

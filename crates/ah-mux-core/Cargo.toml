@@ -11,3 +11,4 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+schemars = { version = "0.8", features = ["preserve_order"] }
