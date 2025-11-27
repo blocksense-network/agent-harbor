@@ -7,6 +7,7 @@
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::Once;
 
 mod platform;
 
@@ -381,6 +382,7 @@ fn get_auto_propagation_shim_path() -> PathBuf {
 #[test]
 #[cfg(target_os = "macos")]
 fn test_auto_propagation_enabled() {
+    ensure_auto_propagation_shim_built();
     let test_program = get_propagation_test_path();
     let shim_library = get_auto_propagation_shim_path();
 
@@ -443,6 +445,7 @@ fn test_auto_propagation_enabled() {
 #[test]
 #[cfg(target_os = "macos")]
 fn test_auto_propagation_disabled() {
+    ensure_auto_propagation_shim_built();
     let test_program = get_propagation_test_path();
     let shim_library = get_auto_propagation_shim_path();
 
@@ -485,4 +488,18 @@ fn test_auto_propagation_disabled() {
         "Test should succeed.\nStderr: {}",
         stderr
     );
+}
+
+fn ensure_auto_propagation_shim_built() {
+    static BUILD_ONCE: Once = Once::new();
+    BUILD_ONCE.call_once(|| {
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+        let status = Command::new(cargo)
+            .args(["build", "-p", "e2e-auto-propagation-shim"])
+            .status()
+            .expect("failed to build e2e-auto-propagation-shim");
+        if !status.success() {
+            panic!("building e2e-auto-propagation-shim failed: {:?}", status);
+        }
+    });
 }

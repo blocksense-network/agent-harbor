@@ -477,7 +477,8 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                                 }
                                 Ok(TaskManagerMessage::SessionEvent(_))
                                 | Ok(TaskManagerMessage::PtyData(_))
-                                | Ok(TaskManagerMessage::PtyResize(_)) => {
+                                | Ok(TaskManagerMessage::PtyResize(_))
+                                | Ok(TaskManagerMessage::CommandChunk(_)) => {
                                     // Recorder should not receive these; ignore
                                 }
                                 Err(e) => {
