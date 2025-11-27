@@ -216,6 +216,16 @@ fn pty_to_sse(msg: TaskManagerMessage) -> Result<Event, Infallible> {
             });
             Ok(Event::default().event("pty").data(payload.to_string()))
         }
+        TaskManagerMessage::CommandChunk(chunk) => {
+            let payload = json!({
+                "type": "terminal",
+                "stream": if chunk.stream == 1 { "stderr" } else { "stdout" },
+                "encoding": "base64",
+                "data": B64.encode(&chunk.data),
+                "timestamp": chrono::Utc::now().timestamp_millis(),
+            });
+            Ok(Event::default().event("pty").data(payload.to_string()))
+        }
         _ => Ok(Event::default().event("pty").data("{}")),
     }
 }

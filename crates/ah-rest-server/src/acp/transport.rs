@@ -583,6 +583,7 @@ async fn route_wrapped_request(
                 .map_err(server_error_to_rpc)
         }
         ClientRequest::SetSessionModeRequest(_) => Err(Error::method_not_found()),
+        ClientRequest::SetSessionModelRequest(_) => Err(Error::method_not_found()),
         ClientRequest::ExtMethodRequest(ext) => match ext.method.as_ref() {
             "session/list" => handle_session_list(state, request.raw, &guard)
                 .await
@@ -729,6 +730,7 @@ async fn route_request_stdio(
                 .map_err(server_error_to_rpc)
         }
         ClientRequest::SetSessionModeRequest(_) => Err(Error::method_not_found()),
+        ClientRequest::SetSessionModelRequest(_) => Err(Error::method_not_found()),
         ClientRequest::ExtMethodRequest(ext) => match ext.method.as_ref() {
             "session/list" => handle_session_list(state, request.raw, &guard)
                 .await
@@ -1201,11 +1203,15 @@ async fn handle_terminal_follow(
                 for msg in backlog {
                     if matches!(
                         msg,
-                        TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
+                        TaskManagerMessage::PtyData(_)
+                            | TaskManagerMessage::PtyResize(_)
+                            | TaskManagerMessage::CommandChunk(_)
                     ) {
-                        let _ =
-                            send_session_notification(pty_to_params(session_id, &msg), &notifier)
-                                .await;
+                        let _ = send_session_notification(
+                            terminal_to_params(session_id, &msg),
+                            &notifier,
+                        )
+                        .await;
                     }
                 }
                 let notifier_clone = notifier.clone();
@@ -1214,10 +1220,12 @@ async fn handle_terminal_follow(
                     while let Ok(msg) = rx.recv().await {
                         if matches!(
                             msg,
-                            TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
+                            TaskManagerMessage::PtyData(_)
+                                | TaskManagerMessage::PtyResize(_)
+                                | TaskManagerMessage::CommandChunk(_)
                         ) {
                             let _ = send_session_notification(
-                                pty_to_params(&session, &msg),
+                                terminal_to_params(&session, &msg),
                                 &notifier_clone,
                             )
                             .await;
@@ -1281,11 +1289,15 @@ async fn handle_terminal_follow_stdio(
                 for msg in backlog {
                     if matches!(
                         msg,
-                        TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
+                        TaskManagerMessage::PtyData(_)
+                            | TaskManagerMessage::PtyResize(_)
+                            | TaskManagerMessage::CommandChunk(_)
                     ) {
-                        let _ =
-                            send_session_notification(pty_to_params(session_id, &msg), &notifier)
-                                .await;
+                        let _ = send_session_notification(
+                            terminal_to_params(session_id, &msg),
+                            &notifier,
+                        )
+                        .await;
                     }
                 }
                 let notifier_clone = notifier.clone();
@@ -1294,10 +1306,12 @@ async fn handle_terminal_follow_stdio(
                     while let Ok(msg) = rx.recv().await {
                         if matches!(
                             msg,
-                            TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
+                            TaskManagerMessage::PtyData(_)
+                                | TaskManagerMessage::PtyResize(_)
+                                | TaskManagerMessage::CommandChunk(_)
                         ) {
                             let _ = send_session_notification(
-                                pty_to_params(&session, &msg),
+                                terminal_to_params(&session, &msg),
                                 &notifier_clone,
                             )
                             .await;
@@ -1976,9 +1990,11 @@ async fn subscribe_session(ctx: &mut AcpSessionContext, app_state: &AppState, se
         if let Some(controller) = &app_state.task_controller {
             if let Ok((backlog, rx)) = controller.subscribe_pty(session_id).await {
                 for msg in backlog {
-                    let _ =
-                        send_session_notification(pty_to_params(session_id, &msg), &ctx.notifier)
-                            .await;
+                    let _ = send_session_notification(
+                        terminal_to_params(session_id, &msg),
+                        &ctx.notifier,
+                    )
+                    .await;
                 }
                 ctx.pty_receivers.insert(session_id.to_string(), rx);
             }
@@ -2000,9 +2016,11 @@ async fn subscribe_session_stdio(
         if let Some(controller) = &app_state.task_controller {
             if let Ok((backlog, rx)) = controller.subscribe_pty(session_id).await {
                 for msg in backlog {
-                    let _ =
-                        send_session_notification(pty_to_params(session_id, &msg), &ctx.notifier)
-                            .await;
+                    let _ = send_session_notification(
+                        terminal_to_params(session_id, &msg),
+                        &ctx.notifier,
+                    )
+                    .await;
                 }
                 ctx.pty_receivers.insert(session_id.to_string(), rx);
             }
@@ -2092,9 +2110,21 @@ async fn flush_session_events(ctx: &mut AcpSessionContext, notifier: &Notifier) 
             "event": event_to_json(&session_id, &event),
         });
         if send_session_notification(update, notifier).await.is_err() {
-            dead_sessions.push(session_id);
+            dead_sessions.push(session_id.clone());
         } else {
             sent = true;
+        }
+
+        // Proactively tell clients to launch follower terminals when a tool starts.
+        if let SessionEvent::ToolUse(ev) = &event {
+            if ev.status == SessionToolStatus::Started {
+                if let Some(cmd) = tool_event_command(&ev.tool_name, &ev.tool_args) {
+                    let exec_id = String::from_utf8_lossy(&ev.tool_execution_id).to_string();
+                    let follow_cmd = follower_command(&exec_id, &session_id, &cmd);
+                    let follow_update = terminal_follow_params(&session_id, &exec_id, &follow_cmd);
+                    let _ = send_session_notification(follow_update, notifier).await;
+                }
+            }
         }
     }
 
@@ -2134,9 +2164,20 @@ async fn flush_session_events_stdio(ctx: &mut AcpSessionContext, notifier: &Noti
             "event": event_to_json(&session_id, &event),
         });
         if send_session_notification(update, notifier).await.is_err() {
-            dead_sessions.push(session_id);
+            dead_sessions.push(session_id.clone());
         } else {
             sent = true;
+        }
+
+        if let SessionEvent::ToolUse(ev) = &event {
+            if ev.status == SessionToolStatus::Started {
+                if let Some(cmd) = tool_event_command(&ev.tool_name, &ev.tool_args) {
+                    let exec_id = String::from_utf8_lossy(&ev.tool_execution_id).to_string();
+                    let follow_cmd = follower_command(&exec_id, &session_id, &cmd);
+                    let follow_update = terminal_follow_params(&session_id, &exec_id, &follow_cmd);
+                    let _ = send_session_notification(follow_update, notifier).await;
+                }
+            }
         }
     }
 
@@ -2155,7 +2196,7 @@ async fn flush_pty_events(ctx: &mut AcpSessionContext, notifier: &Notifier) -> b
         loop {
             match rx.try_recv() {
                 Ok(msg) => {
-                    let update = pty_to_params(session_id, &msg);
+                    let update = terminal_to_params(session_id, &msg);
                     if send_session_notification(update, notifier).await.is_err() {
                         dead.push(session_id.clone());
                         break;
@@ -2187,7 +2228,7 @@ async fn flush_pty_events_stdio(ctx: &mut AcpSessionContext, notifier: &Notifier
         loop {
             match rx.try_recv() {
                 Ok(msg) => {
-                    let update = pty_to_params(session_id, &msg);
+                    let update = terminal_to_params(session_id, &msg);
                     if send_session_notification(update, notifier).await.is_err() {
                         dead.push(session_id.clone());
                         break;
@@ -2313,7 +2354,7 @@ fn cache_execution_command(
     }
 }
 
-fn pty_to_params(session_id: &str, msg: &TaskManagerMessage) -> Value {
+fn terminal_to_params(session_id: &str, msg: &TaskManagerMessage) -> Value {
     match msg {
         TaskManagerMessage::PtyData(bytes) => json!({
             "sessionId": session_id,
@@ -2321,6 +2362,7 @@ fn pty_to_params(session_id: &str, msg: &TaskManagerMessage) -> Value {
                 "type": "terminal",
                 "encoding": "base64",
                 "data": B64.encode(bytes),
+                "stream": "stdout",
                 "timestamp": chrono::Utc::now().timestamp_millis(),
             }
         }),
@@ -2333,15 +2375,18 @@ fn pty_to_params(session_id: &str, msg: &TaskManagerMessage) -> Value {
                 "timestamp": chrono::Utc::now().timestamp_millis(),
             }
         }),
-        _ => json!({
+        TaskManagerMessage::CommandChunk(chunk) => json!({
             "sessionId": session_id,
             "event": {
                 "type": "terminal",
                 "encoding": "base64",
-                "data": "",
+                "executionId": String::from_utf8_lossy(&chunk.execution_id),
+                "stream": if chunk.stream == 1 { "stderr" } else { "stdout" },
+                "data": B64.encode(&chunk.data),
                 "timestamp": chrono::Utc::now().timestamp_millis(),
             }
         }),
+        _ => json!({}),
     }
 }
 
@@ -2746,11 +2791,12 @@ pub async fn ws_echo(url: &str, message: Value) -> ServerResult<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ah_core::task_manager_wire::CommandChunkPayload;
 
     #[test]
-    fn pty_update_encodes_and_resizes() {
+    fn terminal_update_encodes_and_resizes() {
         let data = TaskManagerMessage::PtyData(b"hi".to_vec());
-        let json = pty_to_params("sess", &data);
+        let json = terminal_to_params("sess", &data);
         assert_eq!(
             json.pointer("/event/type").and_then(|v| v.as_str()),
             Some("terminal")
@@ -2761,7 +2807,7 @@ mod tests {
         );
 
         let resize = TaskManagerMessage::PtyResize((120, 33));
-        let json = pty_to_params("sess", &resize);
+        let json = terminal_to_params("sess", &resize);
         assert_eq!(
             json.pointer("/event/type").and_then(|v| v.as_str()),
             Some("terminal_resize")
@@ -2950,5 +2996,24 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("terminal_follow")
         );
+    }
+
+    #[test]
+    fn command_chunk_serializes_stream_and_execution() {
+        let chunk = TaskManagerMessage::CommandChunk(CommandChunkPayload {
+            execution_id: b"exec-1".to_vec(),
+            stream: 1,
+            data: b"err".to_vec(),
+        });
+        let json = terminal_to_params("sess", &chunk);
+        assert_eq!(
+            json.pointer("/event/stream").and_then(|v| v.as_str()),
+            Some("stderr")
+        );
+        assert_eq!(
+            json.pointer("/event/executionId").and_then(|v| v.as_str()),
+            Some("exec-1")
+        );
+        assert!(json.pointer("/event/data").and_then(|v| v.as_str()).is_some());
     }
 }
