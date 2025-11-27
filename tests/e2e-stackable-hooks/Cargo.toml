@@ -18,3 +18,7 @@ path = "src/bin/test_program.rs"
 [[bin]]
 name = "call_real_demo"
 path = "src/bin/call_real_demo.rs"
+
+[[bin]]
+name = "propagation-test"
+path = "src/bin/propagation_test.rs"

@@ -84,6 +84,7 @@ members = [
   "tests/e2e-shim-a",
   "tests/e2e-shim-b",
   "tests/e2e-call-real-shim",
+  "tests/e2e-auto-propagation-shim",
   "crates/agentfs-interpose-shim",
   "crates/agentfs-interpose-e2e-tests",
   "crates/agentfs-daemon",
