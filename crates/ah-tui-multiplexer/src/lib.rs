@@ -170,7 +170,6 @@ impl<M: Multiplexer> AwMultiplexer<M> {
     /// Tilix has special requirements:
     /// - Cannot run commands in existing panes (no run_command support)
     /// - Must specify commands at pane creation time via --command parameter
-    /// - Uses session-add-right and session-add-down actions for splitting
     fn create_task_layout_tilix(&self, config: &LayoutConfig) -> Result<LayoutHandle, AwMuxError> {
         let title = format!("ah-task-{}", config.task_id);
         let editor_cmd = config.editor_cmd.unwrap_or("bash");
@@ -227,13 +226,13 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         let split_direction = match config.split_mode {
             SplitMode::Horizontal => SplitDirection::Horizontal,
             SplitMode::Vertical => SplitDirection::Vertical,
-            SplitMode::Auto | SplitMode::None => SplitDirection::Auto, // Default to horizontal
+            SplitMode::Auto | SplitMode::None => SplitDirection::Auto,
         };
 
         // Split for agent pane with the agent command
         let agent_pane = self.mux.split_pane(
-            Some(&window_id),
-            None, // Split from the current active pane
+            None,
+            None,
             split_direction,
             None, // Tilix doesn't support percentage sizing via CLI
             &CommandOptions {
@@ -247,10 +246,10 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         // Optional log pane at bottom
         if let Some(log_cmd) = config.log_cmd {
             let log_pane = self.mux.split_pane(
-                Some(&window_id),
-                None, // Split from the current active pane (should be agent pane)
+                None,
+                None,
                 SplitDirection::Vertical, // Always vertical for logs (bottom)
-                None, // Tilix doesn't support percentage sizing via CLI
+                None,                     // Tilix doesn't support percentage sizing via CLI
                 &CommandOptions {
                     cwd: Some(config.working_dir),
                     env: None,
