@@ -23,7 +23,7 @@ export const features: Feature[] = [
     title: 'A sandbox built for YOLO mode',
     features: [
       'Near-instant agent startup and perfect environment replication in a copy-on-write file system',
-      'Rollback to any local snapshot and fork agents to continue prompting with your agent/model of choice',
+      'Roll back to any local snapshot and fork agents to continue prompting with your agent/model of choice',
     ],
     demo: <SandboxDemo />,
   },
@@ -41,7 +41,7 @@ export const features: Feature[] = [
     icon: <IconAntiHalting />,
     title: 'Anti-halting features for long-horizon tasks',
     features: [
-      'Supervisor agents step in and reprompt stuck agents. Quality control agents automatically rollback and fork when results go off-spec',
+      'Supervisor agents step in and reprompt stuck agents. Quality control agents automatically roll back and fork when results go off-spec',
       'Automatic timeouts on agent actions to eliminate silent hangs.',
     ],
     demo: <TaskManager />,
