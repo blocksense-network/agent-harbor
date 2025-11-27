@@ -103,7 +103,7 @@ impl TilixMultiplexer {
                 }
             })
             .collect();
-        debug!("Running tilix command with args: {:?}", sanitized_args);
+        info!("Running tilix command with args: {:?}", sanitized_args);
 
         let output = Command::new("tilix").args(args).output().map_err(|e| {
             error!("Failed to execute tilix: {}", e);
@@ -198,7 +198,7 @@ impl Multiplexer for TilixMultiplexer {
         opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
-        debug!(
+        info!(
             "Splitting pane in direction: {:?}, with initial_cmd: {:?}, cwd: {:?}",
             dir, initial_cmd, opts.cwd
         );
@@ -206,15 +206,16 @@ impl Multiplexer for TilixMultiplexer {
         // Tilix uses actions to split panes within the current session
         // session-add-right: splits the active terminal horizontally (side by side)
         // session-add-down: splits the active terminal vertically (top/bottom)
-        let action = match dir {
+        // session-add-auto: splits the active terminal automatically based on content
+        let split_action = match dir {
             SplitDirection::Vertical => "session-add-down",
             SplitDirection::Horizontal => "session-add-right",
-            SplitDirection::Auto => "session-add-down", // Fall back to horizontal split for now
+            SplitDirection::Auto => "session-add-auto",
         };
 
-        debug!("Using Tilix action: {}", action);
+        debug!("Using Tilix action: {}", split_action);
 
-        let mut args = vec!["--action".to_string(), action.to_string()];
+        let mut args = vec!["--action".to_string(), split_action.to_string()];
 
         // Add working directory if specified
         if let Some(cwd) = opts.cwd {
@@ -249,7 +250,7 @@ impl Multiplexer for TilixMultiplexer {
                 .as_millis()
         );
 
-        info!("Successfully split pane ({}): {}", action, pane_id);
+        info!("Successfully split pane ({}): {}", split_action, pane_id);
         Ok(pane_id)
     }
 
@@ -672,16 +673,33 @@ mod tests {
 
         // Vertical split should use "session-add-down"
         // Horizontal split should use "session-add-right"
+        // Auto split should use "session-add-auto"
 
         // We can't easily test the actual method without running tilix,
         // but we can verify the direction logic would be correct
         let vertical_dir = SplitDirection::Vertical;
         let horizontal_dir = SplitDirection::Horizontal;
+        let auto_dir = SplitDirection::Auto;
 
         // The actual mapping is tested in integration tests
-        // Here we just verify the enum values exist
+        // Here we just verify the enum values exist and are distinct
         assert!(matches!(vertical_dir, SplitDirection::Vertical));
         assert!(matches!(horizontal_dir, SplitDirection::Horizontal));
+        assert!(matches!(auto_dir, SplitDirection::Auto));
+
+        // Verify they are distinct
+        assert_ne!(
+            std::mem::discriminant(&vertical_dir),
+            std::mem::discriminant(&horizontal_dir)
+        );
+        assert_ne!(
+            std::mem::discriminant(&vertical_dir),
+            std::mem::discriminant(&auto_dir)
+        );
+        assert_ne!(
+            std::mem::discriminant(&horizontal_dir),
+            std::mem::discriminant(&auto_dir)
+        );
     }
 
     /// Test command options processing for split_pane
