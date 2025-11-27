@@ -311,9 +311,9 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
   - [x] Stderr interleave ordering (`passthrough_stderr_interleave`).
   - [x] PTY replay (backlog + resize) via portable-pty harness (`passthrough_pty_backlog_and_resize`).
   - [x] Abrupt kill preserves pre-kill output, transcript saved per run (`passthrough_abrupt_kill_yields_backlog`).
-  - [ ] Slow follower backlog persistence (`passthrough_slow_follower_no_drop`) — currently `#[ignore]`; needs backlog buffering across slow consumers.
-  - [ ] SIGKILL backlog determinism (`passthrough_sigkill_piped_preserves_backlog`) — currently `#[ignore]`; needs recorder-socket ACK/handshake to guarantee pre-kill bytes are captured.
-        Tests live in `crates/ah-command-trace-e2e-tests/tests/passthrough_recorder.rs` and run without LD_PRELOAD.
+- [x] Slow follower backlog persistence (`passthrough_slow_follower_no_drop`).
+- [x] SIGKILL backlog determinism (`passthrough_sigkill_piped_preserves_backlog`) with ACK wait.
+      Tests live in `crates/ah-command-trace-e2e-tests/tests/passthrough_recorder.rs` and run without LD_PRELOAD.
 
 #### Implementation Details (current)
 
@@ -340,8 +340,8 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - #### Verification
 
 - [x] Integration test `cargo test -p ah-rest-server --test acp_prompt_followers` drives `_ah/terminal/follow/write/detach` over ACP and validates the streamed `terminal_follow`/`terminal_detach` updates plus write acknowledgements.
-- [x] Recorder harness tests in `ah-command-trace-e2e-tests` cover piped vs PTY passthrough, backlog + late follower replay, stderr interleaving, input injection, and abrupt termination (kill) with transcript capture.
-- [ ] Recorder harness TODOs: slow-follower backlog persistence and deterministic SIGKILL capture (tests currently `#[ignore]` until buffering/handshake is tightened).
+- [x] Recorder harness tests in `ah-command-trace-e2e-tests` cover piped vs PTY passthrough, backlog + late follower replay, stderr interleaving, input injection, abrupt kill with transcript capture, slow-follower backlog, and SIGKILL backlog (with ACK wait).
+- [ ] Promote slow-follower and SIGKILL cases into CI gating once recorder socket handshakes/backpressure are hardened.
 - [ ] Scenario `tests/acp_bridge/scenarios/passthrough_recorder.yaml` launches a tool via the shim, verifies the rewritten command, and asserts that SSE/`.ahr` output matches the original PTY stream.
 - [ ] Unit tests cover shim rewrite logic on Linux/macOS, socket negotiation, environment injection from `ah agent start`, and failure modes (recorder unavailable → fail open).
 - [ ] Integration test `cargo test -p ah-command-trace-e2e-tests passthrough_follow_mode` spawns the shim, records a command, attaches a follower, injects input (e.g., sudo prompt), and checks that both the running process and `.ahr` capture the interaction faithfully.

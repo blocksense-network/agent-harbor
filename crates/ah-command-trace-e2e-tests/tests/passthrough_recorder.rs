@@ -88,6 +88,7 @@ struct Follower {
 
 impl Follower {
     async fn run_until_done(mut self) -> Vec<u8> {
+        let mut done_flag = false;
         loop {
             tokio::select! {
                 Ok(chunk) = self.rx.recv() => {
@@ -95,9 +96,17 @@ impl Follower {
                 }
                 changed = self.done.changed() => {
                     if changed.is_ok() && *self.done.borrow() {
-                        break;
+                        done_flag = true;
                     }
                 }
+                else => { done_flag = true; }
+            }
+            if done_flag {
+                // drain any remaining queued messages before returning
+                while let Ok(chunk) = self.rx.try_recv() {
+                    self.live.extend_from_slice(&chunk);
+                }
+                break;
             }
         }
         let mut out = self.history;
@@ -106,6 +115,7 @@ impl Follower {
     }
 
     async fn run_until_done_slow(mut self, delay_ms: u64) -> Vec<u8> {
+        let mut done_flag = false;
         loop {
             tokio::select! {
                 Ok(chunk) = self.rx.recv() => {
@@ -114,9 +124,16 @@ impl Follower {
                 }
                 changed = self.done.changed() => {
                     if changed.is_ok() && *self.done.borrow() {
-                        break;
+                        done_flag = true;
                     }
                 }
+                else => { done_flag = true; }
+            }
+            if done_flag {
+                while let Ok(chunk) = self.rx.try_recv() {
+                    self.live.extend_from_slice(&chunk);
+                }
+                break;
             }
         }
         let mut out = self.history;
@@ -355,7 +372,6 @@ async fn passthrough_stderr_interleave() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "flaky in CI until fanout backlog is persisted across slow subscribers"]
 async fn passthrough_slow_follower_no_drop() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let control = dir.path().join("ctl.sock");
@@ -380,7 +396,6 @@ async fn passthrough_slow_follower_no_drop() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "flaky: helper may exit before sigkill output captured; stabilize with recorder sockets"]
 async fn passthrough_sigkill_piped_preserves_backlog() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let control = dir.path().join("ctl.sock");

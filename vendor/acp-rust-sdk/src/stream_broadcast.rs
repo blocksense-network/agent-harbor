@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! JSON-RPC Stream broadcasting for debugging and monitoring communication.
 //!
 //! This module provides functionality to observe the JSON-RPC message stream between

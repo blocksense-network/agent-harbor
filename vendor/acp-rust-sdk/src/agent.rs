@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use std::{rc::Rc, sync::Arc};
 
 use serde_json::value::RawValue;

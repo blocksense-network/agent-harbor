@@ -1,23 +1,25 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
 [files]
 ignore-files = true
 ignore-hidden = false
 extend-exclude = [
-    ".git/",
-    "target/",
-    "node_modules/",
-    "dist/",
+  ".git/",
+  "target/",
+  "node_modules/",
+  "dist/",
 
-    # Generated schema files
-    "schema/",
+  # Generated schema files
+  "schema/",
 
-    # Package lock files contain hashes and encoded data
-    "package-lock.json",
-    "Cargo.lock",
+  # Package lock files contain hashes and encoded data
+  "package-lock.json",
+  "Cargo.lock",
 ]
 
 [default]
-extend-ignore-re = [
-]
+extend-ignore-re = []
 check-filename = true
 
 [default.extend-identifiers]

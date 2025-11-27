@@ -1,3 +1,6 @@
+// Copyright 2025 Schelling Point Labs Inc
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use anyhow::Result;
 use futures::{AsyncRead, AsyncWrite, future::LocalBoxFuture};
 // RpcConnection is re-exported below; keep import minimal to avoid duplication
