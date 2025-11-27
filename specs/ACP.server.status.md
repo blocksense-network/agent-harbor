@@ -163,12 +163,12 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 
 #### Compatibility Matrix (Harbor ↔ ACP core)
 
-| ACP feature | Harbor mapping | Notes |
-|-------------|----------------|-------|
+| ACP feature                          | Harbor mapping                                                                   | Notes                                                                                |
+| ------------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `initialize.capabilities.transports` | Derived from `AcpConfig.transport` (`websocket` always, `stdio` when configured) | Persisted per-connection inside `AcpSessionContext` and required before session RPCs |
-| `initialize.capabilities.filesystem` | Default `false/false` until in-place mode (Milestone 12) | Guardrails enforced in translator; unknown flags ignored |
-| `initialize.capabilities.terminal` | Always `true` (Harbor owns recorder + follower channel) | Terminal replay hooks arrive in Milestones 5–7 |
-| Auth forwarding | Uses REST `AuthConfig` (API key/JWT) | Shared problem+JSON errors with REST |
+| `initialize.capabilities.filesystem` | Default `false/false` until in-place mode (Milestone 12)                         | Guardrails enforced in translator; unknown flags ignored                             |
+| `initialize.capabilities.terminal`   | Always `true` (Harbor owns recorder + follower channel)                          | Terminal replay hooks arrive in Milestones 5–7                                       |
+| Auth forwarding                      | Uses REST `AuthConfig` (API key/JWT)                                             | Shared problem+JSON errors with REST                                                 |
 
 #### Session Context Snapshot
 
@@ -190,10 +190,11 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 #### Deliverables
 
 - [x] Implement ACP `session/new`, `session/list`, and `session/load` requests by translating them into existing TaskManager operations (creating REST tasks, enumerating `sessions` table).
-- [x] Add mapping between ACP `sessionId` strings and Agent Harbor ULIDs; persist cross-reference table so either entry point (REST or ACP) can locate sessions. *(Currently 1:1 reuse of Harbor session IDs; schema migration for dedicated cross-ref deferred to later milestone).*
+- [x] Add mapping between ACP `sessionId` strings and Agent Harbor ULIDs; persist cross-reference table so either entry point (REST or ACP) can locate sessions. _(Currently 1:1 reuse of Harbor session IDs; schema migration for dedicated cross-ref deferred to later milestone)._
 - [x] Support loading paused sessions by mounting the existing workspace snapshot read-only and exposing its metadata back to the ACP client (workspace metadata now flags read-only and includes snapshot provider when status=paused).
 - [x] Provide `session/update` notifications for lifecycle changes (queued, provisioning, running, paused, completed) using the existing SSE event bus.
 - [ ] Extend the Scenario Format with `userActions.pause_session` / `userActions.resume_session` primitives so harnesses can express pausing/resuming via REST or ACP semantics.
+
 #### Implementation Details
 
 - Added JSON-RPC handlers for `session/new`, `session/list`, and `session/load` in `acp::transport`, translating ACP payloads into `CreateTaskRequest` with safe defaults (local runtime, git/none repo detection, Claude Sonnet agent) before delegating to `SessionService`.
@@ -228,9 +229,9 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 #### Deliverables
 
-- [x] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`). *Prompts now require a live TaskController and bubble errors instead of silently logging; 16k-char cap and history seeding remain.*
-- [x] Stream Agent Harbor SSE events (`thought`, `tool_use`, `tool_result`, `file_edit`, `log`, `status`) back through ACP `session/update` notifications with correct JSON-RPC ids and `tool_execution_id` correlation. *Current stream forwards SessionStore events; tool correlation is stubbed until recorder bridge lands.*
-- [x] Support `session/cancel` (notification) by invoking the REST cancellation path. *Updates session status, emits cancelled status, and best-effort calls `TaskController::stop_task` when available.*
+- [x] Implement `session/prompt` so ACP user messages are enqueued as Agent Harbor task instructions (leveraging `TaskManager::inject_message`). _Prompts now require a live TaskController and bubble errors instead of silently logging; 16k-char cap and history seeding remain._
+- [x] Stream Agent Harbor SSE events (`thought`, `tool_use`, `tool_result`, `file_edit`, `log`, `status`) back through ACP `session/update` notifications with correct JSON-RPC ids and `tool_execution_id` correlation. _Current stream forwards SessionStore events; tool correlation is stubbed until recorder bridge lands._
+- [x] Support `session/cancel` (notification) by invoking the REST cancellation path. _Updates session status, emits cancelled status, and best-effort calls `TaskController::stop_task` when available._
 - [x] Ensure prompts obey context window limits and respond with ACP-standard stop reasons.
 - [x] Reject over-budget `session/new` prompts with `stopReason: context_limit` and no side effects on the session store.
 - [x] Enforce legacy Scenario Format fixtures (`events` + `assertions`) in the mock playback store so ACP scenario tests emit expected status/log/thought events and fail fast when assertions are missing.
@@ -274,9 +275,9 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 #### Outstanding Tasks
 
-- [x] Wire `session/prompt` / `session/cancel` / pause/resume to guaranteed TaskManager delivery with execution-id correlation instead of best-effort logging/injection. *(Implemented via required TaskController + synthetic tool_use seeding when recorder metadata is missing.)*
-- [ ] Derive follower commands and terminal streams directly from recorder metadata (execution stream) instead of falling back to client-supplied strings when history is missing. *(Client-supplied fallback removed; synthetic tool_use is a temporary bridge for mock sessions.)*
-- [ ] Move session/prompt/cancel/pause/resume onto the SDK dispatcher path and send updates via `AgentSideConnection::notify`. *(Progress: WebSocket/stdio now use the SDK `ValueDispatcher` with raw params preserved; notifications still emitted manually.)*
+- [x] Wire `session/prompt` / `session/cancel` / pause/resume to guaranteed TaskManager delivery with execution-id correlation instead of best-effort logging/injection. _(Implemented via required TaskController + synthetic tool_use seeding when recorder metadata is missing.)_
+- [ ] Derive follower commands and terminal streams directly from recorder metadata (execution stream) instead of falling back to client-supplied strings when history is missing. _(Client-supplied fallback removed; synthetic tool_use is a temporary bridge for mock sessions.)_
+- [ ] Move session/prompt/cancel/pause/resume onto the SDK dispatcher path and send updates via `AgentSideConnection::notify`. _(Progress: WebSocket/stdio now use the SDK `ValueDispatcher` with raw params preserved; notifications still emitted manually.)_
 
 #### Key Implementation Files
 
@@ -304,6 +305,15 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - [ ] Automatically create filesystem snapshots after every tool execution and after every file write detected by the shim. For file writes, capture the diff against the previous snapshot for the affected file and emit it as an ACP `diff` content block (or via REST diff endpoints) so clients can show before/after views without re-reading the workspace.
 - [ ] Track writes to agent session files (per agent type) and maintain a mapping between the snapshot taken for those writes and the session file update event. This mapping allows restoring session files to the correct state when a snapshot is restored or branched.
 - [ ] Derive follower commands from recorded executions (not caller-supplied), replay PTY backlog via recorder sockets, and support multiple simultaneous followers.
+- **Passthrough recorder e2e coverage (no shim):**
+  - [x] Piped stdout backlog + late follower replay (`passthrough_piped_backlog_and_live`).
+  - [x] Stdin injection round-trip (`passthrough_input_injection_round_trip`).
+  - [x] Stderr interleave ordering (`passthrough_stderr_interleave`).
+  - [x] PTY replay (backlog + resize) via portable-pty harness (`passthrough_pty_backlog_and_resize`).
+  - [x] Abrupt kill preserves pre-kill output, transcript saved per run (`passthrough_abrupt_kill_yields_backlog`).
+  - [ ] Slow follower backlog persistence (`passthrough_slow_follower_no_drop`) — currently `#[ignore]`; needs backlog buffering across slow consumers.
+  - [ ] SIGKILL backlog determinism (`passthrough_sigkill_piped_preserves_backlog`) — currently `#[ignore]`; needs recorder-socket ACK/handshake to guarantee pre-kill bytes are captured.
+        Tests live in `crates/ah-command-trace-e2e-tests/tests/passthrough_recorder.rs` and run without LD_PRELOAD.
 
 #### Implementation Details (current)
 
@@ -327,9 +337,11 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 4. **5.4 Auto snapshot & diff emission** — Snapshot-after-tool/write automation plus SSE/ACP diff events (with truncation).
 5. **5.5 Session-file mapping** — Detect session-file writes, store metadata, integrate with time-travel.
 
-#### Verification
+- #### Verification
 
 - [x] Integration test `cargo test -p ah-rest-server --test acp_prompt_followers` drives `_ah/terminal/follow/write/detach` over ACP and validates the streamed `terminal_follow`/`terminal_detach` updates plus write acknowledgements.
+- [x] Recorder harness tests in `ah-command-trace-e2e-tests` cover piped vs PTY passthrough, backlog + late follower replay, stderr interleaving, input injection, and abrupt termination (kill) with transcript capture.
+- [ ] Recorder harness TODOs: slow-follower backlog persistence and deterministic SIGKILL capture (tests currently `#[ignore]` until buffering/handshake is tightened).
 - [ ] Scenario `tests/acp_bridge/scenarios/passthrough_recorder.yaml` launches a tool via the shim, verifies the rewritten command, and asserts that SSE/`.ahr` output matches the original PTY stream.
 - [ ] Unit tests cover shim rewrite logic on Linux/macOS, socket negotiation, environment injection from `ah agent start`, and failure modes (recorder unavailable → fail open).
 - [ ] Integration test `cargo test -p ah-command-trace-e2e-tests passthrough_follow_mode` spawns the shim, records a command, attaches a follower, injects input (e.g., sudo prompt), and checks that both the running process and `.ahr` capture the interaction faithfully.

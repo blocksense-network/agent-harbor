@@ -8,6 +8,7 @@
 use crate::core::{self, ShimState};
 #[cfg(target_os = "macos")]
 use crate::hook_safe_io::HookSafeIO;
+use crate::passthrough::{PassthroughConfig, RewriteBuffers};
 use ah_command_trace_client::{ClientConfig, CommandTraceClient};
 use ah_command_trace_proto::{CommandChunk, CommandStart};
 use std::ffi::{CStr, OsString, c_void};
@@ -15,6 +16,10 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::SystemTime;
+
+extern "C" {
+    static mut environ: *mut *mut libc::c_char;
+}
 
 // Macro to convert i32 to usize only on macOS to avoid unnecessary conversion warnings on Linux
 #[cfg(target_os = "macos")]
@@ -441,18 +446,47 @@ stackable_hooks::hook! {
 
 stackable_hooks::hook! {
     unsafe fn execve(path: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_execve {
+        if let Some(cfg) = PassthroughConfig::from_env() {
+            if let Some(buffers) = unsafe { cfg.rewrite(argv, envp) } {
+                return stackable_hooks::call_next!(
+                    cfg.ah_path.as_ptr(),
+                    buffers.argv_ptr(),
+                    buffers.env_ptr()
+                );
+            }
+        }
         stackable_hooks::call_next!(path, argv, envp)
     }
 }
 
 stackable_hooks::hook! {
     unsafe fn execvp(file: *const libc::c_char, argv: *const *mut libc::c_char) -> libc::c_int => my_execvp {
+        if let Some(cfg) = PassthroughConfig::from_env() {
+            let envp_ptr = environ as *const *mut libc::c_char;
+            if let Some(buffers) = unsafe { cfg.rewrite(argv, envp_ptr) } {
+                return libc::execve(
+                    cfg.ah_path.as_ptr(),
+                    buffers.argv_ptr() as *const *const libc::c_char,
+                    buffers.env_ptr() as *const *const libc::c_char,
+                );
+            }
+        }
         stackable_hooks::call_next!(file, argv)
     }
 }
 
 stackable_hooks::hook! {
     unsafe fn execv(file: *const libc::c_char, argv: *const *mut libc::c_char) -> libc::c_int => my_execv {
+        if let Some(cfg) = PassthroughConfig::from_env() {
+            let envp_ptr = environ as *const *mut libc::c_char;
+            if let Some(buffers) = unsafe { cfg.rewrite(argv, envp_ptr) } {
+                return libc::execve(
+                    cfg.ah_path.as_ptr(),
+                    buffers.argv_ptr() as *const *const libc::c_char,
+                    buffers.env_ptr() as *const *const libc::c_char,
+                );
+            }
+        }
         stackable_hooks::call_next!(file, argv)
     }
 }
@@ -460,6 +494,17 @@ stackable_hooks::hook! {
 #[cfg(target_os = "linux")]
 stackable_hooks::hook! {
     unsafe fn execveat(dirfd: libc::c_int, pathname: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char, flags: libc::c_int) -> libc::c_int => my_execveat {
+        if let Some(cfg) = PassthroughConfig::from_env() {
+            if let Some(buffers) = unsafe { cfg.rewrite(argv, envp) } {
+                return stackable_hooks::call_next!(
+                    dirfd,
+                    cfg.ah_path.as_ptr(),
+                    buffers.argv_ptr(),
+                    buffers.env_ptr(),
+                    flags
+                );
+            }
+        }
         stackable_hooks::call_next!(dirfd, pathname, argv, envp, flags)
     }
 }
@@ -467,14 +512,37 @@ stackable_hooks::hook! {
 #[cfg(target_os = "linux")]
 stackable_hooks::hook! {
     unsafe fn execvpe(file: *const libc::c_char, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_execvpe {
+        if let Some(cfg) = PassthroughConfig::from_env() {
+            if let Some(buffers) = unsafe { cfg.rewrite(argv, envp) } {
+                return stackable_hooks::call_next!(
+                    cfg.ah_path.as_ptr(),
+                    buffers.argv_ptr(),
+                    buffers.env_ptr()
+                );
+            }
+        }
         stackable_hooks::call_next!(file, argv, envp)
     }
 }
 
 stackable_hooks::hook! {
     unsafe fn posix_spawn(pid: *mut libc::pid_t, path: *const libc::c_char, file_actions: *const libc::posix_spawn_file_actions_t, attrp: *const libc::posix_spawnattr_t, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_posix_spawn {
+        let rewrite_cfg = PassthroughConfig::from_env();
+        let mut _rewrite_buffers: Option<RewriteBuffers> = None;
+        let (exec_path, exec_argv, exec_envp) = if let Some(cfg) = rewrite_cfg.as_ref() {
+            if let Some(buffers) = unsafe { cfg.rewrite(argv, envp) } {
+                _rewrite_buffers = Some(buffers);
+                let buf_ref = _rewrite_buffers.as_ref().unwrap();
+                (cfg.ah_path.as_ptr(), buf_ref.argv_ptr(), buf_ref.env_ptr())
+            } else {
+                (path, argv, envp)
+            }
+        } else {
+            (path, argv, envp)
+        };
+
         // Call the real posix_spawn first
-        let result = stackable_hooks::call_next!(pid, path, file_actions, attrp, argv, envp);
+        let result = stackable_hooks::call_next!(pid, exec_path, file_actions, attrp, exec_argv, exec_envp);
 
         // If spawn was successful and we have a PID, send CommandStart
         if result == 0 && !pid.is_null() {
@@ -494,18 +562,18 @@ stackable_hooks::hook! {
                 let parent_pid = std::process::id();
 
                 // Get executable path
-                let executable = if !path.is_null() {
-                    unsafe { CStr::from_ptr(path) }.to_bytes().to_vec()
+                let executable = if !exec_path.is_null() {
+                    unsafe { CStr::from_ptr(exec_path) }.to_bytes().to_vec()
                 } else {
                     b"<null>".to_vec()
                 };
 
                 // Get arguments
                 let mut args = Vec::new();
-                if !argv.is_null() {
+                if !exec_argv.is_null() {
                     let mut i = 0;
                     loop {
-                        let arg_ptr = unsafe { *argv.offset(i) };
+                        let arg_ptr = unsafe { *exec_argv.offset(i) };
                         if arg_ptr.is_null() {
                             break;
                         }
@@ -517,10 +585,10 @@ stackable_hooks::hook! {
 
                 // Get environment
                 let mut env = Vec::new();
-                if !envp.is_null() {
+                if !exec_envp.is_null() {
                     let mut i = 0;
                     loop {
-                        let env_ptr = unsafe { *envp.offset(i) };
+                        let env_ptr = unsafe { *exec_envp.offset(i) };
                         if env_ptr.is_null() {
                             break;
                         }
@@ -542,8 +610,22 @@ stackable_hooks::hook! {
 
 stackable_hooks::hook! {
     unsafe fn posix_spawnp(pid: *mut libc::pid_t, file: *const libc::c_char, file_actions: *const libc::posix_spawn_file_actions_t, attrp: *const libc::posix_spawnattr_t, argv: *const *mut libc::c_char, envp: *const *mut libc::c_char) -> libc::c_int => my_posix_spawnp {
+        let rewrite_cfg = PassthroughConfig::from_env();
+        let mut _rewrite_buffers: Option<RewriteBuffers> = None;
+        let (exec_path, exec_argv, exec_envp) = if let Some(cfg) = rewrite_cfg.as_ref() {
+            if let Some(buffers) = unsafe { cfg.rewrite(argv, envp) } {
+                _rewrite_buffers = Some(buffers);
+                let buf_ref = _rewrite_buffers.as_ref().unwrap();
+                (cfg.ah_path.as_ptr(), buf_ref.argv_ptr(), buf_ref.env_ptr())
+            } else {
+                (file, argv, envp)
+            }
+        } else {
+            (file, argv, envp)
+        };
+
         // Call the real posix_spawnp first
-        let result = stackable_hooks::call_next!(pid, file, file_actions, attrp, argv, envp);
+        let result = stackable_hooks::call_next!(pid, exec_path, file_actions, attrp, exec_argv, exec_envp);
 
         // If spawn was successful and we have a PID, send CommandStart
         if result == 0 && !pid.is_null() {
@@ -563,18 +645,18 @@ stackable_hooks::hook! {
                 let parent_pid = std::process::id();
 
                 // Get executable path
-                let executable = if !file.is_null() {
-                    unsafe { CStr::from_ptr(file) }.to_bytes().to_vec()
+                let executable = if !exec_path.is_null() {
+                    unsafe { CStr::from_ptr(exec_path) }.to_bytes().to_vec()
                 } else {
                     b"<null>".to_vec()
                 };
 
                 // Get arguments
                 let mut args = Vec::new();
-                if !argv.is_null() {
+                if !exec_argv.is_null() {
                     let mut i = 0;
                     loop {
-                        let arg_ptr = unsafe { *argv.offset(i) };
+                        let arg_ptr = unsafe { *exec_argv.offset(i) };
                         if arg_ptr.is_null() {
                             break;
                         }
@@ -586,10 +668,10 @@ stackable_hooks::hook! {
 
                 // Get environment
                 let mut env = Vec::new();
-                if !envp.is_null() {
+                if !exec_envp.is_null() {
                     let mut i = 0;
                     loop {
-                        let env_ptr = unsafe { *envp.offset(i) };
+                        let env_ptr = unsafe { *exec_envp.offset(i) };
                         if env_ptr.is_null() {
                             break;
                         }
