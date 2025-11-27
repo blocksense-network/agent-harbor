@@ -61,7 +61,7 @@ impl StreamFanout {
 
     fn finish_blocking(&self, handle: &tokio::runtime::Handle) {
         let done_tx = self.done_tx.clone();
-        let _ = handle.block_on(async {
+        handle.block_on(async {
             done_tx.send(true).ok();
         });
     }

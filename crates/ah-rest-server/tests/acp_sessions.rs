@@ -3,7 +3,9 @@
 
 use std::net::TcpListener;
 
-use ah_rest_server::{Server, ServerConfig, mock_dependencies::MockServerDependencies};
+use ah_rest_server::{
+    Server, ServerConfig, config::AcpConfig, mock_dependencies::MockServerDependencies,
+};
 use common::acp::spawn_acp_server_basic;
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
@@ -147,12 +149,19 @@ async fn acp_session_new_infers_tenant_from_jwt() {
     let acp_addr = acp_listener.local_addr().unwrap();
     drop(acp_listener);
 
-    let mut config = ServerConfig::default();
-    config.bind_addr = addr;
-    config.enable_cors = true;
-    config.jwt_secret = Some("secret".into());
-    config.acp.enabled = true;
-    config.acp.bind_addr = acp_addr;
+    let acp_cfg = AcpConfig {
+        enabled: true,
+        bind_addr: acp_addr,
+        ..AcpConfig::default()
+    };
+
+    let config = ServerConfig {
+        bind_addr: addr,
+        enable_cors: true,
+        jwt_secret: Some("secret".into()),
+        acp: acp_cfg,
+        ..ServerConfig::default()
+    };
 
     let deps = MockServerDependencies::new(config.clone()).await.expect("deps");
     let server = Server::with_state(config, deps.into_state()).await.expect("server");

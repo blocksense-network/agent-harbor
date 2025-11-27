@@ -181,18 +181,12 @@ fn id_to_value(id: &Id) -> Value {
 struct NullAgent;
 
 impl MessageHandler<AgentSide> for NullAgent {
-    fn handle_request(
-        &self,
-        _request: ClientRequest,
-    ) -> impl std::future::Future<Output = Result<AgentResponse, Error>> {
-        async { Err(Error::method_not_found()) }
+    async fn handle_request(&self, _request: ClientRequest) -> Result<AgentResponse, Error> {
+        Err(Error::method_not_found())
     }
 
-    fn handle_notification(
-        &self,
-        _notification: ClientNotification,
-    ) -> impl std::future::Future<Output = Result<(), Error>> {
-        async { Ok(()) }
+    async fn handle_notification(&self, _notification: ClientNotification) -> Result<(), Error> {
+        Ok(())
     }
 }
 
