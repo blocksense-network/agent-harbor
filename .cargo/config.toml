@@ -1,0 +1,5 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[build]
+rustflags = ["--check-cfg=cfg(stackable_hooks_internal_export)"]

@@ -14,12 +14,55 @@
 #![allow(private_interfaces)]
 #![allow(static_mut_refs)]
 
+#[cfg(feature = "propagation-hooks-env-control")]
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use crate::auto_propagation::{free_modified_envp, modify_envp_with_injection};
 #[allow(unused_imports)]
 use crate::{call_next, hook};
 
 // Use a low priority (high number) so these hooks run after application hooks
 const PROPAGATION_PRIORITY: i32 = 1000;
+
+#[cfg(feature = "propagation-hooks-env-control")]
+const PROPAGATION_ENV_VAR: &str = "STACKABLE_PROPAGATION_HOOKS";
+
+#[cfg(feature = "propagation-hooks-env-control")]
+static PROPAGATION_HOOKS_ACTIVE: AtomicBool = AtomicBool::new(true);
+
+#[cfg(feature = "propagation-hooks-env-control")]
+fn compute_propagation_hook_state() -> bool {
+    match std::env::var(PROPAGATION_ENV_VAR) {
+        Ok(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            !(normalized.is_empty()
+                || normalized == "0"
+                || normalized == "false"
+                || normalized == "off")
+        }
+        Err(std::env::VarError::NotPresent) => true,
+        Err(_) => true,
+    }
+}
+
+#[cfg(feature = "propagation-hooks-env-control")]
+#[ctor::ctor]
+fn initialize_propagation_guard() {
+    let enabled = compute_propagation_hook_state();
+    PROPAGATION_HOOKS_ACTIVE.store(enabled, Ordering::Release);
+}
+
+#[cfg(feature = "propagation-hooks-env-control")]
+#[inline]
+fn propagation_hooks_enabled() -> bool {
+    PROPAGATION_HOOKS_ACTIVE.load(Ordering::Acquire)
+}
+
+#[cfg(not(feature = "propagation-hooks-env-control"))]
+#[inline(always)]
+fn propagation_hooks_enabled() -> bool {
+    true
+}
 
 // execve: int execve(const char *pathname, char *const argv[], char *const envp[])
 //
@@ -32,6 +75,9 @@ hook! {
         argv: *const *mut libc::c_char,
         envp: *const *mut libc::c_char
     ) -> libc::c_int => propagate_execve {
+        if !propagation_hooks_enabled() {
+            return call_next!(pathname, argv, envp);
+        }
         // Modify the environment to include library injection
         let modified_envp = modify_envp_with_injection(envp);
 
@@ -66,6 +112,9 @@ hook! {
         file: *const libc::c_char,
         argv: *const *mut libc::c_char
     ) -> libc::c_int => propagate_execvp {
+        if !propagation_hooks_enabled() {
+            return call_next!(file, argv);
+        }
         // Note: execvp doesn't take an envp parameter, so we can't modify it here.
         // However, we've already modified the process environment via setenv if needed.
         // Just pass through to the next hook.
@@ -84,6 +133,9 @@ hook! {
         path: *const libc::c_char,
         argv: *const *mut libc::c_char
     ) -> libc::c_int => propagate_execv {
+        if !propagation_hooks_enabled() {
+            return call_next!(path, argv);
+        }
         // Like execvp, this uses the current environment, so just pass through.
         call_next!(path, argv)
     }
@@ -101,6 +153,9 @@ hook! {
         argv: *const *mut libc::c_char,
         envp: *const *mut libc::c_char
     ) -> libc::c_int => propagate_execvpe {
+        if !propagation_hooks_enabled() {
+            return call_next!(file, argv, envp);
+        }
         let modified_envp = modify_envp_with_injection(envp);
 
         let final_envp = if !modified_envp.is_null() {
@@ -134,6 +189,9 @@ hook! {
         envp: *const *mut libc::c_char,
         flags: libc::c_int
     ) -> libc::c_int => propagate_execveat {
+        if !propagation_hooks_enabled() {
+            return call_next!(dirfd, pathname, argv, envp, flags);
+        }
         let modified_envp = modify_envp_with_injection(envp);
 
         let final_envp = if !modified_envp.is_null() {
@@ -170,6 +228,9 @@ hook! {
         argv: *const *mut libc::c_char,
         envp: *const *mut libc::c_char
     ) -> libc::c_int => propagate_posix_spawn {
+        if !propagation_hooks_enabled() {
+            return call_next!(pid, path, file_actions, attrp, argv, envp);
+        }
         let modified_envp = modify_envp_with_injection(envp);
 
         let final_envp = if !modified_envp.is_null() {
@@ -206,6 +267,9 @@ hook! {
         argv: *const *mut libc::c_char,
         envp: *const *mut libc::c_char
     ) -> libc::c_int => propagate_posix_spawnp {
+        if !propagation_hooks_enabled() {
+            return call_next!(pid, file, file_actions, attrp, argv, envp);
+        }
         let modified_envp = modify_envp_with_injection(envp);
 
         let final_envp = if !modified_envp.is_null() {

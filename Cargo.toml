@@ -193,7 +193,9 @@ ah-command-trace-server = { path = "./crates/ah-command-trace-server" }
 ah-command-trace-shim = { path = "./crates/ah-command-trace-shim" }
 ah-command-trace-client = { path = "./crates/ah-command-trace-client" }
 ah-command-trace-e2e-tests = { path = "./crates/ah-command-trace-e2e-tests" }
-stackable-hooks = { path = "./crates/stackable-hooks" }
+stackable-hooks = { path = "./crates/stackable-hooks", features = [
+  "propagation-hooks",
+] }
 
 # Core async runtime
 tokio = { version = "1.47", features = ["full"] }
