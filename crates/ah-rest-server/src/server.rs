@@ -3,6 +3,8 @@
 
 //! Main server implementation
 
+#[cfg(test)]
+use crate::config::AcpConfig;
 use crate::dependencies::DefaultServerDependencies;
 use crate::error::ServerResult;
 use crate::handlers;
@@ -236,13 +238,13 @@ mod tests {
         fn drop(&mut self) {
             if std::thread::panicking() {
                 if let Ok(meta) = metadata(&self.path) {
-                    eprintln!(
+                    tracing::info!(
                         "test log available at {} ({} bytes)",
                         self.path.display(),
                         meta.len()
                     );
                 } else {
-                    eprintln!("test log available at {}", self.path.display());
+                    tracing::info!("test log available at {}", self.path.display());
                 }
             }
         }
@@ -252,11 +254,18 @@ mod tests {
     async fn acp_flag_enables_gateway() {
         let mut log = TestLog::new("acp_flag_enables_gateway");
 
-        let mut config = ServerConfig::default();
-        config.bind_addr = "127.0.0.1:0".parse().unwrap();
-        config.enable_cors = true;
-        config.acp.enabled = true;
-        config.acp.bind_addr = "127.0.0.1:0".parse().unwrap();
+        let config = ServerConfig {
+            bind_addr: "127.0.0.1:0".parse().unwrap(),
+            enable_cors: true,
+            acp: {
+                AcpConfig {
+                    enabled: true,
+                    bind_addr: "127.0.0.1:0".parse().unwrap(),
+                    ..AcpConfig::default()
+                }
+            },
+            ..ServerConfig::default()
+        };
 
         let deps = MockServerDependencies::new(config.clone()).await.expect("mock deps");
         let server = Server::with_state(config.clone(), deps.into_state()).await.expect("server");

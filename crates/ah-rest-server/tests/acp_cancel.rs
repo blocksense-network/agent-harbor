@@ -99,13 +99,12 @@ async fn acp_session_cancel_streams_update() {
         while let Some(msg) = socket.next().await {
             if let WsMessage::Text(text) = msg.expect("frame") {
                 let value: serde_json::Value = serde_json::from_str(&text).expect("json");
-                if value.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-                    if value.pointer("/params/event/status").and_then(|v| v.as_str())
+                if value.get("method").and_then(|v| v.as_str()) == Some("session/update")
+                    && value.pointer("/params/event/status").and_then(|v| v.as_str())
                         == Some("cancelled")
-                    {
-                        saw_cancel = true;
-                        break;
-                    }
+                {
+                    saw_cancel = true;
+                    break;
                 }
             }
         }

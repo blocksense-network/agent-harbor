@@ -117,12 +117,12 @@ impl JsonRpcTranslator {
             .unwrap_or_else(|| json!({}));
         let mcp_caps = input.pointer("/capabilities/mcp").cloned().unwrap_or_else(|| json!({}));
 
-        let mut caps = AgentCapabilities::default();
-        caps.load_session = load_session;
-        caps.prompt_capabilities = serde_json::from_value(prompt_caps).unwrap_or_default();
-        caps.mcp_capabilities = serde_json::from_value(mcp_caps).unwrap_or_default();
-        caps.meta = input.pointer("/capabilities/_meta").cloned().or_else(|| Some(json!({})));
-        caps
+        AgentCapabilities {
+            load_session,
+            prompt_capabilities: serde_json::from_value(prompt_caps).unwrap_or_default(),
+            mcp_capabilities: serde_json::from_value(mcp_caps).unwrap_or_default(),
+            meta: input.pointer("/capabilities/_meta").cloned().or_else(|| Some(json!({}))),
+        }
     }
 }
 
