@@ -30,6 +30,8 @@ pub use unsupported::*;
 #[cfg(target_os = "macos")]
 pub mod hook_safe_io;
 
+/// Passthrough recorder rewrite helpers (shim-side).
+pub mod passthrough;
 /// Shared POSIX functionality
 pub mod posix;
 
