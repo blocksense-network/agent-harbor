@@ -30,6 +30,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - Terminal follow now derives follower commands strictly from recorder/tool metadata; when metadata is missing (mock sessions), a synthetic `tool_use` event is recorded instead of trusting raw client strings.
 - Send-safe notifier path added: per-connection SDK `AgentSideConnection::notify` now runs on a dedicated single-thread runtime behind a channel, so we can migrate `session/update` to typed SDK notifications when ready without `Send` issues.
 - `session/update` now emits typed SDK notifications (`SessionUpdate` variants for status/log/thought/tool/file/terminal), preserving the raw event in `_meta` for fidelity; dispatcher path remains only as a fallback.
+- WebSocket/stdio transports now stream `session/update` directly from the Send-safe notifier to the actual sockets (dispatcher fallback removed). Raw legacy `session/update` envelopes are emitted alongside typed SDK updates so ordering-sensitive flows (terminal follow/detach) match the scenario fixtures; transport-level tests cover the mappings and ordering.
 
 ## Test Strategy
 

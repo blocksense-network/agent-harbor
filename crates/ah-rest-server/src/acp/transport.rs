@@ -108,7 +108,6 @@ pub struct AcpTransportState {
     pub idle_timeout: Duration,
     pub config: AcpConfig,
     pub app_state: AppState,
-    pub notifier: Notifier,
 }
 
 /// SDK side that keeps both typed and raw params to avoid losing Harbor-specific fields.
@@ -254,14 +253,27 @@ pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
     let mut lines = reader.lines();
     let writer = Arc::new(Mutex::new(io::stdout()));
 
+    let notifier = Notifier::new_threaded();
+
     let context = Arc::new(Mutex::new(AcpSessionContext {
         auth_claims: None,
+        notifier: notifier.clone(),
         ..Default::default()
     }));
-    context.lock().await.notifier = state.notifier.clone();
     let (dispatcher, _streams) = ValueDispatcher::<HarborAgentSide, OutgoingSide>::new();
     let driver = Arc::new(Mutex::new(dispatcher));
     let mut incoming_rx = driver.lock().await.take_incoming().fuse();
+
+    if let Some(mut rx) = notifier.subscribe() {
+        let writer_clone = writer.clone();
+        tokio::spawn(async move {
+            while let Ok(payload) = rx.recv().await {
+                if send_json_stdout(&writer_clone, payload).await.is_err() {
+                    break;
+                }
+            }
+        });
+    }
 
     let mut tick = interval(Duration::from_millis(100));
     let idle_timeout = state.idle_timeout;
@@ -276,10 +288,8 @@ pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
             _ = tick.tick() => {
                 let mut ctx = context.lock().await;
                 let notifier = ctx.notifier.clone();
-                let flushed_events =
-                    flush_session_events_stdio(&mut ctx, &driver, &writer, &notifier).await;
-                let flushed_pty =
-                    flush_pty_events_stdio(&mut ctx, &driver, &writer, &notifier).await;
+                let flushed_events = flush_session_events_stdio(&mut ctx, &notifier).await;
+                let flushed_pty = flush_pty_events_stdio(&mut ctx, &notifier).await;
                 if flushed_events || flushed_pty {
                     idle_timer.as_mut().reset(Instant::now() + idle_timeout);
                 }
@@ -419,14 +429,27 @@ async fn handle_socket(
 ) {
     let (sender, mut receiver) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
+    let notifier = Notifier::new_threaded();
     let context = Arc::new(Mutex::new(AcpSessionContext {
         auth_claims: claims,
+        notifier: notifier.clone(),
         ..Default::default()
     }));
-    context.lock().await.notifier = state.notifier.clone();
     let (dispatcher, _streams) = ValueDispatcher::<HarborAgentSide, OutgoingSide>::new();
     let driver = Arc::new(Mutex::new(dispatcher));
     let mut incoming_rx = driver.lock().await.take_incoming().fuse();
+
+    // Forward SDK-produced notifications to the WebSocket transport.
+    if let Some(mut rx) = notifier.subscribe() {
+        let sender_clone = sender.clone();
+        tokio::spawn(async move {
+            while let Ok(payload) = rx.recv().await {
+                if send_json(&sender_clone, payload).await.is_err() {
+                    break;
+                }
+            }
+        });
+    }
 
     let idle_timer = sleep(state.idle_timeout);
     tokio::pin!(idle_timer);
@@ -438,12 +461,12 @@ async fn handle_socket(
                     break;
                 }
                 _ = tick.tick() => {
-            let mut ctx_guard = context.lock().await;
+                let mut ctx_guard = context.lock().await;
                     let notifier = ctx_guard.notifier.clone();
                     let flushed_events =
-                        flush_session_events(&mut ctx_guard, &driver, &sender, &notifier).await;
+                        flush_session_events(&mut ctx_guard, &notifier).await;
                     let flushed_pty =
-                        flush_pty_events(&mut ctx_guard, &driver, &sender, &notifier).await;
+                        flush_pty_events(&mut ctx_guard, &notifier).await;
             drop(ctx_guard);
             if flushed_events || flushed_pty {
                 idle_timer.as_mut().reset(Instant::now() + state.idle_timeout);
@@ -547,7 +570,7 @@ async fn route_wrapped_request(
             require_initialized(&guard)?;
             drop(guard);
             let mut guard = ctx.lock().await;
-            handle_session_load(state, &mut guard, driver, sender, request.raw)
+            handle_session_load(state, &mut guard, request.raw)
                 .await
                 .map_err(server_error_to_rpc)
         }
@@ -938,8 +961,8 @@ async fn handle_authenticate_with_raw(
 async fn handle_session_new(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let prompt = params.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -971,8 +994,8 @@ async fn handle_session_new(
         .ok_or_else(|| ServerError::Internal("session creation returned no ids".into()))?;
 
     if let Some(session) = state.app_state.session_store.get_session(&session_id).await? {
-        subscribe_session(ctx, &state.app_state, &session_id, driver, sender).await;
-        let _ = seed_history(&state.app_state, &session_id, driver, sender, &ctx.notifier).await;
+        subscribe_session(ctx, &state.app_state, &session_id).await;
+        let _ = seed_history(&state.app_state, &session_id, &ctx.notifier).await;
         ctx.sessions.insert(session_id.clone());
         let _ = state
             .app_state
@@ -1001,8 +1024,8 @@ async fn handle_session_new(
 async fn handle_session_new_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
     let prompt = params.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -1034,9 +1057,8 @@ async fn handle_session_new_stdio(
         .ok_or_else(|| ServerError::Internal("session creation returned no ids".into()))?;
 
     if let Some(session) = state.app_state.session_store.get_session(&session_id).await? {
-        subscribe_session_stdio(ctx, &state.app_state, &session_id, driver, writer).await;
-        let _ =
-            seed_history_stdio(&state.app_state, &session_id, driver, writer, &ctx.notifier).await;
+        subscribe_session_stdio(ctx, &state.app_state, &session_id).await;
+        let _ = seed_history_stdio(&state.app_state, &session_id, &ctx.notifier).await;
         ctx.sessions.insert(session_id.clone());
         let _ = state
             .app_state
@@ -1065,8 +1087,8 @@ async fn handle_session_new_stdio(
 async fn handle_terminal_write(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1092,15 +1114,15 @@ async fn handle_terminal_write(
         .await
         .map_err(|e| ServerError::Internal(format!("failed to write to terminal: {e}")))?;
 
-    subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
+    subscribe_session(ctx, &state.app_state, session_id).await;
     Ok(json!({"sessionId": session_id, "accepted": true}))
 }
 
 async fn handle_terminal_write_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1126,14 +1148,14 @@ async fn handle_terminal_write_stdio(
         .await
         .map_err(|e| ServerError::Internal(format!("failed to write to terminal: {e}")))?;
 
-    subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
+    subscribe_session_stdio(ctx, &state.app_state, session_id).await;
     Ok(json!({"sessionId": session_id, "accepted": true}))
 }
 
 async fn handle_terminal_follow(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1162,7 +1184,15 @@ async fn handle_terminal_follow(
 
     let notifier = ctx.notifier.clone();
     let update = terminal_follow_params(session_id, execution_id, &cmd);
-    let _ = send_session_notification(driver, sender, update, &notifier).await;
+    let _ = send_raw_session_update_ws(sender, update.clone()).await;
+    let _ = notifier
+        .notify(
+            "sessionUpdate",
+            Some(AgentNotification::SessionNotification(
+                session_update_from_json(&update),
+            )),
+        )
+        .await;
 
     // Attempt to stream PTY backlog + live updates when available.
     if let Some(controller) = &state.app_state.task_controller {
@@ -1173,17 +1203,11 @@ async fn handle_terminal_follow(
                         msg,
                         TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
                     ) {
-                        let _ = send_session_notification(
-                            driver,
-                            sender,
-                            pty_to_params(session_id, &msg),
-                            &notifier,
-                        )
-                        .await;
+                        let _ =
+                            send_session_notification(pty_to_params(session_id, &msg), &notifier)
+                                .await;
                     }
                 }
-                let sender_clone = Arc::clone(sender);
-                let driver_clone = driver.clone();
                 let notifier_clone = notifier.clone();
                 let session = session_id.to_string();
                 tokio::spawn(async move {
@@ -1193,8 +1217,6 @@ async fn handle_terminal_follow(
                             TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
                         ) {
                             let _ = send_session_notification(
-                                &driver_clone,
-                                &sender_clone,
                                 pty_to_params(&session, &msg),
                                 &notifier_clone,
                             )
@@ -1215,7 +1237,7 @@ async fn handle_terminal_follow(
 async fn handle_terminal_follow_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
@@ -1243,7 +1265,15 @@ async fn handle_terminal_follow_stdio(
 
     let notifier = ctx.notifier.clone();
     let update = terminal_follow_params(session_id, execution_id, &cmd);
-    let _ = send_session_notification_stdout(driver, writer, update, &notifier).await;
+    let _ = send_raw_session_update_stdout(writer, update.clone()).await;
+    let _ = notifier
+        .notify(
+            "sessionUpdate",
+            Some(AgentNotification::SessionNotification(
+                session_update_from_json(&update),
+            )),
+        )
+        .await;
 
     if let Some(controller) = &state.app_state.task_controller {
         match controller.subscribe_pty(session_id).await {
@@ -1253,17 +1283,11 @@ async fn handle_terminal_follow_stdio(
                         msg,
                         TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
                     ) {
-                        let _ = send_session_notification_stdout(
-                            driver,
-                            writer,
-                            pty_to_params(session_id, &msg),
-                            &notifier,
-                        )
-                        .await;
+                        let _ =
+                            send_session_notification(pty_to_params(session_id, &msg), &notifier)
+                                .await;
                     }
                 }
-                let driver_clone = driver.clone();
-                let writer_clone = writer.clone();
                 let notifier_clone = notifier.clone();
                 let session = session_id.to_string();
                 tokio::spawn(async move {
@@ -1272,9 +1296,7 @@ async fn handle_terminal_follow_stdio(
                             msg,
                             TaskManagerMessage::PtyData(_) | TaskManagerMessage::PtyResize(_)
                         ) {
-                            let _ = send_session_notification_stdout(
-                                &driver_clone,
-                                &writer_clone,
+                            let _ = send_session_notification(
                                 pty_to_params(&session, &msg),
                                 &notifier_clone,
                             )
@@ -1293,7 +1315,7 @@ async fn handle_terminal_follow_stdio(
 }
 
 async fn handle_terminal_detach(
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
     notifier: &Notifier,
@@ -1308,13 +1330,21 @@ async fn handle_terminal_detach(
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
 
     let update = terminal_detach_params(session_id, execution_id);
-    let _ = send_session_notification(driver, sender, update, notifier).await;
+    let _ = send_raw_session_update_ws(sender, update.clone()).await;
+    let _ = notifier
+        .notify(
+            "sessionUpdate",
+            Some(AgentNotification::SessionNotification(
+                session_update_from_json(&update),
+            )),
+        )
+        .await;
 
     Ok(json!({ "sessionId": session_id, "executionId": execution_id, "detached": true }))
 }
 
 async fn handle_terminal_detach_stdio(
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
     notifier: &Notifier,
@@ -1329,7 +1359,15 @@ async fn handle_terminal_detach_stdio(
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
 
     let update = terminal_detach_params(session_id, execution_id);
-    let _ = send_session_notification_stdout(driver, writer, update, notifier).await;
+    let _ = send_raw_session_update_stdout(writer, update.clone()).await;
+    let _ = notifier
+        .notify(
+            "sessionUpdate",
+            Some(AgentNotification::SessionNotification(
+                session_update_from_json(&update),
+            )),
+        )
+        .await;
 
     Ok(json!({ "sessionId": session_id, "executionId": execution_id, "detached": true }))
 }
@@ -1371,8 +1409,6 @@ async fn handle_session_list(
 async fn handle_session_load(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1381,8 +1417,8 @@ async fn handle_session_load(
         .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
 
     if let Some(session) = state.app_state.session_store.get_session(session_id).await? {
-        subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
-        let _ = seed_history(&state.app_state, session_id, driver, sender, &ctx.notifier).await;
+        subscribe_session(ctx, &state.app_state, session_id).await;
+        let _ = seed_history(&state.app_state, session_id, &ctx.notifier).await;
         ctx.sessions.insert(session_id.to_string());
         Ok(json!({
             "session": session_to_json(&session.session),
@@ -1395,8 +1431,8 @@ async fn handle_session_load(
 async fn handle_session_load_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1405,9 +1441,8 @@ async fn handle_session_load_stdio(
         .ok_or_else(|| ServerError::BadRequest("sessionId is required".into()))?;
 
     if let Some(session) = state.app_state.session_store.get_session(session_id).await? {
-        subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
-        let _ =
-            seed_history_stdio(&state.app_state, session_id, driver, writer, &ctx.notifier).await;
+        subscribe_session_stdio(ctx, &state.app_state, session_id).await;
+        let _ = seed_history_stdio(&state.app_state, session_id, &ctx.notifier).await;
         ctx.sessions.insert(session_id.to_string());
         Ok(json!({
             "session": session_to_json(&session.session),
@@ -1420,8 +1455,8 @@ async fn handle_session_load_stdio(
 async fn handle_session_prompt(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1469,9 +1504,9 @@ async fn handle_session_prompt(
         }));
     }
 
-    subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
+    subscribe_session(ctx, &state.app_state, session_id).await;
     let notifier = ctx.notifier.clone();
-    let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
+    let _ = seed_history(&state.app_state, session_id, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
     if matches!(
         session.session.status,
@@ -1524,8 +1559,8 @@ async fn handle_session_prompt(
 async fn handle_session_prompt_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1573,9 +1608,9 @@ async fn handle_session_prompt_stdio(
         }));
     }
 
-    subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
+    subscribe_session_stdio(ctx, &state.app_state, session_id).await;
     let notifier = ctx.notifier.clone();
-    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
+    let _ = seed_history_stdio(&state.app_state, session_id, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
     if matches!(
         session.session.status,
@@ -1628,8 +1663,8 @@ async fn handle_session_prompt_stdio(
 async fn handle_session_cancel(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1641,9 +1676,9 @@ async fn handle_session_cancel(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
+    subscribe_session(ctx, &state.app_state, session_id).await;
     let notifier = ctx.notifier.clone();
-    let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
+    let _ = seed_history(&state.app_state, session_id, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     let controller = state
@@ -1679,8 +1714,8 @@ async fn handle_session_cancel(
 async fn handle_session_cancel_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1692,9 +1727,9 @@ async fn handle_session_cancel_stdio(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
+    subscribe_session_stdio(ctx, &state.app_state, session_id).await;
     let notifier = ctx.notifier.clone();
-    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
+    let _ = seed_history_stdio(&state.app_state, session_id, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     let controller = state
@@ -1730,8 +1765,8 @@ async fn handle_session_cancel_stdio(
 async fn handle_session_pause(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1743,9 +1778,9 @@ async fn handle_session_pause(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
+    subscribe_session(ctx, &state.app_state, session_id).await;
     let notifier = ctx.notifier.clone();
-    let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
+    let _ = seed_history(&state.app_state, session_id, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Paused;
@@ -1781,8 +1816,8 @@ async fn handle_session_pause(
 async fn handle_session_pause_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1794,9 +1829,9 @@ async fn handle_session_pause_stdio(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
+    subscribe_session_stdio(ctx, &state.app_state, session_id).await;
     let notifier = ctx.notifier.clone();
-    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
+    let _ = seed_history_stdio(&state.app_state, session_id, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Paused;
@@ -1832,8 +1867,8 @@ async fn handle_session_pause_stdio(
 async fn handle_session_resume(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1845,9 +1880,9 @@ async fn handle_session_resume(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session(ctx, &state.app_state, session_id, driver, sender).await;
+    subscribe_session(ctx, &state.app_state, session_id).await;
     let notifier = ctx.notifier.clone();
-    let _ = seed_history(&state.app_state, session_id, driver, sender, &notifier).await;
+    let _ = seed_history(&state.app_state, session_id, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Running;
@@ -1883,8 +1918,8 @@ async fn handle_session_resume(
 async fn handle_session_resume_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
+    _writer: &Arc<Mutex<tokio::io::Stdout>>,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1896,9 +1931,9 @@ async fn handle_session_resume_stdio(
         return Err(ServerError::SessionNotFound(session_id.to_string()));
     };
 
-    subscribe_session_stdio(ctx, &state.app_state, session_id, driver, writer).await;
+    subscribe_session_stdio(ctx, &state.app_state, session_id).await;
     let notifier = ctx.notifier.clone();
-    let _ = seed_history_stdio(&state.app_state, session_id, driver, writer, &notifier).await;
+    let _ = seed_history_stdio(&state.app_state, session_id, &notifier).await;
     ctx.sessions.insert(session_id.to_string());
 
     session.session.status = SessionStatus::Running;
@@ -1931,13 +1966,7 @@ async fn handle_session_resume_stdio(
     }))
 }
 
-async fn subscribe_session(
-    ctx: &mut AcpSessionContext,
-    app_state: &AppState,
-    session_id: &str,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
-) {
+async fn subscribe_session(ctx: &mut AcpSessionContext, app_state: &AppState, session_id: &str) {
     if !ctx.receivers.contains_key(session_id) {
         if let Some(receiver) = app_state.session_store.subscribe_session_events(session_id) {
             ctx.receivers.insert(session_id.to_string(), receiver);
@@ -1947,13 +1976,9 @@ async fn subscribe_session(
         if let Some(controller) = &app_state.task_controller {
             if let Ok((backlog, rx)) = controller.subscribe_pty(session_id).await {
                 for msg in backlog {
-                    let _ = send_session_notification(
-                        driver,
-                        sender,
-                        pty_to_params(session_id, &msg),
-                        &ctx.notifier,
-                    )
-                    .await;
+                    let _ =
+                        send_session_notification(pty_to_params(session_id, &msg), &ctx.notifier)
+                            .await;
                 }
                 ctx.pty_receivers.insert(session_id.to_string(), rx);
             }
@@ -1965,8 +1990,6 @@ async fn subscribe_session_stdio(
     ctx: &mut AcpSessionContext,
     app_state: &AppState,
     session_id: &str,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
 ) {
     if !ctx.receivers.contains_key(session_id) {
         if let Some(receiver) = app_state.session_store.subscribe_session_events(session_id) {
@@ -1977,13 +2000,9 @@ async fn subscribe_session_stdio(
         if let Some(controller) = &app_state.task_controller {
             if let Ok((backlog, rx)) = controller.subscribe_pty(session_id).await {
                 for msg in backlog {
-                    let _ = send_session_notification_stdout(
-                        driver,
-                        writer,
-                        pty_to_params(session_id, &msg),
-                        &ctx.notifier,
-                    )
-                    .await;
+                    let _ =
+                        send_session_notification(pty_to_params(session_id, &msg), &ctx.notifier)
+                            .await;
                 }
                 ctx.pty_receivers.insert(session_id.to_string(), rx);
             }
@@ -1994,8 +2013,6 @@ async fn subscribe_session_stdio(
 async fn seed_history(
     app_state: &AppState,
     session_id: &str,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
     notifier: &Notifier,
 ) -> Result<(), ()> {
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
@@ -2004,7 +2021,7 @@ async fn seed_history(
                 "sessionId": session_id,
                 "event": event_to_json(session_id, &event),
             });
-            send_session_notification(driver, sender, params, notifier).await?;
+            send_session_notification(params, notifier).await?;
         }
     }
     Ok(())
@@ -2013,8 +2030,6 @@ async fn seed_history(
 async fn seed_history_stdio(
     app_state: &AppState,
     session_id: &str,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
     notifier: &Notifier,
 ) -> Result<(), ()> {
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
@@ -2023,7 +2038,7 @@ async fn seed_history_stdio(
                 "sessionId": session_id,
                 "event": event_to_json(session_id, &event),
             });
-            send_session_notification_stdout(driver, writer, params, notifier).await?;
+            send_session_notification(params, notifier).await?;
         }
     }
     Ok(())
@@ -2048,12 +2063,7 @@ fn session_to_json(session: &Session) -> Value {
     })
 }
 
-async fn flush_session_events(
-    ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
-    notifier: &Notifier,
-) -> bool {
+async fn flush_session_events(ctx: &mut AcpSessionContext, notifier: &Notifier) -> bool {
     let mut sent = false;
     let mut dead_sessions = Vec::new();
     let ids: Vec<String> = ctx.receivers.keys().cloned().collect();
@@ -2081,7 +2091,7 @@ async fn flush_session_events(
             "sessionId": session_id,
             "event": event_to_json(&session_id, &event),
         });
-        if send_session_notification(driver, sender, update, notifier).await.is_err() {
+        if send_session_notification(update, notifier).await.is_err() {
             dead_sessions.push(session_id);
         } else {
             sent = true;
@@ -2095,12 +2105,7 @@ async fn flush_session_events(
     sent
 }
 
-async fn flush_session_events_stdio(
-    ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
-    notifier: &Notifier,
-) -> bool {
+async fn flush_session_events_stdio(ctx: &mut AcpSessionContext, notifier: &Notifier) -> bool {
     let mut sent = false;
     let mut dead_sessions = Vec::new();
     let ids: Vec<String> = ctx.receivers.keys().cloned().collect();
@@ -2128,10 +2133,7 @@ async fn flush_session_events_stdio(
             "sessionId": session_id,
             "event": event_to_json(&session_id, &event),
         });
-        if send_session_notification_stdout(driver, writer, update, notifier)
-            .await
-            .is_err()
-        {
+        if send_session_notification(update, notifier).await.is_err() {
             dead_sessions.push(session_id);
         } else {
             sent = true;
@@ -2145,12 +2147,7 @@ async fn flush_session_events_stdio(
     sent
 }
 
-async fn flush_pty_events(
-    ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
-    notifier: &Notifier,
-) -> bool {
+async fn flush_pty_events(ctx: &mut AcpSessionContext, notifier: &Notifier) -> bool {
     let mut sent = false;
     let mut dead = Vec::new();
 
@@ -2159,7 +2156,7 @@ async fn flush_pty_events(
             match rx.try_recv() {
                 Ok(msg) => {
                     let update = pty_to_params(session_id, &msg);
-                    if send_session_notification(driver, sender, update, notifier).await.is_err() {
+                    if send_session_notification(update, notifier).await.is_err() {
                         dead.push(session_id.clone());
                         break;
                     }
@@ -2182,12 +2179,7 @@ async fn flush_pty_events(
     sent
 }
 
-async fn flush_pty_events_stdio(
-    ctx: &mut AcpSessionContext,
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
-    notifier: &Notifier,
-) -> bool {
+async fn flush_pty_events_stdio(ctx: &mut AcpSessionContext, notifier: &Notifier) -> bool {
     let mut sent = false;
     let mut dead = Vec::new();
 
@@ -2196,10 +2188,7 @@ async fn flush_pty_events_stdio(
             match rx.try_recv() {
                 Ok(msg) => {
                     let update = pty_to_params(session_id, &msg);
-                    if send_session_notification_stdout(driver, writer, update, notifier)
-                        .await
-                        .is_err()
-                    {
+                    if send_session_notification(update, notifier).await.is_err() {
                         dead.push(session_id.clone());
                         break;
                     }
@@ -2608,7 +2597,11 @@ mod tests {
         let notif = session_update_from_json(&params);
         assert_eq!(notif.session_id.0.as_ref(), "sess");
         match notif.update {
-            SessionUpdate::AgentMessageChunk { content } => assert_eq!(content.text, "running"),
+            SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(t),
+            } => {
+                assert_eq!(t.text, "running")
+            }
             _ => panic!("expected AgentMessageChunk for status"),
         }
         assert!(notif.meta.is_some());
@@ -2621,7 +2614,11 @@ mod tests {
             "event": { "type": "log", "message": "hello" }
         }));
         match log.update {
-            SessionUpdate::AgentMessageChunk { content } => assert_eq!(content.text, "hello"),
+            SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(t),
+            } => {
+                assert_eq!(t.text, "hello")
+            }
             _ => panic!("expected log to map to AgentMessageChunk"),
         }
 
@@ -2630,7 +2627,11 @@ mod tests {
             "event": { "type": "thought", "text": "reason" }
         }));
         match thought.update {
-            SessionUpdate::AgentThoughtChunk { content } => assert_eq!(content.text, "reason"),
+            SessionUpdate::AgentThoughtChunk {
+                content: ContentBlock::Text(t),
+            } => {
+                assert_eq!(t.text, "reason")
+            }
             _ => panic!("expected thought to map to AgentThoughtChunk"),
         }
     }
@@ -2689,11 +2690,44 @@ mod tests {
             "event": { "type": "terminal_follow", "executionId": "exec" }
         }));
         match follow.update {
-            SessionUpdate::AgentMessageChunk { content } => {
-                assert!(content.text.contains("terminal"))
+            SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(t),
+            } => {
+                assert!(t.text.contains("terminal"))
             }
             _ => panic!("expected terminal follow to map to AgentMessageChunk"),
         }
+    }
+
+    #[tokio::test]
+    async fn notifier_emits_raw_session_update() {
+        let notifier = Notifier::new_threaded();
+        let mut rx = notifier.subscribe().expect("subscription");
+
+        let params = json!({
+            "sessionId": "s1",
+            "event": { "type": "terminal_follow", "executionId": "exec", "command": "cmd" }
+        });
+
+        send_session_notification(params, &notifier).await.unwrap();
+
+        let payload = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("payload")
+            .expect("value");
+
+        assert_eq!(
+            payload.get("method").and_then(|v| v.as_str()),
+            Some("session/update")
+        );
+        assert_eq!(
+            payload
+                .get("params")
+                .and_then(|p| p.get("event"))
+                .and_then(|e| e.get("type"))
+                .and_then(|v| v.as_str()),
+            Some("terminal_follow")
+        );
     }
 }
 
@@ -2704,6 +2738,21 @@ async fn send_json(
     let text = serde_json::to_string(&payload).map_err(|_| ())?;
     let mut guard = sender.lock().await;
     guard.send(WsMessage::Text(text)).await.map_err(|_| ())
+}
+
+async fn send_raw_session_update_ws(
+    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
+    params: Value,
+) -> Result<(), ()> {
+    send_json(
+        sender,
+        json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": params,
+        }),
+    )
+    .await
 }
 
 async fn send_outgoing(
@@ -2718,14 +2767,9 @@ async fn send_outgoing(
     send_json(sender, payload).await
 }
 
-async fn send_session_notification(
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    sender: &Arc<Mutex<SplitSink<WebSocket, WsMessage>>>,
-    params: Value,
-    notifier: &Notifier,
-) -> Result<(), ()> {
-    // Prefer SDK typed notify; fall back to legacy dispatcher only on failure.
-    if notifier
+async fn send_session_notification(params: Value, notifier: &Notifier) -> Result<(), ()> {
+    notifier.push_raw_notification("session/update", params.clone());
+    notifier
         .notify(
             "sessionUpdate",
             Some(AgentNotification::SessionNotification(
@@ -2733,15 +2777,6 @@ async fn send_session_notification(
             )),
         )
         .await
-        .is_err()
-    {
-        let message = OutgoingMessage::Notification {
-            method: Arc::from("session/update"),
-            params: Some(params),
-        };
-        return send_outgoing(driver, sender, &message).await;
-    }
-    Ok(())
 }
 
 async fn send_json_stdout(
@@ -2755,6 +2790,21 @@ async fn send_json_stdout(
     guard.flush().await.map_err(|_| ())
 }
 
+async fn send_raw_session_update_stdout(
+    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    params: Value,
+) -> Result<(), ()> {
+    send_json_stdout(
+        writer,
+        json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": params,
+        }),
+    )
+    .await
+}
+
 async fn send_outgoing_stdout(
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
     writer: &Arc<Mutex<tokio::io::Stdout>>,
@@ -2765,31 +2815,6 @@ async fn send_outgoing_stdout(
         dispatcher.outgoing_to_value(message).map_err(|_| ())?
     };
     send_json_stdout(writer, payload).await
-}
-
-async fn send_session_notification_stdout(
-    driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
-    params: Value,
-    notifier: &Notifier,
-) -> Result<(), ()> {
-    if notifier
-        .notify(
-            "sessionUpdate",
-            Some(AgentNotification::SessionNotification(
-                session_update_from_json(&params),
-            )),
-        )
-        .await
-        .is_err()
-    {
-        let message = OutgoingMessage::Notification {
-            method: Arc::from("session/update"),
-            params: Some(params),
-        };
-        return send_outgoing_stdout(driver, writer, &message).await;
-    }
-    Ok(())
 }
 
 async fn current_context_chars(
