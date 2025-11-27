@@ -15,8 +15,10 @@ mod common;
 
 #[test]
 fn acp_initialize_caps_roundtrip() {
-    let mut cfg = AcpConfig::default();
-    cfg.transport = AcpTransportMode::WebSocket;
+    let cfg = AcpConfig {
+        transport: AcpTransportMode::WebSocket,
+        ..AcpConfig::default()
+    };
     let caps = JsonRpcTranslator::negotiate_caps(&cfg);
     assert!(caps.load_session);
     assert!(caps.mcp_capabilities.http);
@@ -82,7 +84,6 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
     let init_resp = socket.next().await.expect("init response").expect("frame");
     if let WsMessage::Text(text) = init_resp {
         let value: serde_json::Value = serde_json::from_str(&text).expect("json");
-        println!("INIT RESP: {}", value);
         assert_eq!(value.get("id").and_then(|v| v.as_i64()), Some(1));
         assert!(
             value.pointer("/result/capabilities/_meta/agent.harbor").is_some(),
@@ -119,7 +120,6 @@ async fn acp_initialize_and_auth_scenario_succeeds() {
     let created = socket.next().await.expect("created").expect("frame");
     let session_id = if let WsMessage::Text(text) = created {
         let value: serde_json::Value = serde_json::from_str(&text).expect("json");
-        println!("SESSION NEW RESP: {}", value);
         value.pointer("/result/sessionId").and_then(|v| v.as_str()).unwrap().to_string()
     } else {
         panic!("unexpected frame")

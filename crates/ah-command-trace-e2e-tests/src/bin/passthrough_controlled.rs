@@ -83,7 +83,7 @@ fn current_winsize() -> Option<(u16, u16)> {
         ws_ypixel: 0,
     };
     let fd = 0; // stdin
-    let res = unsafe { ioctl(fd, TIOCGWINSZ.into(), &mut ws) };
+    let res = unsafe { ioctl(fd, TIOCGWINSZ, &mut ws) };
     if res == 0 {
         Some((ws.ws_col, ws.ws_row))
     } else {
