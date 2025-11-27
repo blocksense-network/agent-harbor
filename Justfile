@@ -17,6 +17,50 @@ set shell := ["./scripts/nix-env.sh", "-c"]
 # Define REPOMIX_OUT_DIR with a default value
 REPOMIX_OUT_DIR := env('REPOMIX_OUT_DIR', 'repomix')
 
+# Cargo Build Variables
+#
+# These variables define cargo build flags for individual components and combined builds.
+# The goal is to allow parallel cargo builds by consolidating multiple build commands
+# into a single cargo invocation, which leverages cargo's internal parallelism instead
+# of relying on just's sequential target execution.
+#
+# Individual component variables allow for selective builds, while the combined
+# CARGO_BUILD_RUST_TEST_BINARIES enables building all test binaries in parallel.
+CARGO_BUILD_SBX_HELPER := "--bin sbx-helper -p sbx-helper"
+CARGO_BUILD_AGENTFS_DAEMON := "--bin agentfs-daemon -p agentfs-daemon"
+CARGO_BUILD_AGENTFS_INTERPOSE_TEST := "--bin agentfs-interpose-test-helper -p agentfs-interpose-e2e-tests"
+CARGO_BUILD_DEBUGGING_ENFORCEMENT := "-p debugging-enforcement"
+CARGO_BUILD_TUI_TESTING := "-p tui-testing"
+CARGO_BUILD_AGENTFS_INTERPOSE_SHIM := "-p agentfs-interpose-shim"
+CARGO_BUILD_E2E_CALL_REAL_SHIM := "-p e2e-call-real-shim"
+CARGO_BUILD_E2E_SHIM_A := "-p e2e-shim-a"
+CARGO_BUILD_E2E_SHIM_B := "-p e2e-shim-b"
+CARGO_BUILD_E2E_STACKABLE_HOOKS := "-p e2e-stackable-hooks"
+CARGO_BUILD_AH_COMMAND_TRACE_SHIM := "-p ah-command-trace-shim"
+CARGO_BUILD_CGROUP_ENFORCEMENT_TESTS := "-p cgroup-enforcement-tests"
+CARGO_BUILD_OVERLAY_ENFORCEMENT_TESTS := "-p overlay-enforcement-tests"
+CARGO_BUILD_FS_SNAPSHOTS_HARNESS := "-p fs-snapshots-test-harness --bin fs-snapshots-harness-driver"
+CARGO_BUILD_AGENTFS_FUSE_HOST := "--package agentfs-fuse-host --features fuse"
+CARGO_RELEASE_BUILD_AGENTFS_FUSE_STRESS := "--package agentfs-fuse-stress --release"
+
+# Combined cargo flags for test binaries
+# This concatenation expresses dependencies between named sets of binaries
+CARGO_BUILD_RUST_TEST_BINARIES := \
+  CARGO_BUILD_FS_SNAPSHOTS_HARNESS + " " + \
+  CARGO_BUILD_SBX_HELPER + " " + \
+  CARGO_BUILD_AGENTFS_DAEMON + " " + \
+  CARGO_BUILD_AGENTFS_INTERPOSE_TEST + " " + \
+  CARGO_BUILD_DEBUGGING_ENFORCEMENT + " " + \
+  CARGO_BUILD_TUI_TESTING + " " + \
+  CARGO_BUILD_AGENTFS_INTERPOSE_SHIM + " " + \
+  CARGO_BUILD_E2E_CALL_REAL_SHIM + " " + \
+  CARGO_BUILD_E2E_SHIM_A + " " + \
+  CARGO_BUILD_E2E_SHIM_B + " " + \
+  CARGO_BUILD_E2E_STACKABLE_HOOKS + " " + \
+  CARGO_BUILD_AH_COMMAND_TRACE_SHIM + " " + \
+  CARGO_BUILD_CGROUP_ENFORCEMENT_TESTS + " " + \
+  CARGO_BUILD_OVERLAY_ENFORCEMENT_TESTS
+
 # IMPORTANT: Never use long scripts in Justfile recipes!
 # Long scripts set a custom shell, overriding our nix-env.sh setting.
 # Move complex scripts to the scripts/ folder instead.
@@ -44,7 +88,8 @@ check:
     cargo check --workspace
 
 # Build all test binaries needed for Rust workspace tests
-build-rust-test-binaries: build-sbx-helper build-cgroup-test-binaries build-overlay-test-binaries build-debugging-test-binaries build-tui-test-binaries build-interpose-test-binaries build-stackable-interpose-test-binaries build-command-trace-shim build-fuse-test-binaries build-fs-snapshots-harness
+build-rust-test-binaries: build-fuse-test-binaries
+    cargo build {{CARGO_BUILD_RUST_TEST_BINARIES}}
 
 # Run Rust tests
 test-rust *args: build-rust-test-binaries
@@ -251,34 +296,37 @@ lint-specs:
 
 # Build cgroup enforcement test binaries (fork_bomb, memory_hog, cpu_burner, test_orchestrator)
 build-cgroup-test-binaries:
-    cargo build --bin fork_bomb --bin memory_hog --bin cpu_burner --bin test_orchestrator
+    cargo build {{CARGO_BUILD_CGROUP_ENFORCEMENT_TESTS}}
 
 # Build overlay enforcement test binaries (overlay_test_orchestrator, blacklist_tester, overlay_writer)
 build-overlay-test-binaries:
-    cargo build --bin overlay_test_orchestrator --bin blacklist_tester --bin overlay_writer
+    cargo build {{CARGO_BUILD_OVERLAY_ENFORCEMENT_TESTS}}
 
 # Build interpose shim test binaries (agentfs-interpose-test-helper)
 build-interpose-test-binaries:
-    cargo build --bin agentfs-interpose-test-helper --bin agentfs-daemon
-    cargo build -p agentfs-interpose-shim
+    cargo build \
+      {{CARGO_BUILD_AGENTFS_INTERPOSE_TEST}} \
+      {{CARGO_BUILD_AGENTFS_DAEMON}} \
+      {{CARGO_BUILD_AGENTFS_INTERPOSE_SHIM}}
 
 # Build stackable-interpose e2e test binaries (test-program, call_real_demo) and shim libraries
 build-stackable-interpose-test-binaries:
-    cargo build -p e2e-call-real-shim
-    cargo build -p e2e-shim-a
-    cargo build -p e2e-shim-b
-    cargo build -p e2e-stackable-hooks --bins
+    cargo build \
+      {{CARGO_BUILD_E2E_CALL_REAL_SHIM}} \
+      {{CARGO_BUILD_E2E_SHIM_A}} \
+      {{CARGO_BUILD_E2E_SHIM_B}}
+    cargo build {{CARGO_BUILD_E2E_STACKABLE_HOOKS}} --bins
 
 # Build command trace shim library needed for e2e tests
 build-command-trace-shim:
-    cargo build -p ah-command-trace-shim
+    cargo build {{CARGO_BUILD_AH_COMMAND_TRACE_SHIM}}
 
 build-fs-snapshots-harness:
-    cargo build -p fs-snapshots-test-harness --bin fs-snapshots-harness-driver
+    cargo build {{CARGO_BUILD_FS_SNAPSHOTS_HARNESS}}
 
 # Build sbx-helper binary
 build-sbx-helper:
-    cargo build -p sbx-helper --bin sbx-helper
+    cargo build {{CARGO_BUILD_SBX_HELPER}}
 
 # Build macOS sandbox launcher (ah-macos-launcher)
 build-ah-macos-launcher:
@@ -299,14 +347,14 @@ build-network-tests: build-sbx-helper build-network-test-binaries
 
 # Build debugging enforcement test binaries (debugging_test_orchestrator, ptrace_tester, process_visibility_tester, mount_test)
 build-debugging-test-binaries:
-    cargo build -p debugging-enforcement --bin debugging_test_orchestrator --bin ptrace_tester --bin process_visibility_tester --bin mount_test
+    cargo build {{CARGO_BUILD_DEBUGGING_ENFORCEMENT}}
 
 # Build all test binaries needed for debugging enforcement tests
 build-debugging-tests: build-sbx-helper build-debugging-test-binaries
 
 # Build TUI test binaries
 build-tui-test-binaries:
-    cargo build -p tui-testing --bin test-guest
+    cargo build {{CARGO_BUILD_TUI_TESTING}}
 
 # Build FUSE test binaries (requires FUSE support)
 build-fuse-test-binaries:
