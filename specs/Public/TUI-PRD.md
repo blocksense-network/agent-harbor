@@ -657,9 +657,13 @@ The right column provides launch action selection with keyboard shortcuts:
 
 **Launch Menu Navigation**: Arrow keys navigate between launch options. Enter selects the highlighted option. Single letters (t/s/h/v) or capitals (T/S/H/V) can be typed directly to select when modal is visible.
 
-- **Modal dismissal**: ESC closes without launching and returns focus to the task description textarea, allowing the user to immediately continue editing their prompt
+- **Modal dismissal and changes**:
+  - **'A' key**: Applies changes and closes the modal, preserving any modifications made to the launch options
+  - **'Esc' key**: Discards all changes and restores the original configuration from before the modal was opened
+  - **Mouse interactions**: Clickable hint text at the bottom of the modal ("**A** Apply • **Esc** Cancel") provides visual cues and mouse click support for both actions
+  - **Focus restoration**: After applying or canceling, focus returns to the task description textarea, allowing the user to immediately continue editing their prompt
 - **Default focus**: Left column options when modal opens
-- **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed
+- **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed, and interactive hint text at bottom with bold key indicators
 
 ##### Session Persistence Behavior
 
@@ -723,9 +727,11 @@ The advanced launch options modal uses a two-column navigation system:
 - **Up/Down Arrows**: Navigate within the current column
 - **Tab**: Cycle through all controls in left-to-right, top-to-bottom order
 - **Enter**: Activate selected option or launch with selected method
-- **Esc**: Close modal without launching
-- **Shortcut Keys**: Single letters (b/s/h/v) or capitals (B/S/H/V) directly select launch options
-- **Focus Behavior**: Modal opens with focus in left column; maintains focus position when switching columns
+- **'A' key**: Apply changes and close modal, preserving any modifications made to launch options
+- **'Esc' key**: Discard changes and restore original configuration, then close modal
+- **Mouse clicks**: Clickable hint text at bottom of modal ("**A** Apply • **Esc** Cancel") provides visual feedback and mouse interaction support
+- **Shortcut Keys**: Single letters (t/s/h/v) or capitals (T/S/H/V) directly select launch options and immediately launch the task
+- **Focus Behavior**: Modal opens with focus in left column; maintains focus position when switching columns; returns focus to task description textarea after closing
 
 ### Real-Time Behavior
 
@@ -895,6 +901,7 @@ All such variables are in under the "[tui.keymap]" section.
 |                                 | Move to next field                            | `move-to-next-field`             | Tab                                                                             |
 |                                 | Move to previous field                        | `move-to-previous-field`         | Shift+Tab                                                                       |
 |                                 | Dismiss overlay                               | `dismiss-overlay`                | Esc                                                                             |
+|                                 | Apply modal changes                           | `apply-modal-changes`            | A (in modal context)                                                            |
 |                                 | Increment value                               | `increment-value`                | Shift+=, Right                                                                  |
 |                                 | Decrement value                               | `decrement-value`                | -, Left                                                                         |
 |                                 | Delete to beginning of line                   | `delete-to-beginning-of-line`    | Cmd+Backspace (macOS)                                                           |

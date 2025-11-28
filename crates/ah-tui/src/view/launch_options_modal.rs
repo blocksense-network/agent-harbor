@@ -9,8 +9,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
 
 use super::Theme;
+use crate::view::HitTestRegistry;
 use crate::view_model::agents_selector_model::{
-    AdvancedLaunchOptions, FilteredOption, LaunchOptionsColumn, LaunchOptionsViewModel,
+    AdvancedLaunchOptions, FilteredOption, LaunchOptionsColumn, LaunchOptionsViewModel, MouseAction,
 };
 
 pub fn render_advanced_launch_options_modal(
@@ -18,6 +19,7 @@ pub fn render_advanced_launch_options_modal(
     model: &LaunchOptionsViewModel,
     area: Rect,
     theme: &Theme,
+    hit_registry: &mut HitTestRegistry<MouseAction>,
 ) {
     // Calculate modal dimensions (large modal)
     let modal_width = 100.min(area.width.saturating_sub(4));
@@ -59,7 +61,19 @@ pub fn render_advanced_launch_options_modal(
     let inner_area = modal_block.inner(modal_area);
     frame.render_widget(modal_block, modal_area);
 
-    // Split into two columns
+    // Split into two columns and hint at the bottom
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),    // Content area
+            Constraint::Length(1), // Hint line at the bottom
+        ])
+        .split(inner_area);
+
+    let content_area = main_chunks[0];
+    let hint_area = main_chunks[1];
+
+    // Split content into two columns
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -67,7 +81,7 @@ pub fn render_advanced_launch_options_modal(
             Constraint::Length(1),      // Separator
             Constraint::Percentage(40), // Actions (Right)
         ])
-        .split(inner_area);
+        .split(content_area);
 
     let left_area = chunks[0];
     let _separator_area = chunks[1];
@@ -85,7 +99,7 @@ pub fn render_advanced_launch_options_modal(
 
     // Draw separator line
     let separator_x = left_area.x + left_area.width;
-    for y in inner_area.y..inner_area.y + inner_area.height {
+    for y in content_area.y..content_area.y + content_area.height {
         let buf = frame.buffer_mut();
         if separator_x < buf.area.width {
             buf.cell_mut((separator_x, y))
@@ -94,6 +108,57 @@ pub fn render_advanced_launch_options_modal(
     }
 
     render_actions_column(frame, model, right_area, theme);
+
+    // Render hint at the bottom with clickable areas
+    // Calculate the widths of each part
+    let apply_key = "A";
+    let apply_label = " Apply";
+    let separator = " • ";
+    let cancel_key = "Esc";
+    let cancel_label = " Cancel";
+
+    let apply_text_width = apply_key.len() + apply_label.len();
+    let cancel_text_width = cancel_key.len() + cancel_label.len();
+    let total_width = apply_text_width + separator.len() + cancel_text_width;
+
+    // Calculate starting position for centered text
+    let start_x = hint_area.x + (hint_area.width.saturating_sub(total_width as u16)) / 2;
+
+    // Register clickable areas
+    let apply_area = Rect {
+        x: start_x,
+        y: hint_area.y,
+        width: apply_text_width as u16,
+        height: 1,
+    };
+
+    let cancel_area = Rect {
+        x: start_x + apply_text_width as u16 + separator.len() as u16,
+        y: hint_area.y,
+        width: cancel_text_width as u16,
+        height: 1,
+    };
+
+    hit_registry.register(apply_area, MouseAction::ModalApplyChanges);
+    hit_registry.register(cancel_area, MouseAction::ModalCancelChanges);
+
+    let hint_text = Line::from(vec![
+        Span::styled(
+            apply_key,
+            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(apply_label, Style::default().fg(theme.muted)),
+        Span::styled(separator, Style::default().fg(theme.muted)),
+        Span::styled(
+            cancel_key,
+            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(cancel_label, Style::default().fg(theme.muted)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(hint_text).alignment(Alignment::Center),
+        hint_area,
+    );
 }
 
 struct RenderableOption<'a> {
