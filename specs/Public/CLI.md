@@ -1240,7 +1240,6 @@ OPTIONS:
   --claude-model <MODEL>             Model to use specifically for Claude agent (default: sonnet)
   --env <KEY=VALUE>...               Additional environment variables for agent
   --timeout <DURATION>               Maximum execution time before auto-termination
-  --record-output <yes|no>           Record agent output with ah agent record (default: yes)
   --output-dir <PATH>                Directory for recordings and artifacts
   --follow                           Monitor execution and emit notifications on completion
 ```
