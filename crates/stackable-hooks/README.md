@@ -17,7 +17,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-stackable-hooks = { path = "crates/stackable-hooks" }
+stackable-hooks = { workspace = true }
 ctor = "0.2"
 
 [lib]

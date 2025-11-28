@@ -32,8 +32,8 @@ tokio = { version = "1.0", features = [
   "macros",
 ] }
 tempfile = "3"
-ah-command-trace-proto = { path = "../ah-command-trace-proto" }
-ah-command-trace-client = { path = "../ah-command-trace-client" }
+ah-command-trace-proto = { workspace = true }
+ah-command-trace-client = { workspace = true }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 

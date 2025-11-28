@@ -50,20 +50,20 @@ jsonwebtoken = { version = "10.0", default-features = false, features = [
 base64 = { workspace = true }
 
 # Database
-ah-local-db = { path = "../ah-local-db" }
+ah-local-db = { workspace = true }
 rusqlite = { workspace = true }
 
 # API contracts
-ah-rest-api-contract = { path = "../ah-rest-api-contract" }
-ah-domain-types = { path = "../ah-domain-types", features = ["clap"] }
-ah-rest-mock-client = { path = "../ah-rest-mock-client" }
-ah-scenario-format = { path = "../ah-scenario-format" }
+ah-rest-api-contract = { workspace = true }
+ah-domain-types = { workspace = true, features = ["clap"] }
+ah-rest-mock-client = { workspace = true }
+ah-scenario-format = { workspace = true }
 
 # Core functionality
-ah-core = { path = "../ah-core" }
-ah-logging = { path = "../ah-logging" }
-ah-repo = { path = "../ah-repo" }
-ah-fs-snapshots = { path = "../ah-fs-snapshots" }
+ah-core = { workspace = true }
+ah-logging = { workspace = true }
+ah-repo = { workspace = true }
+ah-fs-snapshots = { workspace = true }
 
 
 # Platform-specific dependencies
@@ -105,7 +105,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 
 # ACP runtime (vendored)
-agent-client-protocol = { path = "../../vendor/acp-rust-sdk" }
+agent-client-protocol = { workspace = true }
 tokio-tungstenite = "0.23"
 tungstenite = "0.23"
 proptest = "1.4"
@@ -120,6 +120,6 @@ agentfs = ["ah-fs-snapshots/agentfs"]
 [dev-dependencies]
 tempfile = { workspace = true }
 mockall = { workspace = true }
-ah-rest-client = { path = "../ah-rest-client" }
+ah-rest-client = { workspace = true }
 serde_yaml = { workspace = true }
 tracing-test = "0.2"

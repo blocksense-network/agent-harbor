@@ -9,4 +9,4 @@ description = "Git snapshot provider facade for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-ah-fs-snapshots = { path = "../ah-fs-snapshots", features = ["git"] }
+ah-fs-snapshots = { workspace = true, features = ["git"] }

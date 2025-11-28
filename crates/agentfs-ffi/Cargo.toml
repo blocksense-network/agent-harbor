@@ -10,8 +10,8 @@ edition = "2021"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-agentfs-core = { path = "../agentfs-core" }
-agentfs-proto = { path = "../agentfs-proto" }
+agentfs-core = { workspace = true }
+agentfs-proto = { workspace = true }
 anyhow = { workspace = true }
 ethereum_ssz = { workspace = true }
 ethereum_ssz_derive = { workspace = true }

@@ -14,9 +14,9 @@ path = "src/bin/agentfs-daemon.rs"
 doctest = false
 
 [dependencies]
-agentfs-core = { path = "../agentfs-core" }
-agentfs-proto = { path = "../agentfs-proto" }
-ah-logging = { path = "../ah-logging" }
+agentfs-core = { workspace = true }
+agentfs-proto = { workspace = true }
+ah-logging = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -38,14 +38,14 @@ tempfile = "3.0"
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
-agentfs-backstore-macos = { path = "../agentfs-backstore-macos" }
+agentfs-backstore-macos = { workspace = true }
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
 scopeguard = "1.2"
 
 [dev-dependencies]
-agentfs-client = { path = "../agentfs-client" }
-agentfs-interpose-e2e-tests = { path = "../agentfs-interpose-e2e-tests" }
+agentfs-client = { workspace = true }
+agentfs-interpose-e2e-tests = { workspace = true }
 
 [build-dependencies]
 tracing = "0.1"

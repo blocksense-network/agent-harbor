@@ -23,7 +23,7 @@ once_cell = "1.19"
 regex = "1.11"
 arboard = "3.4"
 thiserror = "1.0"
-unicode-width = "0.1"
+unicode-width = { workspace = true }
 async-trait = "0.1"
 futures = "0.3"
 tokio-stream = "0.1"
@@ -34,12 +34,12 @@ tokio = { version = "1.0", features = [
   "test-util",
   "io-util",
 ] }
-ah-repo = { path = "../../../crates/ah-repo" }
-ah-workflows = { path = "../../../crates/ah-workflows" }
-ah-core = { path = "../../../crates/ah-core" }
-ah-domain-types = { path = "../../../crates/ah-domain-types" }
-ah-tui = { path = "../../../crates/ah-tui" }
-ah-rest-mock-client = { path = "../../../crates/ah-rest-mock-client" }
+ah-repo = { workspace = true }
+ah-workflows = { workspace = true }
+ah-core = { workspace = true }
+ah-domain-types = { workspace = true }
+ah-tui = { workspace = true }
+ah-rest-mock-client = { workspace = true }
 tempfile = "3.0"
 time = { version = "0.3", features = ["serde", "serde-well-known"] }
 serde = { version = "1.0", features = ["derive"] }

@@ -20,12 +20,12 @@ nix = { version = "0.27", features = [
   "process",
   "fs",
 ] }
-sandbox-cgroups = { path = "../sandbox-cgroups", optional = true }
-sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
-sandbox-net = { path = "../sandbox-net", optional = true }
-sandbox-devices = { path = "../sandbox-devices", optional = true }
-sandbox-fs = { path = "../sandbox-fs" }
-sandbox-proto = { path = "../sandbox-proto" }
+sandbox-cgroups = { workspace = true, optional = true }
+sandbox-seccomp = { workspace = true, optional = true }
+sandbox-net = { workspace = true, optional = true }
+sandbox-devices = { workspace = true, optional = true }
+sandbox-fs = { workspace = true }
+sandbox-proto = { workspace = true }
 
 [features]
 default = ["cgroups", "seccomp", "net", "devices"]

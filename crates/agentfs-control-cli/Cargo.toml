@@ -10,7 +10,7 @@ description = "Lightweight CLI helper for talking to the AgentFS FUSE control fi
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
-agentfs-proto = { path = "../agentfs-proto" }
+agentfs-proto = { workspace = true }
 ssz = { package = "ethereum_ssz", version = "0.8" }
 nix = { workspace = true, features = ["fs"] }
 libc = { workspace = true }

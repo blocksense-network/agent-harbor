@@ -16,15 +16,15 @@ tracing.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
-ah-repo = { path = "../ah-repo" }
-ah-workflows = { path = "../ah-workflows" }
-ah-local-db = { path = "../ah-local-db" }
-ah-domain-types = { path = "../ah-domain-types" }
-ah-rest-api-contract = { path = "../ah-rest-api-contract" }
-ah-rest-client = { path = "../ah-rest-client" }
-ah-mux-core = { path = "../ah-mux-core" }
-ah-mux = { path = "../ah-mux" }
-ah-tui-multiplexer = { path = "../ah-tui-multiplexer" }
+ah-repo = { workspace = true }
+ah-workflows = { workspace = true }
+ah-local-db = { workspace = true }
+ah-domain-types = { workspace = true }
+ah-rest-api-contract = { workspace = true }
+ah-rest-client = { workspace = true }
+ah-mux-core = { workspace = true }
+ah-mux = { workspace = true }
+ah-tui-multiplexer = { workspace = true }
 ureq = { version = "2.0", features = ["json"] }
 tempfile = "3.0"
 regex = "1.0"
