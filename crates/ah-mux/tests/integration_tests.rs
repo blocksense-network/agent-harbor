@@ -393,6 +393,15 @@ mod tests {
         tracing::info!(count = multiplexers.len(), "found available multiplexers");
 
         for (name, mut mux) in multiplexers {
+            // Skip Tilix and Zellij - they have dedicated integration tests
+            // Tilix windows don't close automatically and can cause tests to hang
+            if matches!(name.as_str(), "tilix" | "zellij") {
+                tracing::info!(
+                    multiplexer = name.as_str(),
+                    "Skipping - has dedicated integration tests"
+                );
+                continue;
+            }
             test_multiplexer_basic_operations(&name, &mut mux);
         }
     }
@@ -443,8 +452,13 @@ mod tests {
 
         let multiplexers = available_multiplexers();
         for (name, mux) in multiplexers {
-            if name == "zellij" {
-                continue; // Skip zellij for now
+            // Skip multiplexers with limited support or that require special handling
+            if matches!(name.as_str(), "zellij" | "tilix") {
+                tracing::info!(
+                    multiplexer = name.as_str(),
+                    "Skipping - has dedicated integration tests"
+                );
+                continue;
             }
 
             tracing::info!(multiplexer = name, "testing pane sizing concept");
