@@ -2,459 +2,323 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: interactive_development_scenario
-initialPrompt: "Let's work on implementing a user authentication system. I'll guide you through the requirements gathering, design, and implementation process."
+initialPrompt: Let's work on implementing a user authentication system. I'll guide
+  you through the requirements gathering, design, and implementation process.
 repo:
   init: true
   files:
-    - path: 'README.md'
-      contents: |
-        # User Authentication System
+    - path: README.md
+      contents: '# User Authentication System
+
 
         This project needs a user authentication system.
+
+        '
 timeline:
-  # Initial requirements gathering
   - llmResponse:
       - think:
-          - [
-              1000,
-              'Starting the authentication system implementation. I need to gather requirements from the user.',
-            ]
+          - content: Starting the authentication system implementation. I need to gather
+              requirements from the user.
+            relativeTime: 1000
       - assistant:
-          - [
-              500,
-              "Let's start by gathering the requirements for your authentication system. What type of users will be using this system?",
-            ]
-
-  # First user input - user types
+          - content: Let's start by gathering the requirements for your authentication system.
+              What type of users will be using this system?
+            relativeTime: 500
   - userInputs:
-      - [
-          1500,
-          'What types of users will authenticate with this system? (e.g., customers, employees, admins)',
-        ]
-    target: 'tui'
-
-  # Process user requirements
+      - input: What types of users will authenticate with this system? (e.g., customers,
+          employees, admins)
+        relativeTime: 1500
+    target: tui
   - llmResponse:
       - think:
-          - [
-              800,
-              'User specified their user types. Now I need to ask about authentication methods.',
-            ]
+          - content: User specified their user types. Now I need to ask about authentication
+              methods.
+            relativeTime: 800
       - assistant:
-          - [
-              400,
-              'Great! Now, what authentication methods do you want to support? (password, email verification, social login, etc.)',
-            ]
-
-  # Second user input - authentication methods
+          - content: Great! Now, what authentication methods do you want to support? (password,
+              email verification, social login, etc.)
+            relativeTime: 400
   - userInputs:
-      - [
-          1500,
-          'What authentication methods should we support? Please specify which ones are most important.',
-        ]
-    target: 'tui'
-
-  # Design phase
+      - input: What authentication methods should we support? Please specify which ones
+          are most important.
+        relativeTime: 1500
+    target: tui
   - llmResponse:
       - think:
-          - [1000, 'Got the authentication methods. Now I need to design the database schema.']
+          - content: Got the authentication methods. Now I need to design the database schema.
+            relativeTime: 1000
       - assistant:
-          - [
-              600,
-              "Now I'll start designing the system. Let me create the user model and database schema first.",
-            ]
+          - content: Now I'll start designing the system. Let me create the user model and
+              database schema first.
+            relativeTime: 600
       - tool:
-          - [2000, 'writeFile']
+          - - 2000
+            - writeFile
           - args:
-              path: 'models.py'
-              text: |
-                # User authentication models
-                from dataclasses import dataclass
-                from typing import Optional
-                from datetime import datetime
-
-                @dataclass
-                class User:
-                    id: int
-                    email: str
-                    username: str
-                    password_hash: str
-                    created_at: datetime
-                    last_login: Optional[datetime] = None
-                    is_active: bool = True
-
-  # Show the user the design
+              path: models.py
+              text: "# User authentication models\nfrom dataclasses import dataclass\nfrom\
+                \ typing import Optional\nfrom datetime import datetime\n\n@dataclass\n\
+                class User:\n    id: int\n    email: str\n    username: str\n    password_hash:\
+                \ str\n    created_at: datetime\n    last_login: Optional[datetime] = None\n\
+                \    is_active: bool = True\n"
   - llmResponse:
       - think:
-          - [
-              500,
-              'Created the basic user model. Now I should show it to the user and ask for feedback.',
-            ]
+          - content: Created the basic user model. Now I should show it to the user and
+              ask for feedback.
+            relativeTime: 500
       - assistant:
-          - [
-              400,
-              "I've created a basic User model. Take a look at it and let me know if you want any changes.",
-            ]
-
-  # Third user input - model feedback
+          - content: I've created a basic User model. Take a look at it and let me know
+              if you want any changes.
+            relativeTime: 400
   - userInputs:
-      - [
-          2000,
-          'Please review the User model I created. Do you want to add any additional fields or modify existing ones?',
-        ]
-    target: 'tui'
-
-  # Implement authentication logic
+      - input: Please review the User model I created. Do you want to add any additional
+          fields or modify existing ones?
+        relativeTime: 2000
+    target: tui
   - llmResponse:
       - think:
-          - [800, "User approved the model. Now I'll implement the authentication service."]
+          - content: User approved the model. Now I'll implement the authentication service.
+            relativeTime: 800
       - assistant:
-          - [
-              400,
-              "Great! Now I'll implement the authentication service with login and registration functionality.",
-            ]
+          - content: Great! Now I'll implement the authentication service with login and
+              registration functionality.
+            relativeTime: 400
       - tool:
-          - [2500, 'writeFile']
+          - - 2500
+            - writeFile
           - args:
-              path: 'auth_service.py'
-              text: |
-                # Authentication service
-                import hashlib
-                from typing import Optional
-                from models import User
-
-                class AuthService:
-                    def __init__(self):
-                        self.users = {}  # In-memory storage for demo
-
-                    def hash_password(self, password: str) -> str:
-                        return hashlib.sha256(password.encode()).hexdigest()
-
-                    def register_user(self, email: str, username: str, password: str) -> User:
-                        if email in [u.email for u in self.users.values()]:
-                            raise ValueError("Email already registered")
-
-                        user = User(
-                            id=len(self.users) + 1,
-                            email=email,
-                            username=username,
-                            password_hash=self.hash_password(password),
-                            created_at=datetime.now()
-                        )
-                        self.users[user.id] = user
-                        return user
-
-                    def authenticate(self, email: str, password: str) -> Optional[User]:
-                        for user in self.users.values():
-                            if user.email == email and user.password_hash == self.hash_password(password):
-                                user.last_login = datetime.now()
-                                return user
-                        return None
-
-  # Test the implementation
+              path: auth_service.py
+              text: "# Authentication service\nimport hashlib\nfrom typing import Optional\n\
+                from models import User\n\nclass AuthService:\n    def __init__(self):\n\
+                \        self.users = {}  # In-memory storage for demo\n\n    def hash_password(self,\
+                \ password: str) -> str:\n        return hashlib.sha256(password.encode()).hexdigest()\n\
+                \n    def register_user(self, email: str, username: str, password: str)\
+                \ -> User:\n        if email in [u.email for u in self.users.values()]:\n\
+                \            raise ValueError(\"Email already registered\")\n\n        user\
+                \ = User(\n            id=len(self.users) + 1,\n            email=email,\n\
+                \            username=username,\n            password_hash=self.hash_password(password),\n\
+                \            created_at=datetime.now()\n        )\n        self.users[user.id]\
+                \ = user\n        return user\n\n    def authenticate(self, email: str,\
+                \ password: str) -> Optional[User]:\n        for user in self.users.values():\n\
+                \            if user.email == email and user.password_hash == self.hash_password(password):\n\
+                \                user.last_login = datetime.now()\n                return\
+                \ user\n        return None\n"
   - llmResponse:
       - think:
-          - [600, 'Implemented the auth service. Now I should test it.']
+          - content: Implemented the auth service. Now I should test it.
+            relativeTime: 600
       - assistant:
-          - [300, 'Let me create a simple test to verify the authentication works.']
+          - content: Let me create a simple test to verify the authentication works.
+            relativeTime: 300
       - tool:
-          - [1500, 'writeFile']
+          - - 1500
+            - writeFile
           - args:
-              path: 'test_auth.py'
-              text: |
-                # Test the authentication system
-                from auth_service import AuthService
-
-                def test_authentication():
-                    auth = AuthService()
-
-                    # Test registration
-                    user = auth.register_user("test@example.com", "testuser", "password123")
-                    print(f"Registered user: {user.username}")
-
-                    # Test login
-                    logged_in_user = auth.authenticate("test@example.com", "password123")
-                    if logged_in_user:
-                        print(f"Login successful for: {logged_in_user.username}")
-                    else:
-                        print("Login failed")
-
-                    # Test wrong password
-                    wrong_login = auth.authenticate("test@example.com", "wrongpassword")
-                    if wrong_login:
-                        print("ERROR: Wrong password should not work")
-                    else:
-                        print("Wrong password correctly rejected")
-
-                if __name__ == "__main__":
-                    test_authentication()
-
-  # Run the test
+              path: test_auth.py
+              text: "# Test the authentication system\nfrom auth_service import AuthService\n\
+                \ndef test_authentication():\n    auth = AuthService()\n\n    # Test registration\n\
+                \    user = auth.register_user(\"test@example.com\", \"testuser\", \"password123\"\
+                )\n    print(f\"Registered user: {user.username}\")\n\n    # Test login\n\
+                \    logged_in_user = auth.authenticate(\"test@example.com\", \"password123\"\
+                )\n    if logged_in_user:\n        print(f\"Login successful for: {logged_in_user.username}\"\
+                )\n    else:\n        print(\"Login failed\")\n\n    # Test wrong password\n\
+                \    wrong_login = auth.authenticate(\"test@example.com\", \"wrongpassword\"\
+                )\n    if wrong_login:\n        print(\"ERROR: Wrong password should not\
+                \ work\")\n    else:\n        print(\"Wrong password correctly rejected\"\
+                )\n\nif __name__ == \"__main__\":\n    test_authentication()\n"
   - llmResponse:
       - think:
-          - [400, 'Created the test. Now let me run it to make sure everything works.']
+          - content: Created the test. Now let me run it to make sure everything works.
+            relativeTime: 400
       - assistant:
-          - [200, 'Running the authentication test to verify everything works.']
+          - content: Running the authentication test to verify everything works.
+            relativeTime: 200
       - tool:
-          - [1000, 'runCmd']
+          - - 1000
+            - runCmd
           - args:
-              command: 'cd /workspace && python test_auth.py'
-              cwd: '.'
-          - result: 'Test completed successfully'
-          - status: 'ok'
-
-  # Add password requirements
+              command: cd /workspace && python test_auth.py
+              cwd: .
+          - result: Test completed successfully
+          - status: ok
   - llmResponse:
       - think:
-          - [700, 'Tests pass. Now I should add password strength requirements.']
+          - content: Tests pass. Now I should add password strength requirements.
+            relativeTime: 700
       - assistant:
-          - [
-              400,
-              "The basic authentication is working! Now let's add password strength validation. What password requirements do you want?",
-            ]
-
-  # Fourth user input - password requirements
+          - content: The basic authentication is working! Now let's add password strength
+              validation. What password requirements do you want?
+            relativeTime: 400
   - userInputs:
-      - [
-          2000,
-          'What password requirements should we enforce? (minimum length, special characters, etc.)',
-        ]
-    target: 'tui'
-
-  # Implement password validation
+      - input: What password requirements should we enforce? (minimum length, special
+          characters, etc.)
+        relativeTime: 2000
+    target: tui
   - llmResponse:
       - think:
-          - [600, "Got password requirements. Now I'll implement the validation."]
+          - content: Got password requirements. Now I'll implement the validation.
+            relativeTime: 600
       - assistant:
-          - [300, "I'll add password validation to the registration process."]
+          - content: I'll add password validation to the registration process.
+            relativeTime: 300
       - tool:
-          - [2000, 'writeFile']
+          - - 2000
+            - writeFile
           - args:
-              path: 'password_validator.py'
-              text: |
-                # Password validation utilities
-                import re
-
-                class PasswordValidator:
-                    @staticmethod
-                    def validate_password(password: str) -> list:
-                        errors = []
-
-                        if len(password) < 8:
-                            errors.append("Password must be at least 8 characters long")
-
-                        if not re.search(r'[A-Z]', password):
-                            errors.append("Password must contain at least one uppercase letter")
-
-                        if not re.search(r'[a-z]', password):
-                            errors.append("Password must contain at least one lowercase letter")
-
-                        if not re.search(r'\d', password):
-                            errors.append("Password must contain at least one number")
-
-                        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-                            errors.append("Password must contain at least one special character")
-
-                        return errors
-
-                    @staticmethod
-                    def is_valid_password(password: str) -> bool:
-                        return len(PasswordValidator.validate_password(password)) == 0
-
-  # Update auth service to use validation
+              path: password_validator.py
+              text: "# Password validation utilities\nimport re\n\nclass PasswordValidator:\n\
+                \    @staticmethod\n    def validate_password(password: str) -> list:\n\
+                \        errors = []\n\n        if len(password) < 8:\n            errors.append(\"\
+                Password must be at least 8 characters long\")\n\n        if not re.search(r'[A-Z]',\
+                \ password):\n            errors.append(\"Password must contain at least\
+                \ one uppercase letter\")\n\n        if not re.search(r'[a-z]', password):\n\
+                \            errors.append(\"Password must contain at least one lowercase\
+                \ letter\")\n\n        if not re.search(r'\\d', password):\n           \
+                \ errors.append(\"Password must contain at least one number\")\n\n     \
+                \   if not re.search(r'[!@#$%^&*(),.?\":{}|<>]', password):\n          \
+                \  errors.append(\"Password must contain at least one special character\"\
+                )\n\n        return errors\n\n    @staticmethod\n    def is_valid_password(password:\
+                \ str) -> bool:\n        return len(PasswordValidator.validate_password(password))\
+                \ == 0\n"
   - llmResponse:
       - think:
-          - [500, 'Created password validator. Now I need to integrate it with the auth service.']
+          - content: Created password validator. Now I need to integrate it with the auth
+              service.
+            relativeTime: 500
       - assistant:
-          - [300, "Now I'll update the auth service to use the password validator."]
+          - content: Now I'll update the auth service to use the password validator.
+            relativeTime: 300
       - tool:
-          - [1500, 'readFile']
+          - - 1500
+            - readFile
           - args:
-              path: 'auth_service.py'
-          - result: 'File read successfully'
+              path: auth_service.py
+          - result: File read successfully
       - tool:
-          - [2000, 'runCmd']
+          - - 2000
+            - runCmd
           - args:
-              command: |
-                cd /workspace && python -c "
-                from auth_service import AuthService
-                from password_validator import PasswordValidator
-
-                # Test password validation
-                print('Testing password validation...')
-                weak_passwords = ['123', 'password', 'Password', 'Password1']
-                strong_password = 'MySecurePass123!'
-
-                for pwd in weak_passwords:
-                    errors = PasswordValidator.validate_password(pwd)
-                    print(f'Password \"{pwd}\": {\"VALID\" if not errors else \"INVALID - \" + \", \".join(errors)}')
-
-                print(f'Strong password \"{strong_password}\": {\"VALID\" if PasswordValidator.is_valid_password(strong_password) else \"INVALID\"}')"
-
-              cwd: '.'
-          - result: 'Password validation test completed'
-          - status: 'ok'
-
-  # Add session management
+              command: "cd /workspace && python -c \"\nfrom auth_service import AuthService\n\
+                from password_validator import PasswordValidator\n\n# Test password validation\n\
+                print('Testing password validation...')\nweak_passwords = ['123', 'password',\
+                \ 'Password', 'Password1']\nstrong_password = 'MySecurePass123!'\n\nfor\
+                \ pwd in weak_passwords:\n    errors = PasswordValidator.validate_password(pwd)\n\
+                \    print(f'Password \\\"{pwd}\\\": {\\\"VALID\\\" if not errors else \\\
+                \"INVALID - \\\" + \\\", \\\".join(errors)}')\n\nprint(f'Strong password\
+                \ \\\"{strong_password}\\\": {\\\"VALID\\\" if PasswordValidator.is_valid_password(strong_password)\
+                \ else \\\"INVALID\\\"}')\"\n"
+              cwd: .
+          - result: Password validation test completed
+          - status: ok
   - llmResponse:
       - think:
-          - [600, 'Password validation is working. Now I should add session management.']
+          - content: Password validation is working. Now I should add session management.
+            relativeTime: 600
       - assistant:
-          - [
-              400,
-              "Great! Now let's add session management to keep users logged in. How long should sessions last?",
-            ]
-
-  # Fifth user input - session duration
+          - content: Great! Now let's add session management to keep users logged in. How
+              long should sessions last?
+            relativeTime: 400
   - userInputs:
-      - [2000, 'How long should user sessions last? (e.g., 30 minutes, 2 hours, 1 day, etc.)']
-    target: 'tui'
-
-  # Implement session management
+      - input: How long should user sessions last? (e.g., 30 minutes, 2 hours, 1 day,
+          etc.)
+        relativeTime: 2000
+    target: tui
   - llmResponse:
       - think:
-          - [500, "Got session duration preference. Now I'll implement session management."]
+          - content: Got session duration preference. Now I'll implement session management.
+            relativeTime: 500
       - assistant:
-          - [300, "I'll create a session manager that handles login sessions."]
+          - content: I'll create a session manager that handles login sessions.
+            relativeTime: 300
       - tool:
-          - [2500, 'writeFile']
+          - - 2500
+            - writeFile
           - args:
-              path: 'session_manager.py'
-              text: |
-                # Session management
-                import uuid
-                from datetime import datetime, timedelta
-                from typing import Dict, Optional
-                from models import User
-
-                class SessionManager:
-                    def __init__(self, session_timeout_hours: int = 24):
-                        self.sessions: Dict[str, dict] = {}
-                        self.session_timeout = timedelta(hours=session_timeout_hours)
-
-                    def create_session(self, user: User) -> str:
-                        session_id = str(uuid.uuid4())
-                        self.sessions[session_id] = {
-                            'user_id': user.id,
-                            'created_at': datetime.now(),
-                            'expires_at': datetime.now() + self.session_timeout
-                        }
-                        return session_id
-
-                    def validate_session(self, session_id: str) -> Optional[User]:
-                        if session_id not in self.sessions:
-                            return None
-
-                        session = self.sessions[session_id]
-                        if datetime.now() > session['expires_at']:
-                            del self.sessions[session_id]
-                            return None
-
-                        # In a real app, you'd look up the user from database
-                        # For demo, we'll return a mock user
-                        return User(
-                            id=session['user_id'],
-                            email=f"user{session['user_id']}@example.com",
-                            username=f"user{session['user_id']}",
-                            password_hash="",
-                            created_at=session['created_at']
-                        )
-
-                    def end_session(self, session_id: str):
-                        if session_id in self.sessions:
-                            del self.sessions[session_id]
-
-  # Final integration
+              path: session_manager.py
+              text: "# Session management\nimport uuid\nfrom datetime import datetime, timedelta\n\
+                from typing import Dict, Optional\nfrom models import User\n\nclass SessionManager:\n\
+                \    def __init__(self, session_timeout_hours: int = 24):\n        self.sessions:\
+                \ Dict[str, dict] = {}\n        self.session_timeout = timedelta(hours=session_timeout_hours)\n\
+                \n    def create_session(self, user: User) -> str:\n        session_id =\
+                \ str(uuid.uuid4())\n        self.sessions[session_id] = {\n           \
+                \ 'user_id': user.id,\n            'created_at': datetime.now(),\n     \
+                \       'expires_at': datetime.now() + self.session_timeout\n        }\n\
+                \        return session_id\n\n    def validate_session(self, session_id:\
+                \ str) -> Optional[User]:\n        if session_id not in self.sessions:\n\
+                \            return None\n\n        session = self.sessions[session_id]\n\
+                \        if datetime.now() > session['expires_at']:\n            del self.sessions[session_id]\n\
+                \            return None\n\n        # In a real app, you'd look up the user\
+                \ from database\n        # For demo, we'll return a mock user\n        return\
+                \ User(\n            id=session['user_id'],\n            email=f\"user{session['user_id']}@example.com\"\
+                ,\n            username=f\"user{session['user_id']}\",\n            password_hash=\"\
+                \",\n            created_at=session['created_at']\n        )\n\n    def\
+                \ end_session(self, session_id: str):\n        if session_id in self.sessions:\n\
+                \            del self.sessions[session_id]\n"
   - llmResponse:
       - think:
-          - [
-              700,
-              'Session management is done. Now I should create a main application file that ties everything together.',
-            ]
+          - content: Session management is done. Now I should create a main application
+              file that ties everything together.
+            relativeTime: 700
       - assistant:
-          - [
-              400,
-              'Perfect! Now let me create a main application file that demonstrates the complete authentication system.',
-            ]
+          - content: Perfect! Now let me create a main application file that demonstrates
+              the complete authentication system.
+            relativeTime: 400
       - tool:
-          - [2000, 'writeFile']
+          - - 2000
+            - writeFile
           - args:
-              path: 'main.py'
-              text: |
-                # Main authentication application
-                from auth_service import AuthService
-                from session_manager import SessionManager
-                from password_validator import PasswordValidator
-
-                def main():
-                    auth_service = AuthService()
-                    session_manager = SessionManager()
-
-                    print("Welcome to the Authentication System Demo!")
-                    print("=" * 50)
-
-                    # Register a user
-                    try:
-                        user = auth_service.register_user(
-                            "john@example.com",
-                            "johndoe",
-                            "SecurePass123!"
-                        )
-                        print(f"✓ Registered user: {user.username} ({user.email})")
-
-                        # Create a session
-                        session_id = session_manager.create_session(user)
-                        print(f"✓ Created session: {session_id[:8]}...")
-
-                        # Validate the session
-                        validated_user = session_manager.validate_session(session_id)
-                        if validated_user:
-                            print(f"✓ Session validated for: {validated_user.username}")
-                        else:
-                            print("✗ Session validation failed")
-
-                    except ValueError as e:
-                        print(f"✗ Registration failed: {e}")
-
-                    print("\\nAuthentication system demo completed!")
-
-                if __name__ == "__main__":
-                    main()
-
-  # Run the final demo
+              path: main.py
+              text: "# Main authentication application\nfrom auth_service import AuthService\n\
+                from session_manager import SessionManager\nfrom password_validator import\
+                \ PasswordValidator\n\ndef main():\n    auth_service = AuthService()\n \
+                \   session_manager = SessionManager()\n\n    print(\"Welcome to the Authentication\
+                \ System Demo!\")\n    print(\"=\" * 50)\n\n    # Register a user\n    try:\n\
+                \        user = auth_service.register_user(\n            \"john@example.com\"\
+                ,\n            \"johndoe\",\n            \"SecurePass123!\"\n        )\n\
+                \        print(f\"\u2713 Registered user: {user.username} ({user.email})\"\
+                )\n\n        # Create a session\n        session_id = session_manager.create_session(user)\n\
+                \        print(f\"\u2713 Created session: {session_id[:8]}...\")\n\n   \
+                \     # Validate the session\n        validated_user = session_manager.validate_session(session_id)\n\
+                \        if validated_user:\n            print(f\"\u2713 Session validated\
+                \ for: {validated_user.username}\")\n        else:\n            print(\"\
+                \u2717 Session validation failed\")\n\n    except ValueError as e:\n   \
+                \     print(f\"\u2717 Registration failed: {e}\")\n\n    print(\"\\\\nAuthentication\
+                \ system demo completed!\")\n\nif __name__ == \"__main__\":\n    main()\n"
   - llmResponse:
       - think:
-          - [400, 'Created the main application. Let me run it to show the complete system.']
+          - content: Created the main application. Let me run it to show the complete system.
+            relativeTime: 400
       - assistant:
-          - [200, 'Let me run the complete authentication system demo.']
+          - content: Let me run the complete authentication system demo.
+            relativeTime: 200
       - tool:
-          - [1500, 'runCmd']
+          - - 1500
+            - runCmd
           - args:
-              command: 'cd /workspace && python main.py'
-              cwd: '.'
-          - result: 'Demo completed successfully'
-          - status: 'ok'
-
-  # Final summary
+              command: cd /workspace && python main.py
+              cwd: .
+          - result: Demo completed successfully
+          - status: ok
   - llmResponse:
       - think:
-          - [500, 'The authentication system is complete and working. Let me provide a summary.']
+          - content: The authentication system is complete and working. Let me provide a
+              summary.
+            relativeTime: 500
       - assistant:
-          - [
-              800,
-              "Excellent! I've successfully implemented a complete user authentication system with user management, password validation, and session handling. The system includes proper error handling and security measures.",
-            ]
-
+          - content: Excellent! I've successfully implemented a complete user authentication
+              system with user management, password validation, and session handling. The
+              system includes proper error handling and security measures.
+            relativeTime: 800
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'models.py'
-    - type: 'taskFile'
-      pattern: 'auth_service.py'
-    - type: 'taskFile'
-      pattern: 'password_validator.py'
-    - type: 'taskFile'
-      pattern: 'session_manager.py'
-    - type: 'taskFile'
-      pattern: 'main.py'
+    - type: taskFile
+      pattern: models.py
+    - type: taskFile
+      pattern: auth_service.py
+    - type: taskFile
+      pattern: password_validator.py
+    - type: taskFile
+      pattern: session_manager.py
+    - type: taskFile
+      pattern: main.py

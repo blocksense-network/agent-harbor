@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::{
-    Result,
+    Result, ScenarioError,
     model::{
-        AssertionData, AssistantStep, ErrorData, FileEditData, ProgressStep, ResponseElement,
-        Scenario, ThinkingStep, TimelineEvent, ToolUseData,
+        AssertionData, ErrorData, FileEditData, ResponseElement, Scenario, TimelineEvent,
+        ToolUseData, UserInputEntry, extract_prompt_from_input_value,
+        extract_text_from_content_block,
     },
 };
-use serde::Deserialize;
-use serde_yaml::{Mapping, Value};
-use std::collections::HashMap;
+use serde_yaml::Value;
 
 /// Configuration for scenario playback.
 #[derive(Debug, Clone, Copy)]
@@ -151,35 +150,68 @@ impl TimelineBuilder {
                     self.process_response_element(element)?;
                 }
             }
-            TimelineEvent::Legacy(map) => {
-                self.process_legacy(map)?;
+            TimelineEvent::UserInputs { user_inputs } => {
+                self.process_user_inputs(user_inputs)?;
+            }
+            TimelineEvent::AgentToolUse { agent_tool_use } => {
+                self.handle_tool_use(agent_tool_use)?;
+            }
+            TimelineEvent::AgentEdits { agent_edits } => {
+                self.push_event(PlaybackEventKind::FileEdit(agent_edits.clone()));
+            }
+            TimelineEvent::AdvanceMs { base_time_delta } => {
+                self.advance(*base_time_delta);
+            }
+            TimelineEvent::Screenshot { screenshot } => {
+                self.push_event(PlaybackEventKind::Screenshot {
+                    label: screenshot.clone(),
+                });
+            }
+            TimelineEvent::Complete { .. } => {
+                self.completed = true;
+                self.push_event(PlaybackEventKind::Complete);
+                self.push_event(PlaybackEventKind::Status {
+                    value: "completed".into(),
+                });
+            }
+            TimelineEvent::Merge { .. } => {
+                self.push_event(PlaybackEventKind::Merge);
             }
             TimelineEvent::Assert { assert } => {
                 self.push_event(PlaybackEventKind::Assert(assert.clone()));
             }
-            TimelineEvent::Control { event_type, data } => {
-                if event_type == "advanceMs" {
-                    if let Some(ms) = data.get("ms").and_then(value_to_u64) {
-                        self.advance(ms);
-                    }
-                }
+            TimelineEvent::Status { status } => {
+                self.push_event(PlaybackEventKind::Status {
+                    value: status.clone(),
+                });
             }
         }
         Ok(())
     }
 
     fn process_response_element(&mut self, element: &ResponseElement) -> Result<()> {
+        let base = self.timeline_ms;
         match element {
             ResponseElement::Think { think } => {
-                for ThinkingStep(delay, text) in think {
-                    self.advance(*delay);
-                    self.push_event(PlaybackEventKind::Thinking { text: text.clone() });
+                for step in think {
+                    let target = base.saturating_add(step.relative_time);
+                    let delta = target.saturating_sub(self.timeline_ms);
+                    self.advance(delta);
+                    self.push_event(PlaybackEventKind::Thinking {
+                        text: step.content.clone(),
+                    });
                 }
             }
             ResponseElement::Assistant { assistant } => {
-                for AssistantStep(delay, text) in assistant {
-                    self.advance(*delay);
-                    self.push_event(PlaybackEventKind::Assistant { text: text.clone() });
+                for step in assistant {
+                    let target = base.saturating_add(step.relative_time);
+                    let delta = target.saturating_sub(self.timeline_ms);
+                    self.advance(delta);
+                    let text =
+                        extract_text_from_content_block(&step.content).unwrap_or_else(|| {
+                            serde_yaml::to_string(&step.content).unwrap_or_default()
+                        });
+                    self.push_event(PlaybackEventKind::Assistant { text });
                 }
             }
             ResponseElement::AgentToolUse { agent_tool_use } => {
@@ -203,99 +235,27 @@ impl TimelineBuilder {
         Ok(())
     }
 
-    fn process_legacy(&mut self, map: &HashMap<String, Value>) -> Result<()> {
-        if let Some(value) = map.get("advanceMs").and_then(value_to_u64) {
-            self.advance(value);
-            return Ok(());
-        }
-
-        if let Some(value) = map.get("think") {
-            let steps: Vec<ThinkingStep> = serde_yaml::from_value(value.clone())?;
-            for ThinkingStep(delay, text) in steps {
-                self.advance(delay);
-                self.push_event(PlaybackEventKind::Thinking { text });
+    fn process_user_inputs(&mut self, entries: &[UserInputEntry]) -> Result<()> {
+        for entry in entries {
+            if entry.relative_time < self.timeline_ms {
+                return Err(ScenarioError::Playback(format!(
+                    "userInputs relativeTime {} is earlier than current timeline position {}",
+                    entry.relative_time, self.timeline_ms
+                )));
             }
-            return Ok(());
-        }
+            let target_time = entry.relative_time;
+            let target = entry.target.clone();
+            let prompt = extract_prompt_from_input_value(&entry.input)
+                .or_else(|| extract_text_from_content_block(&entry.input))
+                .unwrap_or_else(|| serde_yaml::to_string(&entry.input).unwrap_or_default());
 
-        if let Some(value) = map.get("assistant") {
-            let steps: Vec<AssistantStep> = serde_yaml::from_value(value.clone())?;
-            for AssistantStep(delay, text) in steps {
-                self.advance(delay);
-                self.push_event(PlaybackEventKind::Assistant { text });
-            }
-            return Ok(());
-        }
-
-        if let Some(value) = map.get("agentToolUse") {
-            let data: ToolUseData = serde_yaml::from_value(value.clone())?;
-            self.handle_tool_use(&data)?;
-            return Ok(());
-        }
-
-        if let Some(value) = map.get("agentEdits") {
-            let edit: FileEditData = serde_yaml::from_value(value.clone())?;
-            self.push_event(PlaybackEventKind::FileEdit(edit));
-            return Ok(());
-        }
-
-        if let Some(value) = map.get("userInputs") {
-            let inputs: Vec<(u64, String)> = serde_yaml::from_value(value.clone())?;
-            let target =
-                map.get("target").and_then(|t| serde_yaml::from_value::<String>(t.clone()).ok());
-            for (delay, text) in inputs {
-                self.advance(delay);
-                self.push_event(PlaybackEventKind::UserInput {
-                    target: target.clone(),
-                    value: text,
-                });
-            }
-            return Ok(());
-        }
-
-        if let Some(value) = map.get("userCommand") {
-            #[derive(Deserialize)]
-            struct Helper {
-                cmd: String,
-                cwd: Option<String>,
-            }
-            let helper: Helper = serde_yaml::from_value(value.clone())?;
-            self.push_event(PlaybackEventKind::UserCommand {
-                cmd: helper.cmd,
-                cwd: helper.cwd,
+            let delta = target_time.saturating_sub(self.timeline_ms);
+            self.advance(delta);
+            self.push_event(PlaybackEventKind::UserInput {
+                target,
+                value: prompt,
             });
-            return Ok(());
         }
-
-        if let Some(value) = map.get("screenshot") {
-            if let Some(label) = value.as_str() {
-                self.push_event(PlaybackEventKind::Screenshot {
-                    label: label.to_string(),
-                });
-            }
-            return Ok(());
-        }
-
-        if let Some(value) = map.get("assert") {
-            let assertion: AssertionData = serde_yaml::from_value(value.clone())?;
-            self.push_event(PlaybackEventKind::Assert(assertion));
-            return Ok(());
-        }
-
-        if map.get("merge").is_some() {
-            self.push_event(PlaybackEventKind::Merge);
-            return Ok(());
-        }
-
-        if map.get("complete").is_some() {
-            self.completed = true;
-            self.push_event(PlaybackEventKind::Complete);
-            self.push_event(PlaybackEventKind::Status {
-                value: "completed".into(),
-            });
-            return Ok(());
-        }
-
         Ok(())
     }
 
@@ -306,11 +266,13 @@ impl TimelineBuilder {
         });
 
         if let Some(progress) = &data.progress {
-            for ProgressStep(delay, message) in progress {
-                self.advance(*delay);
+            for step in progress {
+                let target = self.timeline_ms.saturating_add(step.relative_time);
+                let delta = target.saturating_sub(self.timeline_ms);
+                self.advance(delta);
                 self.push_event(PlaybackEventKind::ToolProgress {
                     tool_name: data.tool_name.clone(),
-                    message: message.clone(),
+                    message: step.message.clone(),
                 });
             }
         }
@@ -370,22 +332,4 @@ impl TimelineBuilder {
     fn advance(&mut self, delta: u64) {
         self.timeline_ms = self.timeline_ms.saturating_add(delta);
     }
-}
-
-fn value_to_u64(value: &Value) -> Option<u64> {
-    match value {
-        Value::Number(num) => num.as_u64(),
-        Value::String(s) => s.parse().ok(),
-        _ => None,
-    }
-}
-
-// helper to convert map into serde_yaml::Value if needed in future
-#[allow(dead_code)]
-fn map_to_value(map: &HashMap<String, Value>) -> Value {
-    let mut mapping = Mapping::new();
-    for (k, v) in map {
-        mapping.insert(Value::String(k.clone()), v.clone());
-    }
-    Value::Mapping(mapping)
 }

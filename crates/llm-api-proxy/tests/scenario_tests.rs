@@ -132,9 +132,11 @@ repo:
 timeline:
   - llmResponse:
       - think:
-          - [500, "Processing test request"]
+          - relativeTime: 500
+            content: "Processing test request"
       - assistant:
-          - [300, "Test scenario completed"]
+          - relativeTime: 600
+            content: "Test scenario completed"
   - agentToolUse:
       toolName: "writeFile"
       args:
@@ -175,8 +177,10 @@ async fn test_scenario_playback_simple() {
     let scenario_content = r#"
 name: simple_scenario
 timeline:
-  - assistant:
-      - [100, "Hello from scenario"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Hello from scenario"
 expect:
   exitCode: 0
 "#;
@@ -241,8 +245,10 @@ timeline:
         content: "Generated content"
       result: "File created"
       status: "ok"
-  - assistant:
-      - [100, "File created successfully"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "File created successfully"
 expect:
   exitCode: 0
 "#;
@@ -307,10 +313,13 @@ async fn test_system_message_extraction_and_alternation() {
     let scenario_content = r#"
 name: system_message_test
 timeline:
-  - user:
-      - [100, "Hello, how are you?"]
-  - assistant:
-      - [100, "I'm doing well, thank you for asking!"]
+  - userInputs:
+      - relativeTime: 100
+        input: "Hello, how are you?"
+  - llmResponse:
+      - assistant:
+          - relativeTime: 200
+            content: "I'm doing well, thank you for asking!"
 expect:
   exitCode: 0
 "#;
@@ -453,9 +462,11 @@ name: anthropic_thinking
 timeline:
   - llmResponse:
       - think:
-          - [120, "Reasoning about the task"]
+          - relativeTime: 120
+            content: "Reasoning about the task"
       - assistant:
-          - [60, "All done"]
+          - relativeTime: 200
+            content: "All done"
   - agentEdits:
       path: "foo.txt"
       linesAdded: 2
@@ -521,8 +532,10 @@ async fn test_force_tools_validation_failure() {
     let scenario_content = r#"
 name: force_validation_scenario
 timeline:
-  - assistant:
-      - [100, "Test response"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Test response"
 expect:
   exitCode: 0
 "#;
@@ -617,8 +630,10 @@ async fn test_request_logging() {
     let scenario_content = r#"
 name: logging_scenario
 timeline:
-  - assistant:
-      - [100, "Logged response"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Logged response"
 expect:
   exitCode: 0
 "#;
@@ -716,10 +731,14 @@ async fn test_scenario_session_management() {
     let scenario_content = r#"
 name: session_scenario
 timeline:
-  - assistant:
-      - [100, "First response"]
-  - assistant:
-      - [100, "Second response"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "First response"
+  - llmResponse:
+      - assistant:
+          - relativeTime: 200
+            content: "Second response"
 expect:
   exitCode: 0
 "#;
@@ -781,8 +800,10 @@ async fn test_scenario_with_named_scenario() {
     let scenario1_content = r#"
 name: scenario1
 timeline:
-  - assistant:
-      - [100, "Response from scenario 1"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Response from scenario 1"
 "#;
     std::fs::File::create(&scenario1_path)
         .unwrap()
@@ -793,8 +814,10 @@ timeline:
     let scenario2_content = r#"
 name: scenario2
 timeline:
-  - assistant:
-      - [100, "Response from scenario 2"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Response from scenario 2"
 "#;
     std::fs::File::create(&scenario2_path)
         .unwrap()
@@ -950,8 +973,10 @@ async fn test_response_formats() -> Result<(), Box<dyn std::error::Error>> {
     let scenario_content = r#"
 name: response_test
 timeline:
-  - assistant:
-      - [100, "Test response"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Test response"
 expect:
   exitCode: 0
 "#;
@@ -1092,8 +1117,10 @@ async fn test_agent_type_detection() -> Result<(), Box<dyn std::error::Error>> {
     let scenario_content = r#"
 name: agent_test
 timeline:
-  - assistant:
-      - [100, "Agent test response"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Agent test response"
 expect:
   exitCode: 0
 "#;
@@ -1159,8 +1186,10 @@ async fn test_minimize_logs_configuration() {
     let scenario_content = r#"
 name: minimize_logs_scenario
 timeline:
-  - assistant:
-      - [100, "Test response for minimize logs"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Test response for minimize logs"
 expect:
   exitCode: 0
 "#;
@@ -1219,12 +1248,10 @@ name: invalid_thinking_scenario
 timeline:
   - llmResponse:
       - think:
-          - [1000, "This is a thinking step"]
-          - [500, "Another thinking step"]
-      - agentToolUse:
-          toolName: "run_command"
-          args:
-            command: "echo 'test'"
+          - relativeTime: 500
+            content: "This is a thinking step"
+          - relativeTime: 1000
+            content: "Another thinking step"
 expect:
   exitCode: 0
 "#;
@@ -1249,7 +1276,7 @@ expect:
         let error_message = e.to_string();
         assert!(
             error_message.contains("contains thinking blocks but no assistant responses"),
-            "Error message should mention the validation rule"
+            "Error message should mention the validation rule, got: {error_message}"
         );
     }
 }
@@ -1266,8 +1293,10 @@ async fn test_openai_responses_api_format() {
     let scenario_content = r#"
 name: responses_api_scenario
 timeline:
-  - assistant:
-      - [100, "Test response for OpenAI Responses API"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Test response for OpenAI Responses API"
 expect:
   exitCode: 0
 "#;
@@ -1351,10 +1380,13 @@ name: thinking_scenario
 timeline:
   - llmResponse:
       - think:
-          - [1000, "This is a thinking step"]
-          - [500, "Another thinking step"]
+          - relativeTime: 1000
+            content: "This is a thinking step"
+          - relativeTime: 1500
+            content: "Another thinking step"
       - assistant:
-          - [2000, "This is the final response"]
+          - relativeTime: 2000
+            content: "This is the final response"
 expect:
   exitCode: 0
 "#;
@@ -1897,9 +1929,11 @@ name: streaming_scenario
 timeline:
   - llmResponse:
       - think:
-          - [500, "Analyzing the request"]
+          - relativeTime: 500
+            content: "Analyzing the request"
       - assistant:
-          - [1000, "This is a streaming response"]
+          - relativeTime: 1000
+            content: "This is a streaming response"
 expect:
   exitCode: 0
 "#;
@@ -1970,7 +2004,8 @@ name: openai_streaming_scenario
 timeline:
   - llmResponse:
       - assistant:
-          - [1000, "This is a streaming response from OpenAI"]
+          - relativeTime: 1000
+            content: "This is a streaming response from OpenAI"
 expect:
   exitCode: 0
 "#;
@@ -2038,7 +2073,8 @@ name: openai_responses_streaming_scenario
 timeline:
   - llmResponse:
       - assistant:
-          - [1000, "This is a streaming response from OpenAI Responses API"]
+          - relativeTime: 1000
+            content: "This is a streaming response from OpenAI Responses API"
 expect:
   exitCode: 0
 "#;
@@ -2106,17 +2142,23 @@ async fn test_extra_queries_dont_break_scenario() {
 name: robust_scenario
 timeline:
   - userInputs:
-      - [100, "hello"]
-      - [150, "hi there"]
+      - relativeTime: 100
+        input: "hello"
+      - relativeTime: 150
+        input: "hi there"
   - llmResponse:
       - assistant:
-          - [200, "Hello! How can I help you?"]
+          - relativeTime: 200
+            content: "Hello! How can I help you?"
   - userInputs:
-      - [100, "show me the files"]
-      - [150, "list directory"]
+      - relativeTime: 300
+        input: "show me the files"
+      - relativeTime: 350
+        input: "list directory"
   - llmResponse:
       - assistant:
-          - [200, "I'll show you the files in the current directory."]
+          - relativeTime: 400
+            content: "I'll show you the files in the current directory."
 expect:
   exitCode: 0
 "#;
@@ -2224,8 +2266,10 @@ async fn test_extra_tool_results_dont_break_scenario() {
     let scenario_content = r#"
 name: extra_tools_scenario
 timeline:
-  - assistant:
-      - [100, "Run test command"]
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Run test command"
   - agentToolUse:
       toolName: "runCmd"
       args:
@@ -2234,7 +2278,8 @@ timeline:
       status: "ok"
   - llmResponse:
       - assistant:
-          - [200, "Test completed successfully"]
+          - relativeTime: 200
+            content: "Test completed successfully"
 expect:
   exitCode: 0
 "#;
@@ -2322,15 +2367,19 @@ async fn test_out_of_order_user_inputs() {
 name: out_of_order_scenario
 timeline:
   - userInputs:
-      - [100, "first command"]
+      - relativeTime: 100
+        input: "first command"
   - llmResponse:
       - assistant:
-          - [200, "First response"]
+          - relativeTime: 200
+            content: "First response"
   - userInputs:
-      - [100, "second command"]
+      - relativeTime: 300
+        input: "second command"
   - llmResponse:
       - assistant:
-          - [200, "Second response"]
+          - relativeTime: 400
+            content: "Second response"
 expect:
   exitCode: 0
 "#;

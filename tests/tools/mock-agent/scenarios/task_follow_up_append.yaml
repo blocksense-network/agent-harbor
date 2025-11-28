@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: task_follow_up_append
-tags: ['cli', 'task', 'follow-up']
+tags:
+  - cli
+  - task
+  - follow-up
 repo:
   init: true
 timeline:
@@ -12,7 +15,7 @@ timeline:
         - create
         - follow-branch
         - --prompt
-        - 'First follow task'
+        - First follow task
         - --non-interactive
         - --push-to-remote
         - 'false'
@@ -20,7 +23,9 @@ timeline:
         exitCode: 0
   - userCommand:
       program: git
-      args: ['checkout', 'follow-branch']
+      args:
+        - checkout
+        - follow-branch
       expect:
         exitCode: 0
   - userCommand:
@@ -28,7 +33,7 @@ timeline:
         - task
         - create
         - --prompt
-        - 'Second follow task'
+        - Second follow task
         - --non-interactive
         - --push-to-remote
         - 'false'
@@ -36,11 +41,11 @@ timeline:
         exitCode: 0
         fs:
           contains:
-            - path: '.agents/tasks/follow-branch'
-              substring: 'First follow task'
-            - path: '.agents/tasks/follow-branch'
-              substring: 'Second follow task'
-            - path: '.agents/tasks/follow-branch'
+            - path: .agents/tasks/follow-branch
+              substring: First follow task
+            - path: .agents/tasks/follow-branch
+              substring: Second follow task
+            - path: .agents/tasks/follow-branch
               substring: '--- FOLLOW UP TASK ---'
   - assertGit:
       branch: follow-branch

@@ -55,7 +55,7 @@ FOR each API request with api_key:
         CASE event.type:
             "complete" -> Mark scenario as completed (handled by test harness)
             "merge" -> Mark session for merging (handled by test harness)
-            "advanceMs" -> Advance logical time (handled by test harness)
+            "baseTimeDelta" -> Advance logical time (handled by test harness)
             "userInputs" -> Simulate user input (handled by test harness)
             "userCommands" -> Execute user command (handled by test harness)
             "userEdits" -> Apply user file edits (handled by test harness)
@@ -308,7 +308,7 @@ class MockAPIHandler(BaseHTTPRequestHandler):
             # Check if this is a response-generating event
             event_type = current_event.get("type") if isinstance(current_event, dict) and "type" in current_event else next(iter(current_event.keys())) if current_event else None
 
-            if event_type in ["complete", "merge", "advanceMs", "userInputs", "userCommands", "userEdits"]:
+            if event_type in ["complete", "merge", "baseTimeDelta", "userInputs", "userCommands", "userEdits"]:
                 # Skip non-response-generating events (handled by test harness)
                 continue
             elif event_type in ["think", "runCmd", "grep", "readFile", "listDir", "find", "sed", "editFile", "writeFile", "task", "webFetch", "webSearch", "todoWrite", "notebookEdit", "exitPlanMode", "bashOutput", "killShell", "slashCommand", "agentEdits", "agentToolUse", "assistant"]:

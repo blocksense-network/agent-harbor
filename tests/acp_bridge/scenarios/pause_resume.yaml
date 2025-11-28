@@ -3,34 +3,17 @@
 
 name: 'pause_resume'
 description: 'Pause and resume lifecycle for ACP session'
-events:
-  - at_ms: 0
-    kind: status
-    value: 'queued'
-  - at_ms: 20
-    kind: status
-    value: 'running'
-  - at_ms: 80
-    kind: status
-    value: 'pausing'
-  - at_ms: 120
-    kind: status
-    value: 'paused'
-  - at_ms: 200
-    kind: status
-    value: 'resuming'
-  - at_ms: 240
-    kind: status
-    value: 'running'
-  - at_ms: 300
-    kind: status
-    value: 'completed'
-assertions:
-  - kind: has_event
-    event:
-      type: status
-      status: paused
-  - kind: has_event
-    event:
-      type: status
-      status: completed
+timeline:
+  - status: queued
+  - baseTimeDelta: 20
+  - status: running
+  - baseTimeDelta: 60
+  - status: pausing
+  - baseTimeDelta: 40
+  - status: paused
+  - baseTimeDelta: 80
+  - status: resuming
+  - baseTimeDelta: 40
+  - status: running
+  - baseTimeDelta: 60
+  - status: completed

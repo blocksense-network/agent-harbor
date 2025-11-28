@@ -9,24 +9,16 @@ timeline:
   - userCommand:
       program: bash
       env:
-        # Allow tests to locate the built ah binary supplied by the harness
-        AH_BIN: '${AH_BIN:-}'
+        AH_BIN: ${AH_BIN:-}
       args:
         - -lc
-        - |
-          set -euo pipefail
-          if [ -z "${AH_BIN:-}" ]; then
-            echo "AH_BIN not set" >&2
-            exit 1
-          fi
-          SOCKET="$(mktemp -u /tmp/ah-tmux-XXXXXX)"
-          LOG="${SOCKET}.log"
-          # Launch follow in a dedicated tmux session so we can capture pane output
-          tmux -S "$SOCKET" new-session -d -s ah "$AH_BIN task create tmux-follow --prompt 'verify follow renders in tmux' --model mock --push-to-remote false --non-interactive --follow"
-          # Give it a moment to render
-          sleep 5
-          tmux -S "$SOCKET" capture-pane -pt ah > "$LOG"
-          tmux -S "$SOCKET" kill-session -t ah || true
-          grep -qi "verify follow renders" "$LOG"
+        - "set -euo pipefail\nif [ -z \"${AH_BIN:-}\" ]; then\n  echo \"AH_BIN not set\"\
+          \ >&2\n  exit 1\nfi\nSOCKET=\"$(mktemp -u /tmp/ah-tmux-XXXXXX)\"\nLOG=\"${SOCKET}.log\"\
+          \n# Launch follow in a dedicated tmux session so we can capture pane output\n\
+          tmux -S \"$SOCKET\" new-session -d -s ah \"$AH_BIN task create tmux-follow --prompt\
+          \ 'verify follow renders in tmux' --model mock --push-to-remote false --non-interactive\
+          \ --follow\"\n# Give it a moment to render\nsleep 5\ntmux -S \"$SOCKET\" capture-pane\
+          \ -pt ah > \"$LOG\"\ntmux -S \"$SOCKET\" kill-session -t ah || true\ngrep -qi\
+          \ \"verify follow renders\" \"$LOG\"\n"
       expect:
         exit_code: 0

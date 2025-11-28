@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: task_delivery_pr_requires_push
-tags: ['cli', 'task', 'delivery', 'pr']
+tags:
+  - cli
+  - task
+  - delivery
+  - pr
 repo:
   init: true
 timeline:
@@ -12,7 +16,7 @@ timeline:
         - create
         - pr-branch
         - --prompt
-        - 'PR delivery requires push'
+        - PR delivery requires push
         - --delivery
         - pr
         - --target-branch
@@ -22,7 +26,7 @@ timeline:
         - 'false'
       expect:
         exitCode: 1
-        stderrContains: 'requires pushing'
+        stderrContains: requires pushing
   - assertGit:
       branch: pr-branch
       exists: false

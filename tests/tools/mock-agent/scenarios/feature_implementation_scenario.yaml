@@ -2,23 +2,27 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: feature_implementation_scenario
-initialPrompt: 'Create a test.txt file with test content'
+initialPrompt: Create a test.txt file with test content
 repo:
   init: true
 timeline:
-  - think:
-      - [500, 'Processing request for feature_implementation_scenario']
+  - llmResponse:
+      - think:
+          - content: Processing request for feature_implementation_scenario
+            relativeTime: 500
   - agentToolUse:
-      toolName: 'writeFile'
+      toolName: writeFile
       args:
-        path: 'test.txt'
-        text: 'Test content for feature_implementation_scenario'
-      result: 'File created'
-      status: 'ok'
-  - assistant:
-      - [300, 'Completed feature_implementation_scenario scenario']
+        path: test.txt
+        text: Test content for feature_implementation_scenario
+      result: File created
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Completed feature_implementation_scenario scenario
+            relativeTime: 300
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'test.txt'
+    - type: taskFile
+      pattern: test.txt

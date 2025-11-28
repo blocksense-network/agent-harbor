@@ -29,19 +29,24 @@ mod tests {
 name: demo
 initialPrompt: "Fix the failing tests"
 timeline:
-  - think:
-      - [100, "Looking into the issue"]
+  - llmResponse:
+      - think:
+          - relativeTime: 100
+            content: "Looking into the issue"
   - agentToolUse:
       toolName: runCmd
       args:
         cmd: "npm test"
       progress:
-        - [200, "Running tests"]
+        - relativeTime: 200
+          content: "Running tests"
       result: "All tests passed"
       status: "ok"
-  - advanceMs: 500
-  - assistant:
-      - [100, "All good now"]
+  - baseTimeDelta: 500
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "All good now"
   - complete: true
 "#;
 
@@ -49,20 +54,59 @@ timeline:
 name: control
 initialPrompt: "Demonstrate control events"
 timeline:
-  - think:
-      - [100, "Booting"]
-  - type: advanceMs
-    ms: 900
+  - llmResponse:
+      - think:
+          - relativeTime: 100
+            content: "Booting"
+  - baseTimeDelta: 900
   - userInputs:
-      - [100, "hello world"]
-    target: tui
-  - assistant:
-      - [100, "Response after a second"]
+      - relativeTime: 1000
+        input: "hello world"
+        target: tui
+  - llmResponse:
+      - assistant:
+          - relativeTime: 100
+            content: "Response after a second"
   - assert:
       text:
         contains:
           - "Done"
   - complete: true
+"#;
+
+    const NEW_USER_INPUTS: &str = r#"
+name: new_user_inputs
+timeline:
+  - baseTimeDelta: 100
+  - userInputs:
+      - relativeTime: 150
+        input: "hello modern world"
+        target: "tui"
+  - complete: true
+"#;
+
+    const INVALID_USER_INPUTS: &str = r#"
+name: invalid_user_inputs
+timeline:
+  - llmResponse:
+      - think:
+          - relativeTime: 100
+            content: "wait"
+  - userInputs:
+      - relativeTime: 50
+        input: "too early"
+"#;
+
+    const USER_INPUT_PROMPT: &str = r#"
+name: user_prompt_demo
+timeline:
+  - userInputs:
+      - relativeTime: 0
+        input: "before boundary"
+  - baseTimeDelta: 0
+  - userInputs:
+      - relativeTime: 0
+        input: "after boundary"
 "#;
 
     #[test]
@@ -134,6 +178,28 @@ timeline:
     }
 
     #[test]
+    fn effective_initial_prompt_prefers_post_boundary_user_inputs() {
+        let scenario: Scenario = serde_yaml::from_str(USER_INPUT_PROMPT).unwrap();
+        assert_eq!(
+            scenario.effective_initial_prompt().as_deref(),
+            Some("before boundary")
+        );
+    }
+
+    #[test]
+    fn matcher_uses_effective_prompt_when_available() {
+        let scenario: Scenario = serde_yaml::from_str(USER_INPUT_PROMPT).unwrap();
+        let records = vec![ScenarioRecord {
+            scenario,
+            path: PathBuf::from("a.yaml"),
+        }];
+
+        let matcher = ScenarioMatcher::new(&records);
+        let matched = matcher.best_match("after boundary").expect("match scenario");
+        assert_eq!(matched.scenario.name, "user_prompt_demo");
+    }
+
+    #[test]
     fn playback_speed_adjusts_schedule() {
         let scenario: Scenario = serde_yaml::from_str(SAMPLE).unwrap();
         let fast = PlaybackIterator::new(
@@ -170,7 +236,51 @@ timeline:
                 _ => {}
             }
         }
-        assert!(saw_user_input, "userInputs should emit playback events");
-        assert!(saw_assert, "assert blocks should emit playback events");
+        if !saw_user_input || !saw_assert {
+            let kinds: Vec<_> = events.iter().map(|e| format!("{:?}", e.kind)).collect();
+            assert!(
+                saw_user_input,
+                "userInputs should emit playback events: {:?}",
+                kinds
+            );
+            assert!(
+                saw_assert,
+                "assert blocks should emit playback events: {:?}",
+                kinds
+            );
+        }
+    }
+
+    #[test]
+    fn playback_supports_object_user_inputs() {
+        let scenario: Scenario = serde_yaml::from_str(NEW_USER_INPUTS).unwrap();
+        let events: Vec<_> =
+            PlaybackIterator::new(&scenario, PlaybackOptions::default()).unwrap().collect();
+        let mut user_at = None;
+        for event in &events {
+            if let PlaybackEventKind::UserInput { value, target } = &event.kind {
+                user_at = Some((event.at_ms, value.clone(), target.clone()));
+            }
+        }
+        let (at_ms, value, target) = user_at.expect("user input emitted");
+        assert_eq!(at_ms, 150);
+        assert_eq!(value, "hello modern world");
+        assert_eq!(target.as_deref(), Some("tui"));
+    }
+
+    #[test]
+    fn playback_rejects_non_monotonic_user_inputs() {
+        let scenario: Scenario = serde_yaml::from_str(INVALID_USER_INPUTS).unwrap();
+        let err = PlaybackIterator::new(&scenario, PlaybackOptions::default());
+        match err {
+            Ok(_) => panic!("expected playback to fail"),
+            Err(e) => {
+                let msg = format!("{}", e);
+                assert!(
+                    msg.contains("userInputs relativeTime 50 is earlier"),
+                    "unexpected error message: {msg}"
+                );
+            }
+        }
     }
 }

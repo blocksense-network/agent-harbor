@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: task_metadata_only_commit
-tags: ['cli', 'task', 'metadata']
+tags:
+  - cli
+  - task
+  - metadata
 repo:
   init: true
 timeline:
@@ -12,7 +15,7 @@ timeline:
         - create
         - metadata-only
         - --prompt
-        - 'Metadata only task'
+        - Metadata only task
         - --non-interactive
         - --push-to-remote
         - 'false'
@@ -24,7 +27,7 @@ timeline:
         exitCode: 0
         fs:
           notExists:
-            - '.agents/tasks/metadata-only'
+            - .agents/tasks/metadata-only
   - assertGit:
       branch: metadata-only
       exists: true

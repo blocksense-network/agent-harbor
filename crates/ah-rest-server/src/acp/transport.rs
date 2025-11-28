@@ -544,6 +544,7 @@ async fn route_wrapped_request(
     headers: &HeaderMap,
 ) -> Result<Value, Error> {
     let mut guard = ctx.lock().await;
+    #[allow(unreachable_patterns)]
     match request.typed {
         ClientRequest::InitializeRequest(_) => {
             let caps = JsonRpcTranslator::negotiate_caps(&state.config);
@@ -635,6 +636,7 @@ async fn route_wrapped_request(
             "ping" => Ok(request.raw),
             _ => Err(Error::method_not_found()),
         },
+        _ => Err(Error::method_not_found()),
     }
 }
 
@@ -690,6 +692,7 @@ async fn route_request_stdio(
     headers: &HeaderMap,
 ) -> Result<Value, Error> {
     let mut guard = ctx.lock().await;
+    #[allow(unreachable_patterns)]
     match request.typed {
         ClientRequest::InitializeRequest(_) => {
             let caps = JsonRpcTranslator::negotiate_caps(&state.config);
@@ -780,6 +783,7 @@ async fn route_request_stdio(
             }
             _ => Err(Error::method_not_found()),
         },
+        _ => Err(Error::method_not_found()),
     }
 }
 

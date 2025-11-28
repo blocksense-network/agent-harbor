@@ -23,12 +23,18 @@ impl<'a> ScenarioMatcher<'a> {
     }
 
     /// Returns the scenario with the smallest Levenshtein distance to the prompt.
-    /// Scenarios lacking `initialPrompt` are ignored unless no other candidates exist.
+    /// Scenarios lacking an effective initial prompt are ignored unless no other
+    /// candidates exist.
     pub fn best_match(&self, prompt: &str) -> Option<MatchedScenario<'a>> {
         let mut best: Option<MatchedScenario> = None;
+        let mut first_fallback: Option<&Scenario> = None;
         for record in self.scenarios {
-            if let Some(reference) = record.scenario.initial_prompt.as_deref() {
-                let distance = levenshtein(reference, prompt);
+            if first_fallback.is_none() {
+                first_fallback = Some(&record.scenario);
+            }
+
+            if let Some(reference) = record.scenario.effective_initial_prompt() {
+                let distance = levenshtein(reference.as_str(), prompt);
                 match &mut best {
                     Some(current) if distance < current.distance => {
                         *current = MatchedScenario {
@@ -47,14 +53,11 @@ impl<'a> ScenarioMatcher<'a> {
             }
         }
 
-        if best.is_some() {
-            return best;
-        }
-
-        // No scenarios had initial prompts; fall back to the first scenario.
-        self.scenarios.first().map(|record| MatchedScenario {
-            scenario: &record.scenario,
-            distance: 0,
+        best.or_else(|| {
+            first_fallback.map(|scenario| MatchedScenario {
+                scenario,
+                distance: 0,
+            })
         })
     }
 }

@@ -160,7 +160,7 @@ timeline:
     - when: "$protocol_version >= 2"
       config:
         - userInputs:
-            - timestamp: 0
+            - relativeTime: 0
               input:
                 - type: "text"
                   text: "Enhanced protocol test"
@@ -172,7 +172,7 @@ timeline:
     - default: true
       config:
         - userInputs:
-            - timestamp: 0
+            - relativeTime: 0
               input: "Basic protocol test"
 ```
 
@@ -224,7 +224,7 @@ timeline:
       linesAdded: 1
       linesRemoved: 0
   - screenshot: 'after_task_file_written'
-  - advanceMs: 50
+  - baseTimeDelta: 50
   - assert:
       fs:
         exists: ['.agents/tasks']
@@ -352,7 +352,7 @@ timeline:
           inputTokens: 12
           outputTokens: 34
   - userInputs:
-      - timestamp: 0
+      - relativeTime: 0
         input:
           - type: "text"
             text: "Test message"
@@ -393,9 +393,9 @@ All paths in content blocks are resolved relative to the scenario file's directo
 
 ```yaml
 assistant:
-  - timestamp: 100
+  - relativeTime: 100
     content: 'Simple text response'
-  - timestamp: 200
+  - relativeTime: 200
     content:
       type: 'text'
       text: 'Annotated text'
@@ -409,7 +409,7 @@ Annotations follow the MCP/ACP `Annotations` shape and MAY appear on any content
 
 ```yaml
 assistant:
-  - timestamp: 100
+  - relativeTime: 100
     content:
       type: 'image'
       mimeType: 'image/png'
@@ -420,7 +420,7 @@ assistant:
 
 ```yaml
 assistant:
-  - timestamp: 100
+  - relativeTime: 100
     content:
       type: 'audio'
       mimeType: 'audio/wav'
@@ -431,7 +431,7 @@ assistant:
 
 ```yaml
 assistant:
-  - timestamp: 100
+  - relativeTime: 100
     content:
       type: 'resource'
       resource:
@@ -444,7 +444,7 @@ assistant:
 
 ```yaml
 assistant:
-  - timestamp: 120
+  - relativeTime: 120
     content:
       type: 'resource_link'
       uri: 'file:///workspace/README.md'
@@ -459,7 +459,7 @@ assistant:
 
 ```yaml
 assistant:
-  - timestamp: 100
+  - relativeTime: 100
     content:
       type: 'diff'
       path: '/home/user/project/src/config.json'
@@ -471,7 +471,7 @@ assistant:
 
 ```yaml
 assistant:
-  - timestamp: 100
+  - relativeTime: 100
     content:
       type: 'plan'
       entries:
@@ -562,12 +562,12 @@ actual work the agent does in response to LLM instructions.
 
 Simulated user interactions that drive the scenario forward.
 
-- `userInputs`: Array of timestamped inputs using the new object form:
-  - `timestamp`: Absolute time in milliseconds from scenario start (post-`advanceMs` accumulation)
+- `userInputs`: Array of inputs with `relativeTime` using the new object form:
+  - `relativeTime`: Absolute time in milliseconds from scenario start (post-`baseTimeDelta` accumulation)
   - `input`: string or array of content blocks (required)
   - `_meta`: optional ACP meta to attach to the prompt request
   - `target`: optional `tui|webui|cli` (defaults to all)
-    This is the **only** way to send ACP `session/prompt` messages; the runner converts each entry to a `session/prompt` call in timestamp order. Can run concurrently with agent events.
+    This is the **only** way to send ACP `session/prompt` messages; the runner converts each entry to a `session/prompt` call in relativeTime order. Can run concurrently with agent events.
 
   Response assertions for the _first_ prompt after a boundary belong on `sessionStart.expectedPromptResponse` (see below).
 
@@ -584,7 +584,7 @@ Simulated user interactions that drive the scenario forward.
 
 Events that control test execution and validation.
 
-- `advanceMs`: Advance logical time by specified milliseconds. Must be >= max
+- `baseTimeDelta`: Advance logical time by specified milliseconds. Must be >= max
   time from concurrent events.
 - `screenshot`: Ask harness to capture vt100 buffer with a label.
 - `assert`: Structured assertions (see below).
@@ -662,12 +662,12 @@ Runners MAY extend assertions; unknown keys are ignored with a warning.
 
 Scenarios use a unified timeline containing all events (agent actions, user inputs, assertions, screenshots, etc.):
 
-- **Timeline Progression**: Time advances through `advanceMs` events, establishing absolute timestamps.
-- **Delta Timing**: Event-internal timing values are millisecond deltas from the current timeline position; encoders MUST emit ACP messages in non-decreasing absolute timestamp order to preserve streaming semantics.
+- **Timeline Progression**: Time advances through `baseTimeDelta` events, establishing absolute relativeTimes.
+- **Delta Timing**: Event-internal timing values are millisecond deltas from the current timeline position; encoders MUST emit ACP messages in non-decreasing absolute relativeTime order to preserve streaming semantics.
 - **Agent Events** execute sequentially and consume time based on their millisecond values.
 - **User Events** (userInputs, userEdits, userCommand) can execute concurrently with agent events.
 - **Test Events** (assert, screenshot) execute at specific timeline points.
-- **Time Advancement** (`advanceMs`) ensures proper synchronization: `advanceMs >= max(time_from_concurrent_events)`; runners MUST reject timelines that would produce decreasing ACP message timestamps.
+- **Time Advancement** (`baseTimeDelta`) ensures proper synchronization: `baseTimeDelta >= max(time_from_concurrent_events)`; runners MUST reject timelines that would produce decreasing ACP message relativeTimes.
 
 ### Event Execution by Component and Testing Mode
 
@@ -722,7 +722,7 @@ simulation and tool execution.
 - For `userInputs`, sends keystrokes to the running CLI/TUI process
 - For `userEdits`, applies the specified patches to files in the test workspace
 - For `userCommand`, executes shell commands in the test environment
-- Handles test control events (`advanceMs`, `screenshot`, `assert`) by
+- Handles test control events (`baseTimeDelta`, `screenshot`, `assert`) by
   controlling timing, capturing screenshots, and validating assertions
 - Executes `complete` and `merge` events by modifying an in-memory database
   instance created for each test
@@ -819,7 +819,7 @@ event streaming behavior with realistic timing.
 - For `agentEdits` events, streams file modification notifications with change
   metrics
 - Processes `userActions` events by streaming simulated user interaction events
-- Handles all test control events (`advanceMs`, `screenshot`, `assert`) for
+- Handles all test control events (`baseTimeDelta`, `screenshot`, `assert`) for
   timing control and validation
 - Maintains accurate event timing and sequencing to simulate realistic session
   flow
@@ -851,12 +851,12 @@ timeline:
   # LLM Response Events - API level interactions
   - llmResponse:
       - think:
-          - timestamp: 500
+          - relativeTime: 500
             content: 'I need to examine the current code first'
-          - timestamp: 300
+          - relativeTime: 300
             content: 'Let me check what functions exist...'
       - assistant:
-          - timestamp: 200
+          - relativeTime: 200
             content: 'Let me search for function definitions in the codebase.'
 
   # Agent Action Events - Tool executions and file operations
@@ -900,7 +900,7 @@ timeline:
       fs:
         exists: ['main.py']
   - screenshot: 'after_edits'
-  - advanceMs: 1000 # Must be >= max concurrent event times
+  - baseTimeDelta: 1000 # Must be >= max concurrent event times
 
 **Example with Error Response:**
 
@@ -924,7 +924,7 @@ timeline:
       - think:
           - [300, 'The user wants me to run tests']
       - assistant:
-          - timestamp: 100
+          - relativeTime: 100
             content: 'Running the test suite to check for any issues.'
 
   # Detailed agent action with realistic execution simulation
@@ -967,19 +967,19 @@ timeline:
           - [700, 'q'] # User presses 'q' during test execution
         target: 'tui'
 
-  - advanceMs: 1000
+  - baseTimeDelta: 1000
 ```
 
 **Timing Rules:**
 
-- **Timeline Progression**: Time advances through `advanceMs` events, which set the
-  absolute timestamp for subsequent events
+- **Timeline Progression**: Time advances through `baseTimeDelta` events, which set the
+  absolute relativeTime for subsequent events
 - **Delta Timing**: Numeric time values within event blocks (thinking pairs,
   progress updates, tool execution events, etc.) are millisecond deltas from
-  the absolute timestamp established by the most recent `advanceMs` event
+  the absolute relativeTime established by the most recent `baseTimeDelta` event
 - Agent events never overlap (sequential execution)
 - User and test events can execute concurrently with agent events
-- `advanceMs` ensures proper synchronization: `advanceMs >= max(time_from_concurrent_events)`
+- `baseTimeDelta` ensures proper synchronization: `baseTimeDelta >= max(time_from_concurrent_events)`
 - Millisecond precision allows deterministic replay
 
 ### Screenshot Integration
@@ -999,7 +999,7 @@ timeline:
   - `target/tmp/<runner>/<scenarioName>/<terminalProfileId>/screenshots/<label>.golden`
   - `terminalProfileId` is taken from the terminal config `name` if present; otherwise computed as `<width>x<height>`.
 - Log directory scheme (example):
-  - `target/tmp/<runner>/<scenarioName>/<terminalProfileId>/<timestamp>-<pid>/`
+  - `target/tmp/<runner>/<scenarioName>/<terminalProfileId>/<relativeTime>-<pid>/`
 
 ### Conventions
 
@@ -1007,7 +1007,7 @@ timeline:
 - Shell tokens in `ah.flags[]` are not re‑parsed; runners pass them verbatim.
 - Time values are in milliseconds; millisecond precision enables deterministic scenario replay.
 - Agent events execute sequentially; user and test events can execute concurrently with agent events.
-- `advanceMs` values must account for all concurrent activity to maintain proper synchronization.
+- `baseTimeDelta` values must account for all concurrent activity to maintain proper synchronization.
 
 ### ACP Agent Testing Extensions
 
@@ -1065,7 +1065,7 @@ timeline:
       expectedPromptResponse:
         sessionId: 'test-session-123'
   - userInputs:
-      - timestamp: 0
+      - relativeTime: 0
         input:
           - type: 'text'
             text: 'Analyze this image and describe what you see:'
@@ -1112,7 +1112,7 @@ timeline:
   # Historical events (replayed during session/load)
   - llmResponse:
       - assistant:
-          - timestamp: 100
+          - relativeTime: 100
             content: "I'll create a simple Python script for you."
   - agentToolUse:
       toolName: 'runCmd'
@@ -1131,7 +1131,7 @@ timeline:
   # Live events (streamed after session/load completes)
   - llmResponse:
       - assistant:
-          - timestamp: 100
+          - relativeTime: 100
             content: "Now let's modify the script to be more interesting."
   - agentToolUse:
       toolName: 'runCmd'
@@ -1167,7 +1167,7 @@ When `session/load` is called with this scenario's name, the mock-agent will:
 ### Scenario Selection & Playback Controls
 
 - **Scenario discovery:** When multiple Scenario-Format files are provided (via `--scenario DIR` or configuration), the runtime uses Levenshtein distance between the incoming task prompt (or any `x-scenario-prompt` header for LLM proxy requests) and each scenario’s **effective initial prompt**, computed as the first `userInputs` after `sessionStart` (if present) or otherwise the first `userInputs` in the timeline. Explicit `x-scenario-name` headers or CLI overrides still take precedence.
-- **Speed scaling:** Every timeline delay (`think`, `assistant`, `progress`, `toolExecution`, and `advanceMs` entries) is multiplied by the `scenario-speed` factor (defaults to `1.0`). Values < 1.0 speed up playback; values > 1.0 slow it down. Current implementations clamp the multiplier to a minimum of `0.01` to avoid zero-duration events.
+- **Speed scaling:** Every timeline delay (`think`, `assistant`, `progress`, `toolExecution`, and `baseTimeDelta` entries) is multiplied by the `scenario-speed` factor (defaults to `1.0`). Values < 1.0 speed up playback; values > 1.0 slow it down. Current implementations clamp the multiplier to a minimum of `0.01` to avoid zero-duration events.
 - **SSE catch-up:** The Rust mock REST server persists emitted events and replays the complete history to new SSE subscribers before streaming live updates, so clients that connect mid-scenario still receive a consistent timeline.
   **Mock ACP Server (ACP client test mode):**
 
