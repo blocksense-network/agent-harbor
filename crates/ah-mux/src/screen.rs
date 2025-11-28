@@ -523,8 +523,6 @@ impl ScreenMultiplexer {
 mod tests {
     use std::{thread, time::Duration};
 
-    use serial_test::serial;
-
     use super::*;
 
     /// Initialize tracing for tests if not already initialized
@@ -674,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_current_window_with_env() {
         // Test current_window() with WINDOW env var set
         env::set_var("WINDOW", "5");
@@ -686,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_current_window_without_env() {
         // Test current_window() with WINDOW env var unset
         env::remove_var("WINDOW");
@@ -697,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_current_window_empty_env() {
         // Test current_window() with empty WINDOW env var
         env::set_var("WINDOW", "");
@@ -709,7 +707,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_current_pane_with_env() {
         // Test current_pane() with WINDOW env var set
         env::set_var("WINDOW", "5");
@@ -721,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_current_pane_without_env() {
         // Test current_pane() with WINDOW env var unset
         env::remove_var("WINDOW");
@@ -732,7 +730,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_current_pane_empty_env() {
         // Test current_pane() with empty WINDOW env var
         env::set_var("WINDOW", "");
@@ -793,7 +791,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_send_text_integration() {
         init_tracing();
         let session_name = format!("test-sendtext-{}", std::process::id());
@@ -831,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_send_text_invalid_session() {
         init_tracing();
 
@@ -848,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_command_escaping_single_quotes() {
         init_tracing();
         let session_name = format!("test-escape-quotes-{}", std::process::id());
@@ -891,7 +889,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_command_escaping_dollar_signs() {
         init_tracing();
         let session_name = format!("test-escape-dollar-{}", std::process::id());
@@ -934,7 +932,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_command_escaping_backslashes() {
         init_tracing();
         let session_name = format!("test-escape-backslash-{}", std::process::id());
@@ -977,7 +975,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_command_escaping_mixed_special_chars() {
         init_tracing();
         let session_name = format!("test-escape-mixed-{}", std::process::id());
@@ -1020,7 +1018,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_split_pane_escaping_initial_cmd() {
         init_tracing();
         let session_name = format!("test-split-escape-{}", std::process::id());
@@ -1070,7 +1068,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_split_pane_with_cwd() {
         init_tracing();
         let session_name = format!("test-split-cwd-{}", std::process::id());
@@ -1132,7 +1130,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_split_pane_with_cwd_and_initial_cmd() {
         init_tracing();
         let session_name = format!("test-split-cwd-cmd-{}", std::process::id());
@@ -1183,7 +1181,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_split_pane_with_special_chars_in_cwd() {
         init_tracing();
         let session_name = format!("test-split-cwd-special-{}", std::process::id());
@@ -1235,7 +1233,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_open_window_without_sty() {
         init_tracing();
 
@@ -1260,7 +1258,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_open_window_with_title() {
         init_tracing();
         let session_name = format!("test-window-title-{}", std::process::id());
@@ -1296,7 +1294,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_open_window_without_title() {
         init_tracing();
         let session_name = format!("test-window-no-title-{}", std::process::id());
@@ -1332,7 +1330,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_open_window_reuse_existing() {
         init_tracing();
         let session_name = format!("test-window-reuse-{}", std::process::id());
@@ -1373,7 +1371,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_open_multiple_windows() {
         init_tracing();
         let session_name = format!("test-multiple-windows-{}", std::process::id());
@@ -1434,7 +1432,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_open_window_with_special_chars_in_title() {
         init_tracing();
         let session_name = format!("test-window-special-{}", std::process::id());
@@ -1472,7 +1470,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_open_window_idempotent() {
         init_tracing();
         let session_name = format!("test-window-idempotent-{}", std::process::id());
@@ -1514,7 +1512,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_list_windows_without_sty() {
         init_tracing();
 
@@ -1530,7 +1528,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_run_command_invalid_session() {
         init_tracing();
 
@@ -1552,7 +1550,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_list_windows_invalid_session() {
         init_tracing();
 
@@ -1570,7 +1568,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_init_agent_harbor_layout_without_sty() {
         init_tracing();
 
@@ -1586,7 +1584,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_focus_window_invalid_session() {
         init_tracing();
 
@@ -1599,7 +1597,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::file_serial]
     fn test_screen_integration_lifecycle() {
         init_tracing();
         let session_name = format!("test-screen-{}", std::process::id());
@@ -1618,7 +1616,7 @@ mod tests {
         // We'll explicit cleanup at end.
 
         // 2. Set STY env var so ScreenMultiplexer connects to this session
-        // IMPORTANT: This modifies global state, so #[serial] is required
+        // IMPORTANT: This modifies global state, so #[serial_test::file_serial] is required
         env::set_var("STY", &sty);
         // Screen sometimes needs WINDOW env var for context, but for layout creation it might rely on STY
         // Setting WINDOW to 0 to simulate being in the first window
