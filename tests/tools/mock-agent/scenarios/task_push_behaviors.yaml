@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: task_push_behaviors
-tags: ['cli', 'task', 'push']
+tags:
+  - cli
+  - task
+  - push
 repo:
   init: true
 timeline:
@@ -12,7 +15,7 @@ timeline:
         - create
         - push-no-remote
         - --prompt
-        - 'Push should be skipped when disabled'
+        - Push should be skipped when disabled
         - --non-interactive
         - --push-to-remote
         - 'false'
@@ -30,7 +33,7 @@ timeline:
         - create
         - push-branch
         - --prompt
-        - 'Explicit push should succeed'
+        - Explicit push should succeed
         - --non-interactive
         - --push-to-remote
         - 'true'

@@ -2,25 +2,27 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: interactive_scenario
-initialPrompt: "Hello! I'm ready to help you with coding tasks. What would you like to work on?"
+initialPrompt: Hello! I'm ready to help you with coding tasks. What would you like
+  to work on?
 repo:
   init: true
   files:
-    - path: 'README.md'
-      contents: |
-        # Interactive Coding Session
+    - path: README.md
+      contents: "# Interactive Coding Session
+
 
         Welcome to an interactive coding session.
+
         I'm here to help you with any coding tasks you have.
 
+        "
 timeline:
-  # Initial setup for interactive testing
-  - assistant:
-      - [
-          1000,
-          "Hello! I'm Claude Code, an AI coding assistant. I'm ready to help you with coding tasks.",
-        ]
-  # Wait for user input - this should keep the session open
+  - llmResponse:
+      - assistant:
+          - content: Hello! I'm Claude Code, an AI coding assistant. I'm ready to help you
+              with coding tasks.
+            relativeTime: 1000
   - userInputs:
-      - [1000, "Tell me what you'd like to work on."]
-    target: 'tui'
+      - input: Tell me what you'd like to work on.
+        relativeTime: 1000
+    target: tui

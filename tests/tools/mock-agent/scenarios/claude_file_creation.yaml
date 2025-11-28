@@ -2,23 +2,27 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: claude_file_creation
-initialPrompt: 'Create a test.txt file with content for Claude file creation'
+initialPrompt: Create a test.txt file with content for Claude file creation
 repo:
   init: true
 timeline:
-  - think:
-      - [500, 'Processing request for claude_file_creation']
+  - llmResponse:
+      - think:
+          - content: Processing request for claude_file_creation
+            relativeTime: 500
   - agentToolUse:
-      toolName: 'writeFile'
+      toolName: writeFile
       args:
-        path: 'test.txt'
-        text: 'Test content for claude_file_creation'
-      result: 'File created'
-      status: 'ok'
-  - assistant:
-      - [300, 'Completed claude_file_creation scenario']
+        path: test.txt
+        text: Test content for claude_file_creation
+      result: File created
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Completed claude_file_creation scenario
+            relativeTime: 300
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'test.txt'
+    - type: taskFile
+      pattern: test.txt

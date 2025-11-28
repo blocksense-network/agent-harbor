@@ -390,6 +390,17 @@ def _print_trace(kind: str, msg: str) -> None:
 def _as_json(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
+def _coerce_input_text(input_val: Any) -> str:
+    """Render userInputs content as a short string for logging."""
+    if isinstance(input_val, str):
+        return input_val
+    try:
+        return yaml.safe_dump(
+            input_val, allow_unicode=True, default_flow_style=True
+        ).strip()
+    except Exception:
+        return str(input_val)
+
 def _execute_checkpoint_cmd(checkpoint_cmd: str, workspace: str) -> None:
     """Execute the checkpoint command after agentToolUse or agentEdits events."""
     if not checkpoint_cmd:
@@ -889,10 +900,20 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
             for action in user_actions:
                 if "userInputs" in action:
                     user_inputs = action["userInputs"]
-                    target = action.get("target", "tui")
-                    for ms, input_text in user_inputs:
+                    default_target = action.get("target", "tui")
+                    for input_entry in user_inputs:
+                        if isinstance(input_entry, dict) and "timestamp" in input_entry:
+                            absolute_ts = int(input_entry.get("timestamp", 0))
+                            ms = max(0, absolute_ts - current_time)
+                            input_text = _coerce_input_text(input_entry.get("input", ""))
+                            target = input_entry.get("target", default_target)
+                        else:
+                            ms, raw_text = input_entry
+                            input_text = _coerce_input_text(raw_text)
+                            target = default_target
+                        event_time = current_time + ms
                         timeline_events.append({
-                            "time": current_time,
+                            "time": event_time,
                             "type": "userInputs",
                             "data": (ms, input_text, target),
                             "step": step
@@ -963,8 +984,8 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
                 })
 
         # Handle control events
-        elif "advanceMs" in step:
-            ms = step["advanceMs"]
+        elif "baseTimeDelta" in step:
+            ms = step["baseTimeDelta"]
             current_time += ms
         elif "screenshot" in step:
             timeline_events.append({
@@ -998,10 +1019,20 @@ def _run_scenario_fast_mode(scenario: Dict[str, Any], workspace: str, codex_home
         # Handle legacy user input events
         elif "userInputs" in step:
             user_inputs = step["userInputs"]
-            target = step.get("target", "tui")
-            for ms, input_text in user_inputs:
+            default_target = step.get("target", "tui")
+            for input_entry in user_inputs:
+                if isinstance(input_entry, dict) and "timestamp" in input_entry:
+                    absolute_ts = int(input_entry.get("timestamp", 0))
+                    ms = max(0, absolute_ts - current_time)
+                    input_text = _coerce_input_text(input_entry.get("input", ""))
+                    target = input_entry.get("target", default_target)
+                else:
+                    ms, raw_text = input_entry
+                    input_text = _coerce_input_text(raw_text)
+                    target = default_target
+                event_time = current_time + ms
                 timeline_events.append({
-                    "time": current_time,
+                    "time": event_time,
                     "type": "userInputs",
                     "data": (ms, input_text, target),
                     "step": step
@@ -1435,8 +1466,8 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
                 _print_trace("assistant", text)  # Uses enhanced _print_trace
                 time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
             recorder.record_message("assistant", text)
-        elif "advanceMs" in step:
-            ms = step["advanceMs"]
+        elif "baseTimeDelta" in step:
+            ms = step["baseTimeDelta"]
             _print_trace("timing", f"Advancing timeline by {ms}ms")
             time.sleep(ms / 1000.0)  # Actually sleep for the specified milliseconds
         elif "screenshot" in step:
@@ -1455,8 +1486,16 @@ def _run_scenario_codex(scenario: Dict[str, Any], workspace: str, codex_home: st
                 _print_trace("assert", "Some assertions failed")
         elif "userInputs" in step:
             user_inputs = step["userInputs"]
-            target = step.get("target", "tui")  # target is at the step level
-            for ms, input_text in user_inputs:
+            default_target = step.get("target", "tui")  # target is at the step level
+            for input_entry in user_inputs:
+                if isinstance(input_entry, dict) and "timestamp" in input_entry:
+                    ms = int(input_entry.get("timestamp", 0))
+                    input_text = _coerce_input_text(input_entry.get("input", ""))
+                    target = input_entry.get("target", default_target)
+                else:
+                    ms, raw_text = input_entry
+                    input_text = _coerce_input_text(raw_text)
+                    target = default_target
                 if interactive:
                     # Interactive mode: prompt for actual user input
                     _rich_output.print_user_input_prompt(input_text)
@@ -1720,8 +1759,8 @@ def _run_scenario_claude(scenario: Dict[str, Any], workspace: str, codex_home: s
                 _print_trace("assistant", f"[{ms}ms] {text}")
                 time.sleep(ms / 1000.0)  # Sleep for the specified milliseconds
             recorder.record_assistant_message(text)
-        elif "advanceMs" in step:
-            ms = step["advanceMs"]
+        elif "baseTimeDelta" in step:
+            ms = step["baseTimeDelta"]
             _print_trace("timing", f"Advancing timeline by {ms}ms")
             time.sleep(ms / 1000.0)  # Actually sleep for the specified milliseconds
         elif "screenshot" in step:

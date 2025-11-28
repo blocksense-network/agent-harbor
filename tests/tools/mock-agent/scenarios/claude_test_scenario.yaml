@@ -2,20 +2,24 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: claude_test_scenario
-initialPrompt: 'Create a file for testing Claude functionality'
+initialPrompt: Create a file for testing Claude functionality
 repo:
   init: true
 timeline:
-  - think:
-      - [500, 'Processing claude test request']
+  - llmResponse:
+      - think:
+          - content: Processing claude test request
+            relativeTime: 500
   - agentToolUse:
-      toolName: 'writeFile'
+      toolName: writeFile
       args:
-        path: 'test.txt'
-        content: 'Test content for claude'
-      result: 'File created'
-      status: 'ok'
-  - assistant:
-      - [300, 'Completed claude test scenario']
+        path: test.txt
+        content: Test content for claude
+      result: File created
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Completed claude test scenario
+            relativeTime: 300
 expect:
   exitCode: 0

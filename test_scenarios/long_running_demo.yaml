@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: long_running_demo
-initialPrompt: 'Refactor the telemetry pipeline to reduce cold-start latency'
+initialPrompt: Refactor the telemetry pipeline to reduce cold-start latency
 tags:
   - demo
   - long-runtime
@@ -12,26 +12,24 @@ repo:
 timeline:
   - llmResponse:
       - think:
-          - [500, 'Reviewing telemetry bootstrap path and identifying hotspots']
-  - type: advanceMs
-    ms: 9000
-  - llmResponse:
-      - agentToolUse:
-          toolName: run_cmd
-          args:
-            cmd: 'cargo nextest run telemetry::bootstrap --nocapture'
-          progress:
-            - [400, 'Building instrumented binaries']
-            - [600, 'Running telemetry bootstrap tests']
-          result: |
-            bootstrap.rs: all checks passed
-          status: 'completed'
-  - type: advanceMs
-    ms: 2500
+          - content: Reviewing telemetry bootstrap path and identifying hotspots
+            relativeTime: 500
+  - baseTimeDelta: 9000
+  - agentToolUse:
+      toolName: run_cmd
+      args:
+        cmd: cargo nextest run telemetry::bootstrap --nocapture
+      progress:
+        - relativeTime: 400
+          message: Building instrumented binaries
+        - relativeTime: 600
+          message: Running telemetry bootstrap tests
+      result: |
+        bootstrap.rs: all checks passed
+      status: completed
+  - baseTimeDelta: 2500
   - llmResponse:
       - assistant:
-          - [
-              250,
-              'Telemetry bootstrap refactor validated locally. Please rerun CI and plan for rollout.',
-            ]
+          - content: Telemetry bootstrap refactor validated locally. Please rerun CI and plan for rollout.
+            relativeTime: 250
   - complete: true

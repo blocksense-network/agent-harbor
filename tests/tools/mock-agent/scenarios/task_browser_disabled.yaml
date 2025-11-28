@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: task_browser_disabled
-tags: ['cli', 'task', 'browser']
+tags:
+  - cli
+  - task
+  - browser
 repo:
   init: true
 timeline:
@@ -12,7 +15,7 @@ timeline:
         - create
         - browser-block
         - --prompt
-        - 'browser path disabled'
+        - browser path disabled
         - --browser-automation
         - 'true'
         - --non-interactive
@@ -20,4 +23,4 @@ timeline:
         - 'false'
       expect:
         exitCode: 1
-        stderrContains: 'Browser automation is disabled'
+        stderrContains: Browser automation is disabled
