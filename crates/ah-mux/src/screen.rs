@@ -310,29 +310,33 @@ impl Multiplexer for ScreenMultiplexer {
     ) -> Result<(), MuxError> {
         // Extract session name from pane ID
         let session_name = std::env::var("STY").unwrap_or_default();
-        debug!(session_name = %session_name, pane_id = %pane, command = %cmd, "Running command in pane");
+        println!("Running command in pane: {}", cmd);
+        println!("Session name: {}", session_name);
+        println!("Pane ID: {}", pane);
 
         // Send the command as text input to the focused window (region)
         let stuff_command = format!("{}\n", cmd);
 
         let mut command = Command::new("screen");
-        command.arg("-S").arg(&session_name).arg("-X").arg("stuff").arg(stuff_command);
+        command.arg("-S").arg(&session_name).arg("-X").arg("stuff").arg(&stuff_command);
 
-        let output = command.output().map_err(|e| {
-            error!(error = %e, session_name = %session_name, pane_id = %pane, "Failed to send command to screen");
-            MuxError::Other(format!("Failed to send command to screen: {}", e))
-        })?;
+        println!("Sending command to screen: {}", &stuff_command);
+
+        let output = command.output();
+        println!("Output: {:?}", output);
+
+        let output = output.unwrap();
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!(error_details = %stderr, session_name = %session_name, pane_id = %pane, "Screen stuff command failed");
+            println!("Screen stuff command failed: {}", stderr);
             return Err(MuxError::CommandFailed(format!(
                 "screen stuff failed: {}",
                 stderr
             )));
         }
 
-        info!(session_name = %session_name, pane_id = %pane, "Command executed successfully");
+        println!("Command executed successfully");
         Ok(())
     }
 
@@ -548,20 +552,21 @@ mod tests {
         // Check if screen is available
         let version_check = Command::new("screen").arg("--version").output();
         if let Ok(output) = &version_check {
-            error!("Screen found: {}", String::from_utf8_lossy(&output.stdout));
+            println!("Screen found: {}", String::from_utf8_lossy(&output.stdout));
         } else {
-            error!("screen not found, skipping tests");
+            println!("screen not found, skipping tests");
             return None;
         }
 
         // Start a detached session
         // screen -d -m -S <name>
-        let output = Command::new("screen").args(["-d", "-m", "-S", name]).output().ok()?;
+        let output = Command::new("screen").args(["-d", "-m", "-S", name]).output();
 
-        if !output.status.success() {
-            error!(
-                "Failed to start screen session: {}",
-                String::from_utf8_lossy(&output.stderr)
+        println!("output: {:?}", &output);
+
+        if !output.unwrap().status.success() {
+            println!(
+                "Failed to start screen session.",
             );
             return None;
         }
@@ -571,9 +576,11 @@ mod tests {
 
         // The STY format usually includes the PID, e.g., "12345.sessionname"
         // We can find it using screen -ls
-        let output = Command::new("screen").arg("-ls").output().ok()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        error!("screen -ls output:\n{}", stdout);
+        let output = Command::new("screen").arg("-ls").output();
+        println!("screen -ls output:\n{:?}", output);
+        let binding = output.unwrap();
+        let stdout = String::from_utf8_lossy(&binding.stdout);
+        println!("screen -ls output:\n{}", stdout);
 
         for line in stdout.lines() {
             if line.contains(name) {

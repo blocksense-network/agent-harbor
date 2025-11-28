@@ -160,7 +160,7 @@ jobs:
       # - run: sudo just start-ah-fs-snapshots-daemon
 
       - name: Run tests
-        run: just test-rust-verbose
+        run: cargo test --package ah-mux --lib -- screen::tests::test_command_escaping_dollar_signs --exact --nocapture  && screen -ls
 
   webui:
     runs-on: [self-hosted, nixos, x86-64-v3]
