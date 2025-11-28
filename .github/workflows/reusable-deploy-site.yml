@@ -25,6 +25,10 @@ on:
         required: true
       CACHIX_AUTH_TOKEN:
         required: true
+      NEXT_PUBLIC_WORKER_URL:
+        required: true
+      NEXT_PUBLIC_API_KEY:
+        required: true
 
 jobs:
   deploy-site:
@@ -53,6 +57,9 @@ jobs:
         run: yarn install
 
       - name: Build ${{ inputs.label }}
+        env:
+          NEXT_PUBLIC_WORKER_URL: ${{ secrets.NEXT_PUBLIC_WORKER_URL }}
+          NEXT_PUBLIC_API_KEY: ${{ secrets.NEXT_PUBLIC_API_KEY }}
         run: ${{ inputs.build_command }}
 
       - name: Deploy ${{ inputs.label }} to Cloudflare Pages
