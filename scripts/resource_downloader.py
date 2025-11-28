@@ -236,28 +236,6 @@ def download_resource(
         return False
 
 
-def download_acp_specs(resources_dir: Path) -> None:
-    """
-    Download the Agent Client Protocol specifications.
-
-    Args:
-        resources_dir: Path to the resources directory where specs should be cloned
-    """
-    repo_url = "https://github.com/agentclientprotocol/agent-client-protocol"
-    target_dir = resources_dir / "acp-specs"
-
-    logging.info(f"Cloning ACP specs from {repo_url} to {target_dir}")
-
-    # Clone the repository
-    subprocess.run(
-        ['git', 'clone', repo_url, 'acp-specs'],
-        check=True,
-        cwd=resources_dir
-    )
-
-    logging.info("Successfully cloned ACP specifications")
-
-
 def main():
     """Main entry point for command-line usage."""
     setup_logging()
@@ -271,12 +249,15 @@ def main():
 
     # Map resource names to download functions
     download_funcs = {
-        'acp-specs': download_acp_specs,
     }
 
     if args.resource_name not in download_funcs:
-        logging.error(f"Unknown resource: {args.resource_name}")
-        logging.error(f"Available resources: {', '.join(download_funcs.keys())}")
+        if download_funcs:
+            logging.error(f"Unknown resource: {args.resource_name}")
+            logging.error(f"Available resources: {', '.join(download_funcs.keys())}")
+        else:
+            logging.error(f"No downloadable resources are currently configured.")
+            logging.error(f"Resource '{args.resource_name}' cannot be downloaded via this script.")
         sys.exit(1)
 
     success = download_resource(

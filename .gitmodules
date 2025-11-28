@@ -14,3 +14,6 @@
     path = vendor/acp-rust-sdk
     url = git@github.com:blocksense-network/acp-rust-sdk.git
     branch = agent-harbor
+[submodule "resources/acp-specs"]
+	path = resources/acp-specs
+	url = https://github.com/agentclientprotocol/agent-client-protocol
