@@ -6,6 +6,7 @@
 use crate::core::{self, SHIM_STATE, ShimState};
 use crate::posix;
 use ctor::ctor;
+use stackable_hooks::{disable_auto_propagation, enable_auto_propagation};
 
 /// Initialize the shim on library load
 #[ctor]
@@ -16,10 +17,16 @@ fn initialize_shim() {
     let _ = SHIM_STATE.set(std::sync::Mutex::new(state.clone()));
 
     if let ShimState::Ready { .. } = &state {
+        // Keep the shim present in indirectly spawned descendants so their exec
+        // paths continue to emit CommandStart/Chunk events.
+        enable_auto_propagation();
         // Try to initialize client for handshake, but don't fail if connection fails
         // This allows the smoke test to verify that the shim can connect
         let _ = posix::initialize_client();
         // eprintln!("[ah-command-trace-shim] Shim initialization complete");
+    } else {
+        // Avoid leaking propagation when the shim is disabled/misconfigured.
+        disable_auto_propagation();
     }
 }
 
