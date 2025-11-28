@@ -1108,6 +1108,13 @@ impl ViewModel {
                         let _ = modal;
                         self.launch_task_with_option(draft_id, option_text);
                         self.close_modal(false);
+
+                        // Restore focus to TaskDescription after launching with shortcut
+                        self.change_focus(DashboardFocusState::DraftTask(0));
+                        if let Some(card) = self.draft_cards.get_mut(0) {
+                            card.focus_element = CardFocusElement::TaskDescription;
+                        }
+
                         return true;
                     }
                     return false;
@@ -5859,10 +5866,8 @@ impl ViewModel {
                 if let Some(modal) = &self.active_modal {
                     if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
                         // Save the current config to the draft card
-                        if let Some(card) = self
-                            .draft_cards
-                            .iter_mut()
-                            .find(|card| card.id == view_model.draft_id)
+                        if let Some(card) =
+                            self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
                         {
                             card.advanced_options = Some(view_model.config.clone());
                         }

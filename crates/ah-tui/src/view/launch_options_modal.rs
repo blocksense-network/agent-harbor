@@ -11,8 +11,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
 use super::Theme;
 use crate::view::HitTestRegistry;
 use crate::view_model::agents_selector_model::{
-    AdvancedLaunchOptions, FilteredOption, LaunchOptionsColumn, LaunchOptionsViewModel,
-    MouseAction,
+    AdvancedLaunchOptions, FilteredOption, LaunchOptionsColumn, LaunchOptionsViewModel, MouseAction,
 };
 
 pub fn render_advanced_launch_options_modal(
@@ -117,14 +116,14 @@ pub fn render_advanced_launch_options_modal(
     let separator = " • ";
     let cancel_key = "Esc";
     let cancel_label = " Cancel";
-    
+
     let apply_text_width = apply_key.len() + apply_label.len();
     let cancel_text_width = cancel_key.len() + cancel_label.len();
     let total_width = apply_text_width + separator.len() + cancel_text_width;
-    
+
     // Calculate starting position for centered text
     let start_x = hint_area.x + (hint_area.width.saturating_sub(total_width as u16)) / 2;
-    
+
     // Register clickable areas
     let apply_area = Rect {
         x: start_x,
@@ -132,17 +131,17 @@ pub fn render_advanced_launch_options_modal(
         width: apply_text_width as u16,
         height: 1,
     };
-    
+
     let cancel_area = Rect {
         x: start_x + apply_text_width as u16 + separator.len() as u16,
         y: hint_area.y,
         width: cancel_text_width as u16,
         height: 1,
     };
-    
+
     hit_registry.register(apply_area, MouseAction::ModalApplyChanges);
     hit_registry.register(cancel_area, MouseAction::ModalCancelChanges);
-    
+
     let hint_text = Line::from(vec![
         Span::styled(
             apply_key,
