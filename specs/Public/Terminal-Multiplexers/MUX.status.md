@@ -31,8 +31,8 @@ The `ah-mux` crate supports the following backends (12 total):
 ### Per-Multiplexer Implementation Milestones
 
 - [ ] **M1**: tmux (Linux, macOS, BSD)
-- [ ] **M2**: Kitty (Linux, macOS)
-- [ ] **M3**: WezTerm (Linux, macOS, Windows)
+- [x] **M2**: Kitty (Linux, macOS)
+- [x] **M3**: WezTerm (Linux, macOS, Windows)
 - [ ] **M4**: Zellij (Linux, macOS, BSD)
 - [x] **M5**: GNU Screen (Linux, macOS, BSD)
 - [x] **M6**: Tilix (Linux only)
@@ -235,13 +235,13 @@ _(To be filled after implementation)_
 
 **Deliverables:**
 
-- [ ] Review and update `specs/Public/Terminal-Multiplexers/WezTerm.md`:
+- [x] Review and update `specs/Public/Terminal-Multiplexers/WezTerm.md`:
   - Document WezTerm CLI commands for pane/tab management
   - Add examples for creating Agent Harbor task layouts
   - Document Windows-specific considerations
   - Add version compatibility notes (tested with WezTerm 20240203+)
   - Add troubleshooting section
-- [ ] Review and enhance `crates/ah-mux/src/wezterm.rs`:
+- [x] Review and enhance `crates/ah-mux/src/wezterm.rs`:
   - Ensure cross-platform compatibility (Linux, macOS, Windows)
   - Implement all `Multiplexer` trait methods
   - Add WezTerm-specific error handling

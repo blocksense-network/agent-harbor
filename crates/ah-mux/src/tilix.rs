@@ -77,8 +77,10 @@ impl TilixMultiplexer {
     #[instrument]
     fn wrap_command_with_path(cmd: &str) -> String {
         let path = std::env::var("PATH").unwrap_or_default();
-        debug!("Wrapping command with PATH: {}", path);
-        format!("env PATH={} bash -c '{}'", path, cmd)
+        // Escape spaces with backslash so WezTerm/bash sees a single PATH element
+        let escaped_path = path.replace(' ', "\\s");
+        debug!("Wrapping command with PATH environment");
+        format!("env PATH={} bash -c '{}'", escaped_path, cmd)
     }
 
     /// Run a tilix command with the given arguments

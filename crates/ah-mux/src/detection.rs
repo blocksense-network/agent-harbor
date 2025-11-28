@@ -125,6 +125,25 @@ pub fn detect_terminal_environments() -> Vec<TerminalEnvironment> {
         detected.insert(0, TerminalEnvironment::Ghostty);
     }
 
+    // If detected contains both WezTerm and iTerm2, ensure correct order based on the TERM_PROGRAM variable.
+    // This is necessary because when user open wezterm from iTerm2, TERM_PROGRAM is being overridden,
+    // but the rest of the iTerm2 vars are still present
+    if detected.contains(&TerminalEnvironment::WezTerm)
+        && detected.contains(&TerminalEnvironment::ITerm2)
+    {
+        // we prioritize value in TERM_PROGRAM
+        let term_program = std::env::var("TERM_PROGRAM");
+
+        if term_program == Ok("WezTerm".to_string()) {
+            let wezterm_index =
+                detected.iter().position(|e| *e == TerminalEnvironment::WezTerm).unwrap();
+            let iterm2_index =
+                detected.iter().position(|e| *e == TerminalEnvironment::ITerm2).unwrap();
+            // swap positions of WezTerm and iTerm2
+            detected.swap(wezterm_index, iterm2_index);
+        }
+    }
+
     info!(detected_environments = ?detected, environment_count = %detected.len(),
           "Terminal environment detection completed");
     detected
@@ -189,6 +208,11 @@ pub fn is_in_iterm2() -> bool {
 
 /// Check if currently running inside WezTerm
 pub fn is_in_wezterm() -> bool {
+    if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
+        if term_program == "WezTerm" {
+            return true;
+        }
+    }
     // Strong signals: WEZTERM_PANE, WEZTERM_EXECUTABLE, WEZTERM_SOCKET
     std::env::var("WEZTERM_PANE").is_ok()
         || std::env::var("WEZTERM_EXECUTABLE").is_ok()
@@ -545,18 +569,64 @@ mod tests {
         std::env::remove_var("ITERM_SESSION_ID");
         std::env::remove_var("LC_TERMINAL");
 
-        // Simulate kitty -> tmux -> neovim nesting
-        std::env::set_var("KITTY_PID", "123");
-        std::env::set_var("TMUX", "test");
-        std::env::set_var("NVIM", "/tmp/nvim.sock");
+        {
+            // Simulate kitty -> tmux -> neovim nesting
+            std::env::set_var("KITTY_PID", "123");
+            std::env::set_var("TMUX", "test");
+            std::env::set_var("NVIM", "/tmp/nvim.sock");
 
-        let detected = detect_terminal_environments();
+            let detected = detect_terminal_environments();
 
-        // Should be in wrapping order: outermost to innermost
-        assert_eq!(detected.len(), 3);
-        assert_eq!(detected[0], TerminalEnvironment::Kitty);
-        assert_eq!(detected[1], TerminalEnvironment::Neovim);
-        assert_eq!(detected[2], TerminalEnvironment::Tmux);
+            // Should be in wrapping order: outermost to innermost
+            assert_eq!(detected.len(), 3);
+            assert_eq!(detected[0], TerminalEnvironment::Kitty);
+            assert_eq!(detected[1], TerminalEnvironment::Neovim);
+            assert_eq!(detected[2], TerminalEnvironment::Tmux);
+
+            std::env::remove_var("KITTY_PID");
+            std::env::remove_var("TMUX");
+            std::env::remove_var("NVIM");
+        }
+        {
+            // Simulate iterm2 -> wezterm
+            std::env::set_var("TERM_PROGRAM", "iTerm.app");
+            std::env::set_var("ITERM_SESSION_ID", "456");
+            std::env::set_var("LC_TERMINAL", "iTerm2");
+            std::env::set_var("TERM_PROGRAM", "WezTerm");
+            std::env::set_var("WEZTERM_PANE", "789");
+
+            let detected = detect_terminal_environments();
+
+            // Should be in wrapping order: outermost to innermost
+            assert_eq!(detected.len(), 2);
+            assert_eq!(detected[0], TerminalEnvironment::ITerm2);
+            assert_eq!(detected[1], TerminalEnvironment::WezTerm);
+
+            std::env::remove_var("TERM_PROGRAM");
+            std::env::remove_var("ITERM_SESSION_ID");
+            std::env::remove_var("LC_TERMINAL");
+            std::env::remove_var("WEZTERM_PANE");
+        }
+        {
+            // Simulate wezterm > iterm2
+            std::env::set_var("TERM_PROGRAM", "WezTerm");
+            std::env::set_var("WEZTERM_PANE", "789");
+            std::env::set_var("TERM_PROGRAM", "iTerm.app");
+            std::env::set_var("ITERM_SESSION_ID", "456");
+            std::env::set_var("LC_TERMINAL", "iTerm2");
+
+            let detected = detect_terminal_environments();
+
+            // Should be in wrapping order: outermost to innermost
+            assert_eq!(detected.len(), 2);
+            assert_eq!(detected[0], TerminalEnvironment::WezTerm);
+            assert_eq!(detected[1], TerminalEnvironment::ITerm2);
+
+            std::env::remove_var("TERM_PROGRAM");
+            std::env::remove_var("ITERM_SESSION_ID");
+            std::env::remove_var("LC_TERMINAL");
+            std::env::remove_var("WEZTERM_PANE");
+        }
 
         // Restore original values
         match original_kitty_pid {
