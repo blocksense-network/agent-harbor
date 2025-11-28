@@ -97,6 +97,7 @@ static MODAL_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextField,
     KeyboardOperation::MoveToPreviousField,
     KeyboardOperation::ActivateCurrentItem,
+    KeyboardOperation::ApplyModalChanges,
     KeyboardOperation::DismissOverlay,
     // Text editing operations for modal input fields
     KeyboardOperation::MoveToBeginningOfLine,
@@ -348,7 +349,7 @@ impl ViewModel {
                 None
             };
 
-            self.close_modal();
+            self.close_modal(false); // Dismiss overlay - discard changes
 
             // Restore focus after closing the modal
             if let Some(focus_element) = focus_element_to_restore {
@@ -1106,7 +1107,7 @@ impl ViewModel {
                         // Release borrow explicitly
                         let _ = modal;
                         self.launch_task_with_option(draft_id, option_text);
-                        self.close_modal();
+                        self.close_modal(false);
                         return true;
                     }
                     return false;
@@ -1811,7 +1812,7 @@ impl ViewModel {
         }
 
         // Close the modal and return focus to task description
-        self.close_modal();
+        self.close_modal(true); // Applying selection - save changes
         self.change_focus(DashboardFocusState::DraftTask(0));
         if let Some(card) = self.draft_cards.get_mut(0) {
             card.focus_element = CardFocusElement::TaskDescription;
@@ -1934,6 +1935,8 @@ pub enum MouseAction {
     ModelIncrementCount(usize),
     ModelDecrementCount(usize),
     ModalSelectOption(usize),
+    ModalApplyChanges,
+    ModalCancelChanges,
 }
 
 /// Footer action types for keyboard shortcuts
@@ -2110,6 +2113,7 @@ pub struct InlineEnumPopup {
 pub struct LaunchOptionsViewModel {
     pub draft_id: String,
     pub config: AdvancedLaunchOptions,
+    pub original_config: AdvancedLaunchOptions, // Store original config to restore on Esc
     pub active_column: LaunchOptionsColumn,
     pub selected_option_index: usize,
     pub selected_action_index: usize,
@@ -3304,6 +3308,26 @@ impl ViewModel {
                 } else {
                     false
                 }
+            }
+            KeyboardOperation::ApplyModalChanges => {
+                // Apply changes and close the modal (A key behavior)
+                if let Some(modal) = &self.active_modal {
+                    if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                        // Save the config changes
+                        if let Some(card) =
+                            self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
+                        {
+                            card.advanced_options = Some(view_model.config.clone());
+                        }
+                        self.close_modal(true); // Apply changes - save current config
+                        self.change_focus(DashboardFocusState::DraftTask(0));
+                        if let Some(card) = self.draft_cards.get_mut(0) {
+                            card.focus_element = CardFocusElement::TaskDescription;
+                        }
+                        return true;
+                    }
+                }
+                false
             }
             KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
             KeyboardOperation::IncrementValue => self.handle_increment_decrement_value(true),
@@ -5830,6 +5854,30 @@ impl ViewModel {
                     }
                 }
             }
+            MouseAction::ModalApplyChanges => {
+                // Apply changes and close modal (same logic as 'A' key)
+                if let Some(modal) = &self.active_modal {
+                    if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                        // Save the current config to the draft card
+                        if let Some(card) =
+                            self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
+                        {
+                            card.advanced_options = Some(view_model.config.clone());
+                        }
+                        self.close_modal(true); // Save changes
+
+                        // Restore focus to TaskDescription (as per PRD)
+                        self.focus_element = DashboardFocusState::DraftTask(0);
+                        if let Some(card) = self.draft_cards.first_mut() {
+                            card.focus_element = CardFocusElement::TaskDescription;
+                        }
+                    }
+                }
+            }
+            MouseAction::ModalCancelChanges => {
+                // Discard changes and close modal (same logic as 'Esc' key)
+                self.handle_dismiss_overlay();
+            }
             _ => {
                 // TODO: Handle other mouse actions like ActivateGoButton, StopTask, EditFilter, Footer
             }
@@ -5955,6 +6003,7 @@ impl ViewModel {
             modal_type: ModalType::LaunchOptions {
                 view_model: LaunchOptionsViewModel {
                     draft_id,
+                    original_config: config.clone(), // Store original for restoration on Esc
                     config,
                     active_column: LaunchOptionsColumn::Options,
                     selected_option_index: 0,
@@ -5970,21 +6019,24 @@ impl ViewModel {
     }
 
     /// Close the current modal
-    pub fn close_modal(&mut self) {
-        // Save advanced options back to draft card when closing Launch Options modal
-        if let Some(modal) = &self.active_modal {
-            if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
-                // Find the draft card and save the config
-                if let Some(card) =
-                    self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
-                {
-                    card.advanced_options = Some(view_model.config.clone());
-                    tracing::error!(
-                        "💾 Saved advanced options to draft card: {} (interactive={}, sandbox={:?})",
-                        view_model.draft_id,
-                        view_model.config.interactive_mode,
-                        view_model.config.sandbox_profile
-                    );
+    pub fn close_modal(&mut self, save_changes: bool) {
+        // For Launch Options modal, optionally restore the original config
+        // If save_changes is false, discard changes and restore original config (Esc behavior)
+        // If save_changes is true, keep the current config (Apply behavior)
+        if !save_changes {
+            if let Some(modal) = &self.active_modal {
+                if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                    // Find the draft card and restore the original config
+                    if let Some(card) =
+                        self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
+                    {
+                        // Restore original config - don't save the modified config
+                        card.advanced_options = Some(view_model.original_config.clone());
+                        tracing::debug!(
+                            "🔄 Restored original advanced options for draft card: {} (changes discarded)",
+                            view_model.draft_id
+                        );
+                    }
                 }
             }
         }
@@ -6007,7 +6059,7 @@ impl ViewModel {
             }
             self.needs_redraw = true;
         }
-        self.close_modal();
+        self.close_modal(true); // Applying selection - save changes
         if update_footer_needed {
             self.update_footer();
         }
@@ -6026,7 +6078,7 @@ impl ViewModel {
             }
             self.needs_redraw = true;
         }
-        self.close_modal();
+        self.close_modal(true); // Applying selection - save changes
         if update_footer_needed {
             self.update_footer();
         }
@@ -6060,7 +6112,7 @@ impl ViewModel {
             }
             self.needs_redraw = true;
         }
-        self.close_modal();
+        self.close_modal(true); // Applying selection - save changes
         if update_footer_needed {
             self.update_footer();
         }

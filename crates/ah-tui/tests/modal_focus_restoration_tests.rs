@@ -142,6 +142,8 @@ fn model_modal_returns_focus_to_model_selector() {
     );
 }
 
+// NOTE: Comprehensive keyboard & mouse interaction tests for Launch Options modal in:
+//   `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs`
 #[test]
 fn launch_options_modal_returns_focus_to_task_description() {
     let (mut log, log_path) = common::create_test_log("launch_options_modal_focus");

@@ -1096,6 +1096,24 @@ mod mouse {
         );
     }
 
+    // ============================================================================
+    // Launch Options Modal Tests
+    //
+    // NOTE: Comprehensive tests for Launch Options modal interaction (keyboard
+    // shortcuts, mouse clicks, state management) are in:
+    //   `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs`
+    //
+    // That test suite covers:
+    // - 'A' key to save changes and close modal
+    // - 'Esc' key to discard changes and restore original config
+    // - Mouse clicks on "A Apply" and "Esc Cancel" hint text
+    // - Edge cases (multiple ESC presses, no prior config, etc.)
+    // - Focus restoration after modal closes
+    // - Interchangeability of keyboard and mouse inputs
+    //
+    // The tests below verify basic modal opening behavior.
+    // ============================================================================
+
     #[tokio::test]
     async fn ctrl_enter_opens_advanced_launch_options_menu() {
         // See also: session_persistence_tests.rs for tests covering:
@@ -1239,6 +1257,7 @@ mod mouse {
                     selected_option_index: 0,
                     selected_action_index: 1, // "Launch in new tab" is 0, "Launch in split view" is 1
                     inline_enum_popup: None,
+                    original_config: AdvancedLaunchOptions::default(),
                 },
             },
             "Launch in new tab (t)".to_string(),
@@ -1294,6 +1313,7 @@ mod mouse {
                     selected_option_index: 0,
                     selected_action_index: 1, // "Launch in split view" is index 1
                     inline_enum_popup: None,
+                    original_config: AdvancedLaunchOptions::default(),
                 },
             },
             "Launch in split view (s)".to_string(),
@@ -1346,6 +1366,7 @@ mod mouse {
                     selected_option_index: 0,
                     selected_action_index: 2, // "Launch in horizontal split" is index 2
                     inline_enum_popup: None,
+                    original_config: AdvancedLaunchOptions::default(),
                 },
             },
             "Launch in horizontal split (h)".to_string(),
@@ -1398,6 +1419,7 @@ mod mouse {
                     selected_option_index: 0,
                     selected_action_index: 3, // "Launch in vertical split" is index 3
                     inline_enum_popup: None,
+                    original_config: AdvancedLaunchOptions::default(),
                 },
             },
             "Launch in vertical split (v)".to_string(),
@@ -1411,6 +1433,8 @@ mod mouse {
         );
     }
 
+    // See comprehensive modal interaction tests in:
+    //   `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs`
     #[tokio::test]
     async fn advanced_options_button_click_opens_menu() {
         // See also: session_persistence_tests.rs for tests covering:

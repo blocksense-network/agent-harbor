@@ -23,6 +23,14 @@ fn create_test_log(test_name: &str) -> (std::fs::File, std::path::PathBuf) {
     common::create_test_log(test_name)
 }
 
+// ============================================================================
+// NOTE: Comprehensive keyboard & mouse interaction tests for Launch Options
+// modal (A key, Esc key, mouse clicks, state management) are in:
+//   `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs`
+//
+// The tests below verify session persistence and storage behavior.
+// ============================================================================
+
 #[test]
 fn advanced_options_stored_in_draft_card_when_modal_closed() {
     let (mut log, log_path) = create_test_log("advanced_options_storage");

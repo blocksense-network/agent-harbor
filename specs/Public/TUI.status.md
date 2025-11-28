@@ -169,7 +169,7 @@ The TUI implementation provides these core capabilities:
   - `crates/ah-tui/src/test_runtime.rs` - Deterministic test execution engine
   - `crates/ah-tui-test/src/main.rs` - Interactive and automated test runners
 
-**T2.5. Advanced Launch Options & Session Persistence** ✅ **COMPLETED** (November 27, 2025)
+**T2.5. Advanced Launch Options & Session Persistence** ✅ **COMPLETED** (November 28, 2025)
 
 - **Deliverables**:
   - ✅ Advanced options modal with two-column layout (options + launch shortcuts)
@@ -178,6 +178,10 @@ The TUI implementation provides these core capabilities:
   - ✅ Advanced options preserved across task launches within session
   - ✅ Comprehensive keyboard shortcuts (t/s/h/v/T/S/H/V) from modal
   - ✅ Consistent behavior across all launch methods (keyboard, modal, Go button)
+  - ✅ Modal keyboard shortcuts: 'A' key to apply changes, 'Esc' key to discard changes
+  - ✅ Mouse interaction support: Clickable hint text for Apply and Cancel actions
+  - ✅ Visual feedback: Bold key indicators in hint text ("**A** Apply • **Esc** Cancel")
+  - ✅ Focus restoration: Focus returns to task description textarea after modal closes
 
 - **Test Coverage**:
   - ✅ Advanced options stored in draft card when modal closed
@@ -186,6 +190,12 @@ The TUI implementation provides these core capabilities:
   - ✅ Split mode preference remembered and applied as default
   - ✅ Keyboard shortcuts work from both modal and textarea
   - ✅ All launch methods use consistent advanced options flow
+  - ✅ 'A' key saves changes and closes modal (test: `test_a_key_saves_changes_and_closes_modal`)
+  - ✅ 'Esc' key discards changes and restores original config (test: `test_esc_key_discards_changes_and_restores_original`)
+  - ✅ Mouse clicks on hint text work for both Apply and Cancel (tests: `test_mouse_click_apply_saves_changes`, `test_mouse_click_cancel_discards_changes`)
+  - ✅ Keyboard and mouse interactions are interchangeable (test: `test_mouse_click_and_keyboard_interchangeable`)
+  - ✅ Edge cases: Multiple ESC presses don't corrupt state, no prior config restoration works correctly
+  - ✅ Focus restoration verified after applying changes (test: `test_focus_restoration_after_a_key`)
 
 - **Implementation Details**:
   - **Advanced Options Storage**: Stored in `TaskEntryViewModel.advanced_options` field, persisting for the session
@@ -193,6 +203,10 @@ The TUI implementation provides these core capabilities:
   - **Disk Persistence Removed**: Removed `Settings::save_default_split_mode()` to prevent configuration file pollution
   - **Consistent Launch Flow**: All launch paths retrieve options from draft card or use defaults
   - **Options Flow**: Configure → Store in Card → Launch with Options
+  - **Modal State Management**: `LaunchOptionsViewModel` now includes `original_config` field to support change discarding
+  - **Change Control**: `close_modal(save_changes: bool)` function provides explicit control over applying or discarding changes
+  - **Mouse Interactions**: Registered clickable areas for hint text with `MouseAction::ModalApplyChanges` and `MouseAction::ModalCancelChanges`
+  - **Keyboard Shortcuts**: Added `ApplyModalChanges` keyboard operation bound to 'A' key in modal context
 
 - **Architecture**:
   - **Before**: Advanced options extracted from modal at launch time → inconsistent behavior based on launch method
@@ -200,10 +214,12 @@ The TUI implementation provides these core capabilities:
   - **Benefits**: Session-only storage prevents config pollution while maintaining convenience; configure once, launch multiple times
 
 - **Key Source Files**:
-  - `crates/ah-tui/src/view_model/agents_selector_model.rs` - Launch flow and advanced options handling
+  - `crates/ah-tui/src/view_model/agents_selector_model.rs` - Launch flow, advanced options handling, modal interaction logic, and mouse action handlers
   - `crates/ah-tui/src/view_model/dashboard_model.rs` - Dashboard launch implementation
   - `crates/ah-tui/src/view_model/task_entry.rs` - TaskEntryViewModel with advanced_options field
-  - `crates/ah-tui/src/settings.rs` - Settings with session-only default_split_mode
+  - `crates/ah-tui/src/settings.rs` - Settings with session-only default_split_mode and ApplyModalChanges keyboard operation
+  - `crates/ah-tui/src/view/launch_options_modal.rs` - Modal rendering with clickable hint text and visual feedback
+  - `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs` - Comprehensive test suite for keyboard and mouse interactions
 
 - **Integration Points**:
   - Testing framework can be extended for all future TUI features
