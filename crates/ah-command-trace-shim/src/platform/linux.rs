@@ -20,6 +20,10 @@ fn initialize_shim() {
         // Keep the shim present in indirectly spawned descendants so their exec
         // paths continue to emit CommandStart/Chunk events.
         enable_auto_propagation();
+        // Force glibc's posix_spawn to fall back to fork() to keep shim logic
+        // vfork-safe. The shim performs allocations and logging that violate
+        // vfork constraints, so using fork avoids corrupting the suspended parent.
+        std::env::set_var("POSIX_SPAWN_USEVFORK", "0");
         // Try to initialize client for handshake, but don't fail if connection fails
         // This allows the smoke test to verify that the shim can connect
         let _ = posix::initialize_client();
@@ -55,13 +59,8 @@ pub fn send_keepalive() -> Result<(), Box<dyn std::error::Error>> {
 
 // Common hooks (fork, execve, execvp, posix_spawn, posix_spawnp) are now defined in posix.rs for cross-platform compatibility
 
-// Linux-specific hooks for vfork and clone
-stackable_hooks::hook! {
-    unsafe fn vfork() -> libc::pid_t => my_vfork {
-        stackable_hooks::call_next!()
-    }
-}
-
+// Linux-specific hooks for clone (vfork is intentionally left unhooked; interposing vfork
+// is not async-signal-safe and can corrupt the parent when the child returns).
 stackable_hooks::hook! {
     unsafe fn clone(fn_: extern "C" fn(*mut libc::c_void) -> libc::c_int, child_stack: *mut libc::c_void, flags: libc::c_int, arg: *mut libc::c_void, ptid: *mut libc::pid_t, tls: *mut libc::c_void, ctid: *mut libc::pid_t) -> libc::c_int => my_clone {
         stackable_hooks::call_next!(fn_, child_stack, flags, arg, ptid, tls, ctid)
