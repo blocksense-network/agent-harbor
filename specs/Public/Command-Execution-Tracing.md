@@ -35,6 +35,12 @@ This passthrough mode gives us byte-perfect recordings for the exact processes t
 
 Processes spawned _inside_ the recorded command (e.g., scripts forking helpers) are still intercepted by the existing interpose shims described below. Their stdout/stderr streams are attributed and forwarded to the same recorder so observers see a complete picture, regardless of whether the bytes originated in the top-level command or a nested child.
 
+### Runtime Modes (single shim)
+
+- **Passthrough/root-agent mode** is activated when `AH_CMDTRACE_PASSTHROUGH=1` is present. The shim rewrites `exec/posix_spawn*` to run under `ah agent record --passthrough ...` and self-reports the agent process. On initialization it immediately removes `AH_CMDTRACE_PASSTHROUGH` from the environment to avoid leaking passthrough mode into indirect children; descendants therefore run in capture-only mode.
+- **Capture-only mode** is used when the flag is absent (or sockets are missing/invalid): the shim still self-reports and streams CommandStart/Chunk events. It does **not** rewrite commands, but it **does** auto-propagate itself to indirect children via `stackable-hooks` so grandchildren continue emitting CommandStart/Chunk events. Fail-open semantics (missing sockets/env) remain unchanged.
+- A guard `AH_CMDTRACE_SKIP_REWRITE=1` prevents recursion if a process is already wrapped. Secure binaries (`AT_SECURE`) and setuid paths are skipped automatically.
+
 ## Goals
 
 - Capture every process that participates in a traced session, including shell pipelines, interpreters, and short-lived binaries.
