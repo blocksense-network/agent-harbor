@@ -2,23 +2,27 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: code_refactoring_scenario
-initialPrompt: 'Refactor the code to improve its structure'
+initialPrompt: Refactor the code to improve its structure
 repo:
   init: true
 timeline:
-  - think:
-      - [500, 'Processing request for code_refactoring_scenario']
+  - llmResponse:
+      - think:
+          - content: Processing request for code_refactoring_scenario
+            relativeTime: 500
   - agentToolUse:
-      toolName: 'writeFile'
+      toolName: writeFile
       args:
-        path: 'test.txt'
-        text: 'Test content for code_refactoring_scenario'
-      result: 'File created'
-      status: 'ok'
-  - assistant:
-      - [300, 'Completed code_refactoring_scenario scenario']
+        path: test.txt
+        text: Test content for code_refactoring_scenario
+      result: File created
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Completed code_refactoring_scenario scenario
+            relativeTime: 300
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'test.txt'
+    - type: taskFile
+      pattern: test.txt

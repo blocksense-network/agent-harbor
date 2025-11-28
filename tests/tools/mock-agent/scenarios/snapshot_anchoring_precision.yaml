@@ -2,72 +2,70 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: snapshot_anchoring_precision
-initialPrompt: 'Test snapshot anchoring precision'
-description: 'Test byte-level anchoring precision for filesystem snapshots in recordings'
+initialPrompt: Test snapshot anchoring precision
+description: Test byte-level anchoring precision for filesystem snapshots in recordings
 repo:
   init: true
 timeline:
-  - think:
-      - [100, 'Testing precise snapshot anchoring with multiple operations.']
+  - llmResponse:
+      - think:
+          - content: Testing precise snapshot anchoring with multiple operations.
+            relativeTime: 100
   - agentToolUse:
-      toolName: 'writeFile'
+      toolName: writeFile
       args:
-        path: 'config.json'
-        text: |
-          {
-            "version": "1.0.0",
-            "name": "test-app"
-          }
-      result: 'Config created'
-      status: 'ok'
-  - assistant:
-      - [50, 'First checkpoint - initial config.']
+        path: config.json
+        text: "{\n  \"version\": \"1.0.0\",\n  \"name\": \"test-app\"\n}\n"
+      result: Config created
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: First checkpoint - initial config.
+            relativeTime: 50
   - agentToolUse:
-      toolName: 'writeFile'
+      toolName: writeFile
       args:
-        path: 'app.py'
-        text: |
-          import json
-
-          def load_config():
-              with open('config.json') as f:
-                  return json.load(f)
-      result: 'App created'
-      status: 'ok'
-  - assistant:
-      - [50, 'Second checkpoint - app loader.']
+        path: app.py
+        text: "import json\n\ndef load_config():\n    with open('config.json') as f:\n\
+          \        return json.load(f)\n"
+      result: App created
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Second checkpoint - app loader.
+            relativeTime: 50
   - agentToolUse:
-      toolName: 'appendFile'
+      toolName: appendFile
       args:
-        path: 'config.json'
-        text: |
-          ,
-            "port": 8080
-      result: 'Port added'
-      status: 'ok'
-  - assistant:
-      - [50, 'Third checkpoint - configuration updated.']
+        path: config.json
+        text: ",\n  \"port\": 8080\n"
+      result: Port added
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Third checkpoint - configuration updated.
+            relativeTime: 50
   - agentToolUse:
-      toolName: 'replaceInFile'
+      toolName: replaceInFile
       args:
-        path: 'config.json'
+        path: config.json
         old_str: '"version": "1.0.0"'
         new_str: '"version": "1.1.0"'
-      result: 'Version bumped'
-      status: 'ok'
-  - assistant:
-      - [
-          50,
-          'Fourth checkpoint - version updated. Each snapshot should be anchored to precise byte offsets in the PTY stream.',
-        ]
+      result: Version bumped
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Fourth checkpoint - version updated. Each snapshot should be anchored
+              to precise byte offsets in the PTY stream.
+            relativeTime: 50
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'config.json'
-    - type: 'taskFile'
-      pattern: 'app.py'
+    - type: taskFile
+      pattern: config.json
+    - type: taskFile
+      pattern: app.py
   snapshots:
     count: 4
-    anchor_validation: 'byte_offset_monotonic'
+    anchor_validation: byte_offset_monotonic
     anchor_spacing_ms: '>= 50'

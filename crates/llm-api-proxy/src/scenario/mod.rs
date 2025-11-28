@@ -112,6 +112,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use serde_json::{Map as JsonMap, Value as JsonValue, json};
+use serde_yaml;
 
 use crate::{
     config::ProxyConfig,
@@ -122,7 +123,7 @@ use crate::{
 use ah_scenario_format::{
     AssistantStep, ErrorData, FileEditData, ResponseElement, Scenario, ScenarioLoader,
     ScenarioMatcher, ScenarioRecord, ScenarioSource, ThinkingStep, TimelineEvent, ToolResultData,
-    ToolUseData,
+    ToolUseData, UserInputEntry, extract_prompt_from_input_value, extract_text_from_content_block,
 };
 
 // Add missing dependencies for timeline processing
@@ -683,60 +684,29 @@ impl ScenarioPlayer {
     /// Validate scenario structure and constraints
     fn validate_scenario(scenario: &Scenario) -> Result<()> {
         for event in &scenario.timeline {
-            match event {
-                TimelineEvent::LlmResponse { llm_response } => {
-                    let mut has_thinking = false;
-                    let mut has_assistant = false;
+            if let TimelineEvent::LlmResponse { llm_response } = event {
+                let mut has_thinking = false;
+                let mut has_assistant = false;
 
-                    for element in llm_response {
-                        match element {
-                            ResponseElement::Think { .. } => {
-                                has_thinking = true;
-                            }
-                            ResponseElement::Assistant { .. } => {
-                                has_assistant = true;
-                            }
-                            _ => {}
+                for element in llm_response {
+                    match element {
+                        ResponseElement::Think { .. } => {
+                            has_thinking = true;
                         }
-                    }
-
-                    // If there's thinking, there must also be an assistant response
-                    if has_thinking && !has_assistant {
-                        return Err(Error::Scenario {
-                            message:
-                                "llmResponse contains thinking blocks but no assistant responses"
-                                    .to_string(),
-                        });
+                        ResponseElement::Assistant { .. } => {
+                            has_assistant = true;
+                        }
+                        _ => {}
                     }
                 }
-                TimelineEvent::Legacy(data) => {
-                    if let Some(serde_yaml::Value::Sequence(elements)) = data.get("llmResponse") {
-                        let mut has_thinking = false;
-                        let mut has_assistant = false;
 
-                        for element_value in elements {
-                            if let serde_yaml::Value::Mapping(map) = element_value {
-                                if map.keys().any(|key| {
-                                    matches!(key, serde_yaml::Value::String(s) if s == "think")
-                                }) {
-                                    has_thinking = true;
-                                }
-                                if map.keys().any(|key| {
-                                    matches!(key, serde_yaml::Value::String(s) if s == "assistant")
-                                }) {
-                                    has_assistant = true;
-                                }
-                            }
-                        }
-
-                        if has_thinking && !has_assistant {
-                            return Err(Error::Scenario {
-                                message: "llmResponse contains thinking blocks but no assistant responses".to_string(),
-                            });
-                        }
-                    }
+                // If there's thinking, there must also be an assistant response
+                if has_thinking && !has_assistant {
+                    return Err(Error::Scenario {
+                        message: "llmResponse contains thinking blocks but no assistant responses"
+                            .to_string(),
+                    });
                 }
-                _ => {}
             }
         }
 
@@ -924,92 +894,49 @@ impl ScenarioSession {
 
         // Scan timeline from beginning to find matching userInput and its following llmResponse
         for (idx, event) in scenario.timeline.iter().enumerate() {
-            if let TimelineEvent::Legacy(data) = event {
-                if let Some(user_inputs) = data.get("userInputs") {
-                    // Check if this userInputs event matches our user content
-                    if self.user_input_matches(user_inputs, &user_content)? {
-                        // Found matching userInput, look for the next llmResponse
-                        for next_idx in (idx + 1)..scenario.timeline.len() {
-                            match &scenario.timeline[next_idx] {
-                                TimelineEvent::LlmResponse { llm_response } => {
-                                    // Found the following llmResponse - process it
-                                    let mut response_parts = Vec::new();
-                                    for element in llm_response {
-                                        match element {
-                                            ResponseElement::Error { error } => {
-                                                return self.generate_error_response(
-                                                    error.clone(),
-                                                    client_format,
-                                                );
-                                            }
-                                            _ => {
-                                                let part = self
-                                                    .response_element_to_response_part(element)?;
-                                                response_parts.push(part);
-                                            }
-                                        }
-                                    }
-                                    let aggregated = self.process_response_parts(response_parts)?;
-                                    return if streaming {
-                                        self.generate_streaming_response(aggregated, client_format)
-                                    } else {
-                                        self.generate_api_response(aggregated, client_format)
-                                    };
-                                }
-                                TimelineEvent::Legacy(data) => {
-                                    if let Some(llm_response_value) = data.get("llmResponse") {
-                                        let llm_response: Vec<ResponseElement> =
-                                            serde_yaml::from_value(llm_response_value.clone())
-                                                .map_err(|e| Error::Scenario {
-                                                    message: format!(
-                                                        "Failed to parse llmResponse: {}",
-                                                        e
-                                                    ),
-                                                })?;
-                                        let mut response_parts = Vec::new();
-                                        for element in llm_response {
-                                            match element {
-                                                ResponseElement::Error { error } => {
-                                                    return self.generate_error_response(
-                                                        error.clone(),
-                                                        client_format,
-                                                    );
-                                                }
-                                                _ => {
-                                                    let part = self
-                                                        .response_element_to_response_part(
-                                                            &element,
-                                                        )?;
-                                                    response_parts.push(part);
-                                                }
-                                            }
-                                        }
-                                        let aggregated =
-                                            self.process_response_parts(response_parts)?;
-                                        return if streaming {
-                                            self.generate_streaming_response(
-                                                aggregated,
-                                                client_format,
-                                            )
-                                        } else {
-                                            self.generate_api_response(aggregated, client_format)
-                                        };
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        return Err(Error::Scenario {
-                            message: "Found matching userInput but no following llmResponse"
-                                .to_string(),
-                        });
-                    }
+            if let TimelineEvent::UserInputs { user_inputs } = event {
+                if self.user_input_entries_match(user_inputs, &user_content) {
+                    return self.llm_response_after_index(scenario, idx, client_format, streaming);
                 }
             }
         }
 
         Err(Error::Scenario {
             message: format!("No matching userInput found for content: {}", user_content),
+        })
+    }
+
+    fn llm_response_after_index(
+        &mut self,
+        scenario: &Scenario,
+        idx: usize,
+        client_format: crate::converters::ApiFormat,
+        streaming: bool,
+    ) -> Result<ProxyResponse> {
+        for next_idx in (idx + 1)..scenario.timeline.len() {
+            if let TimelineEvent::LlmResponse { llm_response } = &scenario.timeline[next_idx] {
+                let mut response_parts = Vec::new();
+                for element in llm_response {
+                    match element {
+                        ResponseElement::Error { error } => {
+                            return self.generate_error_response(error.clone(), client_format);
+                        }
+                        _ => {
+                            let part = self.response_element_to_response_part(element)?;
+                            response_parts.push(part);
+                        }
+                    }
+                }
+                let aggregated = self.process_response_parts(response_parts)?;
+                return if streaming {
+                    self.generate_streaming_response(aggregated, client_format)
+                } else {
+                    self.generate_api_response(aggregated, client_format)
+                };
+            }
+        }
+        Err(Error::Scenario {
+            message: "Found matching userInput but no following llmResponse".to_string(),
         })
     }
 
@@ -1026,86 +953,10 @@ impl ScenarioSession {
 
         // Scan timeline to find matching agentToolUse and its following llmResponse
         for (idx, event) in scenario.timeline.iter().enumerate() {
-            if let TimelineEvent::Legacy(data) = event {
-                if let Some(agent_tool_use) = data.get("agentToolUse") {
-                    // Check if this tool use matches our tool result
-                    if self.tool_execution_matches(agent_tool_use, &tool_content)? {
-                        // Found matching tool execution, look for the next llmResponse
-                        for next_idx in (idx + 1)..scenario.timeline.len() {
-                            match &scenario.timeline[next_idx] {
-                                TimelineEvent::LlmResponse { llm_response } => {
-                                    // Found the following llmResponse - process it
-                                    let mut response_parts = Vec::new();
-                                    for element in llm_response {
-                                        match element {
-                                            ResponseElement::Error { error } => {
-                                                return self.generate_error_response(
-                                                    error.clone(),
-                                                    client_format,
-                                                );
-                                            }
-                                            _ => {
-                                                let part = self
-                                                    .response_element_to_response_part(element)?;
-                                                response_parts.push(part);
-                                            }
-                                        }
-                                    }
-                                    let aggregated = self.process_response_parts(response_parts)?;
-                                    return if streaming {
-                                        self.generate_streaming_response(aggregated, client_format)
-                                    } else {
-                                        self.generate_api_response(aggregated, client_format)
-                                    };
-                                }
-                                TimelineEvent::Legacy(data) => {
-                                    if let Some(llm_response_value) = data.get("llmResponse") {
-                                        let llm_response: Vec<ResponseElement> =
-                                            serde_yaml::from_value(llm_response_value.clone())
-                                                .map_err(|e| Error::Scenario {
-                                                    message: format!(
-                                                        "Failed to parse llmResponse: {}",
-                                                        e
-                                                    ),
-                                                })?;
-                                        let mut response_parts = Vec::new();
-                                        for element in llm_response {
-                                            match element {
-                                                ResponseElement::Error { error } => {
-                                                    return self.generate_error_response(
-                                                        error.clone(),
-                                                        client_format,
-                                                    );
-                                                }
-                                                _ => {
-                                                    let part = self
-                                                        .response_element_to_response_part(
-                                                            &element,
-                                                        )?;
-                                                    response_parts.push(part);
-                                                }
-                                            }
-                                        }
-                                        let aggregated =
-                                            self.process_response_parts(response_parts)?;
-                                        return if streaming {
-                                            self.generate_streaming_response(
-                                                aggregated,
-                                                client_format,
-                                            )
-                                        } else {
-                                            self.generate_api_response(aggregated, client_format)
-                                        };
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        return Err(Error::Scenario {
-                            message: "Found matching tool execution but no following llmResponse"
-                                .to_string(),
-                        });
-                    }
+            if let TimelineEvent::AgentToolUse { agent_tool_use } = event {
+                let agent_yaml = serde_yaml::to_value(agent_tool_use)?;
+                if self.tool_execution_matches(&agent_yaml, &tool_content)? {
+                    return self.llm_response_after_index(scenario, idx, client_format, streaming);
                 }
             }
         }
@@ -1201,31 +1052,14 @@ impl ScenarioSession {
         Ok(content.clone())
     }
 
-    /// Check if a scenario userInputs event matches the actual user input content
-    fn user_input_matches(
-        &self,
-        scenario_user_inputs: &serde_yaml::Value,
-        actual_content: &str,
-    ) -> Result<bool> {
-        // Handle the scenario userInputs format: [[milliseconds, "text"], ...]
-        let inputs_array = scenario_user_inputs.as_sequence().ok_or_else(|| Error::Scenario {
-            message: "userInputs should be an array".to_string(),
-        })?;
-
-        for input_item in inputs_array {
-            if let Some(input_array) = input_item.as_sequence() {
-                if input_array.len() >= 2 {
-                    if let Some(text) = input_array[1].as_str() {
-                        // Simple substring match - could be made more sophisticated
-                        if actual_content.contains(text) {
-                            return Ok(true);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(false)
+    /// Check new typed user input entries
+    fn user_input_entries_match(&self, entries: &[UserInputEntry], actual_content: &str) -> bool {
+        entries.iter().any(|entry| {
+            extract_prompt_from_input_value(&entry.input)
+                .or_else(|| extract_text_from_content_block(&entry.input))
+                .map(|prompt| actual_content.contains(&prompt))
+                .unwrap_or(false)
+        })
     }
 
     /// Check if a scenario agentToolUse event matches the actual tool result content
@@ -1273,13 +1107,10 @@ impl ScenarioSession {
         client_format: crate::converters::ApiFormat,
         streaming: bool,
     ) -> Result<ProxyResponse> {
-        // Scan through the scenario timeline from current position for any response event
         while self.current_event_index < scenario.timeline.len() {
             let event = &scenario.timeline[self.current_event_index];
-
             match event {
                 TimelineEvent::LlmResponse { llm_response } => {
-                    // Found an llmResponse - process it
                     let mut response_parts = Vec::new();
                     for element in llm_response {
                         match element {
@@ -1300,98 +1131,33 @@ impl ScenarioSession {
                         self.generate_api_response(aggregated, client_format)
                     };
                 }
-                TimelineEvent::Legacy(data) => {
-                    // Check for llmResponse events
-                    if let Some(llm_response_value) = data.get("llmResponse") {
-                        let llm_response: Vec<ResponseElement> =
-                            serde_yaml::from_value(llm_response_value.clone()).map_err(|e| {
-                                Error::Scenario {
-                                    message: format!("Failed to parse llmResponse: {}", e),
-                                }
-                            })?;
-                        self.current_event_index += 1;
-                        let mut response_parts = Vec::new();
-                        for element in llm_response {
-                            match element {
-                                ResponseElement::Error { error } => {
-                                    return self
-                                        .generate_error_response(error.clone(), client_format);
-                                }
-                                _ => {
-                                    let part = self.response_element_to_response_part(&element)?;
-                                    response_parts.push(part);
-                                }
-                            }
-                        }
-                        let aggregated = self.process_response_parts(response_parts)?;
-                        return if streaming {
-                            self.generate_streaming_response(aggregated, client_format)
-                        } else {
-                            self.generate_api_response(aggregated, client_format)
-                        };
-                    }
-                    // Check for agentToolUse events
-                    if let Some(agent_tool_use_value) = data.get("agentToolUse") {
-                        let agent_tool_use: ToolUseData =
-                            serde_yaml::from_value(agent_tool_use_value.clone()).map_err(|e| {
-                                Error::Scenario {
-                                    message: format!("Failed to parse agentToolUse: {}", e),
-                                }
-                            })?;
-                        self.current_event_index += 1;
-                        let response_part = ResponsePart::ToolUse(agent_tool_use);
-                        let aggregated = self.process_response_parts(vec![response_part])?;
-                        return if streaming {
-                            self.generate_streaming_response(aggregated, client_format)
-                        } else {
-                            self.generate_api_response(aggregated, client_format)
-                        };
-                    }
-                    // Check for agentEdits events
-                    if let Some(agent_edits_value) = data.get("agentEdits") {
-                        let agent_edits: FileEditData =
-                            serde_yaml::from_value(agent_edits_value.clone()).map_err(|e| {
-                                Error::Scenario {
-                                    message: format!("Failed to parse agentEdits: {}", e),
-                                }
-                            })?;
-                        self.current_event_index += 1;
-                        let response_part = ResponsePart::FileEdit(agent_edits);
-                        let aggregated = self.process_response_parts(vec![response_part])?;
-                        return if streaming {
-                            self.generate_streaming_response(aggregated, client_format)
-                        } else {
-                            self.generate_api_response(aggregated, client_format)
-                        };
-                    }
-                    // Check for old-style assistant events
-                    if let Some(assistant_steps) = data.get("assistant") {
-                        let steps: Vec<AssistantStep> =
-                            serde_yaml::from_value(assistant_steps.clone()).map_err(|e| {
-                                Error::Scenario {
-                                    message: format!("Failed to parse assistant steps: {}", e),
-                                }
-                            })?;
-                        self.current_event_index += 1;
-                        let aggregated =
-                            self.process_response_parts(vec![ResponsePart::Assistant(steps)])?;
-                        return if streaming {
-                            self.generate_streaming_response(aggregated, client_format)
-                        } else {
-                            self.generate_api_response(aggregated, client_format)
-                        };
-                    }
-                    // Skip other events
+                TimelineEvent::AgentToolUse { agent_tool_use } => {
                     self.current_event_index += 1;
+                    let aggregated = self.process_response_parts(vec![ResponsePart::ToolUse(
+                        agent_tool_use.clone(),
+                    )])?;
+                    return if streaming {
+                        self.generate_streaming_response(aggregated, client_format)
+                    } else {
+                        self.generate_api_response(aggregated, client_format)
+                    };
                 }
-                // Skip control events, assertions, etc.
+                TimelineEvent::AgentEdits { agent_edits } => {
+                    self.current_event_index += 1;
+                    let aggregated = self.process_response_parts(vec![ResponsePart::FileEdit(
+                        agent_edits.clone(),
+                    )])?;
+                    return if streaming {
+                        self.generate_streaming_response(aggregated, client_format)
+                    } else {
+                        self.generate_api_response(aggregated, client_format)
+                    };
+                }
                 _ => {
                     self.current_event_index += 1;
                 }
             }
         }
-
-        // No more responses found - return minimal response without advancing scenario
         self.generate_minimal_response(client_format)
     }
 
@@ -1620,7 +1386,14 @@ impl ScenarioSession {
                 }
                 ResponsePart::Assistant(steps) => {
                     for step in steps {
-                        aggregate.assistant_text.push_str(&step.1);
+                        let text =
+                            extract_text_from_content_block(&step.content).unwrap_or_else(|| {
+                                serde_yaml::to_string(&step.content).unwrap_or_default()
+                            });
+                        if !aggregate.assistant_text.is_empty() && !text.is_empty() {
+                            aggregate.assistant_text.push('\n');
+                        }
+                        aggregate.assistant_text.push_str(&text);
                     }
                 }
                 ResponsePart::ToolUse(tool_data) => {
@@ -1771,7 +1544,7 @@ impl ScenarioSession {
         for step in thinking_steps {
             content.push(serde_json::json!({
                 "type": "thinking",
-                "thinking": step.1,
+                "thinking": step.content.clone(),
             }));
         }
 
@@ -1949,8 +1722,6 @@ impl ScenarioSession {
 
                 // Generate thinking blocks if present
                 for (thinking_idx, thinking_step) in thinking_steps.iter().enumerate() {
-                    let ThinkingStep(_, text) = thinking_step;
-
                     // Content block start for thinking
                     let content_block_start = serde_json::json!({
                         "type": "content_block_start",
@@ -1966,7 +1737,7 @@ impl ScenarioSession {
                     ));
 
                     // Content block deltas for thinking text (realistic chunking)
-                    let chunks = self.chunk_text(text, client_format);
+                    let chunks = self.chunk_text(&thinking_step.content, client_format);
                     for chunk in chunks {
                         let content_block_delta = serde_json::json!({
                             "type": "content_block_delta",

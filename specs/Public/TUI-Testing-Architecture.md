@@ -62,7 +62,7 @@ The architecture combines:
   "name": "task_creation_happy_path",
   "terminal": { "width": 100, "height": 30 },
   "steps": [
-    { "advanceMs": 50 },
+    { "baseTimeDelta": 50 },
     { "sse": { "type": "Status", "status": "Running" } },
     { "key": "Tab" },
     { "key": "Down" },
