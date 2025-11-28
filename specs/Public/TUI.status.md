@@ -181,7 +181,7 @@ The TUI implementation provides these core capabilities:
   - ✅ Modal keyboard shortcuts: 'A' key to apply changes, 'Esc' key to discard changes
   - ✅ Mouse interaction support: Clickable hint text for Apply and Cancel actions
   - ✅ Visual feedback: Bold key indicators in hint text ("**A** Apply • **Esc** Cancel")
-  - ✅ Focus restoration: Focus returns to task description textarea after modal closes
+  - ✅ Focus restoration: Focus returns to task description textarea after modal closes via any method (ESC, A key, or split launch shortcuts t/s/h/v/T/S/H/V)
 
 - **Test Coverage**:
   - ✅ Advanced options stored in draft card when modal closed
@@ -196,6 +196,7 @@ The TUI implementation provides these core capabilities:
   - ✅ Keyboard and mouse interactions are interchangeable (test: `test_mouse_click_and_keyboard_interchangeable`)
   - ✅ Edge cases: Multiple ESC presses don't corrupt state, no prior config restoration works correctly
   - ✅ Focus restoration verified after applying changes (test: `test_focus_restoration_after_a_key`)
+  - ✅ Focus restoration verified when using split launch shortcuts (test: `test_split_launch_shortcut_restores_focus_to_task_description`)
 
 - **Implementation Details**:
   - **Advanced Options Storage**: Stored in `TaskEntryViewModel.advanced_options` field, persisting for the session
