@@ -11,6 +11,6 @@ name = "call_real_shim"
 crate-type = ["cdylib"]
 
 [dependencies]
-stackable-hooks = { path = "../../crates/stackable-hooks" }
+stackable-hooks = { workspace = true }
 libc = "0.2"
 ctor = "0.2"

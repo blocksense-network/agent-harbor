@@ -17,7 +17,7 @@
 
 ```toml
 [dependencies]
-stackable-hooks = { path = "crates/stackable-hooks" }
+stackable-hooks = { workspace = true }
 
 [lib]
 crate-type = ["cdylib"]

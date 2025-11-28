@@ -9,7 +9,7 @@ description = "agent-harbor specific multiplexer abstractions for TUI integratio
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-ah-mux-core = { path = "../ah-mux-core" }
-ah-mux = { path = "../ah-mux", default-features = false }
+ah-mux-core = { workspace = true }
+ah-mux = { workspace = true }
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }

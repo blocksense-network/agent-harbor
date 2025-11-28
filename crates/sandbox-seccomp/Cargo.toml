@@ -17,7 +17,7 @@ libc = "0.2"
 libseccomp-sys = "0.2"
 nix = { version = "0.27", features = ["fs", "process", "socket"] }
 async-trait = { workspace = true }
-sandbox-proto = { path = "../sandbox-proto" }
+sandbox-proto = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

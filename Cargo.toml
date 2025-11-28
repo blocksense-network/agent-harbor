@@ -10,6 +10,7 @@ members = [
   # "crates/ah-agent-codex", # Temporarily disabled
   "crates/ah-config-types",
   "crates/ah-core",
+  "crates/ah-domain-types",
   "crates/ah-gui-core",
   "crates/ah-local-db",
   "crates/ah-logging",
@@ -98,6 +99,101 @@ exclude = ["vendor", "PoC", "tests/agentfs-daemon-backstore-integration"]
 resolver = "2"
 
 [workspace.dependencies]
+
+# Own packages, re-imported for easier cross-use throughout the workspace
+ah-cli = { path = "./crates/ah-cli" }
+# Agent abstraction layer (monolith + facades)
+ah-agents = { path = "./crates/ah-agents" }
+# ah-agent-claude = { path = "./ crates/ah-agent-claude" } # Temporarily disable
+# ah-agent-codex = { path = "./ crates/ah-agent-codex" } # Temporarily disable
+ah-config-types = { path = "./crates/ah-config-types" }
+ah-core = { path = "./crates/ah-core" }
+ah-domain-types = { path = "./crates/ah-domain-types" }
+ah-gui-core = { path = "./crates/ah-gui-core" }
+ah-local-db = { path = "./crates/ah-local-db" }
+ah-logging = { path = "./crates/ah-logging" }
+ah-repo = { path = "./crates/ah-repo" }
+ah-workflows = { path = "./crates/ah-workflows" }
+ah-fs-snapshots = { path = "./crates/ah-fs-snapshots" }
+ah-fs-snapshots-traits = { path = "./crates/ah-fs-snapshots-traits" }
+ah-fs-snapshots-zfs = { path = "./crates/ah-fs-snapshots-zfs" }
+ah-fs-snapshots-btrfs = { path = "./crates/ah-fs-snapshots-btrfs" }
+ah-fs-snapshots-git = { path = "./crates/ah-fs-snapshots-git" }
+agentfs-fskit-sys = { path = "./crates/agentfs-fskit-sys" }
+agentfs-fskit-bridge = { path = "./crates/agentfs-fskit-bridge" }
+ah-sandbox = { path = "./crates/ah-sandbox" }
+ah-sandbox-linux = { path = "./crates/ah-sandbox-linux" }
+ah-sandbox-macos = { path = "./crates/ah-sandbox-macos" }
+ah-fs-snapshots-daemon = { path = "./crates/ah-fs-snapshots-daemon" }
+config-core = { path = "./crates/config-core" }
+# Sandbox crates
+sandbox-core = { path = "./crates/sandbox-core" }
+sandbox-fs = { path = "./crates/sandbox-fs" }
+sandbox-seccomp = { path = "./crates/sandbox-seccomp" }
+sandbox-cgroups = { path = "./crates/sandbox-cgroups" }
+sandbox-net = { path = "./crates/sandbox-net" }
+sandbox-devices = { path = "./crates/sandbox-devices" }
+sandbox-proto = { path = "./crates/sandbox-proto" }
+sbx-helper = { path = "./crates/sbx-helper" }
+# AgentFS crates
+agentfs-core = { path = "./crates/agentfs-core" }
+agentfs-proto = { path = "./crates/agentfs-proto" }
+agentfs-control-cli = { path = "./crates/agentfs-control-cli" }
+agentfs-client = { path = "./crates/agentfs-client" }
+agentfs-fuse-host = { path = "./crates/agentfs-fuse-host" }
+agentfs-fuse-stress = { path = "./crates/agentfs-fuse-stress" }
+agentfs-winfsp-host = { path = "./crates/agentfs-winfsp-host" }
+agentfs-fskit-host = { path = "./crates/agentfs-fskit-host" }
+agentfs-backstore-macos = { path = "./crates/agentfs-backstore-macos" }
+agentfs-ffi = { path = "./crates/agentfs-ffi" }
+# REST API and TUI
+ah-rest-api-contract = { path = "./crates/ah-rest-api-contract" }
+ah-rest-client = { path = "./crates/ah-rest-client" }
+ah-client-api = { path = "./crates/ah-client-api" }
+ah-rest-server = { path = "./crates/ah-rest-server" }
+ah-scenario-format = { path = "./crates/ah-scenario-format" }
+ah-test-scenarios = { path = "./crates/ah-test-scenarios" }
+ah-rest-client-mock = { path = "./crates/ah-rest-client-mock" }
+ah-rest-mock-client = { path = "./crates/ah-rest-mock-client" }
+ah-mux-core = { path = "./crates/ah-mux-core" }
+ah-mux = { path = "./crates/ah-mux" }
+ah-tui-multiplexer = { path = "./crates/ah-tui-multiplexer" }
+# ah-tui-test = { path = "./crates/ah-tui-test" } # Temporarily disabled - needs updates for new TUI architecture
+ah-tui = { path = "./crates/ah-tui" }
+tui-testing = { path = "./crates/tui-testing" }
+ah-macos-launcher = { path = "./crates/ah-macos-launcher" }
+# Recording and replay
+ah-recorder = { path = "./crates/ah-recorder" }
+# LLM API proxy
+llm-api-proxy = { path = "./crates/llm-api-proxy" }
+# Integration tests
+sandbox-integration = { path = "./tests/sandbox-integration" }
+cgroup-enforcement = { path = "./tests/cgroup-enforcement" }
+overlay-enforcement = { path = "./tests/overlay-enforcement" }
+network-enforcement = { path = "./tests/network-enforcement" }
+debugging-enforcement = { path = "./tests/debugging-enforcement" }
+container-enforcement = { path = "./tests/container-enforcement" }
+vm-enforcement = { path = "./tests/vm-enforcement" }
+agentfs-daemon-backstore-integration = { path = "./tests/agentfs-daemon-backstore-integration" }
+tools = { path = "./tests/tools/mock-tui-dashboard" }
+fs-snapshots-test-harness = { path = "./tests/fs-snapshots-test-harness" }
+e2e-stackable-hooks = { path = "./tests/e2e-stackable-hooks" }
+e2e-stackable-hooks-b = { path = "./tests/e2e-stackable-hooks-b" }
+e2e-shim-a = { path = "./tests/e2e-shim-a" }
+e2e-shim-b = { path = "./tests/e2e-shim-b" }
+e2e-call-real-shim = { path = "./tests/e2e-call-real-shim" }
+e2e-auto-propagation-shim = { path = "./tests/e2e-auto-propagation-shim" }
+agentfs-interpose-shim = { path = "./crates/agentfs-interpose-shim" }
+agentfs-interpose-e2e-tests = { path = "./crates/agentfs-interpose-e2e-tests" }
+agentfs-daemon = { path = "./crates/agentfs-daemon" }
+# Command trace shim
+ah-command-trace-proto = { path = "./crates/ah-command-trace-proto" }
+ah-command-trace-server = { path = "./crates/ah-command-trace-server" }
+ah-command-trace-shim = { path = "./crates/ah-command-trace-shim" }
+ah-command-trace-client = { path = "./crates/ah-command-trace-client" }
+ah-command-trace-e2e-tests = { path = "./crates/ah-command-trace-e2e-tests" }
+stackable-hooks = { path = "./crates/stackable-hooks" }
+
 # Core async runtime
 tokio = { version = "1.47", features = ["full"] }
 
@@ -107,7 +203,6 @@ serde_json = "1.0"
 toml = "0.8"
 
 # Command trace shim dependencies
-stackable-hooks = { path = "crates/stackable-hooks" }
 ctor = "0.2"
 scopeguard = "1.2"
 
@@ -121,7 +216,6 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 log = "0.4"
-ah-logging = { path = "crates/ah-logging" }
 
 # Error handling
 anyhow = "1.0"
@@ -169,8 +263,13 @@ eventsource-client = "0.13"
 # Terminal UI
 ratatui = "0.29"
 crossterm = "0.28"
-tui-textarea = { path = "vendor/tui-textarea", features = ["search"] }
-vt100 = { path = "vendor/vt100" }
+tui-textarea = { git = "https://github.com/blocksense-network/tui-textarea", branch = "agent-harbor", features = [
+  "search",
+] }
+vt100 = { git = "https://github.com/blocksense-network/vt100-rust", branch = "agent-harbor" }
+
+# ACP runtime
+agent-client-protocol = { git = "https://github.com/blocksense-network/acp-rust-sdk", branch = "agent-harbor" }
 
 # Validation
 validator = { version = "0.20", features = ["derive"] }
@@ -182,12 +281,17 @@ uuid = { version = "1.18", features = ["v4", "serde"] }
 futures = "0.3"
 
 # Unicode width calculation
-unicode-width = "0.2"
+# WARN: needs to be synced between `ratatui` and `vt100`,
+#       the latter of which we maintain a fork of, to align with the former
+unicode-width = "=0.2.0"
 
-# Use vendored copies of dependencies
-[patch.crates-io]
-tui-textarea = { path = "vendor/tui-textarea" }
-vt100 = { path = "vendor/vt100" }
+# NOTE: Use vendored copies of dependencies to keep versions in sync and enable offline builds
+# [patch."https://github.com/blocksense-network/tui-textarea"]
+# tui-textarea = { path = "./vendor/tui-textarea" }
+# [patch."https://github.com/blocksense-network/vt100-rust"]
+# vt100 = { path = "./vendor/vt100" }
+# [patch."https://github.com/blocksense-network/acp-rust-sdk"]
+# agent-client-protocol = { path = "./vendor/acp-rust-sdk" }
 
 [profile.release]
 lto = true

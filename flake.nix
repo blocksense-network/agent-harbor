@@ -173,7 +173,8 @@
                 rustWorkspaceFiles = fs.unions [
                   ./Cargo.toml
                   ./Cargo.lock
-                  ./rust-toolchain.toml
+                  # FIXME: uncomment when we bring it back
+                  # ./rust-toolchain.toml
                   ./clippy.toml
                   ./rustfmt.toml
                   ./src
@@ -187,7 +188,6 @@
                   root = ./.;
                   fileset = rustWorkspaceFiles;
                 };
-
                 hostIsLinux = pkgs.stdenv.hostPlatform.isLinux;
 
                 # Build the ah and ah-fs-snapshot-daemon binaries from the workspace
@@ -200,7 +200,7 @@
                     outputHashes = {
                       "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
                       "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                      "rmcp-0.9.0" = "sha256-F+vmm2DfMzDxAmDb/MbfwnVaepS7UH6XHVpxSrvOczY=";
+                      "agent-client-protocol-0.4.7" = "sha256-FZJ4JqzB/J/mOd4PFVJMDy1IECrZJNZq/+swYLUtJmc=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
@@ -229,7 +229,7 @@
                     outputHashes = {
                       "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
                       "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                      "rmcp-0.9.0" = "sha256-F+vmm2DfMzDxAmDb/MbfwnVaepS7UH6XHVpxSrvOczY=";
+                      "agent-client-protocol-0.4.7" = "sha256-FZJ4JqzB/J/mOd4PFVJMDy1IECrZJNZq/+swYLUtJmc=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];

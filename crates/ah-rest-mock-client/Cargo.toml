@@ -9,9 +9,9 @@ description = "Mock REST client implementing TaskManager trait for testing"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-ah-core = { path = "../ah-core" }
-ah-domain-types = { path = "../ah-domain-types" }
-ah-rest-api-contract = { path = "../ah-rest-api-contract" }
+ah-core = { workspace = true }
+ah-domain-types = { workspace = true }
+ah-rest-api-contract = { workspace = true }
 async-trait.workspace = true
 chrono = { workspace = true }
 futures.workspace = true

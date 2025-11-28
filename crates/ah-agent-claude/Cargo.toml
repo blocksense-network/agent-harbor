@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 # Re-export the monolith with claude feature enabled
-ah-agents = { path = "../ah-agents", features = ["claude"] }
+ah-agents = { workspace = true, features = ["claude"] }
 
 # Re-export common dependencies
 async-trait = "0.1"

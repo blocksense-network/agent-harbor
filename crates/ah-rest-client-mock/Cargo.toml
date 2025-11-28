@@ -7,9 +7,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ah-client-api = { path = "../ah-client-api" }
-ah-test-scenarios = { path = "../ah-test-scenarios" }
-ah-rest-api-contract = { path = "../ah-rest-api-contract" }
+ah-client-api = { workspace = true }
+ah-test-scenarios = { workspace = true }
+ah-rest-api-contract = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

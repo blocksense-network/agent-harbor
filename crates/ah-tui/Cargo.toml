@@ -10,17 +10,17 @@ license = "MIT OR Apache-2.0"
 
 
 [dependencies]
-ah-rest-api-contract = { path = "../ah-rest-api-contract" }
-ah-client-api = { path = "../ah-client-api" }
-ah-rest-client = { path = "../ah-rest-client" }
-ah-repo = { path = "../ah-repo" }
-ah-test-scenarios = { path = "../ah-test-scenarios" }
-ah-domain-types = { path = "../ah-domain-types" }
-ah-core = { path = "../ah-core" }
-ah-workflows = { path = "../ah-workflows" }
-ah-recorder = { path = "../ah-recorder" }
-ah-mux = { path = "../ah-mux" }
-config-core = { path = "../config-core" }
+ah-rest-api-contract = { workspace = true }
+ah-client-api = { workspace = true }
+ah-rest-client = { workspace = true }
+ah-repo = { workspace = true }
+ah-test-scenarios = { workspace = true }
+ah-domain-types = { workspace = true }
+ah-core = { workspace = true }
+ah-workflows = { workspace = true }
+ah-recorder = { workspace = true }
+ah-mux = { workspace = true }
+config-core = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-util = "0.7"
 ratatui = "0.29"
@@ -32,7 +32,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 futures = { workspace = true }
-unicode-width = "=0.2.0"
+unicode-width = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 tui-textarea = { workspace = true }
 similar = "2.5"
@@ -61,10 +61,10 @@ ssz_derive = { package = "ethereum_ssz_derive", version = "0.8" }
 
 [dev-dependencies]
 tokio-test = "0.4"
-ah-test-scenarios = { path = "../ah-test-scenarios" }
-ah-rest-mock-client = { path = "../ah-rest-mock-client" }
+ah-test-scenarios = { workspace = true }
+ah-rest-mock-client = { workspace = true }
 url = { workspace = true }
-tui-testing = { path = "../tui-testing" }
+tui-testing = { workspace = true }
 expectrl = "0.3"
 insta = { version = "1.40", features = ["json"] }
 regex = "1.0"

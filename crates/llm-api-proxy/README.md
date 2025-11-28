@@ -88,7 +88,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-api-proxy = { path = "../llm-api-proxy" }
+llm-api-proxy = { workspace = true }
 tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -102,7 +102,7 @@ First, add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-api-proxy = { path = "../llm-api-proxy" }
+llm-api-proxy = { workspace = true }
 tokio = { version = "1.0", features = ["full"] }
 serde_json = "1.0"
 ```

@@ -9,7 +9,7 @@ description = "Schema types and validation for agent-harbor REST API contracts"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-ah-domain-types = { path = "../ah-domain-types", features = ["utoipa"] }
+ah-domain-types = { workspace = true, features = ["utoipa"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

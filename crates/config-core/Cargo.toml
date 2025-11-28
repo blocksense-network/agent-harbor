@@ -20,7 +20,7 @@ config = "0.14"
 anyhow.workspace = true
 thiserror.workspace = true
 serde_path_to_error = "0.1"
-ah-config-types = { path = "../ah-config-types" }
+ah-config-types = { workspace = true }
 
 [dev-dependencies]
 tempfile.workspace = true
