@@ -1031,7 +1031,9 @@
         ],
         "pjdfstest-src": "pjdfstest-src",
         "rust-overlay": "rust-overlay",
-        "sosumi-docs-downloader": "sosumi-docs-downloader"
+        "sosumi-docs-downloader": "sosumi-docs-downloader",
+        "tui-textarea-src": "tui-textarea-src",
+        "vt100-src": "vt100-src"
       }
     },
     "rust-analyzer-src": {
@@ -1193,6 +1195,22 @@
         "type": "github"
       }
     },
+    "tui-textarea-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1761857895,
+        "narHash": "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=",
+        "ref": "refs/heads/agent-harbor",
+        "rev": "26b6dfdd733e7e585513a908cd7e1c5261da95fc",
+        "revCount": 385,
+        "type": "git",
+        "url": "file:./vendor/tui-textarea"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:./vendor/tui-textarea"
+      }
+    },
     "vscode-server": {
       "inputs": {
         "flake-utils": [
@@ -1216,6 +1234,22 @@
         "owner": "nix-community",
         "repo": "nixos-vscode-server",
         "type": "github"
+      }
+    },
+    "vt100-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1762344042,
+        "narHash": "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=",
+        "ref": "refs/heads/agent-harbor",
+        "rev": "2a2fc6a79f70900e9d2e3e2c2fee44cdf008b1ae",
+        "revCount": 418,
+        "type": "git",
+        "url": "file:./vendor/vt100"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:./vendor/vt100"
       }
     }
   },

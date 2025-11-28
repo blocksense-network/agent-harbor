@@ -29,6 +29,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.treefmt-nix.follows = "nixos-modules/treefmt-nix";
     };
+    "tui-textarea-src" = {
+      url = "git+file:./vendor/tui-textarea";
+      flake = false;
+    };
+    "vt100-src" = {
+      url = "git+file:./vendor/vt100";
+      flake = false;
+    };
     codex = {
       url = "git+file:./vendor/codex";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -63,6 +71,8 @@
       pjdfstest-src,
       codetracer-python-recorder,
       flake-parts,
+      tui-textarea-src,
+      vt100-src,
       ...
     }:
     flake-parts.lib.mkFlake { inherit inputs; } (
@@ -85,7 +95,8 @@
             forAllSystems = nixpkgs.lib.genAttrs systems;
 
             # CodeTracer Python recorder package (available for both packages and devShells)
-            codetracerPythonRecorderForSystem = system: codetracer-python-recorder.packages.${system}.codetracer-python-recorder;
+            codetracerPythonRecorderForSystem =
+              system: codetracer-python-recorder.packages.${system}.codetracer-python-recorder;
 
             # AI coding agent packages (shared between packages and devShells)
             aiCodingAgentsForSystem =
@@ -172,7 +183,8 @@
                 rustWorkspaceFiles = fs.unions [
                   ./Cargo.toml
                   ./Cargo.lock
-                  ./rust-toolchain.toml
+                  # TODO: uncomment when we bring it back
+                  # ./rust-toolchain.toml
                   ./clippy.toml
                   ./rustfmt.toml
                   ./src
@@ -181,11 +193,27 @@
                   ./assets
                   ./resources
                   ./specs
+                  # Vendored workspace members and patched crates required for offline builds
+                  ./vendor/acp-rust-sdk
+                  (fs.maybeMissing ./vendor/tui-textarea)
+                  (fs.maybeMissing ./vendor/vt100)
                 ];
                 rustWorkspaceSource = fs.toSource {
                   root = ./.;
                   fileset = rustWorkspaceFiles;
                 };
+                ensureVendoredSources = ''
+                  if [ ! -e vendor/tui-textarea/Cargo.toml ]; then
+                    echo "Injecting vendored tui-textarea from flake input"
+                    mkdir -p vendor
+                    cp -a --no-preserve=ownership ${inputs.tui-textarea-src.outPath} vendor/tui-textarea
+                  fi
+                  if [ ! -e vendor/vt100/Cargo.toml ]; then
+                    echo "Injecting vendored vt100 from flake input"
+                    mkdir -p vendor
+                    cp -a --no-preserve=ownership ${inputs.vt100-src.outPath} vendor/vt100
+                  fi
+                '';
 
                 # Build the ah and ah-fs-snapshot-daemon binaries from the workspace
                 ah-binary = pkgs.rustPlatform.buildRustPackage rec {
@@ -195,9 +223,10 @@
                   cargoLock = {
                     lockFile = ./Cargo.lock;
                     outputHashes = {
-                      "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
-                      "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                      "rmcp-0.9.0" = "sha256-F+vmm2DfMzDxAmDb/MbfwnVaepS7UH6XHVpxSrvOczY=";
+                      # TODO: uncomment when we again revert to using cargo git dependencies instead of git submodules
+                      # "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
+                      # "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
+                      # "rmcp-0.9.0" = "sha256-F+vmm2DfMzDxAmDb/MbfwnVaepS7UH6XHVpxSrvOczY=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
@@ -206,6 +235,7 @@
                     pkgs.libseccomp
                     pkgs.zlib
                   ];
+                  postPatch = ensureVendoredSources;
                   cargoBuildFlags = [
                     "--bin"
                     "ah"
@@ -224,9 +254,10 @@
                   cargoLock = {
                     lockFile = ./Cargo.lock;
                     outputHashes = {
-                      "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
-                      "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                      "rmcp-0.9.0" = "sha256-F+vmm2DfMzDxAmDb/MbfwnVaepS7UH6XHVpxSrvOczY=";
+                      # TODO: uncomment when we again revert to using cargo git dependencies instead of git submodules
+                      # "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
+                      # "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
+                      # "rmcp-0.9.0" = "sha256-F+vmm2DfMzDxAmDb/MbfwnVaepS7UH6XHVpxSrvOczY=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
@@ -235,6 +266,7 @@
                     pkgs.libseccomp
                     pkgs.zlib
                   ];
+                  postPatch = ensureVendoredSources;
                   cargoBuildFlags = [
                     "--bin"
                     "ah-fs-snapshots-daemon"
@@ -396,17 +428,16 @@
                   codetracerPythonRecorder
                 ];
 
-                ah-mux-test-tools =
-                  [
-                    pkgs.ncurses
-                    pkgs.tmux
-                    pkgs.screen
-                    pkgs.zellij
-                    pkgs.kitty
-                  ]
-                  ++ pkgs.lib.optionals isLinux [
-                    pkgs.tilix
-                  ];
+                ah-mux-test-tools = [
+                  pkgs.ncurses
+                  pkgs.tmux
+                  pkgs.screen
+                  pkgs.zellij
+                  pkgs.kitty
+                ]
+                ++ pkgs.lib.optionals isLinux [
+                  pkgs.tilix
+                ];
 
                 # GUI testing tools for headless environments
                 gui-test-tools = [
