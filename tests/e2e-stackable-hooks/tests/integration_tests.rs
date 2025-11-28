@@ -5,9 +5,10 @@
 //!
 //! These tests launch a simple test program which loads an interpose shim library.
 
+#[cfg(target_os = "macos")]
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::Once;
 
 mod platform;
 
@@ -347,6 +348,17 @@ fn get_call_real_shim_path() -> PathBuf {
     path
 }
 
+#[cfg(target_os = "macos")]
+fn ensure_test_artifact_exists(path: &Path, description: &str) {
+    if !path.exists() {
+        panic!(
+            "{} not found at {}. Run `just build-stackable-interpose-test-binaries` before running these tests.",
+            description,
+            path.display()
+        );
+    }
+}
+
 /// Get the path to the propagation test program
 #[allow(dead_code)]
 fn get_propagation_test_path() -> PathBuf {
@@ -375,6 +387,8 @@ fn get_auto_propagation_shim_path() -> PathBuf {
     path.push("libauto_propagation_shim.dylib");
     #[cfg(not(target_os = "macos"))]
     path.push("libauto_propagation_shim.so");
+    #[cfg(target_os = "macos")]
+    ensure_test_artifact_exists(&path, "Auto-propagation shim library");
     path
 }
 
@@ -382,7 +396,6 @@ fn get_auto_propagation_shim_path() -> PathBuf {
 #[test]
 #[cfg(target_os = "macos")]
 fn test_auto_propagation_enabled() {
-    ensure_auto_propagation_shim_built();
     let test_program = get_propagation_test_path();
     let shim_library = get_auto_propagation_shim_path();
 
@@ -445,7 +458,6 @@ fn test_auto_propagation_enabled() {
 #[test]
 #[cfg(target_os = "macos")]
 fn test_auto_propagation_disabled() {
-    ensure_auto_propagation_shim_built();
     let test_program = get_propagation_test_path();
     let shim_library = get_auto_propagation_shim_path();
 
@@ -488,18 +500,4 @@ fn test_auto_propagation_disabled() {
         "Test should succeed.\nStderr: {}",
         stderr
     );
-}
-
-fn ensure_auto_propagation_shim_built() {
-    static BUILD_ONCE: Once = Once::new();
-    BUILD_ONCE.call_once(|| {
-        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-        let status = Command::new(cargo)
-            .args(["build", "-p", "e2e-auto-propagation-shim"])
-            .status()
-            .expect("failed to build e2e-auto-propagation-shim");
-        if !status.success() {
-            panic!("building e2e-auto-propagation-shim failed: {:?}", status);
-        }
-    });
 }
