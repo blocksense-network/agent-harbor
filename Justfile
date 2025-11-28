@@ -234,6 +234,10 @@ allow-words *words:
     ./scripts/allow_words.py {{words}}
     @git add .cspell.json
 
+# Test that spell checking tools (cspell and vale) work correctly
+test-spell-checking:
+    ./scripts/test_spell_checking.py
+
 # Create reusable file-backed filesystems for testing ZFS and Btrfs providers
 # This sets up persistent test environments in ~/.cache/agent-harbor
 create-test-filesystems:
