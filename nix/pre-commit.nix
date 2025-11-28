@@ -144,11 +144,11 @@
                 cargo = self'.legacyPackages.rustToolchain;
                 clippy = self'.legacyPackages.rustToolchain;
               };
+              excludes = [ "^vendor/" ];
               settings = {
                 allFeatures = true;
                 denyWarnings = true;
                 extraArgs = "--workspace --exclude agent-client-protocol --tests --all-targets --no-deps";
-                exclude = "^vendor/";
                 offline = false;
               };
             };
