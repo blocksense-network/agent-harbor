@@ -24,6 +24,7 @@ The testing infrastructure consists of several components working together acros
   etc.) that coding agents communicate with
 - **Test Executor**: Orchestrates scenario execution and handles user
   interactions
+- **Mock ACP Server**: Implements the ACP agent side for ACP-client testing. It translates scenario events into ACP messages sent to the client, including terminal and filesystem client methods, permission requests, and passthrough sandbox commands.
 
 #### Testing Modes
 
@@ -51,6 +52,130 @@ section below.
 - UTF‑8 YAML; comments allowed.
 - Top-level keys are stable; unknown keys ignored (forward-compatible).
 
+### Rules and Conditional Configuration
+
+Scenario files support a `rules` construct for parametric configuration, allowing scenarios to adapt their behavior based on runtime conditions. Rules work similarly to conditional compilation in programming languages (#ifdef/#if directives) and can appear at any level in the YAML structure.
+
+#### Rule Structure
+
+```yaml
+rules:
+  - when: '$condition_name'
+    config:
+      field1: value1
+      field2: value2
+
+  - when: '$numeric_symbol >= 3'
+    config:
+      replicas: 5
+      timeout: 30000
+
+  - default: true
+    config:
+      replicas: 1
+      timeout: 10000
+```
+
+#### Symbol-Based Conditions
+
+Rules support conditional configuration based on symbols provided by the test runner or mock-agent CLI via `--define` options. Conditions use simple expressions:
+
+- **Symbol existence**: `$symbol_name` - true if the symbol is defined via `--define symbol`
+- **Numeric comparison**: `$symbol == value`, `$symbol != value`, `$symbol < value`, `$symbol <= value`, `$symbol > value`, `$symbol >= value`
+- **String comparison**: `$symbol == "string_value"`, `$symbol != "string_value"`
+- **Undefined symbols**: References to undefined symbols cause condition evaluation to fail (rule skipped)
+
+#### Merging Behavior
+
+- **Multiple matches**: When multiple `when` conditions match, their `config` sections are merged (later rules override earlier ones)
+- **Default rule**: Applied only when no `when` conditions match
+- **Inlining**: The merged configuration is inlined as if written directly in place of the `rules` field
+- **Nested rules**: Rules can appear at any nesting level and are resolved recursively
+
+#### Realistic Examples
+
+**ACP Capabilities Based on Test Mode:**
+
+```yaml
+acp:
+  rules:
+    - when: '$full_test_suite'
+      config:
+        capabilities:
+          loadSession: true
+          promptCapabilities:
+            image: true
+            audio: true
+            embeddedContext: true
+          mcpCapabilities:
+            http: true
+            sse: false
+    - default: true
+      config:
+        capabilities:
+          loadSession: false
+          promptCapabilities:
+            image: false
+            audio: false
+            embeddedContext: false
+          mcpCapabilities:
+            http: false
+            sse: false
+```
+
+**Server Configuration Based on Environment:**
+
+```yaml
+server:
+  rules:
+    - when: '$production_env'
+      config:
+        mode: 'mock'
+        llmApiStyle: 'openai'
+        coalesceThinkingWithToolUse: true
+    - when: '$development_env'
+      config:
+        mode: 'none'
+        llmApiStyle: 'anthropic'
+        coalesceThinkingWithToolUse: false
+    - default: true
+      config:
+        mode: 'none'
+        llmApiStyle: 'openai'
+        coalesceThinkingWithToolUse: true
+```
+
+**Timeline Events Based on Protocol Version:**
+
+```yaml
+timeline:
+  - initialize:
+      protocolVersion: 1
+      clientCapabilities:
+        fs:
+          readTextFile: true
+          writeTextFile: true
+        terminal: true
+  rules:
+    - when: "$protocol_version >= 2"
+      config:
+        - userInputs:
+            - timestamp: 0
+              input:
+                - type: "text"
+                  text: "Enhanced protocol test"
+                - type: "resource"
+                  resource:
+                    uri: "file:///workspace/enhanced.py"
+                    mimeType: "text/x-python"
+                    text: "print('Enhanced test')"
+    - default: true
+      config:
+        - userInputs:
+            - timestamp: 0
+              input: "Basic protocol test"
+```
+
 ### Top-Level Schema (high level)
 
 ```yaml
@@ -60,7 +185,6 @@ terminalRef: 'configs/terminal/default-100x30.json'
 compat:
   allowInlineTerminal: true
   allowTypeSteps: true
-initialPrompt: "Create a hello.py file that prints 'Hello, World!'"
 repo:
   init: true
   branch: 'feature/test'
@@ -75,6 +199,12 @@ ah:
     AH_LOG: 'debug'
 server:
   mode: 'none'
+acp:
+  # ACP-specific configuration for mock-agent testing
+  # Working directory for the session (can be overridden by --cwd CLI parameter)
+  cwd: '/tmp/workspace'
+  # MCP servers to connect to (can be overridden by --mcp-servers CLI parameter)
+  mcpServers: []
 timeline:
   - think:
       - [500, "Analyzing the user's request"]
@@ -115,7 +245,7 @@ expect:
 - **name**: Scenario identifier (string).
 - **tags**: Array of labels to filter/select scenarios in runners.
 - **terminalRef**: Optional path to a terminal configuration file describing size and rendering options. See [Terminal-Config.md](Terminal-Config.md). When omitted, runners use their defaults.
-- **initialPrompt**: The initial prompt text that will be given to the agent when the scenario starts.
+- **effectiveInitialPrompt** (computed): Runners and the `ah-scenario-format` library derive the “initial prompt” as the first `userInputs` event after `sessionStart` (if present) or otherwise the first `userInputs` event in the timeline. This value is used for scenario selection/matching and auto-start behavior; it is not a stored YAML field.
 - **repo**:
   - `init`: Whether to initialize a temporary git repo.
   - `branch`: Optional branch to start on or create.
@@ -132,6 +262,19 @@ expect:
   - `coalesceThinkingWithToolUse`: `true|false` (only used for Anthropic,
     defaults to `true`).
   - Optional seed objects for mock server endpoints.
+- **acp**: ACP-specific configuration for mock-agent testing (only used when testing ACP agents):
+  - `capabilities`: Agent capabilities to advertise during initialization (interpreted by test runner to configure mock-agent launch):
+    - `loadSession`: Whether the agent supports `session/load` method
+    - `promptCapabilities`: Object specifying support for rich content types. ACP baseline requires `text` and `resource_link` (see [ACP prompt capabilities](../../resources/acp-specs/docs/protocol/initialization.mdx#prompt-capabilities)); runners MUST assume these are available and MAY validate scenarios accordingly.
+      - `image`: Support for image content in prompts
+      - `audio`: Support for audio content in prompts
+      - `embeddedContext`: Support for embedded resource content
+    - `mcpCapabilities`: MCP transport support (must align with transports used in `mcpServers`; see [ACP MCP capabilities](../../resources/acp-specs/docs/protocol/initialization.mdx#mcp-capabilities) and [MCP transports](../../resources/acp-specs/docs/protocol/session-setup.mdx#mcp-servers-and-transports)):
+      - `http`: HTTP transport for MCP servers
+      - `sse`: SSE transport for MCP servers (deprecated in ACP; runners SHOULD warn when enabled; see [SSE transport](../../resources/acp-specs/docs/protocol/session-setup.mdx#sse-transport))
+    - Runners MUST validate that any transport used in `mcpServers` is allowed by the advertised `mcpCapabilities`; mismatches are errors.
+  - `cwd`: Working directory for the ACP session (absolute path, can be overridden by `--cwd` CLI parameter)
+  - `mcpServers[]`: Array of MCP server configurations (same format as ACP protocol, can be overridden by `--mcp-servers` CLI parameter)
 - **timeline[]** (unified event sequence):
 
 #### LLM Response Events (`llmResponse`)
@@ -149,17 +292,18 @@ tool use suggestions in the LLM response using the appropriate API format
 ensures that real agents receive tool use instructions as part of their LLM
 responses.
 
-**Legacy Migration**: Scenarios that currently place `agentToolUse` events
-within `llmResponse` blocks must move them outside as separate `agentActions`
-events. The presence of subsequent `agentToolUse` events automatically triggers
-tool use inclusion in the LLM response.
+Scenarios **MUST** place `agentToolUse` events outside `llmResponse` blocks as
+separate `agentActions` events. Inline tool use inside `llmResponse` is no
+longer supported.
 
 - `think`: Array of `[milliseconds, text]` pairs for agent thinking events. For
   OpenAI API style: thinking is processed internally but **NOT included in API
   responses** (matches OpenAI's behavior where thinking is never exposed). For
   Anthropic API style: thinking is exposed as separate "thinking" blocks in
   the response content array.
-- `assistant`: Array of `[milliseconds, text]` pairs for assistant responses
+- `assistant`: Array of `[milliseconds, content_block]` pairs for assistant responses. Each content block can be:
+  - String: Simple text response
+  - Object: Rich content block with `type`, `text`, `mimeType`, `data`, etc. (see Content Types below)
 - `error`: Error response element for modeling LLM API error conditions (rate
   limiting, invalid requests, etc.). Generates an appropriate HTTP error response
   from the mock LLM API server. Fields:
@@ -170,10 +314,197 @@ tool use inclusion in the LLM response.
   - `details`: Optional structured error details (JSON value)
   - `retryAfterSeconds`: Optional retry-after header value for rate limiting
 
+#### Meta Fields in Timeline Events
+
+ACP protocol messages can include `_meta` fields for extensibility. Scenarios support specifying `_meta` fields in any timeline event that corresponds to an ACP message:
+
+```yaml
+timeline:
+  - initialize:
+      protocolVersion: 1
+      clientCapabilities:
+        fs:
+          readTextFile: true
+          writeTextFile: true
+        terminal: true
+      # Custom client capabilities via _meta
+      _meta:
+        client.extensions:
+          customFeature: true
+    expectedResponse:
+      protocolVersion: 1
+      agentCapabilities:
+        loadSession: false
+        promptCapabilities:
+          image: true
+      # Custom agent capabilities via _meta
+      _meta:
+        agent.harbor:
+          snapshots:
+            version: 1
+            supportsTimelineSeek: true
+
+  - sessionStart:
+      expectedPromptResponse:
+        sessionId: "test-session-123"
+        stopReason: "completed"        # ACP stop reason (e.g., completed, cancelled, interrupted, max_tokens) — see [stopReason](../../resources/acp-specs/docs/protocol/prompt-turn.mdx#stopreason)
+        usage:
+          inputTokens: 12
+          outputTokens: 34
+  - userInputs:
+      - timestamp: 0
+        input:
+          - type: "text"
+            text: "Test message"
+        _meta:
+          request.trackingId: "req_12345"
+          request.priority: "high"
+
+  - llmResponse:
+      _meta:
+        response.model: "claude-3-sonnet"
+        response.tokens: 150
+      - assistant:
+          - [100, "Response with metadata"]
+```
+
+#### Content Types in Timeline Events
+
+When using rich content blocks in timeline events, the following formats are supported:
+
+**File Organization for Media Content:**
+
+For scenarios that include image or audio content, organize files in a directory structure alongside the scenario file:
+
+```
+scenario-directory/
+├── scenario.yaml
+├── images/
+│   ├── diagram.png
+│   └── screenshot.jpg
+└── audio/
+    ├── recording.wav
+    └── instructions.mp3
+```
+
+All paths in content blocks are resolved relative to the scenario file's directory. The mock-agent will load the referenced files at runtime and encode them appropriately for the ACP protocol.
+
+**Text Content:**
+
+```yaml
+assistant:
+  - timestamp: 100
+    content: 'Simple text response'
+  - timestamp: 200
+    content:
+      type: 'text'
+      text: 'Annotated text'
+      annotations:
+        priority: 0.8
+```
+
+Annotations follow the MCP/ACP `Annotations` shape and MAY appear on any content block type (see [Content annotations](../../resources/acp-specs/docs/protocol/content.mdx#text-content)).
+
+**Image Content:**
+
+```yaml
+assistant:
+  - timestamp: 100
+    content:
+      type: 'image'
+      mimeType: 'image/png'
+      path: 'images/example.png'
+```
+
+**Audio Content:**
+
+```yaml
+assistant:
+  - timestamp: 100
+    content:
+      type: 'audio'
+      mimeType: 'audio/wav'
+      path: 'audio/example.wav'
+```
+
+**Embedded Resource:**
+
+```yaml
+assistant:
+  - timestamp: 100
+    content:
+      type: 'resource'
+      resource:
+        uri: 'file:///workspace/main.py'
+        mimeType: 'text/x-python'
+        text: "def hello():\n    print('Hello, World!')\n"
+```
+
+**Resource Link:**
+
+```yaml
+assistant:
+  - timestamp: 120
+    content:
+      type: 'resource_link'
+      uri: 'file:///workspace/README.md'
+      name: 'README.md'
+      mimeType: 'text/markdown'
+      size: 1024
+      annotations:
+        priority: 0.9
+```
+
+**Diff Content:**
+
+```yaml
+assistant:
+  - timestamp: 100
+    content:
+      type: 'diff'
+      path: '/home/user/project/src/config.json'
+      oldText: '{\n  "debug": false\n}'
+      newText: '{\n  "debug": true\n}'
+```
+
+**Plan Content:**
+
+```yaml
+assistant:
+  - timestamp: 100
+    content:
+      type: 'plan'
+      entries:
+        - content: 'Analyze the existing codebase structure'
+          priority: 'high'
+          status: 'pending'
+        - content: 'Identify components that need refactoring'
+          priority: 'high'
+          status: 'pending'
+        - content: 'Create unit tests for critical functions'
+          priority: 'medium'
+          status: 'pending'
+```
+
 #### Agent Action Events (`agentActions`)
 
-Tool invocations and file operations performed by the agent. These represent the
+Tool invocations, planning activities, and file operations performed by the agent. These represent the
 actual work the agent does in response to LLM instructions.
+
+- `agentPlan`: Agent creates or updates an execution plan for complex multi-step tasks. Fields:
+  - `entries`: Array of plan entry objects, each containing:
+    - `content`: Human-readable description of the task
+    - `priority`: Priority level (`high`, `medium`, `low`)
+    - `status`: Current execution status (`pending`, `in_progress`, `completed`)
+  - `planUpdate`: Optional boolean indicating if this replaces the entire plan (default: true)
+
+- `setMode`: User switches the agent to a different operating mode. Fields:
+  - `modeId`: The ID of the mode to switch to (e.g., 'ask', 'architect', 'code')
+  - Maps to ACP `session/set_mode` method call (see [session modes](../../resources/acp-specs/docs/protocol/session-modes.mdx#setting-the-current-mode))
+
+- `setModel`: User switches the LLM model during the session. Fields:
+  - `modelId`: The ID of the model to switch to
+  - **UNSTABLE**: Only allowed when the runner enables ACP unstable schema support (e.g., `protocolVersion` that opts into unstable or an explicit `--acp-unstable` flag). Scenarios using `setModel` MUST declare this opt-in. The ACP spec marks `session/set_model` as unstable and subject to removal/change (see [schema.unstable set_model](../../resources/acp-specs/docs/protocol/schema.unstable.mdx#session-set_model)).
 
 - `agentToolUse`: Tool invocation with detailed execution flow. Fields:
   - `toolName`: Name of the tool being invoked
@@ -189,9 +520,9 @@ actual work the agent does in response to LLM instructions.
   - `linesAdded`: Number of lines added
   - `linesRemoved`: Number of lines removed
 - Tool-specific events (mapped to `agentToolUse` internally):
-  - `runCmd`: Execute terminal/shell commands. Fields: `cmd` (command string),
+  - `runCmd`: Execute terminal/shell commands. Handled by the **Mock ACP Server** as ACP client terminal methods (`terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`). Fields: `cmd` (command string),
     `cwd` (optional working directory), `timeout` (optional milliseconds),
-    `description` (optional description), `run_in_background` (optional boolean).
+    `description` (optional description), `run_in_background` (optional boolean). In passthrough mode (see `specs/ACP.server.status.md`), the Mock ACP Server instructs the client to run a `show-sandbox-execution` command instead of executing directly, so the client’s sandbox/recorder performs the command while streaming output back via ACP terminal notifications.
   - `grep`: Search for patterns in files. Fields: `pattern`, `path`, `glob`
     (optional glob pattern), `output_mode` (optional:
     content/files_with_matches/count), `-B` (optional before context), `-A`
@@ -231,16 +562,23 @@ actual work the agent does in response to LLM instructions.
 
 Simulated user interactions that drive the scenario forward.
 
-- `userInputs`: Array of `[milliseconds, input]` pairs for user input
-  simulation. Can run concurrently with agent events. Fields:
-  - `target`: `tui|webui|cli` (optional, defaults to all targets if not
-    specified).
+- `userInputs`: Array of timestamped inputs using the new object form:
+  - `timestamp`: Absolute time in milliseconds from scenario start (post-`advanceMs` accumulation)
+  - `input`: string or array of content blocks (required)
+  - `_meta`: optional ACP meta to attach to the prompt request
+  - `target`: optional `tui|webui|cli` (defaults to all)
+    This is the **only** way to send ACP `session/prompt` messages; the runner converts each entry to a `session/prompt` call in timestamp order. Can run concurrently with agent events.
+
+  Response assertions for the _first_ prompt after a boundary belong on `sessionStart.expectedPromptResponse` (see below).
+
 - `userEdits`: Simulate user editing files. Fields:
   - `patch`: Path to unified diff or patch file relative to the scenario folder.
 - `userCommand`: Simulate user executing a command (not an agent tool call).
   Fields:
   - `cmd`: Command string to execute.
   - `cwd`: Optional working directory relative to the scenario.
+- `userCancelSession`: Simulate user cancelling an ongoing agent operation.
+  Maps to ACP `session/cancel` notification (see [cancellation](../../resources/acp-specs/docs/protocol/prompt-turn.mdx#cancellation)). No additional fields required.
 
 #### Test and Control Events
 
@@ -253,6 +591,34 @@ Events that control test execution and validation.
 - `complete`: Event indicating that the scenario task has completed
   successfully. This marks the session status as completed and triggers any
   completion logic.
+- `sessionStart`: Boundary marker for `loadSession` functionality. Events before
+  this marker are considered historical and are replayed during `session/load`.
+  Events after this marker are streamed live after session loading completes.
+  Optional fields:
+  - `sessionId`: The session ID to use for the ensuing `session/new` (or `session/load`) call; the Mock ACP Server uses this when responding to initialization/session setup.
+  - `expectedPromptResponse`: Response assertions for the first `userInputs` after this boundary (e.g., `sessionId`, `stopReason`, `usage`).
+
+#### Client-Side ACP Method Simulation Events
+
+Execution model: the mock-agent plays the **agent** role and will emit these ACP client-facing calls; the **test executor** plays the client and returns the responses defined in the event. Use these to exercise bidirectional flows without a real client UI.
+
+- `clientFsRead`: Simulates `fs/read_text_file` method call from client
+  - `path`: Absolute file path to read
+  - `expectedContent`: Expected file content to return
+- `clientFsWrite`: Simulates `fs/write_text_file` method call from client
+  - `path`: Absolute file path to write
+  - `content`: Content to write to file
+- `clientTerminalCreate`: Simulates `terminal/create` method call from client
+  - `command`: Command to execute
+  - `expectedOutput`: Expected command output
+- `clientPermissionRequest`: Simulates an ACP `session/request_permission` flow where the **agent** sends the request and the **test executor** returns the user decision (see [request_permission](../../resources/acp-specs/docs/protocol/tool-calls.mdx#requesting-permission)):
+  - `sessionId`: Target session ID (optional; default: current session)
+  - `toolCall`: Minimal tool call context to include in the request (e.g., `{ toolCallId, title, kind }`)
+  - `options`: Permission options to present, mirroring ACP `PermissionOption` kinds (`allow_once|allow_always|reject_once|reject_always`). If omitted, the runner SHOULD supply a default allow/reject pair.
+  - `decision`: User decision simulated by the runner; object with:
+    - `outcome`: `selected|cancelled` (matches ACP response outcome)
+    - `optionId`: Required when `outcome=selected`; must match one of `options`
+    - Shorthand: `granted: true|false` MAY be provided instead of `decision`; runners map `true` to the first `allow_*` option and `false` to the first `reject_*` option.
 - `merge`: Event indicating that this scenario session should be merged into
   the session list upon completion. When present, the scenario session will be
   marked as completed but remain visible in session listings. When omitted,
@@ -273,10 +639,8 @@ execution events without actually executing tools.
     - `content`: Output content or progress message
     - `exitCode`: Final exit code (for completion events)
 
-  **Legacy support**: Individual `think`, `agentToolUse`, `agentEdits`, and `assistant` events at the top level are treated as single-element `llmResponse` groups for backward compatibility.
-
-  Compatibility with existing scenarios (type‑based events):
-  - Runners MUST also accept timeline of the form `{ "type": "advanceMs", "ms": 50 }`, `{ "type": "screenshot", "name": "..." }`, `{ "type": "userInputs", "inputs": [[100, "text"]] }`, `{ "type": "assertVm", ... }` as used in `test_scenarios/basic_navigation.yaml`.
+  Legacy timeline shapes (top-level `think`, `agentToolUse`, `agentEdits`, or
+  `assistant` events; type-tagged timeline objects) are **not supported**.
 
 - **expect**:
   - `exitCode`: Expected process exit code.
@@ -298,12 +662,12 @@ Runners MAY extend assertions; unknown keys are ignored with a warning.
 
 Scenarios use a unified timeline containing all events (agent actions, user inputs, assertions, screenshots, etc.):
 
-- **Timeline Progression**: Time advances through `advanceMs` events, establishing absolute timestamps
-- **Delta Timing**: Event-internal timing values are millisecond deltas from the current timeline position
-- **Agent Events** execute sequentially and consume time based on their millisecond values
-- **User Events** (userInputs, userEdits, userCommand) can execute concurrently with agent events
-- **Test Events** (assert, screenshot) execute at specific timeline points
-- **Time Advancement** (`advanceMs`) ensures proper synchronization: `advanceMs >= max(time_from_concurrent_events)`
+- **Timeline Progression**: Time advances through `advanceMs` events, establishing absolute timestamps.
+- **Delta Timing**: Event-internal timing values are millisecond deltas from the current timeline position; encoders MUST emit ACP messages in non-decreasing absolute timestamp order to preserve streaming semantics.
+- **Agent Events** execute sequentially and consume time based on their millisecond values.
+- **User Events** (userInputs, userEdits, userCommand) can execute concurrently with agent events.
+- **Test Events** (assert, screenshot) execute at specific timeline points.
+- **Time Advancement** (`advanceMs`) ensures proper synchronization: `advanceMs >= max(time_from_concurrent_events)`; runners MUST reject timelines that would produce decreasing ACP message timestamps.
 
 ### Event Execution by Component and Testing Mode
 
@@ -319,6 +683,11 @@ simulation and tool execution.
 
 **Mock-Agent Component:**
 
+- **Configuration**: Reads the `acp` section of the scenario file to determine how to launch and configure itself:
+  - Uses `acp.capabilities` to advertise specific ACP capabilities during initialization (loadSession, prompt content types, MCP transport support)
+  - Uses `acp.cwd` as the working directory for the ACP session
+  - Uses `acp.mcpServers` to configure MCP server connections
+  - These configuration values are interpreted only by the test runner, which uses them to decide how to launch the mock-agent process with appropriate CLI parameters
 - Processes `llmResponse` events by printing thinking and assistant messages
   directly to the terminal/console to simulate LLM API responses (no actual LLM
   API calls are made)
@@ -482,10 +851,13 @@ timeline:
   # LLM Response Events - API level interactions
   - llmResponse:
       - think:
-          - [500, 'I need to examine the current code first'] # 500ms
-          - [300, 'Let me check what functions exist...'] # 300ms, total: 800ms
+          - timestamp: 500
+            content: 'I need to examine the current code first'
+          - timestamp: 300
+            content: 'Let me check what functions exist...'
       - assistant:
-          - [200, 'Let me search for function definitions in the codebase.'] # 200ms
+          - timestamp: 200
+            content: 'Let me search for function definitions in the codebase.'
 
   # Agent Action Events - Tool executions and file operations
   - agentToolUse:
@@ -552,7 +924,8 @@ timeline:
       - think:
           - [300, 'The user wants me to run tests']
       - assistant:
-          - [100, 'Running the test suite to check for any issues.']
+          - timestamp: 100
+            content: 'Running the test suite to check for any issues.'
 
   # Detailed agent action with realistic execution simulation
   - agentActions:
@@ -636,6 +1009,145 @@ timeline:
 - Agent events execute sequentially; user and test events can execute concurrently with agent events.
 - `advanceMs` values must account for all concurrent activity to maintain proper synchronization.
 
+### ACP Agent Testing Extensions
+
+The scenario format includes special support for testing ACP (Agent Client Protocol) agents through the `acp` configuration section and enhanced content handling:
+
+#### Example: ACP Capability Negotiation Test
+
+```yaml
+name: acp_capability_negotiation_test
+tags: ['acp', 'capabilities']
+
+acp:
+  capabilities:
+    loadSession: false
+    promptCapabilities:
+      image: true
+      audio: false
+      embeddedContext: true
+    mcpCapabilities:
+      http: true
+      sse: false
+  cwd: '/tmp/test-workspace'
+  mcpServers:
+    - name: 'filesystem'
+      command: '/usr/local/bin/mcp-server-filesystem'
+      args: ['/tmp/test-workspace']
+      env: []
+
+timeline:
+  # Test initialization handshake (capabilities configured via scenario file)
+  - initialize:
+      protocolVersion: 1
+      clientCapabilities:
+        fs:
+          readTextFile: true
+          writeTextFile: true
+        terminal: true
+      clientInfo:
+        name: 'test-client'
+        version: '1.0.0'
+    expectedResponse:
+      protocolVersion: 1
+      agentCapabilities:
+        loadSession: false
+        promptCapabilities:
+          image: true
+          audio: false
+          embeddedContext: true
+        mcpCapabilities:
+          http: true
+          sse: false
+
+  # Test rich content prompt (sent via first userInputs)
+  - sessionStart:
+      expectedPromptResponse:
+        sessionId: 'test-session-123'
+  - userInputs:
+      - timestamp: 0
+        input:
+          - type: 'text'
+            text: 'Analyze this image and describe what you see:'
+          - type: 'image'
+            mimeType: 'image/png'
+            path: 'images/test-diagram.png'
+
+  # Test client-side ACP method simulation
+  - clientFsRead:
+      path: '/tmp/test-workspace/main.py'
+      expectedContent: "print('Hello, World!')"
+  - clientFsWrite:
+      path: '/tmp/test-workspace/output.py'
+      content: "print('Modified content')"
+  - clientTerminalCreate:
+      command: 'python output.py'
+      expectedOutput: 'Modified content'
+  - clientPermissionRequest:
+      operation: 'file_write'
+      resource: '/tmp/test-workspace/critical.py'
+      granted: true
+
+  - complete: true
+```
+
+#### Example: LoadSession with SessionStart Boundary
+
+```yaml
+name: 'session_with_history'
+tags: ['acp', 'loadsession']
+
+acp:
+  capabilities:
+    loadSession: true
+    promptCapabilities:
+      image: false
+      audio: false
+      embeddedContext: false
+    mcpCapabilities:
+      http: false
+      sse: false
+
+timeline:
+  # Historical events (replayed during session/load)
+  - llmResponse:
+      - assistant:
+          - timestamp: 100
+            content: "I'll create a simple Python script for you."
+  - agentToolUse:
+      toolName: 'runCmd'
+      args:
+        cmd: 'echo "print(\\"Hello, World!\\")" > hello.py'
+      result: 'File created'
+      status: 'ok'
+  - agentEdits:
+      path: 'hello.py'
+      linesAdded: 1
+      linesRemoved: 0
+
+  # Session boundary - everything before this is historical
+  - sessionStart
+
+  # Live events (streamed after session/load completes)
+  - llmResponse:
+      - assistant:
+          - timestamp: 100
+            content: "Now let's modify the script to be more interesting."
+  - agentToolUse:
+      toolName: 'runCmd'
+      args:
+        cmd: 'echo "print(\\"Hello from loaded session!\\")" > hello.py'
+      result: 'File updated'
+      status: 'ok'
+
+  - complete: true
+```
+
+When `session/load` is called with this scenario's name, the mock-agent will:
+
+1. Replay all events before `sessionStart` as historical conversation
+2. Continue streaming events after `sessionStart` as live activity
+
 ### References
 
 - CLI behaviors and flow: [CLI.md](CLI.md)
@@ -654,6 +1166,13 @@ timeline:
 
 ### Scenario Selection & Playback Controls
 
-- **Scenario discovery:** When multiple Scenario-Format files are provided (via `--scenario DIR` or configuration), the runtime uses Levenshtein distance between the incoming task prompt (or any `x-scenario-prompt` header for LLM proxy requests) and each scenario’s `initialPrompt`. The closest match is selected automatically. Explicit `x-scenario-name` headers or CLI overrides still take precedence.
+- **Scenario discovery:** When multiple Scenario-Format files are provided (via `--scenario DIR` or configuration), the runtime uses Levenshtein distance between the incoming task prompt (or any `x-scenario-prompt` header for LLM proxy requests) and each scenario’s **effective initial prompt**, computed as the first `userInputs` after `sessionStart` (if present) or otherwise the first `userInputs` in the timeline. Explicit `x-scenario-name` headers or CLI overrides still take precedence.
 - **Speed scaling:** Every timeline delay (`think`, `assistant`, `progress`, `toolExecution`, and `advanceMs` entries) is multiplied by the `scenario-speed` factor (defaults to `1.0`). Values < 1.0 speed up playback; values > 1.0 slow it down. Current implementations clamp the multiplier to a minimum of `0.01` to avoid zero-duration events.
 - **SSE catch-up:** The Rust mock REST server persists emitted events and replays the complete history to new SSE subscribers before streaming live updates, so clients that connect mid-scenario still receive a consistent timeline.
+  **Mock ACP Server (ACP client test mode):**
+
+- Translates scenario events into ACP messages sent to the client under test.
+- For `runCmd` tool events, issues ACP terminal method calls so the client executes the command in its sandbox. In passthrough mode (see `specs/ACP.server.status.md`), it asks the client to invoke a `show-sandbox-execution` command so the client’s sandbox/recorder performs the command and streams output back via ACP terminal notifications.
+- Handles `clientPermissionRequest` by sending `session/request_permission` and returning the scripted user decision.
+- Handles `clientFsRead`/`clientFsWrite` by issuing ACP filesystem client calls.
+- Uses `sessionStart.sessionId` and `expectedPromptResponse` to craft the `session/new` (or `session/load`) response and validate the first prompt turn after the boundary.
