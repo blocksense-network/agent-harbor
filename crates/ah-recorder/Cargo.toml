@@ -20,8 +20,8 @@ tracing-subscriber = "0.3"
 chrono = { workspace = true }
 
 # Agent Harbor workspace crates
-ah-core = { path = "../ah-core" }
-ah-domain-types = { path = "../ah-domain-types" }
+ah-core = { workspace = true }
+ah-domain-types = { workspace = true }
 
 # Recording-specific dependencies
 portable-pty = "0.8"

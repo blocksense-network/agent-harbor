@@ -20,24 +20,24 @@ libc = "0.2"
 ssz = { package = "ethereum_ssz", version = "0.8" }
 fslock = "0.2"
 
-agentfs-daemon = { path = "../agentfs-daemon", optional = true }
-agentfs-interpose-e2e-tests = { path = "../agentfs-interpose-e2e-tests", optional = true }
-agentfs-proto = { path = "../agentfs-proto", optional = true }
+agentfs-daemon = { workspace = true, optional = true }
+agentfs-interpose-e2e-tests = { workspace = true, optional = true }
+agentfs-proto = { workspace = true, optional = true }
 chrono = { workspace = true, features = ["serde"] }
 dirs = { workspace = true }
-ah-fs-snapshots-daemon = { path = "../ah-fs-snapshots-daemon" }
+ah-fs-snapshots-daemon = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-agentfs-interpose-e2e-tests = { path = "../agentfs-interpose-e2e-tests" }
-agentfs-client = { path = "../agentfs-client" }
+agentfs-interpose-e2e-tests = { workspace = true }
+agentfs-client = { workspace = true }
 
 [dev-dependencies]
 regex = "1.10"
 libc = "0.2"
-ah-repo = { path = "../ah-repo" }
-ah-logging = { path = "../ah-logging", features = ["test-utils"] }
+ah-repo = { workspace = true }
+ah-logging = { workspace = true, features = ["test-utils"] }
 serial_test = { version = "3", features = ["file_locks"] }
-fs-snapshots-test-harness = { path = "../../tests/fs-snapshots-test-harness", default-features = false, features = [
+fs-snapshots-test-harness = { workspace = true, features = [
   "git",
   "zfs",
   "btrfs",

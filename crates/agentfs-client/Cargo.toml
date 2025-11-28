@@ -10,6 +10,6 @@ edition = "2021"
 ah-logging.workspace = true
 anyhow.workspace = true
 libc.workspace = true
-agentfs-daemon = { path = "../agentfs-daemon" }
-agentfs-proto = { path = "../agentfs-proto" }
+agentfs-daemon = { workspace = true }
+agentfs-proto = { workspace = true }
 tracing.workspace = true

@@ -29,14 +29,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.treefmt-nix.follows = "nixos-modules/treefmt-nix";
     };
-    "tui-textarea-src" = {
-      url = ./vendor/tui-textarea;
-      flake = false;
-    };
-    "vt100-src" = {
-      url = ./vendor/vt100;
-      flake = false;
-    };
     codex = {
       url = "git+file:./vendor/codex";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -71,8 +63,6 @@
       pjdfstest-src,
       codetracer-python-recorder,
       flake-parts,
-      tui-textarea-src,
-      vt100-src,
       ...
     }:
     flake-parts.lib.mkFlake { inherit inputs; } (
@@ -193,27 +183,11 @@
                   ./assets
                   ./resources
                   ./specs
-                  # Vendored workspace members and patched crates required for offline builds
-                  ./vendor/acp-rust-sdk
-                  (fs.maybeMissing ./vendor/tui-textarea)
-                  (fs.maybeMissing ./vendor/vt100)
                 ];
                 rustWorkspaceSource = fs.toSource {
                   root = ./.;
                   fileset = rustWorkspaceFiles;
                 };
-                ensureVendoredSources = ''
-                  if [ ! -e vendor/tui-textarea/Cargo.toml ]; then
-                    echo "Injecting vendored tui-textarea from flake input"
-                    mkdir -p vendor
-                    cp -a --no-preserve=ownership ${inputs.tui-textarea-src.outPath} vendor/tui-textarea
-                  fi
-                  if [ ! -e vendor/vt100/Cargo.toml ]; then
-                    echo "Injecting vendored vt100 from flake input"
-                    mkdir -p vendor
-                    cp -a --no-preserve=ownership ${inputs.vt100-src.outPath} vendor/vt100
-                  fi
-                '';
                 hostIsLinux = pkgs.stdenv.hostPlatform.isLinux;
 
                 # Build the ah and ah-fs-snapshot-daemon binaries from the workspace
@@ -224,10 +198,9 @@
                   cargoLock = {
                     lockFile = ./Cargo.lock;
                     outputHashes = {
-                      # TODO: uncomment when we again revert to using cargo git dependencies instead of git submodules
-                      # "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
-                      # "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                      # "rmcp-0.9.0" = "sha256-F+vmm2DfMzDxAmDb/MbfwnVaepS7UH6XHVpxSrvOczY=";
+                      "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
+                      "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
+                      "agent-client-protocol-0.4.7" = "sha256-FZJ4JqzB/J/mOd4PFVJMDy1IECrZJNZq/+swYLUtJmc=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
@@ -236,7 +209,6 @@
                     pkgs.zlib
                   ]
                   ++ pkgs.lib.optionals hostIsLinux [ pkgs.libseccomp ];
-                  postPatch = ensureVendoredSources;
                   cargoBuildFlags = [
                     "--bin"
                     "ah"
@@ -255,10 +227,9 @@
                   cargoLock = {
                     lockFile = ./Cargo.lock;
                     outputHashes = {
-                      # TODO: uncomment when we again revert to using cargo git dependencies instead of git submodules
-                      # "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
-                      # "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
-                      # "rmcp-0.9.0" = "sha256-F+vmm2DfMzDxAmDb/MbfwnVaepS7UH6XHVpxSrvOczY=";
+                      "tui-textarea-0.7.0" = "sha256-2FQHtQ35Mgw8tMTUNq8rEBgPzIUYLhxx6wZGG0zjvdc=";
+                      "vt100-0.16.2" = "sha256-BjcSXGw2Xc1QTB1uU9a2IsWdpoQBSjGt2dJLkm4t2ZE=";
+                      "agent-client-protocol-0.4.7" = "sha256-FZJ4JqzB/J/mOd4PFVJMDy1IECrZJNZq/+swYLUtJmc=";
                     };
                   };
                   nativeBuildInputs = [ pkgs.pkg-config ];
@@ -267,7 +238,6 @@
                     pkgs.zlib
                   ]
                   ++ pkgs.lib.optionals hostIsLinux [ pkgs.libseccomp ];
-                  postPatch = ensureVendoredSources;
                   cargoBuildFlags = [
                     "--bin"
                     "ah-fs-snapshots-daemon"

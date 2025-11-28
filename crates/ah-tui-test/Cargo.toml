@@ -7,9 +7,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ah-tui = { path = "../ah-tui" }
-ah-test-scenarios = { path = "../ah-test-scenarios" }
-ah-rest-client-mock = { path = "../ah-rest-client-mock" }
+ah-tui = { workspace = true }
+ah-test-scenarios = { workspace = true }
+ah-rest-client-mock = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
 ratatui = { workspace = true }

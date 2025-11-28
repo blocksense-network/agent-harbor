@@ -20,10 +20,10 @@ ethereum_ssz = "0.8"
 ethereum_ssz_derive = "0.8"
 hex = "0.4"
 stackable-hooks = { workspace = true }
-agentfs-proto = { path = "../agentfs-proto" }
-agentfs-client = { path = "../agentfs-client" }
+agentfs-proto = { workspace = true }
+agentfs-client = { workspace = true }
 tempfile = "3"
-agentfs-core = { path = "../agentfs-core", optional = true }
+agentfs-core = { workspace = true, optional = true }
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]

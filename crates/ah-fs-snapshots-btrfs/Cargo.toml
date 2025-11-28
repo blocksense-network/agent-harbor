@@ -9,4 +9,4 @@ description = "Btrfs snapshot provider facade for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-ah-fs-snapshots = { path = "../ah-fs-snapshots", features = ["btrfs"] }
+ah-fs-snapshots = { workspace = true, features = ["btrfs"] }

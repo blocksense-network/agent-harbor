@@ -1031,9 +1031,7 @@
         ],
         "pjdfstest-src": "pjdfstest-src",
         "rust-overlay": "rust-overlay",
-        "sosumi-docs-downloader": "sosumi-docs-downloader",
-        "tui-textarea-src": "tui-textarea-src",
-        "vt100-src": "vt100-src"
+        "sosumi-docs-downloader": "sosumi-docs-downloader"
       }
     },
     "rust-analyzer-src": {
@@ -1195,18 +1193,6 @@
         "type": "github"
       }
     },
-    "tui-textarea-src": {
-      "flake": false,
-      "locked": {
-        "path": "vendor/tui-textarea",
-        "type": "path"
-      },
-      "original": {
-        "path": "vendor/tui-textarea",
-        "type": "path"
-      },
-      "parent": []
-    },
     "vscode-server": {
       "inputs": {
         "flake-utils": [
@@ -1231,18 +1217,6 @@
         "repo": "nixos-vscode-server",
         "type": "github"
       }
-    },
-    "vt100-src": {
-      "flake": false,
-      "locked": {
-        "path": "vendor/vt100",
-        "type": "path"
-      },
-      "original": {
-        "path": "vendor/vt100",
-        "type": "path"
-      },
-      "parent": []
     }
   },
   "root": "root",

@@ -40,8 +40,8 @@ tokio = { version = "1.0", features = [
 ] }
 futures = "0.3"
 libc = "0.2"
-ah-command-trace-proto = { path = "../ah-command-trace-proto" }
-ah-command-trace-server = { path = "../ah-command-trace-server" }
+ah-command-trace-proto = { workspace = true }
+ah-command-trace-server = { workspace = true }
 portable-pty = "0.8"
 anyhow = "1.0"
 
