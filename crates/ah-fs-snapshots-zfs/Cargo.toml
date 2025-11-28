@@ -9,4 +9,4 @@ description = "ZFS snapshot provider facade for Agent Harbor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-ah-fs-snapshots = { path = "../ah-fs-snapshots", features = ["zfs"] }
+ah-fs-snapshots = { workspace = true, features = ["zfs"] }

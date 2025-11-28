@@ -14,13 +14,9 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 
 # Sandbox crates
-sandbox-core = { path = "../../crates/sandbox-core", features = [
-  "cgroups",
-  "net",
-  "devices",
-] }
-sandbox-fs = { path = "../../crates/sandbox-fs" }
-sandbox-devices = { path = "../../crates/sandbox-devices" }
+sandbox-core = { workspace = true, features = ["cgroups", "net", "devices"] }
+sandbox-fs = { workspace = true }
+sandbox-devices = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

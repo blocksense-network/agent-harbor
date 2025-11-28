@@ -14,21 +14,17 @@ path = "src/main.rs"
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-ah-logging = { path = "../ah-logging" }
+ah-logging = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 
 # Sandbox crates
-sandbox-core = { path = "../sandbox-core", features = [
-  "cgroups",
-  "net",
-  "devices",
-] }
-sandbox-fs = { path = "../sandbox-fs" }
-sandbox-seccomp = { path = "../sandbox-seccomp" }
-sandbox-cgroups = { path = "../sandbox-cgroups" }
-sandbox-net = { path = "../sandbox-net" }
-sandbox-proto = { path = "../sandbox-proto" }
+sandbox-core = { workspace = true, features = ["cgroups", "net", "devices"] }
+sandbox-fs = { workspace = true }
+sandbox-seccomp = { workspace = true }
+sandbox-cgroups = { workspace = true }
+sandbox-net = { workspace = true }
+sandbox-proto = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

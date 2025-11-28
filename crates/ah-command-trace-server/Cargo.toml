@@ -16,7 +16,7 @@ tokio = { version = "1.0", features = [
 ] }
 futures = "0.3"
 thiserror = "1.0"
-ah-command-trace-proto = { path = "../ah-command-trace-proto" }
+ah-command-trace-proto = { workspace = true }
 tempfile = "3"
 # SSZ serialization (matching agentfs-proto)
 ethereum_ssz = "0.8"

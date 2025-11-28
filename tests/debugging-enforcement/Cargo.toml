@@ -11,8 +11,8 @@ anyhow = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 libc = "0.2"
 nix = { version = "0.27", features = ["ptrace", "process", "mount", "sched"] }
-sandbox-core = { path = "../../crates/sandbox-core" }
-sandbox-fs = { path = "../../crates/sandbox-fs" }
+sandbox-core = { workspace = true }
+sandbox-fs = { workspace = true }
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"

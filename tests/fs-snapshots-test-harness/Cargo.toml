@@ -22,8 +22,8 @@ thiserror.workspace = true
 uuid.workspace = true
 libc.workspace = true
 clap = { workspace = true, features = ["derive"] }
-ah-repo = { path = "../../crates/ah-repo" }
-ah-fs-snapshots-daemon = { path = "../../crates/ah-fs-snapshots-daemon" }
+ah-repo = { workspace = true }
+ah-fs-snapshots-daemon = { workspace = true }
 
 [dependencies.ah-fs-snapshots]
 path = "../../crates/ah-fs-snapshots"
@@ -56,7 +56,7 @@ path = "../../crates/agentfs-interpose-e2e-tests"
 assert_cmd = "2.0"
 regex = "1.0"
 tokio = { workspace = true, features = ["rt", "macros", "process"] }
-ah-logging = { path = "../../crates/ah-logging", features = ["test-utils"] }
+ah-logging = { workspace = true, features = ["test-utils"] }
 
 [features]
 default = ["git"]

@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 # Re-export the monolith with codex feature enabled
-ah-agents = { path = "../ah-agents", features = ["codex"] }
+ah-agents = { workspace = true, features = ["codex"] }
 
 # Re-export common dependencies
 async-trait = "0.1"

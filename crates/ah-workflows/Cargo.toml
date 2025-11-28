@@ -11,7 +11,7 @@ thiserror = "1.0"
 tokio = { version = "1.0", features = ["process", "io-util"] }
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
-ah-repo = { path = "../ah-repo" }
+ah-repo = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.0"

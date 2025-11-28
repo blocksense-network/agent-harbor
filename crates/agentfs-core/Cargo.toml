@@ -14,7 +14,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 libc = { workspace = true }
 hex = { workspace = true }
-agentfs-proto = { path = "../agentfs-proto" }
+agentfs-proto = { workspace = true }
 
 [features]
 default = ["events"]

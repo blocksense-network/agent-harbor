@@ -18,12 +18,12 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-ah-sandbox-macos = { path = "../ah-sandbox-macos" }
+ah-sandbox-macos = { workspace = true }
 libc = "0.2"
 
 # Binary-only dependencies
 clap = { workspace = true, optional = true }
-ah-logging = { path = "../ah-logging", optional = true }
+ah-logging = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 

@@ -15,9 +15,9 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
-sandbox-core = { path = "../../crates/sandbox-core" }
-sandbox-fs = { path = "../../crates/sandbox-fs" }
+sandbox-core = { workspace = true }
+sandbox-fs = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ah-sandbox-macos = { path = "../../crates/ah-sandbox-macos" }
+ah-sandbox-macos = { workspace = true }
 which = "6"

@@ -8,9 +8,9 @@ edition = "2021"
 publish = false
 
 [dependencies]
-agentfs-core = { path = "../../crates/agentfs-core" }
-agentfs-daemon = { path = "../../crates/agentfs-daemon" }
-agentfs-proto = { path = "../../crates/agentfs-proto" }
+agentfs-core = { workspace = true }
+agentfs-daemon = { workspace = true }
+agentfs-proto = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -23,4 +23,4 @@ libc = { workspace = true }
 ssz = { package = "ethereum_ssz", version = "0.8" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-agentfs-interpose-e2e-tests = { path = "../../crates/agentfs-interpose-e2e-tests" }
+agentfs-interpose-e2e-tests = { workspace = true }
