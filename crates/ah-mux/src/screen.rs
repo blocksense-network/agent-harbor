@@ -5,6 +5,18 @@
 //!
 //! GNU Screen is a classic terminal multiplexer with support for sessions,
 //! windows, and regions. It uses the `-X` command interface for automation.
+//!
+//! ## Terminology Note
+//!
+//! There is an important terminology discrepancy between the `Multiplexer` trait
+//! and GNU Screen's CLI:
+//!
+//! - **Multiplexer "window"** → **GNU Screen "window"** (what users see as tabs in the terminal)
+//! - **Multiplexer "pane"** → **GNU Screen "region"** (splits within a tab/window)
+//!
+//! Additionally, GNU Screen has "layouts" which are saved configurations of window+region
+//! arrangements. This implementation uses layouts to organize Agent Harbor tasks, where each
+//! task gets its own layout containing one or more windows and regions.
 
 use std::env;
 use std::process::Command;
@@ -146,7 +158,8 @@ impl Multiplexer for ScreenMultiplexer {
         // -- Start new task layout --
         debug!(session_name = %session_name, task_name = %task_name, "Creating new task layout");
 
-        // screen -S <session_name> -X layout new split
+        // Create a new layout for this task
+        // screen -S <session_name> -X layout new <task_name>
         let _split_layout_cmd = Command::new("screen")
             .arg("-S")
             .arg(&session_name)
@@ -156,12 +169,15 @@ impl Multiplexer for ScreenMultiplexer {
             .arg(task_name)
             .output();
 
-        // screen -S <session_name> -X screen
+        // Create a new window within this layout with the task name as its title
+        // screen -S <session_name> -X screen -t <task_name>
         let _screen_cmd = Command::new("screen")
             .arg("-S")
             .arg(&session_name)
             .arg("-X")
             .arg("screen")
+            .arg("-t")
+            .arg(task_name)
             .output();
         // -- Finish new task layout --
 
@@ -179,8 +195,8 @@ impl Multiplexer for ScreenMultiplexer {
         opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
-        // Screen uses regions, not panes in the same way as modern multiplexers
-        // We need to split the current region and create a new window in it
+        // Screen uses regions (its term for panes/splits)
+        // We split the current region and create a new window in the new region
 
         let session_name = std::env::var("STY").unwrap_or_default();
         match window {
@@ -296,7 +312,7 @@ impl Multiplexer for ScreenMultiplexer {
         let session_name = std::env::var("STY").unwrap_or_default();
         debug!(session_name = %session_name, pane_id = %pane, command = %cmd, "Running command in pane");
 
-        // Send the command as text input to the focused window
+        // Send the command as text input to the focused window (region)
         let stuff_command = format!("{}\n", cmd);
 
         let mut command = Command::new("screen");
@@ -324,7 +340,7 @@ impl Multiplexer for ScreenMultiplexer {
     fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
         debug!(pane_id = %pane, text_length = text.len(), "Sending text to pane");
 
-        // Screen doesn't have addressable pane IDs in the CLI, so we use the current session
+        // Screen doesn't have addressable region IDs in the CLI, so we target the current session
         let session_name = std::env::var("STY").unwrap_or_default();
 
         // Use screen's stuff command to send text
@@ -384,38 +400,45 @@ impl Multiplexer for ScreenMultiplexer {
 
     #[instrument(skip(self), fields(component = "ah-mux", operation = "list_windows", filter = ?title_substr))]
     fn list_windows(&self, title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
-        debug!(filter = ?title_substr, "Listing Screen windows/sessions");
-
-        // Screen doesn't have a direct way to list sessions from CLI
-        // We use `screen -ls` and parse the output
-        let output = Command::new("screen").arg("-ls").output().map_err(|e| {
-            error!(error = %e, "Failed to list screen sessions");
-            MuxError::Other(format!("Failed to list screen sessions: {}", e))
-        })?;
-
-        // screen -ls returns 1 if no sessions found (sometimes)
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        // Handle failure cases that are not just "No Sockets found"
-        if !output.status.success() && !stdout.contains("No Sockets found") {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            error!(stderr = %stderr, "screen -ls command failed");
-            return Err(MuxError::CommandFailed(format!(
-                "screen -ls failed: {}",
-                stderr
-            )));
+        let session_name = std::env::var("STY").unwrap_or_default();
+        if session_name.is_empty() {
+            debug!("STY not set, cannot list windows");
+            return Ok(Vec::new());
         }
 
-        let sessions = Self::parse_ls_output(&stdout, title_substr)?;
+        debug!(session_name = %session_name, filter = ?title_substr, "Listing Screen windows");
 
-        info!(count = sessions.len(), filter = ?title_substr, "Listed Screen sessions");
-        Ok(sessions)
+        // screen -S <session_name> -Q windows
+        let output = Command::new("screen")
+            .arg("-S")
+            .arg(&session_name)
+            .arg("-Q")
+            .arg("windows")
+            .output()
+            .map_err(|e| {
+                error!(error = %e, "Failed to list screen windows");
+                MuxError::Other(format!("Failed to list screen windows: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Use debug level since this is expected when session is gone or empty
+            debug!(stderr = %stderr, "screen -Q windows failed (possibly no session or old version)");
+            return Ok(Vec::new());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        debug!(stdout = %stdout, "screen -Q windows output");
+        let windows = Self::parse_windows_output(&stdout, title_substr)?;
+
+        info!(count = windows.len(), filter = ?title_substr, "Listed Screen windows");
+        Ok(windows)
     }
 
     #[instrument(skip(self), fields(component = "ah-mux", operation = "list_panes"))]
     fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
         debug!("List panes not available in GNU Screen");
-        // Screen doesn't expose pane/region listing via CLI
+        // Screen doesn't expose region listing via CLI
         Err(MuxError::NotAvailable("screen"))
     }
 
@@ -433,40 +456,34 @@ impl Multiplexer for ScreenMultiplexer {
 }
 
 impl ScreenMultiplexer {
-    /// Helper to parse output from `screen -ls`
-    pub(crate) fn parse_ls_output(
+    /// Helper to parse output from `screen -Q windows`
+    pub(crate) fn parse_windows_output(
         output: &str,
         title_substr: Option<&str>,
     ) -> Result<Vec<String>, MuxError> {
-        if output.contains("No Sockets found") {
-            debug!("No Screen sessions found");
-            return Ok(Vec::new());
-        }
-
-        let mut sessions = Vec::new();
-        // Regex to parse session line: "\t12345.session_name\t(Detached)"
-        // Matches start of line, optional whitespace, digits, dot, capture name, whitespace, open paren
-        let re = Regex::new(r"^\s*\d+\.([^\s]+)\s+\(").map_err(|e| {
-            error!(error = %e, "Failed to compile regex for parsing screen -ls output");
+        let mut windows = Vec::new();
+        // Output format example: "0* bash  1- vim  2  misc"
+        // We use a regex to find: number, optional flags, space, title
+        // NOTE: This assumes titles don't have spaces.
+        let re = Regex::new(r"(\d+)[*!-]?\s+([^\s]+)").map_err(|e| {
+            error!(error = %e, "Failed to compile regex for parsing screen windows output");
             MuxError::Other(format!("Failed to compile regex: {}", e))
         })?;
 
-        for line in output.lines() {
-            if let Some(captures) = re.captures(line) {
-                if let Some(session_name_match) = captures.get(1) {
-                    let session_name = session_name_match.as_str();
-                    if let Some(substr) = title_substr {
-                        if session_name.contains(substr) {
-                            sessions.push(session_name.to_string());
-                        }
-                    } else {
-                        sessions.push(session_name.to_string());
+        for cap in re.captures_iter(output) {
+            if let Some(title_match) = cap.get(2) {
+                let title = title_match.as_str();
+                if let Some(substr) = title_substr {
+                    if title.contains(substr) {
+                        windows.push(title.to_string());
                     }
+                } else {
+                    windows.push(title.to_string());
                 }
             }
         }
 
-        Ok(sessions)
+        Ok(windows)
     }
 
     /// Helper to resolve current window from WINDOW env var
@@ -487,8 +504,8 @@ impl ScreenMultiplexer {
 
     /// Helper to resolve current pane from STY env var
     pub(crate) fn resolve_current_pane(sty: Option<String>) -> Result<Option<PaneId>, MuxError> {
-        // We can't easily determine the "pane ID" as we format it (screen-region-<session>)
-        // But we can verify if we are in screen
+        // We can't easily determine the region ID from Screen's perspective
+        // We use the session name as an identifier
         match sty {
             Some(sty) if !sty.is_empty() => {
                 let pane_id = format!("screen-region-{}", sty);
@@ -518,35 +535,21 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_ls_output_empty() {
-        let output = "No Sockets found in /var/run/screen/S-user.\n";
-        let sessions = ScreenMultiplexer::parse_ls_output(output, None).unwrap();
-        assert!(sessions.is_empty());
+    fn test_parse_windows_output() {
+        let output = "0* bash  1- vim  2  misc";
+        let windows = ScreenMultiplexer::parse_windows_output(output, None).unwrap();
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[0], "bash");
+        assert_eq!(windows[1], "vim");
+        assert_eq!(windows[2], "misc");
     }
 
     #[test]
-    fn test_parse_ls_output_single() {
-        let output = "There is a screen on:\n\t12345.ah-task-1\t(Detached)\n1 Socket in /var/run/screen/S-user.\n";
-        let sessions = ScreenMultiplexer::parse_ls_output(output, None).unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0], "ah-task-1");
-    }
-
-    #[test]
-    fn test_parse_ls_output_multiple() {
-        let output = "There are screens on:\n\t12345.ah-task-1\t(Detached)\n\t67890.ah-task-2\t(Attached)\n2 Sockets in ...";
-        let sessions = ScreenMultiplexer::parse_ls_output(output, None).unwrap();
-        assert_eq!(sessions.len(), 2);
-        assert_eq!(sessions[0], "ah-task-1");
-        assert_eq!(sessions[1], "ah-task-2");
-    }
-
-    #[test]
-    fn test_parse_ls_output_filter() {
-        let output = "There are screens on:\n\t12345.ah-task-1\t(Detached)\n\t67890.other-session\t(Attached)\n";
-        let sessions = ScreenMultiplexer::parse_ls_output(output, Some("ah-task")).unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0], "ah-task-1");
+    fn test_parse_windows_output_filter() {
+        let output = "0* bash  1- vim  2  misc";
+        let windows = ScreenMultiplexer::parse_windows_output(output, Some("vim")).unwrap();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0], "vim");
     }
 
     #[test]
