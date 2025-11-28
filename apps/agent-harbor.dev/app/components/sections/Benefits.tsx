@@ -23,7 +23,7 @@ export default function Benefits() {
       icon: <IconTerminal />,
       title: 'FLEXIBLE',
       description:
-        "Agent Harbor runs where you work. Launch the multiplexer from your favorite terminal emulator - whether it's Ghostty, Emacs, LazyVim, or just plain vanilla Terminal.",
+        'Agent Harbor integrates with a wide variety of terminals and IDEs, supports remote task management through web and mobile interfaces and allows teams to set up on-prem execution clusters.',
     },
     {
       icon: <IconCode />,
