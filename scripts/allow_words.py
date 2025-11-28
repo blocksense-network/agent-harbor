@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """
-Add words to the project-scoped cspell configuration while keeping the allow-list sorted.
+Add words to both the project-scoped cspell configuration and vale Hunspell dictionary while keeping the allow-lists sorted.
 
-The script inserts new words into the `words` list in `.cspell.json` without disturbing the
-existing ordering semantics (case-insensitive alphabetical order with stable case grouping).
+The script inserts new words into both files, maintaining the union of words across both files
+and preserving the ordering semantics (case-insensitive alphabetical order with stable case grouping).
 """
 
 from __future__ import annotations
@@ -17,7 +17,54 @@ import sys
 from pathlib import Path
 from typing import Iterable, Sequence, Tuple
 
+try:
+    import yaml
+except ImportError:
+    try:
+        import ruamel.yaml as yaml
+    except ImportError:
+        # Fallback YAML parsing for simple cases
+        class SimpleYAML:
+            @staticmethod
+            def safe_load(stream):
+                # Very basic YAML parser for our specific use case
+                content = stream.read()
+                lines = content.split('\n')
+                data = {}
+                current_list = None
+                in_ignore = False
+
+                for line in lines:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+
+                    if line.startswith('ignore:'):
+                        in_ignore = True
+                        current_list = []
+                        data['ignore'] = current_list
+                    elif in_ignore and line.startswith('- '):
+                        current_list.append(line[2:])
+                    elif ':' in line and not in_ignore:
+                        key, value = line.split(':', 1)
+                        data[key.strip()] = value.strip()
+
+                return data
+
+            @staticmethod
+            def dump(data, stream, default_flow_style=False, sort_keys=False):
+                for key, value in data.items():
+                    if key == 'ignore' and isinstance(value, list):
+                        stream.write(f"{key}:\n")
+                        for item in value:
+                            stream.write(f"  - {item}\n")
+                    else:
+                        stream.write(f"{key}: {value}\n")
+
+        yaml = SimpleYAML()
+
 DEFAULT_CSPELL_PATH = Path(__file__).resolve().parents[1] / ".cspell.json"
+DEFAULT_VALE_DICT_DIR = Path(__file__).resolve().parents[1] / ".vale" / "config" / "dictionaries"
 
 SortKey = Tuple[str, int, str]
 
@@ -38,6 +85,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=DEFAULT_CSPELL_PATH,
         help=f"Path to the cspell configuration file (default: {DEFAULT_CSPELL_PATH})",
+    )
+    parser.add_argument(
+        "--vale-dict-dir",
+        dest="vale_dict_dir",
+        type=Path,
+        default=DEFAULT_VALE_DICT_DIR,
+        help=f"Path to the vale dictionaries directory (default: {DEFAULT_VALE_DICT_DIR})",
     )
     parser.add_argument(
         "--dry-run",
@@ -132,6 +186,39 @@ def write_cspell_words(cspell_path: Path, cspell_data: dict) -> None:
         handle.write("\n")
 
 
+def write_vale_hunspell_dict(vale_dict_dir: Path, words: list[str]) -> None:
+    """Update the vale Hunspell dictionary with new words."""
+    dict_file = vale_dict_dir / "en_custom.dic"
+
+    # Read existing words if file exists
+    existing_words = set()
+    if dict_file.exists():
+        with dict_file.open("r", encoding="utf-8") as f:
+            lines = f.readlines()
+            if lines:
+                # Skip the first line (word count)
+                for line in lines[1:]:
+                    word = line.strip()
+                    if word:
+                        existing_words.add(word)
+
+    # Add new words
+    all_words = existing_words.union(set(words))
+    sorted_words = sorted(all_words)
+
+    # Write back the dictionary
+    with dict_file.open("w", encoding="utf-8") as f:
+        f.write(f"{len(sorted_words)}\n")
+        for word in sorted_words:
+            f.write(f"{word}\n")
+
+    # Ensure affix file exists
+    aff_file = vale_dict_dir / "en_custom.aff"
+    if not aff_file.exists():
+        with aff_file.open("w", encoding="utf-8") as f:
+            f.write("SET UTF-8\n\n# Basic affix file for custom dictionary\n")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Program entry point."""
     try:
@@ -141,11 +228,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("No new words provided after normalization; nothing to do.", file=sys.stderr)
             return 0
 
-        cspell_data, words = load_cspell_words(args.cspell_path)
-        added = add_words(words, new_words)
+        # Load words from cspell
+        cspell_data, cspell_words = load_cspell_words(args.cspell_path)
+
+        # Load words from vale Hunspell dictionary
+        dict_file = args.vale_dict_dir / "en_custom.dic"
+        vale_words = []
+        if dict_file.exists():
+            with dict_file.open("r", encoding="utf-8") as f:
+                lines = f.readlines()
+                if lines:
+                    # Skip the first line (word count)
+                    for line in lines[1:]:
+                        word = line.strip()
+                        if word:
+                            vale_words.append(word)
+
+        # Get the union of all existing words
+        all_existing_words = list(set(cspell_words + vale_words))
+
+        # Add new words to the union
+        added = add_words(all_existing_words, new_words)
 
         if not added:
-            print("No changes: all words were already present in `.cspell.json`.")
+            print("No changes: all words were already present in both files.")
             return 0
 
         if args.dry_run:
@@ -154,9 +260,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"  {word}")
             return 0
 
+        # Update both files with the complete sorted word list
+        cspell_data["words"] = all_existing_words
         write_cspell_words(args.cspell_path, cspell_data)
+        write_vale_hunspell_dict(args.vale_dict_dir, all_existing_words)
+
         print(
-            f"Added {len(added)} word{'s' if len(added) != 1 else ''} to {args.cspell_path}: "
+            f"Added {len(added)} word{'s' if len(added) != 1 else ''} to cspell and vale Hunspell dictionary: "
             + ", ".join(added),
         )
         return 0
