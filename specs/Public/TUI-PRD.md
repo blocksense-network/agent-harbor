@@ -203,11 +203,11 @@ The agent selection dialog provides advanced agent configuration:
 
 #### Modal Focus Restoration
 
-When modals are dismissed with ESC, focus is restored based on the modal type to optimize the user workflow:
+When modals are dismissed (via ESC, apply actions, or other completion methods), focus is restored based on the modal type to optimize the user workflow:
 
 - **Model Selection Modal**: Returns focus to the model picker button, allowing immediate re-adjustment of model selection
 - **Repository/Branch Selection Modals**: Return focus to their respective selector buttons
-- **Launch Options Modal**: Returns focus to the task description textarea, allowing the user to immediately continue editing their prompt after reviewing or adjusting launch options
+- **Launch Options Modal**: Returns focus to the task description textarea, allowing the user to immediately continue editing their prompt after reviewing or adjusting launch options. This applies whether the modal is dismissed with ESC, the A key to apply changes, or any of the split launch shortcuts (t/s/h/v/T/S/H/V).
 - **Settings Modal**: Returns focus to the previously focused element
 
 This context-aware focus restoration ensures a smooth editing workflow where dismissing a modal returns the user to the most logical next action point.
@@ -660,8 +660,9 @@ The right column provides launch action selection with keyboard shortcuts:
 - **Modal dismissal and changes**:
   - **'A' key**: Applies changes and closes the modal, preserving any modifications made to the launch options
   - **'Esc' key**: Discards all changes and restores the original configuration from before the modal was opened
+  - **Split launch shortcuts** (t/s/h/v/T/S/H/V): Apply changes, launch the task with the selected split mode, and close the modal
   - **Mouse interactions**: Clickable hint text at the bottom of the modal ("**A** Apply • **Esc** Cancel") provides visual cues and mouse click support for both actions
-  - **Focus restoration**: After applying or canceling, focus returns to the task description textarea, allowing the user to immediately continue editing their prompt
+  - **Focus restoration**: After applying changes, canceling, or using split launch shortcuts, focus returns to the task description textarea, allowing the user to immediately continue editing their prompt
 - **Default focus**: Left column options when modal opens
 - **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed, and interactive hint text at bottom with bold key indicators
 

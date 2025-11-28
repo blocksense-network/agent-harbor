@@ -1108,6 +1108,13 @@ impl ViewModel {
                         let _ = modal;
                         self.launch_task_with_option(draft_id, option_text);
                         self.close_modal(false);
+
+                        // Restore focus to TaskDescription after launching with shortcut
+                        self.change_focus(DashboardFocusState::DraftTask(0));
+                        if let Some(card) = self.draft_cards.get_mut(0) {
+                            card.focus_element = CardFocusElement::TaskDescription;
+                        }
+
                         return true;
                     }
                     return false;

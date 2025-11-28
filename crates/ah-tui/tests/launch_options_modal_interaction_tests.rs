@@ -744,3 +744,123 @@ fn test_mouse_click_and_keyboard_interchangeable() {
     // Success message
     println!("✓ Test passed. See log for details (if needed): {log_hint}");
 }
+
+#[test]
+#[allow(clippy::disallowed_methods)]
+fn test_split_launch_shortcut_restores_focus_to_task_description() {
+    let (mut log, log_path) =
+        common::create_test_log("launch_options_split_shortcut_focus_restore");
+    let log_hint = log_path.display().to_string();
+
+    let mut vm = common::build_view_model_with_repos();
+
+    // Setup: Set focus on advanced options button to open launch options modal
+    vm.focus_element = DashboardFocusState::DraftTask(0);
+    if let Some(card) = vm.draft_cards.get_mut(0) {
+        card.focus_element = CardFocusElement::AdvancedOptionsButton;
+        // Add some description text
+        card.description.insert_str("Test task description");
+    }
+
+    writeln!(
+        log,
+        "Initial focus: {:?}, card focus: {:?}",
+        vm.focus_element, vm.draft_cards[0].focus_element
+    )
+    .expect("write log");
+
+    // Open launch options modal
+    let draft_id = vm.draft_cards[0].id.clone();
+    vm.open_launch_options_modal(draft_id);
+    assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+
+    writeln!(log, "Opened launch options modal").expect("write log");
+
+    // Test each split launch shortcut key
+    let test_cases = vec![
+        ('t', "Launch in new tab (t)"),
+        ('s', "Launch in split view (s)"),
+        ('h', "Launch in horizontal split (h)"),
+        ('v', "Launch in vertical split (v)"),
+        ('T', "Launch in new tab and focus (T)"),
+        ('S', "Launch in split view and focus (S)"),
+        ('H', "Launch in horizontal split and focus (H)"),
+        ('V', "Launch in vertical split and focus (V)"),
+    ];
+
+    for (key_char, option_name) in test_cases {
+        writeln!(
+            log,
+            "\nTesting shortcut key: '{}' ({})",
+            key_char, option_name
+        )
+        .expect("write log");
+
+        // Reset focus to advanced options button
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.focus_element = CardFocusElement::AdvancedOptionsButton;
+        }
+
+        // Reopen launch options modal
+        let draft_id = vm.draft_cards[0].id.clone();
+        vm.open_launch_options_modal(draft_id);
+        assert_eq!(
+            vm.modal_state,
+            ModalState::LaunchOptions,
+            "Modal should be open for key '{}' (log: {log_hint})",
+            key_char
+        );
+
+        // Press the shortcut key
+        let key_event = KeyEvent::new(KeyCode::Char(key_char), KeyModifiers::empty());
+        let handled = vm.handle_key_event(key_event);
+
+        writeln!(
+            log,
+            "Key '{}' handled: {}, modal_state: {:?}, focus: {:?}, card_focus: {:?}",
+            key_char,
+            handled,
+            vm.modal_state,
+            vm.focus_element,
+            vm.draft_cards.first().map(|c| c.focus_element)
+        )
+        .expect("write log");
+
+        assert!(
+            handled,
+            "Key '{}' should be handled (log: {log_hint})",
+            key_char
+        );
+        assert_eq!(
+            vm.modal_state,
+            ModalState::None,
+            "Modal should be closed after key '{}' (log: {log_hint})",
+            key_char
+        );
+
+        // Verify focus is restored to TaskDescription, not advanced options button
+        assert_eq!(
+            vm.focus_element,
+            DashboardFocusState::DraftTask(0),
+            "Global focus should be on draft task 0 after key '{}' (log: {log_hint})",
+            key_char
+        );
+        assert_eq!(
+            vm.draft_cards[0].focus_element,
+            CardFocusElement::TaskDescription,
+            "Card focus should return to TaskDescription after key '{}', not advanced options button (log: {log_hint})",
+            key_char
+        );
+
+        writeln!(
+            log,
+            "✓ Focus correctly restored to TaskDescription for key '{}'",
+            key_char
+        )
+        .expect("write log");
+    }
+
+    // Success message
+    println!("✓ Test passed. See log for details (if needed): {log_hint}");
+}
