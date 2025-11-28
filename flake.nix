@@ -214,6 +214,7 @@
                     cp -a --no-preserve=ownership ${inputs.vt100-src.outPath} vendor/vt100
                   fi
                 '';
+                hostIsLinux = pkgs.stdenv.hostPlatform.isLinux;
 
                 # Build the ah and ah-fs-snapshot-daemon binaries from the workspace
                 ah-binary = pkgs.rustPlatform.buildRustPackage rec {
@@ -232,9 +233,9 @@
                   nativeBuildInputs = [ pkgs.pkg-config ];
                   buildInputs = [
                     pkgs.openssl
-                    pkgs.libseccomp
                     pkgs.zlib
-                  ];
+                  ]
+                  ++ pkgs.lib.optionals hostIsLinux [ pkgs.libseccomp ];
                   postPatch = ensureVendoredSources;
                   cargoBuildFlags = [
                     "--bin"
@@ -263,9 +264,9 @@
                   nativeBuildInputs = [ pkgs.pkg-config ];
                   buildInputs = [
                     pkgs.openssl
-                    pkgs.libseccomp
                     pkgs.zlib
-                  ];
+                  ]
+                  ++ pkgs.lib.optionals hostIsLinux [ pkgs.libseccomp ];
                   postPatch = ensureVendoredSources;
                   cargoBuildFlags = [
                     "--bin"
@@ -323,8 +324,8 @@
                   overlays = [ rust-overlay.overlays.default ];
                   config.allowUnfree = true; # Allow unfree packages like claude-code
                 };
-                isLinux = pkgs.stdenv.isLinux;
-                isDarwin = pkgs.stdenv.isDarwin;
+                hostIsDarwin = pkgs.stdenv.hostPlatform.isDarwin;
+                hostIsLinux = pkgs.stdenv.hostPlatform.isLinux;
 
                 # CodeTracer Python recorder
                 codetracerPythonRecorder = codetracer-python-recorder.packages.${system}.codetracer-python-recorder;
@@ -435,7 +436,7 @@
                   pkgs.zellij
                   pkgs.kitty
                 ]
-                ++ pkgs.lib.optionals isLinux [
+                ++ pkgs.lib.optionals hostIsLinux [
                   pkgs.tilix
                 ];
 
@@ -445,23 +446,26 @@
                 ];
 
                 # Linux-specific packages
-                linuxPackages = pkgs.lib.optionals isLinux [
-                  # Use Chromium on Linux for mermaid-cli's Puppeteer
-                  pkgs.chromium
-                  # Linux-only filesystem utilities for snapshot functionality
-                  pkgs.btrfs-progs # Btrfs utilities for subvolume snapshots
-                  # Container runtimes for testing container workloads in sandbox
-                  pkgs.docker
-                  pkgs.podman
-                  # System monitoring tools for performance tests
-                  pkgs.procps # ps, top, etc. for memory monitoring
-                  # Seccomp library for sandboxing functionality
-                  pkgs.libseccomp # Required for seccomp-based sandboxing
-                  pkgs.pkg-config # Required for libseccomp-sys to find libseccomp
-                ];
+                linuxPackages =
+                  (pkgs.lib.optionals hostIsLinux [
+                    # Use Chromium on Linux for mermaid-cli's Puppeteer
+                    pkgs.chromium
+                    # Linux-only filesystem utilities for snapshot functionality
+                    pkgs.btrfs-progs # Btrfs utilities for subvolume snapshots
+                    # Container runtimes for testing container workloads in sandbox
+                    pkgs.docker
+                    pkgs.podman
+                    # System monitoring tools for performance tests
+                    pkgs.procps # ps, top, etc. for memory monitoring
+                  ])
+                  ++ (pkgs.lib.optionals hostIsLinux [
+                    # Seccomp library for sandboxing functionality
+                    pkgs.libseccomp # Required for seccomp-based sandboxing
+                    pkgs.pkg-config # Required for libseccomp-sys to find libseccomp
+                  ]);
 
                 # macOS-specific packages
-                darwinPackages = pkgs.lib.optionals isDarwin [
+                darwinPackages = pkgs.lib.optionals hostIsDarwin [
                   # Xcode environment wrapper
                   (pkgs.xcodeenv.composeXcodeWrapper {
                     versions = [ "16.0" ]; # Match your installed Xcode version
@@ -488,7 +492,7 @@
 
                 # Platform-specific shell hook additions
                 exportLinuxEnvVars =
-                  if isLinux then
+                  if hostIsLinux then
                     ''
                       export PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH="${pkgs.playwright-driver.browsers}/chromium-1181/chrome-linux/chrome"
                       export PLAYWRIGHT_CHROMIUM_EXECUTABLE="${pkgs.playwright-driver.browsers}/chromium-1181/chrome-linux/chrome"
@@ -498,7 +502,8 @@
                     "";
 
                 exportDarwinEnvVars =
-                  if isDarwin then
+                  if hostIsDarwin
+ then
                     ''
                       # Clean up environment variables that might point to wrong tools
                       unset DEVELOPER_DIR
@@ -528,9 +533,10 @@
                     echo "Loaded yarn-outdated plugin from Nix: $YARN_PLUGINS"
 
                     echo "Agent harbor development environment loaded${
-                      if isDarwin then
+                      if hostIsDarwin
+   then
                         " (macOS)"
-                      else if isLinux then
+                      else if hostIsLinux then
                         " (Linux)"
                       else
                         ""
