@@ -30,11 +30,11 @@
       inputs.treefmt-nix.follows = "nixos-modules/treefmt-nix";
     };
     "tui-textarea-src" = {
-      url = "git+file:./vendor/tui-textarea";
+      url = ./vendor/tui-textarea;
       flake = false;
     };
     "vt100-src" = {
-      url = "git+file:./vendor/vt100";
+      url = ./vendor/vt100;
       flake = false;
     };
     codex = {
