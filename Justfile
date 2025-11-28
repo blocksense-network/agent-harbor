@@ -36,6 +36,7 @@ CARGO_BUILD_E2E_CALL_REAL_SHIM := "-p e2e-call-real-shim"
 CARGO_BUILD_E2E_SHIM_A := "-p e2e-shim-a"
 CARGO_BUILD_E2E_SHIM_B := "-p e2e-shim-b"
 CARGO_BUILD_E2E_STACKABLE_HOOKS := "-p e2e-stackable-hooks"
+CARGO_BUILD_E2E_AUTO_PROPAGATION_SHIM := "-p e2e-auto-propagation-shim"
 CARGO_BUILD_AH_COMMAND_TRACE_SHIM := "-p ah-command-trace-shim"
 CARGO_BUILD_CGROUP_ENFORCEMENT_TESTS := "-p cgroup-enforcement-tests"
 CARGO_BUILD_OVERLAY_ENFORCEMENT_TESTS := "-p overlay-enforcement-tests"
@@ -56,6 +57,7 @@ CARGO_BUILD_RUST_TEST_BINARIES := \
   CARGO_BUILD_E2E_CALL_REAL_SHIM + " " + \
   CARGO_BUILD_E2E_SHIM_A + " " + \
   CARGO_BUILD_E2E_SHIM_B + " " + \
+  CARGO_BUILD_E2E_AUTO_PROPAGATION_SHIM + " " + \
   CARGO_BUILD_E2E_STACKABLE_HOOKS + " " + \
   CARGO_BUILD_AH_COMMAND_TRACE_SHIM + " " + \
   CARGO_BUILD_CGROUP_ENFORCEMENT_TESTS + " " + \
@@ -318,7 +320,8 @@ build-stackable-interpose-test-binaries:
     cargo build \
       {{CARGO_BUILD_E2E_CALL_REAL_SHIM}} \
       {{CARGO_BUILD_E2E_SHIM_A}} \
-      {{CARGO_BUILD_E2E_SHIM_B}}
+      {{CARGO_BUILD_E2E_SHIM_B}} \
+      {{CARGO_BUILD_E2E_AUTO_PROPAGATION_SHIM}}
     cargo build {{CARGO_BUILD_E2E_STACKABLE_HOOKS}} --bins
 
 # Build command trace shim library needed for e2e tests
