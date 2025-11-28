@@ -469,8 +469,10 @@ impl WezTermMultiplexer {
     #[instrument]
     fn wrap_command_with_path(cmd: &str) -> String {
         let path = std::env::var("PATH").unwrap_or_default();
+        // Escape spaces with backslash so WezTerm/bash sees a single PATH element
+        let escaped_path = path.replace(' ', "\\s");
         debug!("Wrapping command with PATH environment");
-        format!("env PATH={} bash -c '{}'", path, cmd)
+        format!("env PATH={} bash -c '{}'", escaped_path, cmd)
     }
 
     /// Sanitize command for logging by replacing PATH values with placeholder
