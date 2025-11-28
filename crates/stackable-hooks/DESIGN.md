@@ -164,22 +164,47 @@ Priorities ensure predictable hook ordering even when libraries load in differen
 
 ### Reentrancy Protection
 
-To prevent infinite recursion when hooks call system functions internally:
+Hook logic regularly needs to call back into libc—for example the command-trace shim
+opens Unix sockets, configures them via `fcntl`, and logs failures with `write`. If
+our hooks re-fired during those helper calls we would create infinite recursion or
+wrongly attribute the shim’s internal traffic to the traced process.
 
-**macOS:**
+- A `thread_local!` `HOOK_DEPTH: Cell<usize>` tracks whether the current thread is
+  already executing hook logic. Thread-local storage is available on glibc and dyld
+  before `main`, so the guard works even during constructors.
+- `HookGuard` increments `HOOK_DEPTH` when created and decrements on `Drop`. It is
+  entered once per dispatcher invocation (i.e. the code that calls the first hook in
+  the linked list). This keeps the overhead low and guarantees every hook in the
+  chain shares the same guard scope.
+- `hooks_allowed()` simply checks whether `HOOK_DEPTH` is zero. When helper code
+  re-enters an interposed symbol, the dispatcher sees `hooks_allowed() == false`
+  and immediately calls the real libc function, bypassing all hook logic for that
+  call.
+- `with_reentrancy()` temporarily decrements the depth while a hook calls
+  `stackable_hooks::call_next!()`, so the rest of the hook chain still runs even
+  though the guard is active.
 
-- Thread-local `HOOK_DEPTH` counter
-- `HookGuard` increments on entry, decrements on drop
-- `hooks_allowed()` checks if depth is 0
-- `with_reentrancy()` temporarily decrements depth for a specific call
+This design gives us a per-thread, per-library guard: legitimate hook-to-hook calls
+continue to work, while any re-entry caused by our own bookkeeping automatically
+bypasses the shim. If a different thread enters hooks concurrently it gets its own
+independent `HOOK_DEPTH`.
 
-**Usage Pattern:**
+### `vfork` Considerations
 
-```rust
-if !stackable_hooks::hooks_allowed() {
-    // Call real function directly to avoid recursion
-}
-```
+Historically we interposed `vfork` on Linux, but doing so safely is impossible:
+POSIX forbids heap allocation, locking, or most syscalls between `vfork` and `exec`,
+yet our shim must allocate, log, and potentially open sockets in that window. The
+result was parent corruption and crashes on Linux. We now:
+
+1. Avoid interposing `vfork` entirely.
+2. Force glibc’s `posix_spawn` implementation to fall back to `fork` by setting
+   `POSIX_SPAWN_USEVFORK=0` when the shim initializes.
+3. Continue to interpose every `exec*` and `posix_spawn*` entry point so child
+   processes are recorded once they `exec`, even if user code manually calls
+   `vfork` first.
+
+This keeps indirect descendants observable without violating `vfork`’s
+async-signal-safety requirements.
 
 ## Auto-Propagation System
 

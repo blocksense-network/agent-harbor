@@ -12,13 +12,15 @@ pub use paste::paste as __stackable_paste;
 pub mod ld_preload;
 
 #[cfg(target_env = "gnu")]
-pub use ld_preload::{disable_hooks, enable_hooks, hooks_allowed, with_reentrancy};
+pub use ld_preload::{HookGuard, disable_hooks, enable_hooks, hooks_allowed, with_reentrancy};
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod dyld_insert_libraries;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub use dyld_insert_libraries::{disable_hooks, enable_hooks, hooks_allowed, with_reentrancy};
+pub use dyld_insert_libraries::{
+    HookGuard, disable_hooks, enable_hooks, hooks_allowed, with_reentrancy,
+};
 
 // Auto-propagation module for automatic shim injection into child processes
 pub mod auto_propagation;
