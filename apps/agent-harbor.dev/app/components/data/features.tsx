@@ -41,8 +41,8 @@ export const features: Feature[] = [
     icon: <IconAntiHalting />,
     title: 'Anti-halting features for long-horizon tasks',
     features: [
-      'Supervisor agents step in and reprompt stuck agents. Quality control agents automatically roll back and fork when results go off-spec',
-      'Automatic timeouts on agent actions to eliminate silent hangs.',
+      'Automated diagnosis of stuck processes to overcome deadlocks, infinite loops and connection failures in test suites.',
+      'Supervisor agent conducts targeted web research to overcome challenges and re-prompt for higher quality responses',
     ],
     demo: <TaskManager />,
   },
