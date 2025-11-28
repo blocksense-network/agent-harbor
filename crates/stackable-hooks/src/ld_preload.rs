@@ -477,6 +477,10 @@ macro_rules! __stackable_hook_impl {
                     return [<__stackable_call_real_ $real_fn>](shared, $($v),*);
                 }
                 let head = (*shared).head;
+                if head.is_null() || !$crate::hooks_allowed() {
+                    return [<__stackable_call_real_ $real_fn>](shared, $($v),*);
+                }
+                let _stackable_guard = $crate::HookGuard::new();
                 [<__stackable_call_chain_ $real_fn>](shared, head, $($v),*)
             }
 
@@ -627,13 +631,6 @@ mod stub_dispatchers {
     crate::hook! {
         priority: STUB_PRIORITY,
         unsafe fn fork() -> libc::pid_t => __stackable_stub_fork {
-            call_next!()
-        }
-    }
-
-    crate::hook! {
-        priority: STUB_PRIORITY,
-        unsafe fn vfork() -> libc::pid_t => __stackable_stub_vfork {
             call_next!()
         }
     }
