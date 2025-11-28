@@ -6,6 +6,7 @@
 use crate::core::{self, SHIM_STATE, ShimState};
 
 use ctor::ctor;
+use stackable_hooks::{disable_auto_propagation, enable_auto_propagation};
 use tracing::info;
 
 /// Initialize the shim on library load
@@ -20,6 +21,11 @@ fn initialize_shim() {
 
     if let ShimState::Ready { .. } = &state {
         info!("[ah-command-trace-shim] Shim initialized (connection will be lazy)");
+        // Keep the shim loaded through nested exec/spawn chains (bash, Python, etc.).
+        enable_auto_propagation();
+    } else {
+        // Explicitly opt out when the shim is disabled to avoid contaminating children.
+        disable_auto_propagation();
     }
 
     stackable_hooks::enable_hooks();
