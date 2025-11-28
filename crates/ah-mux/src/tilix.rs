@@ -62,35 +62,23 @@ impl TilixMultiplexer {
         "tilix"
     }
 
-    /// Wrap a command with PATH environment variable for execution in bash
+    /// Sanitize command arguments for logging by replacing PATH values with placeholders
     ///
-    /// Tilix requires explicit PATH propagation when executing commands via --command flag.
-    /// This helper ensures the command runs with the current PATH environment.
+    /// This function replaces actual PATH values with $PATH placeholder for cleaner logging
+    /// while preserving the structure of the command for debugging purposes.
     ///
     /// # Arguments
     ///
-    /// * `cmd` - The command to wrap
+    /// * `args` - Command arguments to sanitize
     ///
     /// # Returns
     ///
-    /// A bash command string with PATH environment properly set
-    #[instrument]
-    fn wrap_command_with_path(cmd: &str) -> String {
-        let path = std::env::var("PATH").unwrap_or_default();
-        // Escape spaces with backslash so WezTerm/bash sees a single PATH element
-        let escaped_path = path.replace(' ', "\\s");
-        debug!("Wrapping command with PATH environment");
-        format!("env PATH={} bash -c '{}'", escaped_path, cmd)
-    }
-
-    /// Run a tilix command with the given arguments
-    #[instrument(skip(args))]
-    fn run_tilix_command(&self, args: &[&str]) -> Result<String, MuxError> {
-        // Sanitize args for logging by replacing PATH values with $PATH
-        let sanitized_args: Vec<String> = args
-            .iter()
+    /// A vector of sanitized argument strings suitable for logging
+    fn sanitize_args_for_logging(args: &[&str]) -> Vec<String> {
+        args.iter()
             .map(|&arg| {
-                if arg.starts_with("env PATH=") {
+                if arg.starts_with("env PATH=") || arg.starts_with("env ") && arg.contains("PATH=")
+                {
                     // Replace the actual PATH value with $PATH placeholder
                     let after_equals = arg.find('=').map(|i| &arg[i + 1..]).unwrap_or("");
                     if let Some(bash_pos) = after_equals.find(" bash ") {
@@ -102,7 +90,63 @@ impl TilixMultiplexer {
                     arg.to_string()
                 }
             })
-            .collect();
+            .collect()
+    }
+
+    /// Wrap a command with PATH and optional environment variables for execution in bash
+    ///
+    /// Tilix requires explicit PATH propagation when executing commands via --command flag.
+    /// This helper ensures the command runs with the current PATH environment and any
+    /// additional environment variables specified in the options.
+    ///
+    /// # Arguments
+    ///
+    /// * `cmd` - The command to wrap
+    /// * `env` - Optional slice of environment variable key-value pairs to set
+    ///
+    /// # Returns
+    ///
+    /// A bash command string with PATH and environment variables properly set
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let cmd = wrap_command_with_path("echo hello", Some(&[("MY_VAR", "value")]));
+    /// // Returns: "env PATH=/usr/bin:... MY_VAR=value bash -c 'echo hello'"
+    /// ```
+    #[instrument(skip(env))]
+    fn build_env_wrapped_command(cmd: &str, env: Option<&[(&str, &str)]>) -> String {
+        let path = std::env::var("PATH").unwrap_or_default();
+        // Escape spaces with backslash so Tilix/bash sees a single PATH element
+        let escaped_path = path.replace(' ', "\\s");
+        debug!("Wrapping command with PATH environment");
+
+        // Build the env command with PATH and any additional environment variables
+        let mut env_vars = vec![format!("PATH={}", escaped_path)];
+
+        if let Some(env_slice) = env {
+            if !env_slice.is_empty() {
+                debug!("Adding environment variables: {:?}", env_slice);
+                for (k, v) in env_slice {
+                    env_vars.push(format!("{}={}", k, v));
+                }
+            }
+        }
+
+        let env_string = env_vars.join(" ");
+        debug!(
+            "Wrapping command with environment: PATH + {} additional vars",
+            env.map(|e| e.len()).unwrap_or(0)
+        );
+
+        format!("env {} bash -c '{}'", env_string, cmd)
+    }
+
+    /// Run a tilix command with the given arguments
+    #[instrument(skip(args))]
+    fn run_tilix_command(&self, args: &[&str]) -> Result<String, MuxError> {
+        // Sanitize args for logging by replacing PATH values with $PATH
+        let sanitized_args = Self::sanitize_args_for_logging(args);
         info!("Running tilix command with args: {:?}", sanitized_args);
 
         let output = Command::new("tilix").args(args).output().map_err(|e| {
@@ -160,7 +204,7 @@ impl Multiplexer for TilixMultiplexer {
         // Add command if specified in init_command
         if let Some(init_cmd) = opts.init_command {
             debug!("Setting initial command: {}", init_cmd);
-            let custom_command = Self::wrap_command_with_path(init_cmd);
+            let custom_command = Self::build_env_wrapped_command(init_cmd, None);
             args.extend_from_slice(&["--command".to_string(), custom_command]);
         }
 
@@ -199,8 +243,8 @@ impl Multiplexer for TilixMultiplexer {
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
         info!(
-            "Splitting pane in direction: {:?}, with initial_cmd: {:?}, cwd: {:?}",
-            dir, initial_cmd, opts.cwd
+            "Splitting pane in direction: {:?}, with initial_cmd: {:?}, cwd: {:?}, env: {:?}",
+            dir, initial_cmd, opts.cwd, opts.env
         );
 
         // Tilix uses actions to split panes within the current session
@@ -227,7 +271,9 @@ impl Multiplexer for TilixMultiplexer {
         // Add command if specified
         if let Some(cmd) = initial_cmd {
             debug!("Setting initial command for split: {}", cmd);
-            let custom_command = Self::wrap_command_with_path(cmd);
+
+            // Pass environment variables directly to wrap_command_with_path
+            let custom_command = Self::build_env_wrapped_command(cmd, opts.env);
             args.extend_from_slice(&["--command".to_string(), custom_command]);
         }
 
@@ -446,7 +492,7 @@ mod tests {
         let original_path = std::env::var("PATH").unwrap_or_default();
 
         let cmd = "echo hello";
-        let wrapped = TilixMultiplexer::wrap_command_with_path(cmd);
+        let wrapped = TilixMultiplexer::build_env_wrapped_command(cmd, None);
 
         assert!(
             wrapped.contains(&original_path),
@@ -469,7 +515,7 @@ mod tests {
     #[test]
     fn test_wrap_command_with_special_chars() {
         let cmd = "echo 'hello world' && ls -la";
-        let wrapped = TilixMultiplexer::wrap_command_with_path(cmd);
+        let wrapped = TilixMultiplexer::build_env_wrapped_command(cmd, None);
 
         assert!(
             wrapped.contains(cmd),
