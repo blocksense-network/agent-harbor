@@ -86,6 +86,36 @@ jobs:
       - name: Build & activate the Nix Dev Shell
         run: nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#devShells.${{ matrix.system }}.default
 
+  build-and-cache-ah-package:
+    strategy:
+      matrix:
+        include:
+          - name: x86_64-linux (NixOS, self-hosted)
+            runner: [self-hosted, nixos, x86-64-v3]
+            system: x86_64-linux
+          - name: aarch64-darwin (macOS, GitHub-hosted)
+            runner: macos-latest
+            system: aarch64-darwin
+
+    name: Build package | ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: 'recursive'
+
+      - name: Install Nix
+        uses: metacraft-labs/nixos-modules/.github/install-nix@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachix-cache: ${{ vars.CACHIX_CACHE }}
+          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
+          substituters: ${{ vars.SUBSTITUTERS }}
+
+      - name: Build the main AH Nix Package
+        run: nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#packages.${{ matrix.system }}.default
+
   test:
     strategy:
       matrix:
