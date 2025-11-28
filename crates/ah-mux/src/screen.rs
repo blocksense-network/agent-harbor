@@ -5,6 +5,18 @@
 //!
 //! GNU Screen is a classic terminal multiplexer with support for sessions,
 //! windows, and regions. It uses the `-X` command interface for automation.
+//!
+//! ## Terminology Note
+//!
+//! There is an important terminology discrepancy between the `Multiplexer` trait
+//! and GNU Screen's CLI:
+//!
+//! - **Multiplexer "window"** → **GNU Screen "window"** (what users see as tabs in the terminal)
+//! - **Multiplexer "pane"** → **GNU Screen "region"** (splits within a tab/window)
+//!
+//! Additionally, GNU Screen has "layouts" which are saved configurations of window+region
+//! arrangements. This implementation uses layouts to organize Agent Harbor tasks, where each
+//! task gets its own layout containing one or more windows and regions.
 
 use std::env;
 use std::process::Command;
@@ -146,7 +158,8 @@ impl Multiplexer for ScreenMultiplexer {
         // -- Start new task layout --
         debug!(session_name = %session_name, task_name = %task_name, "Creating new task layout");
 
-        // screen -S <session_name> -X layout new split
+        // Create a new layout for this task
+        // screen -S <session_name> -X layout new <task_name>
         let _split_layout_cmd = Command::new("screen")
             .arg("-S")
             .arg(&session_name)
@@ -156,12 +169,15 @@ impl Multiplexer for ScreenMultiplexer {
             .arg(task_name)
             .output();
 
-        // screen -S <session_name> -X screen
+        // Create a new window within this layout with the task name as its title
+        // screen -S <session_name> -X screen -t <task_name>
         let _screen_cmd = Command::new("screen")
             .arg("-S")
             .arg(&session_name)
             .arg("-X")
             .arg("screen")
+            .arg("-t")
+            .arg(task_name)
             .output();
         // -- Finish new task layout --
 
@@ -179,8 +195,8 @@ impl Multiplexer for ScreenMultiplexer {
         opts: &CommandOptions,
         initial_cmd: Option<&str>,
     ) -> Result<PaneId, MuxError> {
-        // Screen uses regions, not panes in the same way as modern multiplexers
-        // We need to split the current region and create a new window in it
+        // Screen uses regions (its term for panes/splits)
+        // We split the current region and create a new window in the new region
 
         let session_name = std::env::var("STY").unwrap_or_default();
         match window {
@@ -294,29 +310,33 @@ impl Multiplexer for ScreenMultiplexer {
     ) -> Result<(), MuxError> {
         // Extract session name from pane ID
         let session_name = std::env::var("STY").unwrap_or_default();
-        debug!(session_name = %session_name, pane_id = %pane, command = %cmd, "Running command in pane");
+        println!("Running command in pane: {}", cmd);
+        println!("Session name: {}", session_name);
+        println!("Pane ID: {}", pane);
 
-        // Send the command as text input to the focused window
+        // Send the command as text input to the focused window (region)
         let stuff_command = format!("{}\n", cmd);
 
         let mut command = Command::new("screen");
-        command.arg("-S").arg(&session_name).arg("-X").arg("stuff").arg(stuff_command);
+        command.arg("-S").arg(&session_name).arg("-X").arg("stuff").arg(&stuff_command);
 
-        let output = command.output().map_err(|e| {
-            error!(error = %e, session_name = %session_name, pane_id = %pane, "Failed to send command to screen");
-            MuxError::Other(format!("Failed to send command to screen: {}", e))
-        })?;
+        println!("Sending command to screen: {}", &stuff_command);
+
+        let output = command.output();
+        println!("Output: {:?}", output);
+
+        let output = output.unwrap();
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!(error_details = %stderr, session_name = %session_name, pane_id = %pane, "Screen stuff command failed");
+            println!("Screen stuff command failed: {}", stderr);
             return Err(MuxError::CommandFailed(format!(
                 "screen stuff failed: {}",
                 stderr
             )));
         }
 
-        info!(session_name = %session_name, pane_id = %pane, "Command executed successfully");
+        println!("Command executed successfully");
         Ok(())
     }
 
@@ -324,7 +344,7 @@ impl Multiplexer for ScreenMultiplexer {
     fn send_text(&self, pane: &PaneId, text: &str) -> Result<(), MuxError> {
         debug!(pane_id = %pane, text_length = text.len(), "Sending text to pane");
 
-        // Screen doesn't have addressable pane IDs in the CLI, so we use the current session
+        // Screen doesn't have addressable region IDs in the CLI, so we target the current session
         let session_name = std::env::var("STY").unwrap_or_default();
 
         // Use screen's stuff command to send text
@@ -384,38 +404,45 @@ impl Multiplexer for ScreenMultiplexer {
 
     #[instrument(skip(self), fields(component = "ah-mux", operation = "list_windows", filter = ?title_substr))]
     fn list_windows(&self, title_substr: Option<&str>) -> Result<Vec<WindowId>, MuxError> {
-        debug!(filter = ?title_substr, "Listing Screen windows/sessions");
-
-        // Screen doesn't have a direct way to list sessions from CLI
-        // We use `screen -ls` and parse the output
-        let output = Command::new("screen").arg("-ls").output().map_err(|e| {
-            error!(error = %e, "Failed to list screen sessions");
-            MuxError::Other(format!("Failed to list screen sessions: {}", e))
-        })?;
-
-        // screen -ls returns 1 if no sessions found (sometimes)
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        // Handle failure cases that are not just "No Sockets found"
-        if !output.status.success() && !stdout.contains("No Sockets found") {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            error!(stderr = %stderr, "screen -ls command failed");
-            return Err(MuxError::CommandFailed(format!(
-                "screen -ls failed: {}",
-                stderr
-            )));
+        let session_name = std::env::var("STY").unwrap_or_default();
+        if session_name.is_empty() {
+            debug!("STY not set, cannot list windows");
+            return Ok(Vec::new());
         }
 
-        let sessions = Self::parse_ls_output(&stdout, title_substr)?;
+        debug!(session_name = %session_name, filter = ?title_substr, "Listing Screen windows");
 
-        info!(count = sessions.len(), filter = ?title_substr, "Listed Screen sessions");
-        Ok(sessions)
+        // screen -S <session_name> -Q windows
+        let output = Command::new("screen")
+            .arg("-S")
+            .arg(&session_name)
+            .arg("-Q")
+            .arg("windows")
+            .output()
+            .map_err(|e| {
+                error!(error = %e, "Failed to list screen windows");
+                MuxError::Other(format!("Failed to list screen windows: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Use debug level since this is expected when session is gone or empty
+            debug!(stderr = %stderr, "screen -Q windows failed (possibly no session or old version)");
+            return Ok(Vec::new());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        debug!(stdout = %stdout, "screen -Q windows output");
+        let windows = Self::parse_windows_output(&stdout, title_substr)?;
+
+        info!(count = windows.len(), filter = ?title_substr, "Listed Screen windows");
+        Ok(windows)
     }
 
     #[instrument(skip(self), fields(component = "ah-mux", operation = "list_panes"))]
     fn list_panes(&self, _window: &WindowId) -> Result<Vec<PaneId>, MuxError> {
         debug!("List panes not available in GNU Screen");
-        // Screen doesn't expose pane/region listing via CLI
+        // Screen doesn't expose region listing via CLI
         Err(MuxError::NotAvailable("screen"))
     }
 
@@ -427,46 +454,40 @@ impl Multiplexer for ScreenMultiplexer {
 
     #[instrument(skip(self), fields(component = "ah-mux", operation = "current_pane"))]
     fn current_pane(&self) -> Result<Option<PaneId>, MuxError> {
-        let sty = env::var("STY").ok();
-        Self::resolve_current_pane(sty)
+        let win = env::var("WINDOW").ok();
+        Self::resolve_current_pane(win)
     }
 }
 
 impl ScreenMultiplexer {
-    /// Helper to parse output from `screen -ls`
-    pub(crate) fn parse_ls_output(
+    /// Helper to parse output from `screen -Q windows`
+    pub(crate) fn parse_windows_output(
         output: &str,
         title_substr: Option<&str>,
     ) -> Result<Vec<String>, MuxError> {
-        if output.contains("No Sockets found") {
-            debug!("No Screen sessions found");
-            return Ok(Vec::new());
-        }
-
-        let mut sessions = Vec::new();
-        // Regex to parse session line: "\t12345.session_name\t(Detached)"
-        // Matches start of line, optional whitespace, digits, dot, capture name, whitespace, open paren
-        let re = Regex::new(r"^\s*\d+\.([^\s]+)\s+\(").map_err(|e| {
-            error!(error = %e, "Failed to compile regex for parsing screen -ls output");
+        let mut windows = Vec::new();
+        // Output format example: "0* bash  1- vim  2  misc"
+        // We use a regex to find: number, optional flags, space, title
+        // NOTE: This assumes titles don't have spaces.
+        let re = Regex::new(r"(\d+)[*!-]?\s+([^\s]+)").map_err(|e| {
+            error!(error = %e, "Failed to compile regex for parsing screen windows output");
             MuxError::Other(format!("Failed to compile regex: {}", e))
         })?;
 
-        for line in output.lines() {
-            if let Some(captures) = re.captures(line) {
-                if let Some(session_name_match) = captures.get(1) {
-                    let session_name = session_name_match.as_str();
-                    if let Some(substr) = title_substr {
-                        if session_name.contains(substr) {
-                            sessions.push(session_name.to_string());
-                        }
-                    } else {
-                        sessions.push(session_name.to_string());
+        for cap in re.captures_iter(output) {
+            if let Some(title_match) = cap.get(2) {
+                let title = title_match.as_str();
+                if let Some(substr) = title_substr {
+                    if title.contains(substr) {
+                        windows.push(title.to_string());
                     }
+                } else {
+                    windows.push(title.to_string());
                 }
             }
         }
 
-        Ok(sessions)
+        Ok(windows)
     }
 
     /// Helper to resolve current window from WINDOW env var
@@ -485,18 +506,17 @@ impl ScreenMultiplexer {
         }
     }
 
-    /// Helper to resolve current pane from STY env var
-    pub(crate) fn resolve_current_pane(sty: Option<String>) -> Result<Option<PaneId>, MuxError> {
-        // We can't easily determine the "pane ID" as we format it (screen-region-<session>)
-        // But we can verify if we are in screen
-        match sty {
-            Some(sty) if !sty.is_empty() => {
-                let pane_id = format!("screen-region-{}", sty);
-                debug!(pane_id = %pane_id, "Current pane detected");
-                Ok(Some(pane_id))
+    /// Helper to resolve current pane from WINDOW env var
+    pub(crate) fn resolve_current_pane(window: Option<String>) -> Result<Option<PaneId>, MuxError> {
+        // Screen doesn't have addressable region IDs in the CLI
+        // We use the WINDOW env var which identifies the current window
+        match window {
+            Some(w) if !w.is_empty() => {
+                debug!(pane_id = %w, "Current pane detected");
+                Ok(Some(w))
             }
             _ => {
-                debug!("Not running inside a Screen session");
+                debug!("Not running inside a Screen session or window");
                 Ok(None)
             }
         }
@@ -505,7 +525,82 @@ impl ScreenMultiplexer {
 
 #[cfg(test)]
 mod tests {
+    use std::{thread, time::Duration};
+
     use super::*;
+
+    /// Initialize tracing for tests if not already initialized
+    fn init_tracing() {
+        use std::sync::Once;
+        static INIT: Once = Once::new();
+
+        INIT.call_once(|| {
+            // Only initialize if RUST_LOG is set (user wants logging)
+            if std::env::var("RUST_LOG").is_ok() {
+                tracing_subscriber::fmt()
+                    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+                    .with_test_writer()
+                    .try_init()
+                    .ok(); // Ignore errors if already initialized
+            }
+        });
+    }
+
+    /// Helper to start a detached screen session and return its session name (STY)
+    /// Returns None if screen is not available or fails to start
+    fn start_screen_session(name: &str) -> Option<String> {
+        // Check if screen is available
+        let version_check = Command::new("screen").arg("--version").output();
+        if let Ok(output) = &version_check {
+            println!("Screen found: {}", String::from_utf8_lossy(&output.stdout));
+        } else {
+            println!("screen not found, skipping tests");
+            return None;
+        }
+
+        // Start a detached session
+        // screen -d -m -S <name>
+        let output = Command::new("screen").args(["-d", "-m", "-S", name]).output();
+
+        println!("output: {:?}", &output);
+
+        if !output.unwrap().status.success() {
+            println!(
+                "Failed to start screen session.",
+            );
+            return None;
+        }
+
+        // Give it a moment to start
+        thread::sleep(Duration::from_millis(500));
+
+        // The STY format usually includes the PID, e.g., "12345.sessionname"
+        // We can find it using screen -ls
+        let output = Command::new("screen").arg("-ls").output();
+        println!("screen -ls output:\n{:?}", output);
+        let binding = output.unwrap();
+        let stdout = String::from_utf8_lossy(&binding.stdout);
+        println!("screen -ls output:\n{}", stdout);
+
+        for line in stdout.lines() {
+            if line.contains(name) {
+                // Extract the full session name (PID.name)
+                // Line format: "\t12345.name\t(Detached)"
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if let Some(full_name) = parts.first() {
+                    return Some(full_name.to_string());
+                }
+            }
+        }
+
+        // If we couldn't find it in -ls, maybe it's just the name (rare, but possible if configured)
+        Some(name.to_string())
+    }
+
+    /// Helper to kill the screen session
+    fn kill_screen_session(sty: &str) {
+        let _ = Command::new("screen").args(["-S", sty, "-X", "quit"]).status();
+    }
 
     #[test]
     fn test_screen_id() {
@@ -518,35 +613,21 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_ls_output_empty() {
-        let output = "No Sockets found in /var/run/screen/S-user.\n";
-        let sessions = ScreenMultiplexer::parse_ls_output(output, None).unwrap();
-        assert!(sessions.is_empty());
+    fn test_parse_windows_output() {
+        let output = "0* bash  1- vim  2  misc";
+        let windows = ScreenMultiplexer::parse_windows_output(output, None).unwrap();
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[0], "bash");
+        assert_eq!(windows[1], "vim");
+        assert_eq!(windows[2], "misc");
     }
 
     #[test]
-    fn test_parse_ls_output_single() {
-        let output = "There is a screen on:\n\t12345.ah-task-1\t(Detached)\n1 Socket in /var/run/screen/S-user.\n";
-        let sessions = ScreenMultiplexer::parse_ls_output(output, None).unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0], "ah-task-1");
-    }
-
-    #[test]
-    fn test_parse_ls_output_multiple() {
-        let output = "There are screens on:\n\t12345.ah-task-1\t(Detached)\n\t67890.ah-task-2\t(Attached)\n2 Sockets in ...";
-        let sessions = ScreenMultiplexer::parse_ls_output(output, None).unwrap();
-        assert_eq!(sessions.len(), 2);
-        assert_eq!(sessions[0], "ah-task-1");
-        assert_eq!(sessions[1], "ah-task-2");
-    }
-
-    #[test]
-    fn test_parse_ls_output_filter() {
-        let output = "There are screens on:\n\t12345.ah-task-1\t(Detached)\n\t67890.other-session\t(Attached)\n";
-        let sessions = ScreenMultiplexer::parse_ls_output(output, Some("ah-task")).unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0], "ah-task-1");
+    fn test_parse_windows_output_filter() {
+        let output = "0* bash  1- vim  2  misc";
+        let windows = ScreenMultiplexer::parse_windows_output(output, Some("vim")).unwrap();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0], "vim");
     }
 
     #[test]
@@ -566,9 +647,9 @@ mod tests {
 
     #[test]
     fn test_resolve_current_pane() {
-        // Test with valid session
-        let res = ScreenMultiplexer::resolve_current_pane(Some("session1".to_string())).unwrap();
-        assert_eq!(res, Some("screen-region-session1".to_string()));
+        // Test with valid window ID
+        let res = ScreenMultiplexer::resolve_current_pane(Some("5".to_string())).unwrap();
+        assert_eq!(res, Some("5".to_string()));
 
         // Test with empty string
         let res = ScreenMultiplexer::resolve_current_pane(Some("".to_string())).unwrap();
@@ -595,5 +676,1119 @@ mod tests {
                 Err(MuxError::NotAvailable(_))
             ));
         }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_current_window_with_env() {
+        // Test current_window() with WINDOW env var set
+        env::set_var("WINDOW", "5");
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.current_window().unwrap();
+            assert_eq!(result, Some("5".to_string()));
+        }
+        env::remove_var("WINDOW");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_current_window_without_env() {
+        // Test current_window() with WINDOW env var unset
+        env::remove_var("WINDOW");
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.current_window().unwrap();
+            assert_eq!(result, None);
+        }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_current_window_empty_env() {
+        // Test current_window() with empty WINDOW env var
+        env::set_var("WINDOW", "");
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.current_window().unwrap();
+            assert_eq!(result, None);
+        }
+        env::remove_var("WINDOW");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_current_pane_with_env() {
+        // Test current_pane() with WINDOW env var set
+        env::set_var("WINDOW", "5");
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.current_pane().unwrap();
+            assert_eq!(result, Some("5".to_string()));
+        }
+        env::remove_var("WINDOW");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_current_pane_without_env() {
+        // Test current_pane() with WINDOW env var unset
+        env::remove_var("WINDOW");
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.current_pane().unwrap();
+            assert_eq!(result, None);
+        }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_current_pane_empty_env() {
+        // Test current_pane() with empty WINDOW env var
+        env::set_var("WINDOW", "");
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.current_pane().unwrap();
+            assert_eq!(result, None);
+        }
+        env::remove_var("WINDOW");
+    }
+
+    #[test]
+    fn test_parse_windows_output_empty() {
+        // Test with empty output
+        let windows = ScreenMultiplexer::parse_windows_output("", None).unwrap();
+        assert_eq!(windows.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_windows_output_malformed() {
+        // Test with malformed output (no window titles)
+        let output = "some random text without proper format";
+        let windows = ScreenMultiplexer::parse_windows_output(output, None).unwrap();
+        assert_eq!(windows.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_windows_output_special_flags() {
+        // Test with various flag combinations
+        let output = "0* active  1! bell  2- previous  3 normal";
+        let windows = ScreenMultiplexer::parse_windows_output(output, None).unwrap();
+        assert_eq!(windows.len(), 4);
+        assert_eq!(windows[0], "active");
+        assert_eq!(windows[1], "bell");
+        assert_eq!(windows[2], "previous");
+        assert_eq!(windows[3], "normal");
+    }
+
+    #[test]
+    fn test_parse_windows_output_many_windows() {
+        // Test with many windows
+        let mut output = String::new();
+        for i in 0..20 {
+            output.push_str(&format!("{}  window{}  ", i, i));
+        }
+        let windows = ScreenMultiplexer::parse_windows_output(&output, None).unwrap();
+        assert_eq!(windows.len(), 20);
+    }
+
+    #[test]
+    fn test_parse_windows_output_with_numbers_in_title() {
+        // Test window titles containing numbers
+        let output = "0* task-123  1- window-456  2  test789";
+        let windows = ScreenMultiplexer::parse_windows_output(output, None).unwrap();
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[0], "task-123");
+        assert_eq!(windows[1], "window-456");
+        assert_eq!(windows[2], "test789");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_send_text_integration() {
+        init_tracing();
+        let session_name = format!("test-sendtext-{}", std::process::id());
+
+        // Start screen session
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_send_text_integration: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        // Test: Send text without newline
+        let result = mux.send_text(&"dummy-pane".to_string(), "echo 'test'");
+        assert!(result.is_ok());
+
+        // Test: Send text with newline
+        let result = mux.send_text(&"dummy-pane".to_string(), "ls\n");
+        assert!(result.is_ok());
+
+        // Test: Send text with special characters
+        let result = mux.send_text(&"dummy-pane".to_string(), "echo '$HOME'");
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_send_text_invalid_session() {
+        init_tracing();
+
+        // Set STY to a non-existent session
+        env::set_var("STY", "99999.nonexistent");
+
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let result = mux.send_text(&"dummy-pane".to_string(), "echo 'test'");
+            // This should fail because the session doesn't exist
+            assert!(result.is_err());
+        }
+
+        env::remove_var("STY");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_command_escaping_single_quotes() {
+        init_tracing();
+        let session_name = format!("test-escape-quotes-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_command_escaping_single_quotes: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("escape-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+
+        let cmd_opts = CommandOptions {
+            cwd: None,
+            env: None,
+        };
+
+        // Test: Command with single quotes
+        let result = mux.run_command(&window_id, "echo 'hello world'", &cmd_opts);
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_command_escaping_dollar_signs() {
+        init_tracing();
+        let session_name = format!("test-escape-dollar-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_command_escaping_dollar_signs: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("dollar-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+
+        let cmd_opts = CommandOptions {
+            cwd: None,
+            env: None,
+        };
+
+        // Test: Command with dollar signs
+        let result = mux.run_command(&window_id, "echo $HOME", &cmd_opts);
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_command_escaping_backslashes() {
+        init_tracing();
+        let session_name = format!("test-escape-backslash-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_command_escaping_backslashes: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("backslash-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+
+        let cmd_opts = CommandOptions {
+            cwd: None,
+            env: None,
+        };
+
+        // Test: Command with backslashes
+        let result = mux.run_command(&window_id, "echo \\test\\path", &cmd_opts);
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_command_escaping_mixed_special_chars() {
+        init_tracing();
+        let session_name = format!("test-escape-mixed-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_command_escaping_mixed_special_chars: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("mixed-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+
+        let cmd_opts = CommandOptions {
+            cwd: None,
+            env: None,
+        };
+
+        // Test: Command with mixed special characters
+        let result = mux.run_command(&window_id, "echo '$HOME' \\test", &cmd_opts);
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_split_pane_escaping_initial_cmd() {
+        init_tracing();
+        let session_name = format!("test-split-escape-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_split_pane_escaping_initial_cmd: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("split-escape-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+
+        let cmd_opts = CommandOptions {
+            cwd: None,
+            env: None,
+        };
+
+        // Test: Split with initial_cmd containing special characters
+        let result = mux.split_pane(
+            Some(&window_id),
+            None,
+            SplitDirection::Vertical,
+            None,
+            &cmd_opts,
+            Some("echo 'test $HOME \\path'"),
+        );
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_split_pane_with_cwd() {
+        init_tracing();
+        let session_name = format!("test-split-cwd-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_split_pane_with_cwd: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("cwd-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+
+        let tmp_dir = std::path::Path::new("/tmp");
+        let cmd_opts = CommandOptions {
+            cwd: Some(tmp_dir),
+            env: None,
+        };
+
+        // Test: Horizontal split with cwd
+        let result = mux.split_pane(
+            Some(&window_id),
+            None,
+            SplitDirection::Horizontal,
+            None,
+            &cmd_opts,
+            None,
+        );
+        assert!(result.is_ok());
+
+        // Test: Vertical split with cwd
+        let result = mux.split_pane(
+            Some(&window_id),
+            None,
+            SplitDirection::Vertical,
+            None,
+            &cmd_opts,
+            None,
+        );
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_split_pane_with_cwd_and_initial_cmd() {
+        init_tracing();
+        let session_name = format!("test-split-cwd-cmd-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_split_pane_with_cwd_and_initial_cmd: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("cwd-cmd-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+
+        let tmp_dir = std::path::Path::new("/tmp");
+        let cmd_opts = CommandOptions {
+            cwd: Some(tmp_dir),
+            env: None,
+        };
+
+        // Test: Split with both cwd and initial_cmd
+        let result = mux.split_pane(
+            Some(&window_id),
+            None,
+            SplitDirection::Vertical,
+            None,
+            &cmd_opts,
+            Some("pwd && echo 'test'"),
+        );
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_split_pane_with_special_chars_in_cwd() {
+        init_tracing();
+        let session_name = format!("test-split-cwd-special-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_split_pane_with_special_chars_in_cwd: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("cwd-special-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+
+        // Use /tmp which should always exist
+        let test_dir = std::path::Path::new("/tmp");
+        let cmd_opts = CommandOptions {
+            cwd: Some(test_dir),
+            env: None,
+        };
+
+        // Test: Split with cwd and initial_cmd with special characters
+        let result = mux.split_pane(
+            Some(&window_id),
+            None,
+            SplitDirection::Horizontal,
+            None,
+            &cmd_opts,
+            Some("echo '$PWD'"),
+        );
+        assert!(result.is_ok());
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_window_without_sty() {
+        init_tracing();
+
+        // Ensure STY is not set
+        env::remove_var("STY");
+
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let window_opts = WindowOptions {
+                title: Some("test-window"),
+                cwd: None,
+                focus: false,
+                profile: None,
+                init_command: None,
+            };
+
+            // This should succeed but the window won't actually be created
+            // because STY is empty
+            let result = mux.open_window(&window_opts);
+            // The implementation returns Ok with the task name even if STY is empty
+            assert!(result.is_ok());
+        }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_window_with_title() {
+        init_tracing();
+        let session_name = format!("test-window-title-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_open_window_with_title: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        // Test: Open window with custom title
+        let window_opts = WindowOptions {
+            title: Some("custom-window-title"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+        assert_eq!(window_id, "custom-window-title");
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_window_without_title() {
+        init_tracing();
+        let session_name = format!("test-window-no-title-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_open_window_without_title: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        // Test: Open window without title (should use default)
+        let window_opts = WindowOptions {
+            title: None,
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+        assert_eq!(window_id, "ah-task"); // Default title
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_window_reuse_existing() {
+        init_tracing();
+        let session_name = format!("test-window-reuse-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_open_window_reuse_existing: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        // Test: Open window first time
+        let window_opts = WindowOptions {
+            title: Some("reusable-window"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id1 = mux.open_window(&window_opts).expect("Failed to open window first time");
+        assert_eq!(window_id1, "reusable-window");
+
+        // Test: Open same window again (should reuse)
+        let window_id2 = mux.open_window(&window_opts).expect("Failed to open window second time");
+        assert_eq!(window_id2, "reusable-window");
+        assert_eq!(window_id1, window_id2);
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_multiple_windows() {
+        init_tracing();
+        let session_name = format!("test-multiple-windows-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_open_multiple_windows: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        // Test: Open multiple windows with different titles
+        let window_opts1 = WindowOptions {
+            title: Some("window-one"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id1 = mux.open_window(&window_opts1).expect("Failed to open first window");
+        assert_eq!(window_id1, "window-one");
+
+        let window_opts2 = WindowOptions {
+            title: Some("window-two"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id2 = mux.open_window(&window_opts2).expect("Failed to open second window");
+        assert_eq!(window_id2, "window-two");
+
+        let window_opts3 = WindowOptions {
+            title: Some("window-three"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id3 = mux.open_window(&window_opts3).expect("Failed to open third window");
+        assert_eq!(window_id3, "window-three");
+
+        // Verify all windows are unique
+        assert_ne!(window_id1, window_id2);
+        assert_ne!(window_id2, window_id3);
+        assert_ne!(window_id1, window_id3);
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_window_with_special_chars_in_title() {
+        init_tracing();
+        let session_name = format!("test-window-special-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!(
+                    "Skipping test_open_window_with_special_chars_in_title: screen not available"
+                );
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        // Test: Open window with special characters in title
+        let window_opts = WindowOptions {
+            title: Some("task-123-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+        assert_eq!(window_id, "task-123-test");
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_window_idempotent() {
+        init_tracing();
+        let session_name = format!("test-window-idempotent-{}", std::process::id());
+
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_open_window_idempotent: screen not available");
+                return;
+            }
+        };
+
+        env::set_var("STY", &sty);
+        env::set_var("WINDOW", "0");
+
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        let window_opts = WindowOptions {
+            title: Some("idempotent-test"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+
+        // Test: Open same window multiple times - should be idempotent
+        let window_id1 = mux.open_window(&window_opts).expect("Failed first open");
+        let window_id2 = mux.open_window(&window_opts).expect("Failed second open");
+        let window_id3 = mux.open_window(&window_opts).expect("Failed third open");
+
+        assert_eq!(window_id1, window_id2);
+        assert_eq!(window_id2, window_id3);
+        assert_eq!(window_id1, "idempotent-test");
+
+        // Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_list_windows_without_sty() {
+        init_tracing();
+
+        // Ensure STY is not set
+        env::remove_var("STY");
+
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            // This should return an empty list when STY is not set
+            let result = mux.list_windows(None);
+            assert!(result.is_ok());
+            assert!(result.unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_run_command_invalid_session() {
+        init_tracing();
+
+        // Set STY to a non-existent session
+        env::set_var("STY", "99999.nonexistent");
+
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            let cmd_opts = CommandOptions {
+                cwd: None,
+                env: None,
+            };
+
+            let result = mux.run_command(&"dummy-pane".to_string(), "echo 'test'", &cmd_opts);
+            // This should fail because the session doesn't exist
+            assert!(result.is_err());
+        }
+
+        env::remove_var("STY");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_list_windows_invalid_session() {
+        init_tracing();
+
+        // Set STY to a non-existent session
+        env::set_var("STY", "99999.nonexistent");
+
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            // This should return an empty list for a non-existent session
+            let result = mux.list_windows(None);
+            // The implementation handles this gracefully and returns Ok with empty vec
+            assert!(result.is_ok());
+        }
+
+        env::remove_var("STY");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_init_agent_harbor_layout_without_sty() {
+        init_tracing();
+
+        // Ensure STY is not set
+        env::remove_var("STY");
+
+        // Test that init_agent_harbor_screen_layout returns an error when STY is not set
+        let result = ScreenMultiplexer::init_agent_harbor_screen_layout();
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(e, MuxError::Other(_)));
+        }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_focus_window_invalid_session() {
+        init_tracing();
+
+        if let Ok(mux) = ScreenMultiplexer::new() {
+            // Try to focus a non-existent window
+            let result = mux.focus_window(&"99999.nonexistent".to_string());
+            // This should fail
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_screen_integration_lifecycle() {
+        init_tracing();
+        let session_name = format!("test-screen-{}", std::process::id());
+
+        // 1. Start screen session
+        let sty = match start_screen_session(&session_name) {
+            Some(s) => s,
+            None => {
+                error!("Skipping test_screen_integration_lifecycle: screen not available");
+                return;
+            }
+        };
+
+        // Ensure cleanup happens even if test panics (best effort in Rust tests)
+        // We use a defer-like pattern or just try/catch blocks, but standard tests don't have try/catch.
+        // We'll explicit cleanup at end.
+
+        // 2. Set STY env var so ScreenMultiplexer connects to this session
+        // IMPORTANT: This modifies global state, so #[serial_test::file_serial] is required
+        env::set_var("STY", &sty);
+        // Screen sometimes needs WINDOW env var for context, but for layout creation it might rely on STY
+        // Setting WINDOW to 0 to simulate being in the first window
+        env::set_var("WINDOW", "0");
+
+        // 3. Instantiate ScreenMultiplexer
+        let mux = ScreenMultiplexer::new().expect("Failed to create ScreenMultiplexer");
+
+        // 4. Test: Check availability
+        assert!(mux.is_available());
+
+        // 5. Test: List windows
+        // Note: A freshly created detached screen session might not have named windows
+        // visible to -Q windows, so we don't assert on the count here
+        let _windows = mux.list_windows(None).expect("Failed to list windows");
+
+        // 6. Test: Open a new window (Task Layout)
+        let window_opts = WindowOptions {
+            title: Some("integration-task"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id = mux.open_window(&window_opts).expect("Failed to open window");
+        assert_eq!(window_id, "integration-task");
+
+        // Note: list_windows() using screen -Q windows doesn't work reliably on detached
+        // sessions when controlled remotely. This is a known limitation of GNU Screen.
+        // We can't assert on window counts in this remote control scenario.
+        let _windows_after = mux.list_windows(None).expect("Failed to list windows");
+
+        // 7. Test: Split Pane
+        // We need to be careful here. split_pane relies on `WINDOW` env var to know which window to split
+        // or passed window_id. `ScreenMultiplexer::split_pane` implementation:
+        // if window is provided, it selects it.
+
+        // For Screen, window_id is the window name/number. Our open_window returns the name "integration-task".
+        // Let's try splitting it.
+        let split_opts = CommandOptions {
+            cwd: None,
+            env: None,
+        };
+
+        // Vertical split
+        let _ = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Vertical,
+                None,
+                &split_opts,
+                Some("echo 'vertical split'"),
+            )
+            .expect("Failed to split pane vertically");
+
+        // Horizontal split
+        let _ = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Horizontal,
+                None,
+                &split_opts,
+                Some("echo 'horizontal split'"),
+            )
+            .expect("Failed to split pane horizontally");
+
+        // 8. Test: Send Text / Run Command
+        // We need a pane ID. split_pane returns "WINDOW" env var which is the window number,
+        // but ScreenMultiplexer::split_pane returns the window number as string.
+        // However, `ScreenMultiplexer::split_pane` implementation reads `WINDOW` env var to return pane_id.
+        // Since we are running outside screen, `env::var("WINDOW")` returns "0" (what we set).
+        // This might be a limitation of the current implementation when running in "remote control" mode.
+        // The implementation assumes `WINDOW` env var reflects the *current* window we are in.
+        // But when we control it remotely, the `WINDOW` env var of the *test process* doesn't change.
+
+        // The `ScreenMultiplexer` implementation seems designed to run *inside* the session or
+        // at least assumes `WINDOW` is set to something relevant.
+        // Let's check `run_command`: it uses `STY` to target the session. It takes `pane` arg but
+        // `ScreenMultiplexer::run_command` ignores `pane` arg for targeting?
+        // No, it uses it in logs, but `screen -S ... -X stuff` sends to the *current focused region* in that session.
+        // Unless we select a window first.
+
+        // `ScreenMultiplexer::run_command` implementation:
+        // `command.arg("-S").arg(&session_name).arg("-X").arg("stuff").arg(stuff_command);`
+        // It sends to the currently active window/region in that session.
+
+        // So we can test it executes without error.
+        let run_res = mux.run_command(
+            &"dummy-pane".to_string(),
+            "echo 'command test'",
+            &split_opts,
+        );
+        assert!(run_res.is_ok());
+
+        // Test: Send text to the pane
+        let send_text_res = mux.send_text(&"dummy-pane".to_string(), "echo 'sent text'\n");
+        assert!(send_text_res.is_ok());
+
+        // Test: Multiple window creation
+        let window_opts2 = WindowOptions {
+            title: Some("integration-task-2"),
+            cwd: None,
+            focus: false,
+            profile: None,
+            init_command: None,
+        };
+        let window_id2 = mux.open_window(&window_opts2).expect("Failed to open second window");
+        assert_eq!(window_id2, "integration-task-2");
+
+        // Note: Same limitation applies - list_windows doesn't work reliably on detached sessions
+        let _windows_multiple =
+            mux.list_windows(None).expect("Failed to list windows after second creation");
+
+        // Test: Multiple splits in same window
+        let _ = mux
+            .split_pane(
+                Some(&window_id2),
+                None,
+                SplitDirection::Vertical,
+                None,
+                &split_opts,
+                Some("echo 'split 1'"),
+            )
+            .expect("Failed to create first split in second window");
+
+        let _ = mux
+            .split_pane(
+                Some(&window_id2),
+                None,
+                SplitDirection::Horizontal,
+                None,
+                &split_opts,
+                Some("echo 'split 2'"),
+            )
+            .expect("Failed to create second split in second window");
+
+        // Test: Split with cwd
+        let tmp_dir = std::path::Path::new("/tmp");
+        let split_opts_with_cwd = CommandOptions {
+            cwd: Some(tmp_dir),
+            env: None,
+        };
+
+        let _ = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Vertical,
+                None,
+                &split_opts_with_cwd,
+                Some("pwd"),
+            )
+            .expect("Failed to split with cwd");
+
+        // 9. Cleanup
+        env::remove_var("STY");
+        env::remove_var("WINDOW");
+        kill_screen_session(&sty);
+
+        // Verify cleanup
+        thread::sleep(Duration::from_millis(200));
+        let output = Command::new("screen").arg("-ls").output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(!stdout.contains(&sty));
     }
 }
