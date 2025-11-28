@@ -7,3 +7,6 @@
 [submodule "vendor/vt100"]
 	path = vendor/vt100
 	url = git@github.com:blocksense-network/vt100-rust.git
+[submodule "resources/acp-specs"]
+	path = resources/acp-specs
+	url = https://github.com/agentclientprotocol/agent-client-protocol
