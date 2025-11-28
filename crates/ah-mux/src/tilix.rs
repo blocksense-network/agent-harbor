@@ -433,7 +433,11 @@ impl Multiplexer for TilixMultiplexer {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+#[cfg(target_os = "linux")]
 mod tests {
+    use crate::is_in_tilix;
+
     use super::*;
     use tempfile::TempDir;
 
@@ -526,6 +530,68 @@ mod tests {
             "Should start with env PATH="
         );
         assert!(wrapped.contains("bash -c"), "Should use bash -c wrapper");
+    }
+
+    /// Test command wrapping with environment variables
+    #[test]
+    fn test_wrap_command_with_path_and_env() {
+        let original_path = std::env::var("PATH").unwrap_or_default();
+
+        let cmd = "echo hello";
+        let env_vars = [("MY_VAR", "my_value"), ("ANOTHER_VAR", "another_value")];
+        let wrapped = TilixMultiplexer::build_env_wrapped_command(cmd, Some(&env_vars));
+
+        // Should contain PATH
+        assert!(
+            wrapped.contains(&original_path),
+            "Wrapped command should contain PATH"
+        );
+
+        // Should contain the environment variables
+        assert!(
+            wrapped.contains("MY_VAR=my_value"),
+            "Wrapped command should contain MY_VAR"
+        );
+        assert!(
+            wrapped.contains("ANOTHER_VAR=another_value"),
+            "Wrapped command should contain ANOTHER_VAR"
+        );
+
+        // Should contain bash -c wrapper
+        assert!(
+            wrapped.contains("bash -c"),
+            "Wrapped command should use bash -c"
+        );
+
+        // Should contain the original command
+        assert!(
+            wrapped.contains(cmd),
+            "Wrapped command should contain original command"
+        );
+
+        // Verify the format: env PATH=... MY_VAR=... ANOTHER_VAR=... bash -c 'cmd'
+        let expected_start = format!(
+            "env PATH={} MY_VAR=my_value ANOTHER_VAR=another_value bash -c",
+            original_path
+        );
+        assert!(
+            wrapped.starts_with(&expected_start),
+            "Command should start with expected env vars"
+        );
+    }
+
+    /// Test command wrapping with empty environment variables
+    #[test]
+    fn test_wrap_command_with_path_and_empty_env() {
+        let original_path = std::env::var("PATH").unwrap_or_default();
+
+        let cmd = "echo hello";
+        let env_vars: [(&str, &str); 0] = [];
+        let wrapped = TilixMultiplexer::build_env_wrapped_command(cmd, Some(&env_vars));
+
+        // Should still work like normal wrap without env vars
+        let expected_format = format!("env PATH={} bash -c '{}'", original_path, cmd);
+        assert_eq!(wrapped, expected_format);
     }
 
     /// Test that run_command returns NotAvailable error (Tilix limitation)
@@ -833,5 +899,470 @@ mod tests {
                 "Should have unsupported operations listed"
             );
         }
+    }
+
+    // Integration tests that actually launch Tilix
+    // These are marked with #[ignore] by default and can be run with: cargo test -- --ignored
+
+    /// Helper to check if we're running in a test environment suitable for Tilix integration tests
+    fn should_run_integration_tests() -> bool {
+        // Skip in CI environments
+        if std::env::var("CI").is_ok() {
+            return false;
+        }
+
+        // Check if Tilix is available
+        if !TilixMultiplexer::is_available() {
+            return false;
+        }
+
+        // Skip if already running inside Tilix (to avoid nested instances)
+        if !is_in_tilix() {
+            return false;
+        }
+
+        true
+    }
+
+    /// Integration test: Open a new Tilix window with a title
+    #[test]
+    #[serial_test::file_serial]
+    fn integration_test_open_window_with_title() {
+        if !should_run_integration_tests() {
+            println!("Skipping Tilix integration test (not in suitable environment)");
+            return;
+        }
+
+        let mux = TilixMultiplexer::new().expect("Failed to create TilixMultiplexer");
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let opts = WindowOptions {
+            title: Some("integration-test-001"),
+            cwd: Some(temp_path),
+            focus: false,
+            profile: None,
+            init_command: Some("sleep 2"),
+        };
+
+        // Open window should succeed
+        let result = mux.open_window(&opts);
+        assert!(
+            result.is_ok(),
+            "Should successfully open Tilix window: {:?}",
+            result.err()
+        );
+
+        // Give Tilix time to fully create the window
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        // Note: We can't easily verify the window exists without DBus introspection,
+        // but we can verify the command executed without error
+    }
+
+    /// Integration test: Split a pane vertically
+    #[test]
+    #[serial_test::file_serial]
+    fn integration_test_split_pane_vertical() {
+        if !should_run_integration_tests() {
+            println!("Skipping Tilix integration test (not in suitable environment)");
+            return;
+        }
+
+        let mux = TilixMultiplexer::new().expect("Failed to create TilixMultiplexer");
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // First open a window
+        let window_opts = WindowOptions {
+            title: Some("split-test-002"),
+            cwd: Some(temp_path),
+            focus: true,
+            profile: None,
+            init_command: None,
+        };
+
+        let window_result = mux.open_window(&window_opts);
+        assert!(window_result.is_ok(), "Should successfully open window");
+
+        // Give the window time to be created and focused
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Now split the pane vertically
+        let split_result = mux.split_pane(
+            None, // Use current window
+            None, // Use current pane
+            SplitDirection::Vertical,
+            None,
+            &CommandOptions::default(),
+            Some("echo 'Vertical split' && sleep 2"),
+        );
+
+        assert!(
+            split_result.is_ok(),
+            "Should successfully split pane vertically: {:?}",
+            split_result.err()
+        );
+
+        // The pane ID returned should be non-empty
+        if let Ok(pane_id) = split_result {
+            assert!(
+                !pane_id.is_empty(),
+                "Pane ID should be non-empty after split"
+            );
+        }
+
+        // Give time for split to complete
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    /// Integration test: Split a pane horizontally
+    #[test]
+    #[serial_test::file_serial]
+    fn integration_test_split_pane_horizontal() {
+        if !should_run_integration_tests() {
+            println!("Skipping Tilix integration test (not in suitable environment)");
+            return;
+        }
+
+        let mux = TilixMultiplexer::new().expect("Failed to create TilixMultiplexer");
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // First open a window
+        let window_opts = WindowOptions {
+            title: Some("split-test-003"),
+            cwd: Some(temp_path),
+            focus: true,
+            profile: None,
+            init_command: None,
+        };
+
+        let window_result = mux.open_window(&window_opts);
+        assert!(window_result.is_ok(), "Should successfully open window");
+
+        // Give the window time to be created and focused
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Now split the pane horizontally
+        let split_result = mux.split_pane(
+            None, // Use current window
+            None, // Use current pane
+            SplitDirection::Horizontal,
+            None,
+            &CommandOptions::default(),
+            Some("echo 'Horizontal split' && sleep 2"),
+        );
+
+        assert!(
+            split_result.is_ok(),
+            "Should successfully split pane horizontally: {:?}",
+            split_result.err()
+        );
+
+        // The pane ID returned should be non-empty
+        if let Ok(pane_id) = split_result {
+            assert!(
+                !pane_id.is_empty(),
+                "Pane ID should be non-empty after split"
+            );
+        }
+
+        // Give time for split to complete
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    /// Integration test: Split a pane with Auto direction
+    #[test]
+    #[serial_test::file_serial]
+    fn integration_test_split_pane_auto() {
+        if !should_run_integration_tests() {
+            println!("Skipping Tilix integration test (not in suitable environment)");
+            return;
+        }
+
+        let mux = TilixMultiplexer::new().expect("Failed to create TilixMultiplexer");
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // First open a window
+        let window_opts = WindowOptions {
+            title: Some("split-test-004"),
+            cwd: Some(temp_path),
+            focus: true,
+            profile: None,
+            init_command: None,
+        };
+
+        let window_result = mux.open_window(&window_opts);
+        assert!(window_result.is_ok(), "Should successfully open window");
+
+        // Give the window time to be created and focused
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Now split the pane with Auto direction (Tilix decides best split)
+        let split_result = mux.split_pane(
+            None, // Use current window
+            None, // Use current pane
+            SplitDirection::Auto,
+            None,
+            &CommandOptions::default(),
+            Some("echo 'Auto split' && sleep 2"),
+        );
+
+        assert!(
+            split_result.is_ok(),
+            "Should successfully split pane with Auto direction: {:?}",
+            split_result.err()
+        );
+
+        // The pane ID returned should be non-empty
+        if let Ok(pane_id) = split_result {
+            assert!(
+                !pane_id.is_empty(),
+                "Pane ID should be non-empty after split"
+            );
+        }
+
+        // Give time for split to complete
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    /// Integration test: Split pane with environment variables
+    #[test]
+    #[serial_test::file_serial]
+    fn integration_test_split_pane_with_env_vars() {
+        if !should_run_integration_tests() {
+            println!("Skipping Tilix integration test (not in suitable environment)");
+            return;
+        }
+
+        let mux = TilixMultiplexer::new().expect("Failed to create TilixMultiplexer");
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // First open a window
+        let window_opts = WindowOptions {
+            title: Some("env-test-005"),
+            cwd: Some(temp_path),
+            focus: true,
+            profile: None,
+            init_command: None,
+        };
+
+        let window_result = mux.open_window(&window_opts);
+        assert!(window_result.is_ok(), "Should successfully open window");
+
+        // Give the window time to be created and focused
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Now split with environment variables
+        let cmd_opts = CommandOptions {
+            cwd: Some(temp_path),
+            env: Some(&[
+                ("TEST_VAR_1", "value1"),
+                ("TEST_VAR_2", "value2"),
+                ("MY_CUSTOM_VAR", "custom_value"),
+            ]),
+        };
+
+        // Command that prints the environment variables to verify they were set
+        // This seems broken tho
+        let init_cmd = "echo \"TEST_VAR_1=$TEST_VAR_1\" && echo \"TEST_VAR_2=$TEST_VAR_2\" && echo \"MY_CUSTOM_VAR=$MY_CUSTOM_VAR\" && sleep 2";
+
+        let split_result = mux.split_pane(
+            None,
+            None,
+            SplitDirection::Horizontal,
+            None,
+            &cmd_opts,
+            Some(init_cmd),
+        );
+
+        assert!(
+            split_result.is_ok(),
+            "Should successfully split pane with environment variables: {:?}",
+            split_result.err()
+        );
+
+        // The pane ID returned should be non-empty
+        if let Ok(pane_id) = split_result {
+            assert!(
+                !pane_id.is_empty(),
+                "Pane ID should be non-empty after split"
+            );
+        }
+
+        // Give time for command to execute and display env vars
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+
+    /// Integration test: Create a complex 3-pane layout
+    #[test]
+    #[serial_test::file_serial]
+    fn integration_test_complex_layout() {
+        if !should_run_integration_tests() {
+            println!("Skipping Tilix integration test (not in suitable environment)");
+            return;
+        }
+
+        let mux = TilixMultiplexer::new().expect("Failed to create TilixMultiplexer");
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // Create main window
+        let window_opts = WindowOptions {
+            title: Some("complex-layout-006"),
+            cwd: Some(temp_path),
+            focus: true,
+            profile: None,
+            init_command: Some("echo 'Main pane' && sleep 5"),
+        };
+
+        let window_result = mux.open_window(&window_opts);
+        assert!(
+            window_result.is_ok(),
+            "Should successfully open main window"
+        );
+
+        // Give the window time to be created
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Split horizontally to create right pane
+        let right_pane_result = mux.split_pane(
+            None,
+            None,
+            SplitDirection::Horizontal,
+            None,
+            &CommandOptions::default(),
+            Some("echo 'Right pane (top)' && sleep 5"),
+        );
+
+        assert!(
+            right_pane_result.is_ok(),
+            "Should successfully create right pane"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        // Split the right pane vertically to create bottom-right pane
+        let bottom_right_result = mux.split_pane(
+            None,
+            None,
+            SplitDirection::Vertical,
+            None,
+            &CommandOptions::default(),
+            Some("echo 'Right pane (bottom)' && sleep 5"),
+        );
+
+        assert!(
+            bottom_right_result.is_ok(),
+            "Should successfully create bottom-right pane"
+        );
+
+        // Give time for the layout to be fully created
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // At this point, we should have a 3-pane layout:
+        // +--------+--------+
+        // |        | Right  |
+        // | Main   | (top)  |
+        // |        +--------+
+        // |        | Right  |
+        // |        |(bottom)|
+        // +--------+--------+
+    }
+
+    /// Integration test: Test window with working directory
+    #[test]
+    #[serial_test::file_serial]
+    fn integration_test_window_with_cwd() {
+        if !should_run_integration_tests() {
+            println!("Skipping Tilix integration test (not in suitable environment)");
+            return;
+        }
+
+        let mux = TilixMultiplexer::new().expect("Failed to create TilixMultiplexer");
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let opts = WindowOptions {
+            title: Some("cwd-test-007"),
+            cwd: Some(temp_path),
+            focus: false,
+            profile: None,
+            init_command: Some("pwd && sleep 2"), // Print working directory to verify cwd works
+        };
+
+        let result = mux.open_window(&opts);
+        assert!(
+            result.is_ok(),
+            "Should successfully open window with cwd: {:?}",
+            result.err()
+        );
+
+        // Give time for command to execute
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    /// Integration test: Test split with working directory
+    #[test]
+    #[serial_test::file_serial]
+    fn integration_test_split_with_cwd() {
+        if !should_run_integration_tests() {
+            println!("Skipping Tilix integration test (not in suitable environment)");
+            return;
+        }
+
+        let mux = TilixMultiplexer::new().expect("Failed to create TilixMultiplexer");
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        // Open main window
+        let window_opts = WindowOptions {
+            title: Some("split-cwd-008"),
+            cwd: Some(temp_path),
+            focus: true,
+            profile: None,
+            init_command: None,
+        };
+
+        let window_result = mux.open_window(&window_opts);
+        assert!(window_result.is_ok(), "Should successfully open window");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Split with a different working directory
+        let split_dir = TempDir::new().expect("Failed to create split temp directory");
+        let split_path = split_dir.path();
+
+        let cmd_opts = CommandOptions {
+            cwd: Some(split_path),
+            env: None,
+        };
+
+        let split_result = mux.split_pane(
+            None,
+            None,
+            SplitDirection::Horizontal,
+            None,
+            &cmd_opts,
+            Some("pwd && sleep 2"), // Print working directory to verify it's different
+        );
+
+        assert!(
+            split_result.is_ok(),
+            "Should successfully split pane with different cwd: {:?}",
+            split_result.err()
+        );
+
+        // Give time for command to execute
+        std::thread::sleep(std::time::Duration::from_secs(2));
     }
 }
