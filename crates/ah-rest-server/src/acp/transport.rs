@@ -583,7 +583,6 @@ async fn route_wrapped_request(
                 .map_err(server_error_to_rpc)
         }
         ClientRequest::SetSessionModeRequest(_) => Err(Error::method_not_found()),
-        ClientRequest::SetSessionModelRequest(_) => Err(Error::method_not_found()),
         ClientRequest::ExtMethodRequest(ext) => match ext.method.as_ref() {
             "session/list" => handle_session_list(state, request.raw, &guard)
                 .await
@@ -730,7 +729,6 @@ async fn route_request_stdio(
                 .map_err(server_error_to_rpc)
         }
         ClientRequest::SetSessionModeRequest(_) => Err(Error::method_not_found()),
-        ClientRequest::SetSessionModelRequest(_) => Err(Error::method_not_found()),
         ClientRequest::ExtMethodRequest(ext) => match ext.method.as_ref() {
             "session/list" => handle_session_list(state, request.raw, &guard)
                 .await
