@@ -1001,6 +1001,8 @@ mod viewmodel_tests {
         }
 
         // Test AdvancedOptionsButton - opens LaunchOptions modal
+        // NOTE: Comprehensive keyboard & mouse interaction tests for Launch Options modal in:
+        //   `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs`
         {
             // Set focus on advanced options button
             if let Some(card) = vm.draft_cards.get_mut(0) {
@@ -1037,11 +1039,11 @@ mod viewmodel_tests {
                 "Modal should be dismissed"
             );
 
-            // Focus should return to the advanced options button
+            // Focus should return to the prompt input (task description)
             assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
             assert_eq!(
                 vm.draft_cards[0].focus_element,
-                CardFocusElement::AdvancedOptionsButton
+                CardFocusElement::TaskDescription
             );
         }
 

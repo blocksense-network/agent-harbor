@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ah_domain_types::AgentChoice;
+use ah_mux_core::SplitMode;
 use serde::{Deserialize, Serialize};
 
 /// Font style for displaying symbols and icons
@@ -141,6 +142,7 @@ pub enum KeyboardOperation {
     LaunchInHorizontalSplit,
     LaunchInVerticalSplit,
     ActivateCurrentItem,
+    ApplyModalChanges,
     DeleteCurrentTask,
 }
 
@@ -230,6 +232,7 @@ impl KeyboardOperation {
             KeyboardOperation::LaunchInHorizontalSplit => "shortcut-launch-in-horizontal-split",
             KeyboardOperation::LaunchInVerticalSplit => "shortcut-launch-in-vertical-split",
             KeyboardOperation::ActivateCurrentItem => "shortcut-activate-current-item",
+            KeyboardOperation::ApplyModalChanges => "shortcut-apply-modal-changes",
             KeyboardOperation::DeleteCurrentTask => "shortcut-delete-current-task",
         }
     }
@@ -313,6 +316,7 @@ impl KeyboardOperation {
             KeyboardOperation::LaunchInHorizontalSplit => "Launch task in horizontal split",
             KeyboardOperation::LaunchInVerticalSplit => "Launch task in vertical split",
             KeyboardOperation::ActivateCurrentItem => "Activate current item",
+            KeyboardOperation::ApplyModalChanges => "Apply modal changes",
             KeyboardOperation::DeleteCurrentTask => "Delete current task",
         }
     }
@@ -1006,6 +1010,10 @@ impl KeymapConfig {
                 vec!["Enter".to_string()],
             ),
             KeyboardOperationDefinition::new(
+                KeyboardOperation::ApplyModalChanges,
+                vec!["A".to_string()],
+            ),
+            KeyboardOperationDefinition::new(
                 KeyboardOperation::DeleteCurrentTask,
                 vec![
                     "Ctrl+W".to_string(),
@@ -1049,6 +1057,7 @@ impl KeymapConfig {
             KeyboardOperation::LaunchInHorizontalSplit => &self.launch_in_horizontal_split,
             KeyboardOperation::LaunchInVerticalSplit => &self.launch_in_vertical_split,
             KeyboardOperation::ActivateCurrentItem => &self.activate_current_item,
+            KeyboardOperation::ApplyModalChanges => &self.apply_modal_changes,
             KeyboardOperation::DeleteCurrentTask => &self.delete_current_task,
             KeyboardOperation::MoveToPreviousLine => &self.move_to_previous_line,
             KeyboardOperation::MoveForwardOneWord => &self.move_forward_one_word,
@@ -1167,6 +1176,9 @@ impl KeymapConfig {
             }
             KeyboardOperation::ActivateCurrentItem => {
                 self.activate_current_item.clone().unwrap_or_default()
+            }
+            KeyboardOperation::ApplyModalChanges => {
+                self.apply_modal_changes.clone().unwrap_or_default()
             }
             KeyboardOperation::DeleteCurrentTask => {
                 self.delete_current_task.clone().unwrap_or_default()
@@ -1388,6 +1400,7 @@ impl Default for KeymapConfig {
             launch_in_horizontal_split: None,
             launch_in_vertical_split: None,
             activate_current_item: None,
+            apply_modal_changes: None,
             delete_current_task: None,
         };
 
@@ -1448,6 +1461,9 @@ impl Default for KeymapConfig {
                     }
                     KeyboardOperation::ActivateCurrentItem => {
                         config.activate_current_item = Some(matchers)
+                    }
+                    KeyboardOperation::ApplyModalChanges => {
+                        config.apply_modal_changes = Some(matchers)
                     }
                     KeyboardOperation::DeleteCurrentTask => {
                         config.delete_current_task = Some(matchers)
@@ -1673,6 +1689,7 @@ pub struct KeymapConfig {
     pub launch_in_horizontal_split: Option<Vec<KeyMatcher>>,
     pub launch_in_vertical_split: Option<Vec<KeyMatcher>>,
     pub activate_current_item: Option<Vec<KeyMatcher>>,
+    pub apply_modal_changes: Option<Vec<KeyMatcher>>,
     pub delete_current_task: Option<Vec<KeyMatcher>>,
 }
 
@@ -1700,6 +1717,15 @@ pub struct Settings {
     /// Default agent selections for new tasks
     pub default_agents: Option<Vec<AgentChoice>>,
 
+    /// Default split mode for task launches
+    ///
+    /// This is loaded from the config file at TUI startup. During a TUI session,
+    /// when the user selects a different split mode (via keyboard shortcut or modal),
+    /// this field is updated in-memory to remember the preference for subsequent
+    /// direct launches within the same session. The preference is NOT persisted to disk,
+    /// so each TUI restart will reload the original config value.
+    pub default_split_mode: Option<SplitMode>,
+
     /// Whether mouse support is enabled (default: true)
     pub mouse_enabled: Option<bool>,
 }
@@ -1714,6 +1740,7 @@ impl Default for Settings {
             workspace_terms_menu: Some(true),
             keymap: Some(KeymapConfig::default()),
             default_agents: None,
+            default_split_mode: Some(SplitMode::None), // Default to no splitting
             mouse_enabled: Some(true),
         }
     }
@@ -1736,6 +1763,15 @@ impl Settings {
                 if !agents.is_empty() {
                     settings.default_agents = Some(agents);
                 }
+            }
+        }
+
+        // Extract default split mode if configured
+        if let Some(default_split_mode_config) = config.json.get("default-split-mode") {
+            if let Ok(split_mode) =
+                serde_json::from_value::<SplitMode>(default_split_mode_config.clone())
+            {
+                settings.default_split_mode = Some(split_mode);
             }
         }
 
@@ -1770,6 +1806,11 @@ impl Settings {
     /// Get whether mouse support is enabled (default true)
     pub fn mouse_enabled(&self) -> bool {
         self.mouse_enabled.unwrap_or(true)
+    }
+
+    /// Get the default split mode, with fallback to None
+    pub fn default_split_mode(&self) -> SplitMode {
+        self.default_split_mode.unwrap_or(SplitMode::None)
     }
 
     /// Get the keymap configuration, with default fallback

@@ -87,7 +87,11 @@ pub fn render_modals(
                         view_model: launch_vm,
                     } => {
                         super::launch_options_modal::render_advanced_launch_options_modal(
-                            frame, launch_vm, area, theme,
+                            frame,
+                            launch_vm,
+                            area,
+                            theme,
+                            hit_registry,
                         );
                     }
                     crate::view_model::ModalType::EnumSelection {

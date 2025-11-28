@@ -678,6 +678,12 @@ mod keyboard {
 
     #[test]
     fn escape_closes_modal() {
+        // See also: modal_focus_restoration_tests.rs for comprehensive tests on
+        // focus restoration behavior when modals are dismissed with ESC:
+        // - Repository/Branch/Model modals restore focus to their respective selectors
+        // - Launch options modal returns focus to task description
+        // - Multiple modal dismissals maintain correct focus
+        // - Focus restoration works from different starting button states
         let mut vm = new_view_model();
         vm.open_modal(ah_tui::view_model::ModalState::RepositorySearch);
         assert_eq!(
@@ -1055,6 +1061,8 @@ mod mouse {
 
     #[test]
     fn clicking_repository_button_opens_modal() {
+        // See also: modal_focus_restoration_tests.rs for tests verifying that
+        // when this modal is closed with ESC, focus returns to RepositorySelector
         let mut vm = new_view_model();
 
         click(
@@ -1088,8 +1096,31 @@ mod mouse {
         );
     }
 
+    // ============================================================================
+    // Launch Options Modal Tests
+    //
+    // NOTE: Comprehensive tests for Launch Options modal interaction (keyboard
+    // shortcuts, mouse clicks, state management) are in:
+    //   `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs`
+    //
+    // That test suite covers:
+    // - 'A' key to save changes and close modal
+    // - 'Esc' key to discard changes and restore original config
+    // - Mouse clicks on "A Apply" and "Esc Cancel" hint text
+    // - Edge cases (multiple ESC presses, no prior config, etc.)
+    // - Focus restoration after modal closes
+    // - Interchangeability of keyboard and mouse inputs
+    //
+    // The tests below verify basic modal opening behavior.
+    // ============================================================================
+
     #[tokio::test]
     async fn ctrl_enter_opens_advanced_launch_options_menu() {
+        // See also: session_persistence_tests.rs for tests covering:
+        // - Advanced options stored in draft cards and persisting for the session
+        // - Split mode preferences remembered session-only
+        // - Options preserved across task launches within a session
+        // - Consistent behavior across all launch methods
         let (mut vm, _mock_client) = new_view_model_with_mock_client();
         if let Some(card) = vm.draft_cards.first_mut() {
             card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
@@ -1120,6 +1151,9 @@ mod mouse {
 
     #[tokio::test]
     async fn tab_navigation_to_advanced_options_button_then_enter() {
+        // See also: session_persistence_tests.rs for comprehensive tests on
+        // keyboard shortcuts working from textarea (Ctrl+Enter) and advanced
+        // options preservation across multiple task launches.
         let (mut vm, _mock_client) = new_view_model_with_mock_client();
 
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -1223,6 +1257,7 @@ mod mouse {
                     selected_option_index: 0,
                     selected_action_index: 1, // "Launch in new tab" is 0, "Launch in split view" is 1
                     inline_enum_popup: None,
+                    original_config: AdvancedLaunchOptions::default(),
                 },
             },
             "Launch in new tab (t)".to_string(),
@@ -1278,6 +1313,7 @@ mod mouse {
                     selected_option_index: 0,
                     selected_action_index: 1, // "Launch in split view" is index 1
                     inline_enum_popup: None,
+                    original_config: AdvancedLaunchOptions::default(),
                 },
             },
             "Launch in split view (s)".to_string(),
@@ -1330,6 +1366,7 @@ mod mouse {
                     selected_option_index: 0,
                     selected_action_index: 2, // "Launch in horizontal split" is index 2
                     inline_enum_popup: None,
+                    original_config: AdvancedLaunchOptions::default(),
                 },
             },
             "Launch in horizontal split (h)".to_string(),
@@ -1382,6 +1419,7 @@ mod mouse {
                     selected_option_index: 0,
                     selected_action_index: 3, // "Launch in vertical split" is index 3
                     inline_enum_popup: None,
+                    original_config: AdvancedLaunchOptions::default(),
                 },
             },
             "Launch in vertical split (v)".to_string(),
@@ -1395,8 +1433,14 @@ mod mouse {
         );
     }
 
+    // See comprehensive modal interaction tests in:
+    //   `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs`
     #[tokio::test]
     async fn advanced_options_button_click_opens_menu() {
+        // See also: session_persistence_tests.rs for tests covering:
+        // - Advanced options stored in draft cards after modal closes
+        // - Independent options across multiple draft cards
+        // - Session-only storage (not persisted to disk)
         let (mut vm, _mock_client) = new_view_model_with_mock_client();
         if let Some(card) = vm.draft_cards.first_mut() {
             card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();
@@ -1713,6 +1757,8 @@ mod mouse {
 
     #[test]
     fn mouse_scroll_in_modal_changes_selection() {
+        // See also: modal_focus_restoration_tests.rs for tests verifying that
+        // when model modal is closed with ESC, focus returns to ModelSelector
         let mut vm = new_view_model();
 
         // Check for loaded agents

@@ -147,7 +147,7 @@ Variable height cards with auto-expandable text area and controls (keyboard navi
   - Branch Selector: Fuzzy search through repository branches
   - Agent Multi-Selector: Multi-select interface with instance counts and +/- controls
   - **Characteristics**: Full-screen overlay, dedicated input box, ESC to cancel, Enter to confirm
-- **Advanced Options Menu**: Gear button (⚙️) opens a menu displaying launch options with visible keyboard shortcuts:
+- **Advanced Options Menu**: Gear button (⚙️) opens a modal displaying launch options with visible keyboard shortcuts. Options are stored in the draft card and persist for the session. Split mode selections (t/s/h/v/T/S/H/V) are remembered and applied as the default for subsequent launches via Enter or Go button.
 - TAB navigation between controls (Repository → Branch → Model → Go → Advanced Options → wrap around)
 - Multiple draft tasks supported - users can create several draft tasks in progress
 - Auto-save drafts to local storage and restore across sessions (debounced, 500ms delay)
@@ -199,7 +199,18 @@ The agent selection dialog provides advanced agent configuration:
   - `Enter`: Close the dialog with the current model and count selections:
     - If the currently selected model has count zero: select ONLY this model with count 1, remove all other model selections
     - If the currently selected model has non-zero count: keep all current non-zero count models with their counts
-  - `Esc`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place. Focus returns to the model picker button in both cases.
+  - `Esc`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place. Focus returns to the model picker button.
+
+#### Modal Focus Restoration
+
+When modals are dismissed (via ESC, apply actions, or other completion methods), focus is restored based on the modal type to optimize the user workflow:
+
+- **Model Selection Modal**: Returns focus to the model picker button, allowing immediate re-adjustment of model selection
+- **Repository/Branch Selection Modals**: Return focus to their respective selector buttons
+- **Launch Options Modal**: Returns focus to the task description textarea, allowing the user to immediately continue editing their prompt after reviewing or adjusting launch options. This applies whether the modal is dismissed with ESC, the A key to apply changes, or any of the split launch shortcuts (t/s/h/v/T/S/H/V).
+- **Settings Modal**: Returns focus to the previously focused element
+
+This context-aware focus restoration ensures a smooth editing workflow where dismissing a modal returns the user to the most logical next action point.
 
 ### Multi-Agent Task Launching
 
@@ -584,7 +595,7 @@ Right click is left for the native terminal UI to handle in order to preserve it
 
 #### Advanced Task Launch Options Modal
 
-The advanced task launch options modal provides comprehensive control over task execution parameters, exposing the full range of options available in the `ah task` and `ah agent start` commands. These options affect only the currently launched task and are not persisted globally.
+The advanced task launch options modal provides comprehensive control over task execution parameters, exposing the full range of options available in the `ah task` and `ah agent start` commands. These options are stored in the draft card and persist for the current TUI session. When you launch a task, the options are preserved for the next draft card, making it easy to launch multiple tasks with the same configuration. Split mode preferences are also remembered for the session. Neither advanced options nor split mode preferences are persisted to disk - they reset when the TUI restarts.
 
 - **Modal Activation**: Click gear button (⚙️) or press Ctrl+Enter when in draft textarea
 - **Modal Layout**: Two-column layout with options on the left and launch shortcuts/menu on the right
@@ -646,9 +657,24 @@ The right column provides launch action selection with keyboard shortcuts:
 
 **Launch Menu Navigation**: Arrow keys navigate between launch options. Enter selects the highlighted option. Single letters (t/s/h/v) or capitals (T/S/H/V) can be typed directly to select when modal is visible.
 
-- **Modal dismissal**: ESC closes without launching
+- **Modal dismissal and changes**:
+  - **'A' key**: Applies changes and closes the modal, preserving any modifications made to the launch options
+  - **'Esc' key**: Discards all changes and restores the original configuration from before the modal was opened
+  - **Split launch shortcuts** (t/s/h/v/T/S/H/V): Apply changes, launch the task with the selected split mode, and close the modal
+  - **Mouse interactions**: Clickable hint text at the bottom of the modal ("**A** Apply • **Esc** Cancel") provides visual cues and mouse click support for both actions
+  - **Focus restoration**: After applying changes, canceling, or using split launch shortcuts, focus returns to the task description textarea, allowing the user to immediately continue editing their prompt
 - **Default focus**: Left column options when modal opens
-- **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed
+- **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed, and interactive hint text at bottom with bold key indicators
+
+##### Session Persistence Behavior
+
+- **Advanced Options Preservation**: When you configure advanced options and launch a task, those options are automatically applied to the next draft card. This allows you to quickly launch multiple tasks with the same configuration without repeatedly opening the modal. Each draft card maintains its own advanced options, so if you create multiple draft cards (Ctrl+N), each can have different options configured.
+
+- **Split Mode Memory**: The TUI remembers your last selected split mode (t/s/h/v/T/S/H/V) for the current session. When you press Enter or click "Go" without opening the advanced options modal, the task launches using your last selected split mode. This provides a convenient workflow where you can select your preferred split mode once and then launch multiple tasks with the same layout.
+
+- **Session-Only Storage**: Both advanced options and split mode preferences are stored only in memory during the TUI session. They are not written to configuration files and will reset to defaults when you restart the TUI. This design prevents temporary launch preferences from polluting persistent configuration while still providing convenience within a session.
+
+- **Default Behavior**: If no split mode has been selected in the current session, pressing Enter or clicking "Go" uses the configured default split mode from your settings. The first time you use a split mode shortcut (t/s/h/v/T/S/H/V), that becomes the session default.
 
 ##### Configuration Policies as Top-Level Options
 
@@ -702,9 +728,11 @@ The advanced launch options modal uses a two-column navigation system:
 - **Up/Down Arrows**: Navigate within the current column
 - **Tab**: Cycle through all controls in left-to-right, top-to-bottom order
 - **Enter**: Activate selected option or launch with selected method
-- **Esc**: Close modal without launching
-- **Shortcut Keys**: Single letters (b/s/h/v) or capitals (B/S/H/V) directly select launch options
-- **Focus Behavior**: Modal opens with focus in left column; maintains focus position when switching columns
+- **'A' key**: Apply changes and close modal, preserving any modifications made to launch options
+- **'Esc' key**: Discard changes and restore original configuration, then close modal
+- **Mouse clicks**: Clickable hint text at bottom of modal ("**A** Apply • **Esc** Cancel") provides visual feedback and mouse interaction support
+- **Shortcut Keys**: Single letters (t/s/h/v) or capitals (T/S/H/V) directly select launch options and immediately launch the task
+- **Focus Behavior**: Modal opens with focus in left column; maintains focus position when switching columns; returns focus to task description textarea after closing
 
 ### Real-Time Behavior
 
@@ -874,6 +902,7 @@ All such variables are in under the "[tui.keymap]" section.
 |                                 | Move to next field                            | `move-to-next-field`             | Tab                                                                             |
 |                                 | Move to previous field                        | `move-to-previous-field`         | Shift+Tab                                                                       |
 |                                 | Dismiss overlay                               | `dismiss-overlay`                | Esc                                                                             |
+|                                 | Apply modal changes                           | `apply-modal-changes`            | A (in modal context)                                                            |
 |                                 | Increment value                               | `increment-value`                | Shift+=, Right                                                                  |
 |                                 | Decrement value                               | `decrement-value`                | -, Left                                                                         |
 |                                 | Delete to beginning of line                   | `delete-to-beginning-of-line`    | Cmd+Backspace (macOS)                                                           |
