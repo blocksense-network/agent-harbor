@@ -2,70 +2,73 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: timing_test_scenario
-description: 'Scenario for testing SSE event timing verification'
-tags: ['test', 'timing']
+description: Scenario for testing SSE event timing verification
+tags:
+  - test
+  - timing
 repo:
   init: true
   files:
-    - path: 'README.md'
-      contents: |
-        # Timing Test Scenario
+    - path: README.md
+      contents: '# Timing Test Scenario
+
 
         Used to verify that SSE events are streamed with correct timing.
+
+        '
 timeline:
-  # Start with thinking events at specific times
   - llmResponse:
       - think:
-          - [500, 'Starting timing test scenario']
-          - [300, 'Analyzing timing requirements']
+          - content: Beginning timing verification process
+            relativeTime: 100
+          - content: Analyzing timing requirements
+            relativeTime: 300
+          - content: Starting timing test scenario
+            relativeTime: 500
       - assistant:
-          - [100, 'Beginning timing verification process']
-
-  # First tool execution after 800ms total thinking time
+          - content: Beginning timing verification process
+            relativeTime: 600
   - agentToolUse:
-      toolName: 'run_command'
+      toolName: run_command
       args:
-        command: "echo 'Timing test started'"
-        cwd: '.'
+        command: echo 'Timing test started'
+        cwd: .
       progress:
-        - [100, 'Preparing timing test...']
-        - [200, 'Running timing verification...']
-      result: 'Timing test started'
-      status: 'ok'
-
-  # File edit event
+        - relativeTime: 100
+          message: Preparing timing test...
+        - relativeTime: 200
+          message: Running timing verification...
+      result: Timing test started
+      status: ok
   - agentEdits:
-      path: 'timing_test.txt'
+      path: timing_test.txt
       linesAdded: 3
       linesRemoved: 0
-
-  # More thinking
   - llmResponse:
       - think:
-          - [400, 'Processing timing results']
-          - [200, 'Preparing final verification']
+          - content: Preparing final verification
+            relativeTime: 200
+          - content: Processing timing results
+            relativeTime: 400
       - assistant:
-          - [150, 'Timing verification completed successfully']
-
-  # Final tool execution
+          - content: Timing verification completed successfully
+            relativeTime: 500
   - agentToolUse:
-      toolName: 'run_command'
+      toolName: run_command
       args:
-        command: "echo 'Timing test completed'"
-        cwd: '.'
+        command: echo 'Timing test completed'
+        cwd: .
       progress:
-        - [150, 'Finalizing timing test...']
-      result: 'Timing test completed'
-      status: 'ok'
-
-  # Mark scenario as complete and merge to keep in session listings
+        - relativeTime: 150
+          message: Finalizing timing test...
+      result: Timing test completed
+      status: ok
   - complete: true
   - merge: true
-
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'README.md'
-    - type: 'taskFile'
-      pattern: 'timing_test.txt'
+    - type: taskFile
+      pattern: README.md
+    - type: taskFile
+      pattern: timing_test.txt

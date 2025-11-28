@@ -4,7 +4,7 @@
 
 Goal: Extend the Scenario Format (`specs/Public/Scenario-Format.md`) to support comprehensive ACP (Agent Client Protocol) agent testing, including capability negotiation, rich content handling, and MCP server configurations. The extensions enable the mock-agent crate to simulate different ACP agent profiles and handle complex content scenarios for thorough protocol compliance testing.
 
-Target: `crates/ah-scenario-format` (existing crate) and `specs/Public/Scenario-Format.md` (documentation). New extensions must maintain backward compatibility with existing scenarios.
+Target: `crates/ah-scenario-format` (existing crate) and `specs/Public/Scenario-Format.md` (documentation). Legacy timeline support has been removed; scenarios must use the structured format (`llmResponse`/`userInputs` objects, `relativeTime`, `baseTimeDelta`) and will be rejected otherwise.
 
 ## Test Strategy
 
@@ -172,9 +172,9 @@ Target: `crates/ah-scenario-format` (existing crate) and `specs/Public/Scenario-
 
 ### Backward Compatibility
 
-- [ ] Ensure all existing scenarios continue to parse without modification
-- [ ] String-based `initialPrompt` and `assistant` events remain supported
-- [ ] Existing timeline events and structure unchanged
+- [x] Remove legacy timeline parsing/coercion (tuple `think`/`assistant`/`advanceMs`, inline arrays, top-level `events`/`assertions`) from `ah-scenario-format`, proxy, and mock-agent runners
+- [x] Migrate repository scenarios to structured format with named fields (`relativeTime`, `baseTimeDelta`)
+- [x] Update matching to use computed effective initial prompt (derived from first `userInputs`)
 - [ ] Graceful handling of unknown ACP fields (forward compatibility)
 
 ### Documentation & Examples
@@ -232,16 +232,17 @@ Target: `crates/ah-scenario-format` (existing crate) and `specs/Public/Scenario-
 - [ ] Implement content block validation against ACP specification
 - [ ] Add ResourceLink content block parsing, validation (including annotations), and examples in docs; ensure MCP parity
 - [ ] Add MCP server configuration validation
-- [ ] **Migrate existing scenario files to new timestamp/content format** - No backwards compatibility required - update all existing scenario files in `test_scenarios/` and `tests/` directories to use the new YAML structure with `timestamp` and `content` keys instead of inline arrays
-- [ ] Remove legacy scenario parsing/coercion (top-level `think`/`agentToolUse`/`assistant` items and type-tagged timeline objects) from `ah-scenario-format` and all runners; add validation/lints that reject legacy shapes
+- [x] **Migrate existing scenario files to new timestamp/content format** - No backwards compatibility required - update all existing scenario files in `test_scenarios/` and `tests/` directories to use the new YAML structure with `relativeTime` and `content` keys instead of inline arrays
+- [x] Remove legacy scenario parsing/coercion (top-level `think`/`agentToolUse`/`assistant` items and type-tagged timeline objects) from `ah-scenario-format` and all runners; add validation/lints that reject legacy shapes
 - [ ] Model `session/prompt` responses with ACP stop reasons and token usage; add scenario assertions and parser fields
 - [ ] Enforce ACP capability baseline (text + resource_link) and validate promptCapabilities against initialization
 - [ ] Add SSE deprecation warning/validation for MCP transports; ensure mcpCapabilities align with mcpServers transports
 - [ ] Gate `session/set_model` behind explicit unstable/opt-in flag and add tests
 - [ ] Extend clientPermissionRequest to cover ACP permission option kinds and validate outcomes
-- [ ] Enforce monotonic ACP message timestamp ordering derived from `advanceMs` + deltas; reject invalid timelines in runners and encoders
-- [ ] Compute effective initial prompt from timeline (first `userInputs` after `sessionStart`, else first `userInputs`); remove `initialPrompt` field from schema; update scenario selection logic and migrate existing scenarios
-- [ ] Adopt object-based `userInputs` with `timestamp` field; update parser/encoder, migrate existing scenarios, and deprecate tuple `[ms, value]` form
+- [x] Enforce monotonic ACP message timestamp ordering derived from `baseTimeDelta` + `relativeTime`; reject invalid timelines in loader/playback
+- [x] Compute effective initial prompt from timeline (first `userInputs` after `sessionStart`, else first `userInputs`); remove reliance on legacy `initialPrompt` in matching
+- [x] Adopt object-based `userInputs` with `relativeTime` field; update parser/encoder, migrate existing scenarios, and deprecate tuple `[ms, value]` form
+- [x] Rename timing fields repo-wide to `relativeTime` and `baseTimeDelta`; remove legacy `timestamp`/`advanceMs` references from code, docs, and fixtures
 - [ ] Move prompt response assertions to `sessionStart.expectedPromptResponse`; remove per-`userInputs` expectedResponse parsing; migrate scenarios and update runner logic
 - [ ] Remove `sessionPrompt` timeline event; map all prompts from `userInputs`; update parser/playback/runners and migrate scenarios
 - [ ] Implement Mock ACP Server handling for terminal (`runCmd` → ACP `terminal/*`), filesystem client calls, permission requests, and passthrough `show-sandbox-execution`; add integration tests

@@ -2,21 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: simple_test
-initialPrompt: 'Run a simple test command'
+initialPrompt: Run a simple test command
 repo:
   init: true
 timeline:
   - llmResponse:
       - think:
-          - [1000, 'Testing PTY command execution']
+          - content: Testing PTY command execution
+            relativeTime: 1000
       - assistant:
-          - [500, 'Running a test command']
+          - content: Running a test command
+            relativeTime: 500
   - agentToolUse:
-      toolName: 'runCmd'
+      toolName: runCmd
       args:
-        command: "echo 'Hello from PTY test'"
-        cwd: '.'
-      result: 'Hello from PTY test'
-      status: 'ok'
+        command: echo 'Hello from PTY test'
+        cwd: .
+      result: Hello from PTY test
+      status: ok
 expect:
   exitCode: 0

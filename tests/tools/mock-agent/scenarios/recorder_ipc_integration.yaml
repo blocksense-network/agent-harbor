@@ -2,83 +2,79 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: recorder_ipc_integration
-initialPrompt: 'Test IPC integration with the recorder'
-description: 'E2E test for ah agent record IPC integration with ah agent fs snapshot'
+initialPrompt: Test IPC integration with the recorder
+description: E2E test for ah agent record IPC integration with ah agent fs snapshot
 repo:
   init: true
 timeline:
-  - think:
-      - [
-          500,
-          'I will create a Python file and verify that filesystem snapshots are being captured during recording.',
-        ]
+  - llmResponse:
+      - think:
+          - content: I will create a Python file and verify that filesystem snapshots are
+              being captured during recording.
+            relativeTime: 500
   - agentToolUse:
-      toolName: 'Write'
+      toolName: Write
       args:
-        path: 'main.py'
-        text: |
-          def greet(name):
-              return f"Hello, {name}!"
-
-          if __name__ == "__main__":
-              print(greet("World"))
-      result: 'File created successfully'
-      status: 'ok'
-  - assistant:
-      - [300, 'Created main.py. A filesystem snapshot should have been captured via IPC.']
+        path: main.py
+        text: "def greet(name):\n    return f\"Hello, {name}!\"\n\nif __name__ == \"\
+          __main__\":\n    print(greet(\"World\"))\n"
+      result: File created successfully
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Created main.py. A filesystem snapshot should have been captured via
+              IPC.
+            relativeTime: 300
   - agentToolUse:
-      toolName: 'Write'
+      toolName: Write
       args:
-        path: 'test_main.py'
-        text: |
-          import main
-
-          def test_greet():
-              assert main.greet("Alice") == "Hello, Alice!"
-              assert main.greet("Bob") == "Hello, Bob!"
-              print("All tests passed!")
-
-          if __name__ == "__main__":
-              test_greet()
-      result: 'Test file created'
-      status: 'ok'
-  - assistant:
-      - [400, 'Created test_main.py. Another snapshot should have been captured.']
+        path: test_main.py
+        text: "import main\n\ndef test_greet():\n    assert main.greet(\"Alice\") ==\
+          \ \"Hello, Alice!\"\n    assert main.greet(\"Bob\") == \"Hello, Bob!\"\n \
+          \   print(\"All tests passed!\")\n\nif __name__ == \"__main__\":\n    test_greet()\n"
+      result: Test file created
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Created test_main.py. Another snapshot should have been captured.
+            relativeTime: 400
   - agentToolUse:
-      toolName: 'Edit'
+      toolName: Edit
       args:
-        path: 'main.py'
-        text: |
-
-          def farewell(name):
-              return f"Goodbye, {name}!"
-      result: 'Function appended'
-      status: 'ok'
-  - assistant:
-      - [300, 'Added farewell function to main.py. A third snapshot should be in the recording.']
+        path: main.py
+        text: "\ndef farewell(name):\n    return f\"Goodbye, {name}!\"\n"
+      result: Function appended
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Added farewell function to main.py. A third snapshot should be in the
+              recording.
+            relativeTime: 300
   - agentToolUse:
-      toolName: 'Edit'
+      toolName: Edit
       args:
-        path: 'main.py'
-        old_str: 'print(greet("World"))'
-        new_str: |
-          print(greet("World"))
-              print(farewell("World"))
-      result: 'Code updated'
-      status: 'ok'
-  - assistant:
-      - [
-          500,
-          'Updated main.py to call both greeting and farewell. Final snapshot captured. The recording should contain all four snapshots with proper IPC anchoring.',
-        ]
+        path: main.py
+        old_str: print(greet("World"))
+        new_str: "print(greet(\"World\"))\n    print(farewell(\"World\"))\n"
+      result: Code updated
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Updated main.py to call both greeting and farewell. Final snapshot
+              captured. The recording should contain all four snapshots with proper IPC
+              anchoring.
+            relativeTime: 500
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'main.py'
-    - type: 'taskFile'
-      pattern: 'test_main.py'
+    - type: taskFile
+      pattern: main.py
+    - type: taskFile
+      pattern: test_main.py
   snapshots:
     count: 4
-    providers: ['zfs', 'btrfs', 'git']
-    anchoring: 'ipc_verified'
+    providers:
+      - zfs
+      - btrfs
+      - git
+    anchoring: ipc_verified

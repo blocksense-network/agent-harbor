@@ -64,7 +64,7 @@ export type TimelineEvent =
       };
     }
   | { assistant: Array<[number, string]> }
-  | { advanceMs: number }
+  | { baseTimeDelta: number }
   | { screenshot: string }
   | { assert: Assertion }
   | { userInputs: Array<[number, string]> & { target?: 'tui' | 'webui' | 'cli' } }
@@ -327,7 +327,7 @@ export class ScenarioRunner {
       }
     } else if ('userInputs' in event) {
       // User inputs are handled separately, not converted to scenario events
-    } else if ('advanceMs' in event) {
+    } else if ('baseTimeDelta' in event) {
       // Time advancement is handled in the timeline processing
     } else if ('screenshot' in event) {
       // Screenshots are handled separately

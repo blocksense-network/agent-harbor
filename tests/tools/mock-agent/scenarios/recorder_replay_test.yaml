@@ -2,54 +2,48 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: recorder_replay_test
-initialPrompt: 'Test replay functionality of the recorder'
-description: 'E2E test for ah agent record and ah agent replay integration'
+initialPrompt: Test replay functionality of the recorder
+description: E2E test for ah agent record and ah agent replay integration
 repo:
   init: true
 timeline:
-  - think:
-      - [300, "I'll create a simple calculator module."]
+  - llmResponse:
+      - think:
+          - content: I'll create a simple calculator module.
+            relativeTime: 300
   - agentToolUse:
-      toolName: 'writeFile'
+      toolName: writeFile
       args:
-        path: 'calculator.py'
-        text: |
-          def add(a, b):
-              return a + b
-
-          def subtract(a, b):
-              return a - b
-      result: 'Created calculator.py'
-      status: 'ok'
-  - assistant:
-      - [200, 'Created basic calculator functions.']
+        path: calculator.py
+        text: "def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a\
+          \ - b\n"
+      result: Created calculator.py
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Created basic calculator functions.
+            relativeTime: 200
   - agentToolUse:
-      toolName: 'appendFile'
+      toolName: appendFile
       args:
-        path: 'calculator.py'
-        text: |
-
-          def multiply(a, b):
-              return a * b
-
-          def divide(a, b):
-              if b == 0:
-                  raise ValueError("Cannot divide by zero")
-              return a / b
-      result: 'Added multiply and divide'
-      status: 'ok'
-  - assistant:
-      - [
-          250,
-          'Extended calculator with multiply and divide. The recording should capture this sequence of operations.',
-        ]
+        path: calculator.py
+        text: "\ndef multiply(a, b):\n    return a * b\n\ndef divide(a, b):\n    if\
+          \ b == 0:\n        raise ValueError(\"Cannot divide by zero\")\n    return\
+          \ a / b\n"
+      result: Added multiply and divide
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Extended calculator with multiply and divide. The recording should
+              capture this sequence of operations.
+            relativeTime: 250
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'calculator.py'
+    - type: taskFile
+      pattern: calculator.py
   recording:
-    format: 'ahr'
+    format: ahr
     blocks_min: 1
     contains_data_records: true
     contains_snapshot_records: true

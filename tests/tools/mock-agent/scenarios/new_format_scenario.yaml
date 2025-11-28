@@ -2,23 +2,27 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: new_format_scenario
-initialPrompt: 'Test the new scenario format'
+initialPrompt: Test the new scenario format
 repo:
   init: true
 timeline:
-  - think:
-      - [500, 'Processing request for new_format_scenario']
+  - llmResponse:
+      - think:
+          - content: Processing request for new_format_scenario
+            relativeTime: 500
   - agentToolUse:
-      toolName: 'writeFile'
+      toolName: writeFile
       args:
-        path: 'test.txt'
-        text: 'Test content for new_format_scenario'
-      result: 'File created'
-      status: 'ok'
-  - assistant:
-      - [300, 'Completed new_format_scenario scenario']
+        path: test.txt
+        text: Test content for new_format_scenario
+      result: File created
+      status: ok
+  - llmResponse:
+      - assistant:
+          - content: Completed new_format_scenario scenario
+            relativeTime: 300
 expect:
   exitCode: 0
   artifacts:
-    - type: 'taskFile'
-      pattern: 'test.txt'
+    - type: taskFile
+      pattern: test.txt

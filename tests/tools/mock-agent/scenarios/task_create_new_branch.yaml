@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: task_create_new_branch
-tags: ['cli', 'task', 'branch']
+tags:
+  - cli
+  - task
+  - branch
 repo:
   init: true
 timeline:
@@ -12,7 +15,7 @@ timeline:
         - create
         - scenario-new
         - --prompt
-        - 'Scenario new task'
+        - Scenario new task
         - --non-interactive
         - --push-to-remote
         - 'false'
@@ -20,15 +23,17 @@ timeline:
         exitCode: 0
   - userCommand:
       program: git
-      args: ['checkout', 'scenario-new']
+      args:
+        - checkout
+        - scenario-new
       expect:
         exitCode: 0
         fs:
           exists:
-            - '.agents/tasks/scenario-new'
+            - .agents/tasks/scenario-new
           contains:
-            - path: '.agents/tasks/scenario-new'
-              substring: 'Scenario new task'
+            - path: .agents/tasks/scenario-new
+              substring: Scenario new task
   - assertGit:
       branch: scenario-new
       exists: true

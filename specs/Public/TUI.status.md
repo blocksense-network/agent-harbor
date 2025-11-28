@@ -168,7 +168,6 @@ The TUI implementation provides these core capabilities:
   - `crates/ah-tui/src/msg.rs` - Message types for state transitions
   - `crates/ah-tui/src/test_runtime.rs` - Deterministic test execution engine
   - `crates/ah-tui-test/src/main.rs` - Interactive and automated test runners
-  - `test_scenarios/basic_navigation.json` - Sample test scenario
 
 - **Integration Points**:
   - Testing framework can be extended for all future TUI features

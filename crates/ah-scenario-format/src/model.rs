@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
 use std::collections::HashMap;
 
 /// Root Scenario-Format structure (see specs/Public/Scenario-Format.md).
@@ -12,7 +13,6 @@ pub struct Scenario {
     #[serde(default)]
     pub tags: Vec<String>,
     pub terminal_ref: Option<String>,
-    pub compat: Option<CompatibilityFlags>,
     /// Optional natural-language description used for fuzzy matching.
     pub initial_prompt: Option<String>,
     pub repo: Option<RepoConfig>,
@@ -20,20 +20,42 @@ pub struct Scenario {
     pub server: Option<ServerConfig>,
     #[serde(default)]
     pub timeline: Vec<TimelineEvent>,
-    /// Legacy timeline syntax (used by existing ACP fixtures).
-    #[serde(default, rename = "events")]
-    pub legacy_events: Vec<LegacyScenarioEvent>,
-    /// Legacy assertions section used by ACP fixtures.
-    #[serde(default, rename = "assertions")]
-    pub legacy_assertions: Vec<LegacyAssertion>,
     pub expect: Option<ExpectConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CompatibilityFlags {
-    pub allow_inline_terminal: Option<bool>,
-    pub allow_type_steps: Option<bool>,
+impl Scenario {
+    /// Compute the effective initial prompt as defined in the spec:
+    /// the first `userInputs` event after `sessionStart`, otherwise the
+    /// first `userInputs` event in the timeline. Falls back to the legacy
+    /// `initialPrompt` field when no prompt can be derived.
+    pub fn effective_initial_prompt(&self) -> Option<String> {
+        let mut first_any: Option<String> = None;
+        let mut first_after_boundary: Option<String> = None;
+        let after_session_start = false;
+
+        for event in &self.timeline {
+            if let TimelineEvent::UserInputs { user_inputs } = event {
+                for entry in user_inputs {
+                    if let Some(prompt) = extract_prompt_from_input_value(&entry.input) {
+                        if after_session_start && first_after_boundary.is_none() {
+                            first_after_boundary = Some(prompt.clone());
+                        }
+                        if first_any.is_none() {
+                            first_any = Some(prompt);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        first_after_boundary.or(first_any).or_else(|| self.initial_prompt.clone())
+    }
+
+    /// Returns true if the scenario uses any legacy timeline constructs.
+    pub fn has_legacy_timeline(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,21 +93,42 @@ pub struct ServerConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum TimelineEvent {
-    /// Unified llmResponse section (preferred)
+    /// Unified llmResponse section
     LlmResponse {
         #[serde(rename = "llmResponse")]
         llm_response: Vec<ResponseElement>,
     },
-    /// Legacy individual event objects (e.g. `{ "think": [...] }`)
-    Legacy(HashMap<String, serde_yaml::Value>),
-    /// Assertion
-    Assert { assert: AssertionData },
-    /// Control events defined with `{ "type": "...", ... }`
-    Control {
-        #[serde(rename = "type")]
-        event_type: String,
-        #[serde(flatten)]
-        data: HashMap<String, serde_yaml::Value>,
+    /// Object-based userInputs event
+    UserInputs {
+        #[serde(rename = "userInputs")]
+        user_inputs: Vec<UserInputEntry>,
+    },
+    AgentToolUse {
+        #[serde(rename = "agentToolUse")]
+        agent_tool_use: ToolUseData,
+    },
+    AgentEdits {
+        #[serde(rename = "agentEdits")]
+        agent_edits: FileEditData,
+    },
+    Assert {
+        assert: AssertionData,
+    },
+    Status {
+        status: String,
+    },
+    AdvanceMs {
+        #[serde(rename = "baseTimeDelta", alias = "advanceMs")]
+        base_time_delta: u64,
+    },
+    Screenshot {
+        screenshot: String,
+    },
+    Merge {
+        merge: bool,
+    },
+    Complete {
+        complete: bool,
     },
 }
 
@@ -107,18 +150,33 @@ pub enum ResponseElement {
 }
 
 /// `(milliseconds, text)`
-#[derive(Debug, Clone, Deserialize)]
-pub struct ThinkingStep(pub u64, pub String);
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThinkingStep {
+    #[serde(rename = "relativeTime", alias = "timestamp")]
+    pub relative_time: u64,
+    #[serde(alias = "text")]
+    pub content: String,
+}
 
-/// `(milliseconds, text)`
-#[derive(Debug, Clone, Deserialize)]
-pub struct AssistantStep(pub u64, pub String);
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AssistantStep {
+    #[serde(rename = "relativeTime", alias = "timestamp")]
+    pub relative_time: u64,
+    #[serde(rename = "content", alias = "text")]
+    pub content: serde_yaml::Value,
+}
 
-/// `(milliseconds, text)`
-#[derive(Debug, Clone, Deserialize)]
-pub struct ProgressStep(pub u64, pub String);
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressStep {
+    #[serde(rename = "relativeTime", alias = "timestamp")]
+    pub relative_time: u64,
+    #[serde(alias = "text", alias = "content")]
+    pub message: String,
+}
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolUseData {
     #[serde(rename = "toolName")]
@@ -131,14 +189,14 @@ pub struct ToolUseData {
     pub tool_execution: Option<ToolExecution>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolExecution {
     pub start_time_ms: Option<u64>,
     pub events: Vec<ToolExecutionEvent>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolExecutionEvent {
     #[serde(rename = "type")]
@@ -210,31 +268,6 @@ pub struct JsonAssertions {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct LegacyScenarioEvent {
-    #[serde(rename = "at_ms")]
-    pub at_ms: u64,
-    pub kind: String,
-    pub value: Option<String>,
-    pub message: Option<String>,
-    pub text: Option<String>,
-    pub detail: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct LegacyAssertion {
-    pub kind: String,
-    pub event: Option<LegacyAssertEvent>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct LegacyAssertEvent {
-    #[serde(rename = "type")]
-    pub event_type: String,
-    pub status: Option<String>,
-    pub message_contains: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonFileAssertion {
     pub path: String,
@@ -263,6 +296,93 @@ pub struct ErrorData {
     pub message: String,
     pub details: Option<serde_yaml::Value>,
     pub retry_after_seconds: Option<u32>,
+}
+
+/// Object-based user input entry with relative time offset.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserInputEntry {
+    #[serde(rename = "relativeTime", alias = "timestamp")]
+    pub relative_time: u64,
+    pub input: serde_yaml::Value,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(rename = "_meta")]
+    pub meta: Option<serde_yaml::Value>,
+}
+
+pub fn extract_prompt_from_user_inputs(value: &Value) -> Option<String> {
+    match value {
+        Value::Sequence(seq) => {
+            for entry in seq {
+                if let Some(prompt) = extract_prompt_from_user_input_entry(entry) {
+                    return Some(prompt);
+                }
+            }
+            None
+        }
+        other => extract_prompt_from_user_input_entry(other),
+    }
+}
+
+pub fn extract_prompt_from_user_input_entry(value: &Value) -> Option<String> {
+    match value {
+        // Legacy tuple form: [delay_ms, "prompt text"]
+        Value::Sequence(items) if items.len() >= 2 => {
+            items.get(1).and_then(|v| v.as_str()).map(|s| s.to_string())
+        }
+        Value::String(text) => Some(text.clone()),
+        Value::Mapping(map) => {
+            let input_key = Value::String("input".to_string());
+            if let Some(input) = map.get(&input_key) {
+                return extract_prompt_from_input_value(input);
+            }
+
+            // Some formats may store text directly
+            map.get(Value::String("text".to_string()))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        }
+        _ => None,
+    }
+}
+
+pub fn extract_prompt_from_input_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Sequence(seq) => {
+            // Rich content blocks; pick the first textual element
+            for block in seq {
+                if let Some(text) = extract_text_from_content_block(block) {
+                    return Some(text);
+                }
+            }
+            None
+        }
+        other => extract_text_from_content_block(other),
+    }
+}
+
+pub fn extract_text_from_content_block(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Mapping(map) => {
+            if let Some(text) = map.get(Value::String("text".to_string())).and_then(|v| v.as_str())
+            {
+                return Some(text.to_string());
+            }
+
+            if let Some(content) =
+                map.get(Value::String("content".to_string())).and_then(|v| v.as_str())
+            {
+                return Some(content.to_string());
+            }
+
+            // As a fallback, serialize the block to YAML and trim whitespace
+            serde_yaml::to_string(value).ok().map(|s| s.trim().to_string())
+        }
+        _ => None,
+    }
 }
 
 /// Helper for deserialising `{ "userInputs": [[100, "text"]], "target": "tui" }`
