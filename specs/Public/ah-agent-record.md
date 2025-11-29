@@ -270,8 +270,8 @@ The **SessionViewer UI** is the unified interface displayed by `ah agent record`
 During live recording mode, the terminal content is displayed without a frame to provide an immersive, full-screen experience.
 
 - **Gutter system:** The viewer supports an optional gutter column (`agent.record.gutter: <left|right|none>`) that displays snapshot indicators. Snapshot markers appear in the gutter at positions corresponding to when snapshots were taken during recording. The position is determined by the TerminalState's vt100 parser state.
-- **Task Entry UI:** The instruction entry UI (task_entry) behavior differs between live and replay modes:
-  - **Live mode:** The instruction entry UI is **not shown by default** while the recording UI is being displayed. It is activated by pressing `Ctrl+Shift+Up`, which creates the instruction entry UI at the position of the latest snapshot. Subsequent presses of `Ctrl+Shift+Up` (or just `Up`) move the instruction entry dialog to the previous snapshot, while `Ctrl+Shift+Down` (or just `Down`) moves it to the next snapshot.
+- **Task Entry UI:** The instruction entry UI (task_entry) follows the shared **Task Entry TUI** specification (see [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md)). Its behavior differs between live and replay modes:
+  - **Live mode:** The instruction entry UI is **not shown by default** while the recording UI is being displayed. It is activated by pressing `keys:move-to-previous-snapshot` (default `Ctrl+Shift+Up`), which creates the instruction entry UI at the position of the latest snapshot. Subsequent presses of `keys:move-to-previous-snapshot` move the instruction entry dialog to the previous snapshot, while `keys:move-to-next-snapshot` (default `Ctrl+Shift+Down`) moves it to the next snapshot.
   - **Replay mode:** When the SessionViewer UI is launched on a completed session, the task entry UI is shown immediately at the very bottom of the session. When the session ends, this automatically creates a final snapshot, allowing users to immediately add instructions for branching from the session's end state.
 - **Task Entry Movement Rules:**
   - If the target snapshot was already visible on screen before the move and there is enough room to fit the task entry box (i.e., the snapshot line is visible and there are sufficient lines after it in the viewport to accommodate the task entry height), the screen should not scroll and the snapshot position in the gutter should stay the same.
@@ -335,7 +335,7 @@ All UI states (open/closed, selected pipeline/step, follow mode) are exposed via
 **Key interactions**
 
 - Scroll: PgUp/PgDn / Mouse
-- Task Entry UI: `Ctrl+Shift+Up` activates instruction entry at latest snapshot, `Ctrl+Shift+Up`/`Up (when upwards movement within the task entry lines is not possible)` (previous snapshot), `Ctrl+Shift+Down`/`Down (when downwards movement within the task entry lines is not possible)` (next snapshot)
+- Task Entry UI: `keys:move-to-previous-snapshot` activates instruction entry at latest snapshot, `keys:move-to-previous-snapshot`/`keys:navigate-up` (previous snapshot), `keys:move-to-next-snapshot`/`keys:navigate-down` (next snapshot)
 - Insert instruction: `i` or mouse click → overlay → submit
 - Gutter interaction: Click on gutter snapshot markers to insert instruction UI between program output lines
 - Incremental search with `/`

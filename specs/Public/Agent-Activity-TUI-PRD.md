@@ -11,272 +11,339 @@ The TUI leverages the same **Ratatui** ecosystem as the main dashboard:
 - **tui-input**: Single-line input for modals and forms
 - **crossterm**: Cross-platform terminal manipulation and event handling
 
-See [`TUI-PRD.md`](TUI-PRD.md) for the main dashboard design and [`ah-agent-record.md`](ah-agent-record.md) for the SessionViewer UI that inspired this activity display.
+See [`TUI-PRD.md`](TUI-PRD.md) for the main dashboard design, [`ah-agent-record.md`](ah-agent-record.md) for the SessionViewer UI, and [`TUI-Color-Theme.md`](TUI-Color-Theme.md) for the shared color theme and semantic definitions.
 
-## Terminal State Management
+## Timeline Activity Layout
 
-The Agent Activity TUI properly manages terminal state for smooth real-time updates:
-
-- **Keyboard Enhancement Flags**: Uses Crossterm's keyboard enhancement flags for improved input handling
-- **State Tracking**: Tracks raw mode, alternate screen, and keyboard flags for proper cleanup
-- **Panic Safety**: Implements panic hooks and signal handlers to restore terminal state on crashes
-- **Graceful Exit**: Ensures terminal returns to normal state regardless of exit method (ESC, Ctrl+C, panic)
-
-## Activity Stream Layout
-
-The Agent Activity interface displays a chronological stream of agent execution events with a focus on readability and real-time updates:
+The Agent Activity interface moves beyond a simple log stream to a structured **Timeline View**. This design uses a vertical line metaphor to connect related events, providing a clear visual narrative of the agent's execution path.
 
 ```
-┌─ Agent Activity: Claude Code ──────────────────────────────────────────┐
-│ ● Starting task execution...                                          │
-│                                                                       │
-│ 🤔 Analyzing codebase structure and identifying key files            │
-│                                                                       │
-│ 🔧 Running: find src -name "*.rs" -type f | head -10                  │
-│    src/main.rs                                                        │
-│    src/lib.rs                                                         │
-│    src/config.rs                                                      │
-│    src/agent.rs                                                       │
-│    src/ui.rs                                                          │
-│    [+6 more files...]                                                 │
-│                                                                       │
-│ 📝 Editing: src/main.rs (+5 -2 lines)                                 │
-│    @@ -15,7 +15,10 @@                                                 │
-│     fn main() {                                                       │
-│    -    println!("Hello, world!");                                    │
-│    +    println!("Hello, Agent Harbor!");                             │
-│    +                                                                  │
-│    +    // Initialize agent system                                    │
-│    +    let agent = Agent::new();                                     │
-│    +                                                                  │
-│         agent.run().await;                                            │
-│     }                                                                 │
-│                                                                       │
-│ 🤔 Now implementing the core agent loop with proper error handling   │
-│                                                                       │
-│ 🔧 Running: cargo check                                               │
-│    Compiling agent-harbor v0.1.0 (/workspace)                         │
-│    Finished dev [unoptimized + debuginfo] target(s) in 2.34s          │
-│                                                                       │
-└─────────────────────────────────────────────────────────────────────────┘
+    │ │  error: something went wrong                                      │ │
+    │ │  error: another failure                                           │ │
+    │ ╰───────────────────────────────────────────────────────────────────╯ │
+    │   ╭────────────────╮         [click here to fork] ╭───┬───┬───────╮   │
+    │ ╭─┤ TASK COMPLETED ├──────────────────────────────┤ ❐ │ ▼ │ 14:24 ├─╮ │
+    │ │ ╰────────────────╯                              ╰───┴───┴───────╯ │ │
+    │ │  Summary                                                          │ │
+    │ │  I have fixed the issue.                                          │ │
+    │ │  • Updated permissions                                            │ │
+    │ │                                                                   │ │
+    │ │   rust                                                       ❐    │ │
+    │ │                                                                   │ │
+    │ │   fn fix() {                                                      │ │
+    │ │       // code...                                                  │ │
+    │ │   }                                                               │ │
+    │ │                                                                   │ │
+    │ ╰───────────────────────────────────────────────────────────────────╯ │
+    │ ╭───────────────────────────────────────────────────────────────────╮ │
+    │ │ Describe your task...                                             │ │
+    │ │                                                                   │ │
+    │ │                                                                   │ │
+    │ │ ╭────────╮                                   ╭──────┬───────────╮ │ │
+    │ ╰─┤ AGENTS ├───────────────────────────────────┤ ⏎ GO │ ≡ OPTIONS ├─╯ │
+    │   ╰────────╯                                   ╰──────┴───────────╯   │
+    │   ╭──────╮                                        ╭───┬───┬───────╮   │
+    │ ╭─┤ READ ├────────────────────────────────────────┤ ❐ │ ▼ │ 14:22 ├─╮ │
+    │ │ ╰──────╯                                        ╰───┴───┴───────╯ │ │
+    │ │  src/interpose.rs (lines 40-50)                                   │ │
+    │ │  src/main.rs (lines 10-20)                                        │ │
+    │ ╰───────────────────────────────────────────────────────────────────╯ │
+    │   ╭───────────╮                                   ╭───┬───┬───────╮   │
+    │ ╭─┤ RAN cargo ├───────────────────────────────────┤ ❐ │ ▼ │ 14:25 ├─╮ │
+    │ │ ╰───────────╯                                   ╰───┴───┴───────╯ │ │
+    │ │ $ cargo test                                                      │ │
+    │ ╰─... (Dimmed Future Event)                                     ...─╯ │
+    │                                                                       │
+    │    Ctrl+C Stop   Ctrl+D Detach   Ctrl+L Clear   Shift+Enter New Line  │
+    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-### Activity Event Types
+### Visual Structure
 
-The interface displays a unified stream of agent activity events, each with distinct visual styling and icons:
+1. **Layout**: The content is centered with margins (e.g., 2-4 spaces) from the container edges.
+   - **Purpose**: Reduces visual clutter and focuses attention on the content.
 
-#### Thought Events (`🤔`)
+2. **Hero Card (Active State)**: The active state is highlighted as a "Hero Card".
+   - **Purpose**: Displays the **current, ongoing activity** of the agent (e.g. "Running tests...", "Thinking..."). It acts as a "Now Playing" indicator, ensuring the user always knows what the agent is doing right now, regardless of where they are in the history.
+   - **Position**: Docked at the bottom of the view, typically immediately above the Instructions Card.
+   - **Forking Behavior**: When the Instructions Card is moved up into the timeline to fork the session, the Hero Card takes the position at the **very bottom** of the view. It remains docked there even as the timeline is scrolled to track the position of the Instructions Card.
+   - **Behavior**: It remains fixed in place and does **not** move when the timeline is scrolled, ensuring the current action is always visible.
+   - **Style**: Uses color and bold text to draw attention.
+   - **Border**: `color:accent` on the border for active states.
+   - **Time Indicator**: While active, the time display shows the **elapsed duration** (e.g. `00:45`) since the action started. Upon completion, it freezes to show the static **end time** (e.g. `14:22`).
 
-- **Display**: Full-width thought content with thinking icon
-- **Purpose**: Shows agent reasoning and planning
-- **Styling**: Muted text color with subtle background highlight
-- **Wrapping**: Multi-line with proper text wrapping
+3. **Activity Cards**: Events are encapsulated in "Cards" (using box drawing characters).
+   - **Borders**: Borders use a neutral/dim color (e.g., `color:border` or `color:muted`) to reduce visual noise.
+   - **Background**: The entire screen uses a controlled background color (e.g., `color:base`). This background is applied to **entire rows**, filling margins and empty spaces, ensuring a seamless, non-boxy appearance.
+   - **Header**: The top line of the card shows the Event Type (RAN, EDITED, THOUGHT, READ, DELETED, TASK COMPLETED) using a "Floating Box" style.
+     - **Title Box**: The title is enclosed in a box that straddles the border line:
+       ```
+          ╭─────────╮
+        ╭─┤ THOUGHT ├─
+        │ ╰─────────╯
+       ```
+     - **Categories**: Uses specialized category labels.
+     - **Tool Execution**:
+       - **Title**: Constructed dynamically to show the command status and pipeline details.
+         - **Format**: `RAN <command_1> <size_1> | <command_2> <size_2> ...`
+         - **"RAN" Label**:
+           - **Success**: Displayed in `color:success` if the final exit code is 0.
+           - **Failure**: Displayed in `color:failure` if the final exit code is non-zero.
+         - **Command Names**:
+           - **Pipelines**: For pipelines (e.g., `cmd1 | cmd2`), each command name is **individually colored** based on its specific exit code (Success/Failure).
+           - **Skipped Commands**: If a command fails, subsequent commands in the pipeline that are not executed are displayed in `color:muted` (Gray).
+         - **Output Size Indicator**: Displayed in a distinct dimmer color (`color:muted`) next to the command name (or the last command in a pipeline).
+           - **Content**: Shows the output size in **bytes** (e.g., `213B`, `12K`) or optionally **LLM tokens** (configurable via policy). Skipped commands do **not** show this indicator.
+           - **Tooltip**: On mouse hover, displays detailed counts for **bytes**, **tokens**, and **lines**.
+           - **Interaction**: Clicking the indicator opens the **Output Inspection Modal** (see [Output Inspection Modal](#output-inspection-modal)).
+         - **Stop Button**: A stop button `■` is displayed for running commands or commands in a pipeline.
+           - **Style**: `color:dim-error` (idle/completed) or `color:error` (active/hover).
+           - **Interaction**: Clicking the button terminates the designated command.
+     - **File Edits**:
+       - **Title**: "EDITED"
+       - **Color**: `color:success` to indicate successful modification.
+       - **Content**: Filename (optionally prefixed with a **Nerd Font icon**) and a git-style summary `+A -D`.
+     - **File Reads**:
+       - **Title**: "READ"
+       - **Color**: `color:success` to indicate information retrieval.
+       - **Content**: Filename (optionally prefixed with a **Nerd Font icon**) and line ranges.
+     - **Deleted**:
+       - **Title**: "DELETED"
+       - **Color**: `color:success` to indicate successful deletion.
+       - **Content**: Filenames (optionally prefixed with a **Nerd Font icon**) and a git-style summary `-D`.
+     - **Thought**:
+       - **Title**: "THOUGHT"
+       - **Color**: `color:success`.
+       - **Content**: Markdown content, including bullet lists and code blocks.
+     - **User Instructions**:
+       - **Title**: "YOU WROTE" for text prompts, "YOU SAID" for audio messages.
+       - **Collaborative Mode**: In collaborative sessions, "YOU" is replaced by the developer's name (e.g., "JOHN WROTE", "ALICE PARKER SAID"). The display format (full name, first name, handle) is controlled by configuration.
+       - **Color**: `color:primary` for the current user. Third-party messages (teammates) use a distinct color (e.g., `color:teammate`) to distinguish them from the user's own actions.
+   - **Control Box**: The right side of the header features a tightly segmented control box that also straddles the border line:
 
-#### Tool Call Events (`🔧`)
+   ```
+     ╭───┬───┬───────╮
+   ──┤ ❐ │ ▼ │ 14:22 ├──
+     ╰───┴───┴───────╯
+   ```
 
-- **Display**: Tool name and arguments with wrench icon
-- **Purpose**: Shows when agent executes tools/commands
-- **Styling**: Bold tool name, monospace arguments
-- **Status**: Shows "Running...", "Completed", or "Failed" with appropriate colors
+   - **Structure**: It is divided into segments by vertical lines `│` without extra padding.
+     - The vertical delimiters connect to the top and bottom caps using `┬` and `┴` characters.
+   - **Segments**:
+     1. **Copy Icon**: `❐` (with padding: `❐`).
+     2. **Expand Icon**: `▼` (with padding: `▼`).
+     3. **Timestamp**: `HH:MM` (dimmed, with padding: `HH:MM`).
+   - **Interaction**:
+     - **Mouse**: Icons are clickable to trigger their respective actions (Copy, Expand/Collapse).
+     - **Keyboard**: When a card is selected, pressing `keys:navigate-right` moves focus to the Control Box buttons. `keys:activate-current-item` triggers the focused button.
+   - **Body**: Content is nested within the card.
+     - **Commands**: For tools, the full command is displayed on the first line, prefixed with `$`.
+       - **Syntax Highlighting**:
+         - **Command**: `color:primary`.
+         - **Operators** (`|`, `&`, etc.): `color:command-operator`.
+         - **Flags** (`-help`): `color:command-flag`.
+         - **Arguments**: `color:text`.
+       - **Background**: The command line does not use a distinct background color, keeping it clean.
+     - **Output**: Command output follows, using the same background color as the card/app to maintain the seamless look.
+       - **Colors**: Standard output lines use consistent text color (`color:terminal:stdout` or `color:dim-text`) across all card types. Errors use `color:terminal:stderr`.
+     - **Code Blocks** (in markdown cards):
+       - **Header**: Header displaying the Language name (left) and a **Copy Button** `❐` (right).
+         - **Background**: `color:code-header-bg`.
+       - **Background**: Uses distinct, slightly lighter background color (`color:code-bg`) to separate code from text.
+       - **Padding**: 1 line of vertical padding (top/bottom) and 1 column of horizontal padding (left/right) around the code content.
+       - **Highlighting**: Code content is syntax highlighted.
 
-#### Tool Output Events
+### Instructions Card (Task Entry)
 
-- **Display**: Indented terminal output with syntax highlighting
-- **Purpose**: Shows command execution results
-- **Styling**: Monospace font, color-coded by stream (stdout/stderr)
-- **Truncation**: Auto-truncates long output with "[...X more lines...]" indicator
+The Instructions Card allows the user to provide feedback, new instructions, or branch the task. It follows the shared **Task Entry TUI** specification.
 
-#### File Edit Events (`📝`)
+> **Reference**: See [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md) for detailed behavior, layout, and interaction rules.
 
-- **Display**: File path, line changes, and unified diff preview
-- **Purpose**: Shows when agent modifies files
-- **Styling**: File path in bold, diff with syntax highlighting
-- **Preview**: Shows context lines around changes (configurable, default 3)
+- **Context**: In the Agent Activity TUI, this card is inserted into the timeline.
+- **Forking**: Moving the card up/down (`keys:move-to-previous-snapshot`/`keys:move-to-next-snapshot`) changes the fork point for the new instructions.
+  - **Forking Tooltip**:
+    - **Trigger**: Displayed immediately when the mouse hovers over the whitespace between two activity cards.
+    - **Content**: "Click here to fork".
+    - **Style**:
+      - **Text**: `color:tooltip`
+      - **Background**: `color:tooltip-bg`
+      - **Position**: Appears on top of other content, positioned relative to the card's right-side buttons as shown in the `Terminal Activity Layout` example above.
+    - **Behavior**:
+      - **Expiration**: The tooltip automatically hides after **5 seconds** of mouse inactivity.
+      - **Interaction**: Clicking the tooltip moves the **Instructions Card** to the insertion point between the two cards, enabling the user to fork the session from that specific point (equivalent to keyboard positioning).
 
-#### Log Events (`📋`)
+### Footer
 
-- **Display**: Timestamped log messages with appropriate icons
-- **Purpose**: Shows agent status and diagnostic information
-- **Styling**: Color-coded by log level (info=blue, warn=yellow, error=red)
-- **Levels**: DEBUG, INFO, WARN, ERROR with distinct visual treatment
+- **Position**: Fixed at the very bottom of the screen, spanning the full width.
+- **Content**:
+  - **Left**: Displays context-sensitive shortcuts (e.g., `Alt+↑↓ Select Card`, `Ctrl+↑↓ Fork`).
+  - **Right**: Displays session status information:
+    - **Target Branch**: The branch where results will be delivered (e.g., `Target: feature/login`).
+    - **Context Usage**: Percentage of the agent's context window consumed (e.g., `Context: 45%`).
+- **Style**:
+  - **Shortcuts**: Keys are highlighted in `color:keyboard-shortcut-key`, descriptions use `color:keyboard-shortcut-action`.
+  - **Status Info**: Uses `color:muted` for labels and `color:text` for values. High context usage (>80%) should be highlighted in `color:warning` or `color:error`.
+  - **Background**: Matches the app surface. Uses a configurable margin (default 4 chars) from the screen edge.
 
-#### Status Events (`●`)
+### Real-Time Behavior
 
-- **Display**: Session lifecycle status with progress dots
-- **Purpose**: Shows overall agent execution state
-- **Styling**: Color-coded status indicators
-- **States**: Queued, Running, Paused, Completed, Failed
+- Cards slide in from the bottom.
+- The view automatically tracks the newest event when the user hasn't scrolled up.
+- Scrolling to the bottom of the activity stream automatically activates the auto-follow behavior.
+- "Hero Status" (current action) can stick to the bottom of the view if the user scrolls up to review history.
 
-#### Terminal Events (`💻`)
+### Dimmed / Discarded Events
 
-- **Display**: Direct terminal output from agent processes
-- **Purpose**: Shows interactive terminal sessions
-- **Styling**: Full terminal emulation with ANSI color support
-- **Interaction**: Supports live terminal following and input injection
+When a session is forked (by moving the Instructions Card up), events below the fork point are rendered in a "Dimmed" state:
 
-### Real-Time Activity Display
+- **Border**: `color:dim-border`.
+- **Text/Icons**: `color:dim-text`.
+- **Background**: Standard background, but content lacks vibrant coloring.
+- **Purpose**: Visualizes that these events are part of a discarded timeline branch.
 
-The activity stream maintains exactly 3 visible activity rows that scroll smoothly as new events arrive:
+### Theme Colors
 
-**Activity Row Requirements:**
+The Agent Activity TUI uses the shared color theme defined in [`TUI-Color-Theme.md`](TUI-Color-Theme.md). Please refer to that document for the complete palette and semantic mappings.
 
-- Fixed height rows: Each of the 3 rows has fixed height (prevents UI "dancing")
-- Scrolling effect: New events cause rows to scroll upward (newest at bottom)
-- Always 3 rows visible: Shows the 3 most recent activity items at all times
-- Never empty: Always displays events, never shows "waiting" state
+## Reference Implementation
 
-**Event Types and Display Rules:**
+To visualize the intended design and behavior, we provide Python reference scripts that render the UI states in a terminal. These scripts demonstrate the layout, color palette, and animation concepts.
 
-1. **Thought Event** (`thought` property):
-   - Format: `"🤔 {thought text}"`
-   - Behavior: Scrolls existing rows up, appears as new bottom row
-   - Single line display with ellipsis for overflow
+- `tui_mockup.py`: Renders a static mockup of the Agent Activity interface, adapting to the current terminal size.
 
-2. **Tool Use Start** (`tool_name` property):
-   - Format: `"🔧 Running: {tool_name} {args}"`
-   - Behavior: Scrolls existing rows up, appears as new bottom row
+### Output Inspection Modal
 
-3. **Tool Last Line** (`tool_name` + `last_line` properties):
-   - Format: `"  {last_line}"` (indented, showing command output)
-   - **Special behavior**: Updates the existing tool row IN PLACE without scrolling
-   - Does NOT create a new row - modifies the current tool execution row
+A dedicated modal for examining large or complex command outputs, triggered by clicking the **Output Size Indicator**.
 
-4. **Tool Complete** (`tool_name` + `tool_output` + `tool_status` properties):
-   - Format: `"🔧 {tool_name}: {tool_output}"` (single line with status indicator)
-   - Behavior: Sent immediately after last_line event
-   - The last_line row is removed and replaced by this completion row
+This modal reuses the standard **`tui-textarea`** component **in read-only mode**. Its core behavior (scrolling, selection, search, keybindings) is described in [`TUI-PRD.md`](TUI-PRD.md).
 
-5. **File Edit Event** (`file_path` property):
-   - Format: `"📝 {file_path} (+{lines_added} -{lines_removed})"`
-   - Behavior: Scrolls existing rows up, appears as new bottom row
-
-**Visual Behavior Example:**
-
-```
-Initial state (empty):
-  [Waiting for agent activity...]
-
-After "thought" event:
-  🤔 Analyzing codebase structure
-
-After "tool_name" event (scrolls up):
-  🤔 Analyzing codebase structure
-  🔧 Running: find src -name "*.rs"
-
-After "last_line" event (updates in place - NO scroll):
-  🤔 Analyzing codebase structure
-  🔧 Running: find src -name "*.rs"
-    Found 42 .rs files in src/
-
-After "tool_output" event (replaces last_line row):
-  🤔 Analyzing codebase structure
-  🔧 find: Found 42 .rs files
-
-After new "thought" event (scrolls up, oldest row disappears):
-  🔧 find: Found 42 .rs files
-  🤔 Now examining the main.rs file
-```
-
-## Theme and Visual Design
-
-The Agent Activity TUI follows the same Charm-inspired design principles as the main dashboard:
-
-### Charm-Inspired Aesthetics
-
-- **Default Theme**: Catppuccin Mocha - Dark theme with cohesive colors
-  - Background: `#11111B`
-  - Surface/Card backgrounds: `#242437`
-  - Text: `#CDD6F4`
-  - Primary: `#89B4FA` (blue for actions)
-  - Accent: `#A6E3A1` (green for success)
-  - Muted: `#7F849C` (secondary text)
-- **Multiple Theme Support**: Users can choose from various themes including Catppuccin variants, Nord, Dracula, Solarized Dark, etc.
-- **Rounded borders**: `BorderType::Rounded` on all components
-- **Proper padding**: Generous spacing with `Padding::new()` for breathing room
-- **Truecolor support**: 24-bit RGB colors for rich visual experience
-
-### Component Styling
-
-- **Activity Stream**: Rounded border container with proper padding
-- **Event Icons**: Unicode symbols with consistent sizing and spacing
-- **Syntax Highlighting**: Color-coded syntax for diffs, code, and terminal output
-- **Status Indicators**: Color-coded dots and badges for different event types
-- **Scrollable Content**: Smooth scrolling with visual scroll indicators
-
-### Theme Colors (Catppuccin Mocha)
-
-```rust
-pub struct ActivityTheme {
-    pub bg: Color,                    // #11111B - Base background
-    pub surface: Color,              // #242437 - Card/surface background
-    pub text: Color,                 // #CDD6F4 - Main text
-    pub muted: Color,                // #7F849C - Secondary text
-    pub primary: Color,              // #89B4FA - Blue for actions
-    pub accent: Color,               // #A6E3A1 - Green for success
-    pub success: Color,              // #A6E3A1 - Green
-    pub warning: Color,              // #FAB387 - Yellow/Orange
-    pub error: Color,                // #F38BA8 - Red/Pink
-    pub border: Color,               // #45475A - Border color
-    pub border_focused: Color,       // #89B4FA - Focused border color
-}
-```
-
-## Interactive Features
-
-### Live Terminal Following
-
-When agents execute commands, users can follow the terminal output in real-time:
-
-- **Modal Terminal View**: Full-screen modal showing live terminal output
-- **Input Injection**: Type commands that get sent to the running agent process
-- **Resize Handling**: Proper terminal resizing and dimension negotiation
-- **ANSI Support**: Full ANSI escape sequence support for colors and formatting
-
-### Activity Filtering and Search
-
-- **Event Type Filters**: Show/hide specific event types (thoughts, tools, files, logs)
-- **Text Search**: Search through activity content with highlighting
-- **Time Range Filtering**: Focus on specific time periods
-- **Export Capabilities**: Save filtered activity to file
-
-### Session Control
-
-- **Pause/Resume**: Pause agent execution and resume later
-- **Cancel Operation**: Cancel current agent operation
-- **Step Through**: Execute one step at a time for debugging
-- **Breakpoint Setting**: Set breakpoints on specific events or file changes
+- **Content View**:
+  - **Text**: Displayed using `tui-textarea` with syntax highlighting.
+    - **Stderr**: Lines containing at least one character of stderr output are indicated by a `color:gutter:stderr:background` colored gutter.
+  - **Binary**: Displayed as a two-column hex viewer (Hex bytes | ASCII representation).
+    - **Stderr**: Individual bytes/characters from stderr are color-coded in `color:error`.
 
 ## Keyboard Shortcuts
 
+The Agent Activity TUI follows the standard keyboard operations defined in [`TUI-Keyboard-Shortcuts.md`](./TUI-Keyboard-Shortcuts.md).
+
+### Global Help
+
+Press `keys:show-help` (Default: `?` or `Ctrl+?`) to open the global help dialog, which lists all available shortcuts. `Ctrl+?` works even when a text area is focused.
+
+### Context-Specific Bindings
+
+The following bindings are specific to the Agent Activity view:
+
 ### Global Navigation
 
-- **↑↓**: Navigate through activity events
-- **Page Up/Page Down**: Scroll through activity history
-- **Home/End**: Jump to first/last activity event
-- **Ctrl+C**: Exit the activity viewer
+Since the "Up" and "Down" keys are reserved for cycling through the prompt history in the Input Field (standard shell behavior), the TUI uses specific modifiers for navigation:
 
-### Interactive Controls
+- **Timeline Scrolling**:
+  - **keys:scroll-up-one-screen / keys:scroll-down-one-screen**: Scroll the timeline view page by page.
+  - **keys:scroll-line-up / keys:scroll-line-down**: Scroll the timeline view line by line.
+  - **keys:scroll-to-top / keys:scroll-to-bottom**: Jump to the first/last activity event.
 
-- **Enter**: Follow terminal output for selected tool call
-- **F**: Toggle follow mode for live terminal updates
-- **S**: Show/hide activity stream (focus on terminal)
-- **I**: Inject input to running terminal
-- **C**: Copy selected text or command output
+- **Card Selection**:
+  - **keys:navigate-up / keys:navigate-down**: Move selection focus between Activity Cards.
+    - **Off-screen Behavior**: If the currently selected card is outside the visible viewport, pressing `keys:navigate-down` selects the **topmost visible card**, and pressing `keys:navigate-up` selects the **bottommost visible card**. This ensures the selection "enters" the screen from the appropriate edge.
+  - **keys:navigate-right**: When a card is selected, move focus to the Control Box buttons (Copy -> Expand).
+  - **keys:navigate-left**: Return focus from Control Box to the Card.
+  - **keys:activate-current-item**: Trigger the default action for the selected card or focused button.
+
+- **Forking (Instructions Card)**:
+  - **keys:move-to-previous-snapshot / keys:move-to-next-snapshot**: Move the **Instructions Input Card** up or down in the timeline to select a fork point.
+    - **Off-screen Behavior**: If the Instructions Card is currently docked or positioned outside the visible viewport, pressing `keys:move-to-next-snapshot` moves it to the **topmost visible insertion point**, and pressing `keys:move-to-previous-snapshot` moves it to the **bottommost visible insertion point**.
 
 ### Search and Filtering
 
-- **/**: Open search mode for activity content
-- **T**: Toggle thought events visibility
-- **L**: Toggle log events visibility
-- **E**: Toggle tool/file edit events visibility
+- **keys:incremental-search-forward**: Open incremental search mode.
+  - **Behavior**: Temporarily replaces the status bar (footer) content with the incremental search input box.
+  - **Navigation**: While search is active:
+    - Pressing `keys:incremental-search-forward` again navigates to the **next** match.
+    - Pressing `keys:incremental-search-backward` navigates to the **previous** match.
+    - Pressing `keys:dismiss-overlay` exits incremental search mode and returns to viewport position before starting the search.
+    - Pressing `keys:activate-current-item` selects the current match and exits incremental search mode. The viewport stays at the selected match.
+  - **Footer Help**: Aligned to the right edge of the screen: "keys:incremental-search-forward Next • keys:incremental-search-backward Prev • keys:activate-current-item Select • keys:dismiss-overlay Cancel"
+
+## 4. Input Minor Modes
+
+These modes map precise `KeyboardOperation`s to the interaction model. The following lists reflect the exact operations defined in the implementation, using the `keys:operation-name` notation.
+
+### 4.1 `ACTIVITY_STREAM_MODE`
+
+Active when the activity timeline is focused (default state).
+
+- **Navigation**:
+  - `keys:move-to-previous-line`, `keys:move-to-next-line`: Select previous/next activity card.
+  - `keys:scroll-up-one-screen`, `keys:scroll-down-one-screen`: Scroll the timeline view page by page.
+  - `keys:move-to-beginning-of-document`, `keys:move-to-end-of-document`: Jump to the first/last activity event.
+  - `keys:move-to-previous-snapshot`, `keys:move-to-next-snapshot`: Move the Instructions Card up/down to select a fork point.
+- **Selection**:
+  - `keys:navigate-right`: Move focus from the card to its Control Box (right).
+- **Search**:
+  - `keys:incremental-search-forward`: Open the forward direction incremental search overlay.
+  - `keys:incremental-search-backward`: Open the backward direction incremental search overlay.
+- **System**:
+  - `keys:copy`: Copy the content of the selected card.
+  - `keys:stop`: Pause/Stop the agent execution.
+
+### 4.2 `DRAFT_TEXT_EDITING_MODE`
+
+Shared with Task Entry. Active when the Instructions Card text area is focused.
+
+> **Reference**: See [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md#41-draft_text_editing_mode) for the complete list of text editing operations.
+
+**Note**: Operations not handled by this mode (e.g., `keys:move-to-previous-snapshot` for forking) fall through to `ACTIVITY_STREAM_MODE`.
+
+### 4.3 `DRAFT_TEXTAREA_TO_BUTTONS_MODE`
+
+Shared with Task Entry. Handles the transition from Text Area to Action Bar.
+
+> **Reference**: See [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md#42-draft_textarea_to_buttons_mode).
+
+### 4.4 `DRAFT_BUTTON_NAVIGATION_MODE`
+
+Shared with Task Entry. Active when an Action Bar button is focused.
+
+> **Reference**: See [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md#43-draft_button_navigation_mode).
+
+### 4.5 `CONTROL_BOX_MODE`
+
+Active when focus is within a card's Control Box (e.g., on the "Copy" or "Expand" buttons).
+
+- `keys:navigate-left`: Return focus from Control Box to the Card (Left).
+- `keys:navigate-right`: Cycle focus between Control Box buttons (Right).
+- `keys:activate-current-item`: Trigger the focused button (Copy, Expand, etc.).
+
+### 4.6 `SEARCH_MODE`
+
+Active when the incremental search overlay is visible.
+
+- `keys:incremental-search-forward`: Jump to next match.
+- `keys:incremental-search-backward`: Jump to previous match.
+- `keys:activate-current-item`: Select current match and exit search mode.
+- `keys:dismiss-overlay`: Cancel search and return to original position.
+
+### 4.7 `MODAL_NAVIGATION_MODE`
+
+Shared with Task Entry. Active when a selection modal (Agent, Repository, Branch) is open.
+
+> **Reference**: See [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md#44-modal_navigation_mode).
+
+### 4.8 `MODEL_SELECTION_MODE`
+
+Shared with Task Entry. Active specifically for the Model Selection dialog.
+
+> **Reference**: See [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md#45-model_selection_mode).
 
 ## Footer Shortcuts (Lazygit-style)
 
 Single-line footer without borders showing context-sensitive shortcuts:
 
-- **Activity Stream**: "↑↓ Navigate • Enter Follow Terminal • F Toggle Follow • / Search • C Copy • Ctrl+C Exit"
-- **Terminal Following**: "Ctrl+C Stop Following • I Inject Input • Ctrl+C Exit"
-- **Search Mode**: "↑↓ Navigate Results • Enter Select • Esc Cancel"
+- **Input Mode**: "keys:navigate-up/keys:navigate-down Select Card • keys:move-to-previous-snapshot/keys:move-to-next-snapshot Move Fork • keys:scroll-up-one-screen/keys:scroll-down-one-screen Scroll • keys:activate-current-item Send"
+- **Card Selection**: "keys:navigate-up/keys:navigate-down Move • keys:navigate-right Focus Buttons • keys:activate-current-item Expand • keys:dismiss-overlay Input"
+- **Search Mode**: "keys:incremental-search-forward Next • keys:incremental-search-backward Prev • keys:activate-current-item Select • keys:dismiss-overlay Cancel"
 
 ## Configuration
 
@@ -285,68 +352,9 @@ The Agent Activity TUI is configured through the same settings system as the mai
 ### Activity Display Settings
 
 ```toml
-[tui.activity]
-# Number of visible activity rows
-visible_rows = 3
-
-# Maximum lines per activity item
-max_lines_per_item = 10
-
-# Auto-scroll to new events
-auto_scroll = true
-
-# Show timestamps for events
-show_timestamps = true
-
-# Syntax highlighting for code/diffs
-syntax_highlighting = true
-
-# Theme for activity display
-theme = "catppuccin-mocha"
-
-# Font style for symbols
-font_style = "unicode"  # unicode, nerdfont, ascii
-```
-
-### Event Type Visibility
-
-```toml
-[tui.activity.events]
-# Show thought/reasoning events
-show_thoughts = true
-
-# Show tool call events
-show_tools = true
-
-# Show file edit events
-show_file_edits = true
-
-# Show log events
-show_logs = true
-
-# Show status events
-show_status = true
-
-# Show terminal output events
-show_terminal = true
-```
-
-### Terminal Following Settings
-
-```toml
-[tui.activity.terminal]
-# Enable live terminal following
-enable_following = true
-
-# Terminal dimensions for following
-follow_cols = 120
-follow_rows = 30
-
-# Allow input injection
-allow_input_injection = true
-
-# Show ANSI colors in terminal
-ansi_colors = true
+# Number of visible terminal output rows when collapsed
+agent-activity-collapsed-terminal-height = 5
+agent-activity-collapsed-diffs-height = 5
 ```
 
 ## Integration Points
@@ -360,16 +368,14 @@ The activity display consumes ACP protocol events and translates them to the uni
 - Status change notifications
 - Error and completion events
 
-### SessionViewer Integration
+### SessionViewer Relationship
 
-The Agent Activity TUI is nested within the standard SessionViewer UI (described in [`ah-agent-record.md`](ah-agent-record.md)), replacing only the terminal rendering area that is used for third-party agents. The SessionViewer UI continues to handle snapshot indicators, task entry UI, pipeline explorers, and all other standard functionality.
+The Agent Activity TUI is a full alternative to the standard SessionViewer UI (described in [`ah-agent-record.md`](ah-agent-record.md)). It covers all functionality of the SessionViewer while providing a specialized experience for ACP-based agents with structured data (thoughts, tools, files).
 
-The Agent Activity TUI reuses SessionViewer UI components:
+Both interfaces integrate with the `ah agent record` command, which selects the appropriate UI to launch:
 
-- **Terminal State Management**: Unified terminal state tracking
-- **Gutter System**: Snapshot indicators and activity markers
-- **Pipeline Explorer**: Tool execution step visualization
-- **Input Injection**: Live terminal interaction capabilities
+- **SessionViewer UI**: Used for standard terminal recording sessions or when `--output text` is requested.
+- **Agent Activity TUI**: Used for sessions based on ACP agents or when `--output normalized-text` is requested.
 
 ### Filesystem Integration
 
@@ -386,27 +392,16 @@ The Agent Activity TUI reuses SessionViewer UI components:
 - **Smooth Scrolling**: Optimized scrolling animations
 - **Background Processing**: Non-blocking event processing
 
-## Accessibility
-
-- **High Contrast Theme**: Enhanced contrast ratios for better visibility
-- **Keyboard Navigation**: Full keyboard accessibility
-- **Screen Reader Support**: Semantic markup for screen readers
-- **Color Blind Friendly**: Multiple color schemes and symbol fallbacks
-- **Font Size Options**: Configurable text sizing
-
 ## Error Handling and Status
 
 - **Connection Status**: Clear indicators for ACP connection state
 - **Event Processing Errors**: Graceful handling of malformed events
 - **Terminal Resize Handling**: Proper layout adaptation
-- **Memory Pressure**: Automatic cleanup under memory constraints
 
 ## Future Extensions
 
 - **Collaborative Sessions**: Multiple users viewing the same activity stream
 - **Activity Recording**: Save and replay activity sessions
-- **Advanced Filtering**: Complex query-based event filtering
-- **Plugin System**: Extensible activity display with custom event types
 - **Real-time Collaboration**: Live cursor and annotation sharing
 
 This Agent Activity TUI PRD provides the foundation for a rich, real-time agent monitoring experience that integrates seamlessly with Agent Harbor's existing UI patterns and the ACP protocol requirements.
