@@ -83,6 +83,7 @@ pub async fn spawn_acp_server_with_scenario(fixture: PathBuf) -> (String, JoinHa
             scenario_files: vec![fixture],
             speed_multiplier: 0.1,
             linger_after_timeline_secs: Some(1.0),
+            symbols: None,
         }),
     )
     .await

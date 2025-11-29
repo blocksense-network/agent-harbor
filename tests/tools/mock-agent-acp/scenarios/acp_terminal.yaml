@@ -1,0 +1,26 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: acp_terminal
+tags: [acp, terminal]
+acp:
+  capabilities:
+    loadSession: false
+timeline:
+  - userInputs:
+      - relativeTime: 0
+        input: 'Run a terminal command'
+  - agentToolUse:
+      toolName: runCmd
+      args:
+        cmd: "printf 'hello from terminal\\n'; sleep 0.1; printf 'done\\n'"
+      progress:
+        - relativeTime: 0
+          message: 'starting'
+      status: in_progress
+  - sessionStart:
+      sessionId: 'terminal-session'
+  - llmResponse:
+      - assistant:
+          - relativeTime: 0
+            content: 'Command launched'

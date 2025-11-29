@@ -5440,6 +5440,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "mock-agent"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "agent-client-protocol-schema",
+ "ah-scenario-format",
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "clap",
+ "futures",
+ "piper",
+ "portable-pty",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shell-words",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "mock-tui-dashboard"
 version = "0.1.0"
 dependencies = [

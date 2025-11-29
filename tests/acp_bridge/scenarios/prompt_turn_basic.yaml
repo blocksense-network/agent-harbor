@@ -3,31 +3,16 @@
 
 name: 'prompt_turn_basic'
 description: 'Simple prompt flow with status and log events'
-events:
-  - at_ms: 0
-    kind: status
-    value: 'queued'
-  - at_ms: 20
-    kind: status
-    value: 'running'
-  - at_ms: 40
-    kind: log
-    message: 'processing user prompt'
-  - at_ms: 80
-    kind: thought
-    text: 'calling tool'
-  - at_ms: 100
-    kind: status
-    value: 'completed'
-assertions:
-  - kind: has_event
-    event:
-      type: status
-      status: running
-  - kind: has_event
-    event:
-      type: log
-  - kind: has_event
-    event:
-      type: status
-      status: completed
+timeline:
+  - status: queued
+  - baseTimeDelta: 20
+  - status: running
+  - baseTimeDelta: 20
+  - log: 'processing user prompt'
+  - baseTimeDelta: 40
+  - llmResponse:
+      - think:
+          - relativeTime: 0
+            content: 'calling tool'
+  - baseTimeDelta: 20
+  - status: completed

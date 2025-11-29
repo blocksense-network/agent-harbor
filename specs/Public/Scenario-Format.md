@@ -85,6 +85,13 @@ Rules support conditional configuration based on symbols provided by the test ru
 - **String comparison**: `$symbol == "string_value"`, `$symbol != "string_value"`
 - **Undefined symbols**: References to undefined symbols cause condition evaluation to fail (rule skipped)
 
+#### Symbol Sources & Precedence
+
+- **CLI overrides env**: Runners that accept `--scenario-define KEY=VAL` (LLM API proxy test server, mock REST server) populate the symbol table from those flags. When the flag is absent, symbols fall back to the `AH_SCENARIO_DEFINES` env var (`KEY=VAL,FLAG=true,N=3`). CLI-provided symbols always win over environment values for the same key.
+- **Duplicate keys**: When a symbol key is specified multiple times in a single source, the last occurrence wins (later CLI flags override earlier ones; later comma-separated pairs override earlier ones).
+- **Type inference**: Values are parsed as `true`/`false`, integers, or strings (default). Strings used in comparisons must be quoted in rule expressions (`$env == "prod"`).
+- **Scope**: Symbols are global for the scenario load; all nested `rules` blocks see the same table.
+
 #### Merging Behavior
 
 - **Multiple matches**: When multiple `when` conditions match, their `config` sections are merged (later rules override earlier ones)
@@ -356,6 +363,12 @@ timeline:
         input:
           - type: "text"
             text: "Test message"
+        expectedResponse:
+          stopReason: "completed"
+          usage:
+            inputTokens: 12
+            outputTokens: 34
+            totalTokens: 46
         _meta:
           request.trackingId: "req_12345"
           request.priority: "high"
@@ -413,7 +426,10 @@ assistant:
     content:
       type: 'image'
       mimeType: 'image/png'
-      path: 'images/example.png'
+      path: 'images/example.png' # Relative to the scenario file location; must exist
+      # At least one of `path` or `data` is required. When `path` is present the file
+      # is resolved relative to the scenario file and validated at load time. When
+      # `data` is present it MUST be valid base64 for the declared MIME type.
 ```
 
 **Audio Content:**
@@ -424,7 +440,8 @@ assistant:
     content:
       type: 'audio'
       mimeType: 'audio/wav'
-      path: 'audio/example.wav'
+      path: 'audio/example.wav' # Relative to the scenario file location; must exist
+      # At least one of `path` or `data` is required. Base64 payloads are validated.
 ```
 
 **Embedded Resource:**
@@ -450,9 +467,12 @@ assistant:
       uri: 'file:///workspace/README.md'
       name: 'README.md'
       mimeType: 'text/markdown'
+      title: 'Project README'
+      description: 'Main project documentation'
       size: 1024
       annotations:
-        priority: 0.9
+        - priority: 0.9
+          audience: ['user']
 ```
 
 **Diff Content:**
@@ -462,7 +482,7 @@ assistant:
   - relativeTime: 100
     content:
       type: 'diff'
-      path: '/home/user/project/src/config.json'
+      path: '/home/user/project/src/config.json' # MUST be absolute to avoid ambiguity
       oldText: '{\n  "debug": false\n}'
       newText: '{\n  "debug": true\n}'
 ```
@@ -504,7 +524,7 @@ actual work the agent does in response to LLM instructions.
 
 - `setModel`: User switches the LLM model during the session. Fields:
   - `modelId`: The ID of the model to switch to
-  - **UNSTABLE**: Only allowed when the runner enables ACP unstable schema support (e.g., `protocolVersion` that opts into unstable or an explicit `--acp-unstable` flag). Scenarios using `setModel` MUST declare this opt-in. The ACP spec marks `session/set_model` as unstable and subject to removal/change (see [schema.unstable set_model](../../resources/acp-specs/docs/protocol/schema.unstable.mdx#session-set_model)).
+  - **UNSTABLE**: Requires `unstable: true` in the ACP configuration. The ACP spec marks `session/set_model` as unstable and subject to removal/change (see [schema.unstable set_model](../../resources/acp-specs/docs/protocol/schema.unstable.mdx#session-set_model)).
 
 - `agentToolUse`: Tool invocation with detailed execution flow. Fields:
   - `toolName`: Name of the tool being invoked
@@ -566,10 +586,11 @@ Simulated user interactions that drive the scenario forward.
   - `relativeTime`: Absolute time in milliseconds from scenario start (post-`baseTimeDelta` accumulation)
   - `input`: string or array of content blocks (required)
   - `_meta`: optional ACP meta to attach to the prompt request
+  - `expectedResponse`: optional per-prompt assertion mirroring ACP `PromptResponse` (`sessionId`, `stopReason`, `usage`, optional `_meta`)
   - `target`: optional `tui|webui|cli` (defaults to all)
     This is the **only** way to send ACP `session/prompt` messages; the runner converts each entry to a `session/prompt` call in relativeTime order. Can run concurrently with agent events.
 
-  Response assertions for the _first_ prompt after a boundary belong on `sessionStart.expectedPromptResponse` (see below).
+  Response assertions for the _first_ prompt after a boundary belong on `sessionStart.expectedPromptResponse` (see below); per-entry `expectedResponse` covers subsequent prompts.
 
 - `userEdits`: Simulate user editing files. Fields:
   - `patch`: Path to unified diff or patch file relative to the scenario folder.
@@ -587,6 +608,7 @@ Events that control test execution and validation.
 - `baseTimeDelta`: Advance logical time by specified milliseconds. Must be >= max
   time from concurrent events.
 - `screenshot`: Ask harness to capture vt100 buffer with a label.
+- `log`: Emit a harness log/message at the current timeline position (mapped to playback `log` events).
 - `assert`: Structured assertions (see below).
 - `complete`: Event indicating that the scenario task has completed
   successfully. This marks the session status as completed and triggers any
@@ -594,6 +616,10 @@ Events that control test execution and validation.
 - `sessionStart`: Boundary marker for `loadSession` functionality. Events before
   this marker are considered historical and are replayed during `session/load`.
   Events after this marker are streamed live after session loading completes.
+  When `acp.capabilities.loadSession` is enabled the timeline MUST include exactly one
+  `sessionStart` marker; conversely, scenarios that use `sessionStart` MUST advertise
+  `loadSession` in their ACP capabilities. The loader partitions timeline events into
+  historical (pre-boundary) and live (post-boundary) segments using this marker.
   Optional fields:
   - `sessionId`: The session ID to use for the ensuing `session/new` (or `session/load`) call; the Mock ACP Server uses this when responding to initialization/session setup.
   - `expectedPromptResponse`: Response assertions for the first `userInputs` after this boundary (e.g., `sessionId`, `stopReason`, `usage`).
@@ -602,23 +628,21 @@ Events that control test execution and validation.
 
 Execution model: the mock-agent plays the **agent** role and will emit these ACP client-facing calls; the **test executor** plays the client and returns the responses defined in the event. Use these to exercise bidirectional flows without a real client UI.
 
-- `clientFsRead`: Simulates `fs/read_text_file` method call from client
-  - `path`: Absolute file path to read
-  - `expectedContent`: Expected file content to return
-- `clientFsWrite`: Simulates `fs/write_text_file` method call from client
-  - `path`: Absolute file path to write
-  - `content`: Content to write to file
-- `clientTerminalCreate`: Simulates `terminal/create` method call from client
-  - `command`: Command to execute
-  - `expectedOutput`: Expected command output
-- `clientPermissionRequest`: Simulates an ACP `session/request_permission` flow where the **agent** sends the request and the **test executor** returns the user decision (see [request_permission](../../resources/acp-specs/docs/protocol/tool-calls.mdx#requesting-permission)):
+- `agentFileReads`: Simulates file read operations from the agent. Takes a list of files to read and translates to one or more ACP `fs/read_text_file` method calls depending on the tool profile (e.g., when tools allow reading one file at a time, this will result in multiple separate calls).
+  - `files[]`: Array of file read specifications:
+    - `path`: Absolute file path to read
+    - `expectedContent`: Expected file content to return (optional, for validation)
+- `agentPermissionRequest`: Simulates an ACP `session/request_permission` flow where the **agent** sends the request and the **test executor** returns the user decision (see [request_permission](../../resources/acp-specs/docs/protocol/tool-calls.mdx#requesting-permission)):
   - `sessionId`: Target session ID (optional; default: current session)
   - `toolCall`: Minimal tool call context to include in the request (e.g., `{ toolCallId, title, kind }`)
-  - `options`: Permission options to present, mirroring ACP `PermissionOption` kinds (`allow_once|allow_always|reject_once|reject_always`). If omitted, the runner SHOULD supply a default allow/reject pair.
+  - `options[]`: Permission options to present, each with:
+    - `id`: Unique identifier for the option
+    - `label`: Human-readable label to display
+    - `kind`: Permission kind (`allow_once`, `allow_always`, `reject_once`, `reject_always`)
   - `decision`: User decision simulated by the runner; object with:
     - `outcome`: `selected|cancelled` (matches ACP response outcome)
-    - `optionId`: Required when `outcome=selected`; must match one of `options`
-    - Shorthand: `granted: true|false` MAY be provided instead of `decision`; runners map `true` to the first `allow_*` option and `false` to the first `reject_*` option.
+    - `optionId`: Required when `outcome=selected`; must match one of the provided `options`
+  - `granted`: Boolean shorthand for decision (when true, selects the first `allow_once` option; when false, selects the first `reject_once` option). Cannot be used with `decision`.
 - `merge`: Event indicating that this scenario session should be merged into
   the session list upon completion. When present, the scenario session will be
   marked as completed but remain visible in session listings. When omitted,
@@ -672,6 +696,32 @@ Scenarios use a unified timeline containing all events (agent actions, user inpu
 ### Event Execution by Component and Testing Mode
 
 The scenario format supports three distinct testing modes, each processing different combinations of timeline events through specific components. Below are detailed specifications for how each component handles events in each mode.
+
+#### ACP Direction of Events (clarification)
+
+Each event maps to an ACP role. Use this table as the source of truth when wiring tests/harnesses:
+
+| Event                                                                     | ACP mapping                                          | Originator     | Notes                                                                                                           |
+| ------------------------------------------------------------------------- | ---------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `initialize`                                                              | `initialize` request/response                        | Client → Agent | Client sends capabilities; agent responds with capabilities                                                     |
+| `sessionStart`                                                            | Drives `session/new` vs `session/load` boundary      | Client → Agent | Pre-boundary events are historical replay; post-boundary are live                                               |
+| `userInputs`                                                              | `session/prompt`                                     | Client → Agent | Carries content blocks/meta; `expectedResponse` asserts first post-boundary prompt                              |
+| `userCancelSession`                                                       | `session/cancel`                                     | Client → Agent | Agent must return `stopReason=cancelled` for the affected prompt                                                |
+| `llmResponse` (assistant/think)                                           | `session/update` AgentMessageChunk/AgentThoughtChunk | Agent → Client | Agent streams content/meta                                                                                      |
+| `agentToolUse`                                                            | Tool call lifecycle                                  | Agent → Client | Agent initiates tool call (often terminal/fs); **client executes tool and streams output/results per scenario** |
+| `agentEdits`                                                              | Tool call update (file edit content)                 | Agent → Client | Represents edits produced by the agent                                                                          |
+| `agentPlan`                                                               | `session/update` Plan                                | Agent → Client | Plan entries with priority/status                                                                               |
+| `agentPermissionRequest`                                                  | `session/request_permission`                         | Agent → Client | Client replies; unexpected extra requests are errors                                                            |
+| `agentFileReads`                                                          | `fs/read_text_file`                                  | Agent → Client | Client replies with scripted content                                                                            |
+| `setMode`                                                                 | `session/set_mode`                                   | Client → Agent | Mode changes originate from the client                                                                          |
+| `setModel` (unstable)                                                     | `session/set_model`                                  | Client → Agent | Unstable/opt-in                                                                                                 |
+| `log`, `assert`, `complete`, `status`, `advanceMs`, `merge`, `screenshot` | Harness-only                                         | Harness        | Not ACP messages                                                                                                |
+
+Key clarifications:
+
+- `agentToolUse`: the **agent** creates the tool call and any terminal/fs requests; the **client** (test harness) returns results. In ACP mock-agent mode there are three patterns: (1) fully simulated clients return the scripted execution/result from the scenario, (2) clients may actually run tools and stream real output back, or (3) ACP server mode (see ACP.server.status.md) asks the client to launch `ah show-sandbox-execution "<cmd>" --id <exec_id>` as a follower terminal so Harbor’s recorder streams the real sandboxed run. When testing real agents (non-ACP mock), `agentToolUse` is only used to seed tool-use suggestions inside `llmResponse` from the mock LLM API Proxy.
+- `setMode`/`setModel`: these are **client-originated** ACP methods, not agent notifications.
+- `userCancelSession`: the client sends `session/cancel`; the agent must return `stopReason=cancelled` for that prompt turn.
 
 #### 1. Mock-Agent Integration Tests
 
@@ -1074,18 +1124,22 @@ timeline:
             path: 'images/test-diagram.png'
 
   # Test client-side ACP method simulation
-  - clientFsRead:
-      path: '/tmp/test-workspace/main.py'
-      expectedContent: "print('Hello, World!')"
-  - clientFsWrite:
-      path: '/tmp/test-workspace/output.py'
-      content: "print('Modified content')"
-  - clientTerminalCreate:
-      command: 'python output.py'
-      expectedOutput: 'Modified content'
-  - clientPermissionRequest:
-      operation: 'file_write'
-      resource: '/tmp/test-workspace/critical.py'
+  - agentFileReads:
+      files:
+        - path: '/tmp/test-workspace/main.py'
+          expectedContent: "print('Hello, World!')"
+  - agentPermissionRequest:
+      toolCall:
+        toolCallId: 'perm-1'
+        title: 'file_write'
+        kind: 'fs/write_text_file'
+      options:
+        - id: 'allow'
+          label: 'Allow once'
+          kind: 'allow_once'
+        - id: 'deny'
+          label: 'Deny once'
+          kind: 'reject_once'
       granted: true
 
   - complete: true
@@ -1173,6 +1227,6 @@ When `session/load` is called with this scenario's name, the mock-agent will:
 
 - Translates scenario events into ACP messages sent to the client under test.
 - For `runCmd` tool events, issues ACP terminal method calls so the client executes the command in its sandbox. In passthrough mode (see `specs/ACP.server.status.md`), it asks the client to invoke a `show-sandbox-execution` command so the client’s sandbox/recorder performs the command and streams output back via ACP terminal notifications.
-- Handles `clientPermissionRequest` by sending `session/request_permission` and returning the scripted user decision.
-- Handles `clientFsRead`/`clientFsWrite` by issuing ACP filesystem client calls.
+- Handles `agentPermissionRequest` by sending `session/request_permission` and returning the scripted user decision.
+- Handles `agentFileReads` by issuing ACP filesystem client calls (potentially multiple calls depending on tool profile).
 - Uses `sessionStart.sessionId` and `expectedPromptResponse` to craft the `session/new` (or `session/load`) response and validate the first prompt turn after the boundary.

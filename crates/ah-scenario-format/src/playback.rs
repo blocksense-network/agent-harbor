@@ -4,8 +4,9 @@
 use crate::{
     Result, ScenarioError,
     model::{
-        AssertionData, ErrorData, FileEditData, ResponseElement, Scenario, TimelineEvent,
-        ToolUseData, UserInputEntry, extract_prompt_from_input_value,
+        AgentFileReadsData, AgentPermissionRequestData, AgentPlanData, AssertionData, ErrorData,
+        FileEditData, ResponseElement, Scenario, SetModeData, SetModelData, TimelineEvent,
+        ToolUseData, UserInputEntry, extract_prompt_from_input_content,
         extract_text_from_content_block,
     },
 };
@@ -124,6 +125,18 @@ pub enum PlaybackEventKind {
     Merge,
     Complete,
     Error(ErrorData),
+    PlanUpdate(AgentPlanData),
+    ModeChange(SetModeData),
+    ModelChange(SetModelData),
+    Cancel,
+    AgentFileReads {
+        data: AgentFileReadsData,
+        meta: Option<serde_yaml::Value>,
+    },
+    AgentPermissionRequest {
+        data: AgentPermissionRequestData,
+        meta: Option<serde_yaml::Value>,
+    },
 }
 
 struct TimelineBuilder {
@@ -145,7 +158,7 @@ impl TimelineBuilder {
 
     fn process_event(&mut self, event: &TimelineEvent) -> Result<()> {
         match event {
-            TimelineEvent::LlmResponse { llm_response } => {
+            TimelineEvent::LlmResponse { llm_response, .. } => {
                 for element in llm_response {
                     self.process_response_element(element)?;
                 }
@@ -153,10 +166,10 @@ impl TimelineBuilder {
             TimelineEvent::UserInputs { user_inputs } => {
                 self.process_user_inputs(user_inputs)?;
             }
-            TimelineEvent::AgentToolUse { agent_tool_use } => {
+            TimelineEvent::AgentToolUse { agent_tool_use, .. } => {
                 self.handle_tool_use(agent_tool_use)?;
             }
-            TimelineEvent::AgentEdits { agent_edits } => {
+            TimelineEvent::AgentEdits { agent_edits, .. } => {
                 self.push_event(PlaybackEventKind::FileEdit(agent_edits.clone()));
             }
             TimelineEvent::AdvanceMs { base_time_delta } => {
@@ -183,6 +196,47 @@ impl TimelineBuilder {
             TimelineEvent::Status { status } => {
                 self.push_event(PlaybackEventKind::Status {
                     value: status.clone(),
+                });
+            }
+            TimelineEvent::Log { log, .. } => {
+                self.push_event(PlaybackEventKind::Log {
+                    message: log.clone(),
+                });
+            }
+            TimelineEvent::Initialize { .. } => {
+                // Initialize events are handled during setup, not during playback
+            }
+            TimelineEvent::SessionStart { .. } => {
+                // Session start boundary markers don't produce playback events
+            }
+            TimelineEvent::AgentPlan { agent_plan, .. } => {
+                self.push_event(PlaybackEventKind::PlanUpdate(agent_plan.clone()));
+            }
+            TimelineEvent::SetMode { set_mode, .. } => {
+                self.push_event(PlaybackEventKind::ModeChange(set_mode.clone()));
+            }
+            TimelineEvent::SetModel { set_model, .. } => {
+                self.push_event(PlaybackEventKind::ModelChange(set_model.clone()));
+            }
+            TimelineEvent::UserCancelSession { .. } => {
+                self.push_event(PlaybackEventKind::Cancel);
+            }
+            TimelineEvent::AgentFileReads {
+                agent_file_reads,
+                meta,
+            } => {
+                self.push_event(PlaybackEventKind::AgentFileReads {
+                    data: agent_file_reads.clone(),
+                    meta: meta.clone(),
+                });
+            }
+            TimelineEvent::AgentPermissionRequest {
+                agent_permission_request,
+                meta,
+            } => {
+                self.push_event(PlaybackEventKind::AgentPermissionRequest {
+                    data: agent_permission_request.clone(),
+                    meta: meta.clone(),
                 });
             }
         }
@@ -231,6 +285,9 @@ impl TimelineBuilder {
             ResponseElement::Error { error } => {
                 self.push_event(PlaybackEventKind::Error(error.clone()));
             }
+            ResponseElement::AgentPlan { agent_plan } => {
+                self.push_event(PlaybackEventKind::PlanUpdate(agent_plan.clone()));
+            }
         }
         Ok(())
     }
@@ -245,8 +302,7 @@ impl TimelineBuilder {
             }
             let target_time = entry.relative_time;
             let target = entry.target.clone();
-            let prompt = extract_prompt_from_input_value(&entry.input)
-                .or_else(|| extract_text_from_content_block(&entry.input))
+            let prompt = extract_prompt_from_input_content(&entry.input)
                 .unwrap_or_else(|| serde_yaml::to_string(&entry.input).unwrap_or_default());
 
             let delta = target_time.saturating_sub(self.timeline_ms);

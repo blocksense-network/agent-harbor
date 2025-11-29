@@ -1,0 +1,29 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: acp_permission_and_read
+tags: [acp, permissions]
+acp:
+  capabilities:
+    loadSession: false
+timeline:
+  - userInputs:
+      - relativeTime: 0
+        input: 'Requesting permission and file read'
+  - agentPermissionRequest:
+      sessionId: 'perm-session'
+      options:
+        - id: allow_once
+          label: Allow once
+          kind: allow_once
+      granted: true
+  - agentFileReads:
+      files:
+        - path: '/tmp/example.txt'
+          expectedContent: 'expected content'
+  - sessionStart:
+      sessionId: 'perm-session'
+  - llmResponse:
+      - assistant:
+          - relativeTime: 0
+            content: 'Permission granted; file read complete'

@@ -107,6 +107,10 @@ enum Commands {
         /// Minimize JSON logs (default: false, pretty-print by default)
         #[arg(long)]
         minimize_logs: bool,
+
+        /// Symbols for scenario rule evaluation (KEY=VAL). Repeatable.
+        #[arg(long = "scenario-define", value_name = "KEY=VAL", action = clap::ArgAction::Append)]
+        scenario_defines: Vec<String>,
     },
 }
 
@@ -148,6 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             log_body,
             log_responses,
             minimize_logs,
+            scenario_defines,
         } => {
             run_test_server(
                 port,
@@ -160,6 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log_body,
                 log_responses,
                 minimize_logs,
+                scenario_defines,
             )
             .await?;
         }
@@ -313,6 +319,7 @@ async fn run_test_server(
     log_body: bool,
     log_responses: bool,
     minimize_logs: bool,
+    scenario_defines: Vec<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Starting LLM API Proxy test server on port {}", port);
     tracing::info!("Scenario file: {}", scenario_file.display());
@@ -354,6 +361,9 @@ async fn run_test_server(
     config.scenario.agent_version = Some(agent_version.to_string());
     config.scenario.strict_tools_validation = strict_tools_validation;
     config.scenario.minimize_logs = minimize_logs;
+    if !scenario_defines.is_empty() {
+        config.scenario.scenario_defines = Some(scenario_defines);
+    }
 
     // Create the proxy
     tracing::info!(

@@ -153,6 +153,7 @@ async fn rest_client_streams_scenario_events() {
         linger_after_timeline_secs: None,
         scenario_files: vec![scenario_fixture("simulation_smoke.yaml")],
         speed_multiplier: 0.25,
+        symbols: None,
     };
     let (base_url, handle) = spawn_mock_server_with_options(Some(playback)).await;
     let client = RestClient::from_url(&base_url, AuthConfig::default()).expect("client");
@@ -183,6 +184,7 @@ async fn remote_task_manager_replays_scenario_fast() {
         linger_after_timeline_secs: None,
         scenario_files: vec![scenario_fixture("long_running_demo.yaml")],
         speed_multiplier: 0.02,
+        symbols: None,
     };
     let (base_url, handle) = spawn_mock_server_with_options(Some(playback)).await;
 

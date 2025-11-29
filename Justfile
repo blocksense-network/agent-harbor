@@ -1186,6 +1186,15 @@ replay-last-mock-agent-session:
 clear-mock-agent-recordings:
     rm -rf tests/tools/mock-agent/recordings/*.json
 
+# Run ACP mock-agent demo (scenario overridable)
+run-mock-agent-acp scenario="tests/tools/mock-agent-acp/scenarios/acp_echo.yaml":
+    ./tests/tools/mock-agent-acp/run.sh {{scenario}}
+
+# Quick ACP client+agent smoke (non-interactive; feeds EOF to stdin)
+run-mock-agent-acp-smoke:
+    printf '' | cargo run -p mock-agent --example acp_client -- --scenario tests/tools/mock-agent-acp/scenarios/acp_echo.yaml --prompt "smoke echo"
+    printf '' | cargo run -p mock-agent --example acp_client -- --scenario tests/tools/mock-agent-acp/scenarios/acp_loadsession_meta.yaml --session-id ls-meta --prompt "load session smoke"
+
 # Run network tests with E2E enforcement verification
 test-networks:
     just build-network-tests

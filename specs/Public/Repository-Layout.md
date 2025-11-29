@@ -33,7 +33,8 @@ agent-harbor/
 │  ├─ acceptance/
 │  ├─ fixtures/
 │  └─ tools/                     # Testing and debugging utilities
-│     └─ inspect_ahr.rs          # Tool for inspecting .ahr recording files
+│     ├─ inspect_ahr.rs          # Tool for inspecting .ahr recording files
+│     └─ mock-agent-acp/         # ACP mock-agent scenarios + runner script for stdio client checks
 ├─ examples/                   # Small runnable examples per subsystem
 ├─ electron-app/               # Electron GUI application (cross-platform)
 │  ├─ package.json             # Node.js dependencies and scripts
@@ -112,6 +113,7 @@ agent-harbor/
 │  ├─ ah-rest-client/          # Client for remote REST mode
 │  ├─ ah-rest-server/          # Agent Harbor REST service (lib + mock_server binary)
 │  ├─ ah-scenario-format/      # Scenario-Format.md parser and playback utilities
+│  ├─ mock-agent/              # Scenario-driven ACP mock agent (library + binary + SDK example)
 │  ├─ ah-connectivity/         # SSH, relays, followers, rendezvous
 │  ├─ ah-notify/               # Cross-platform notifications
 │  ├─ ah-fleet/                # Multi-OS fleet orchestration primitives
