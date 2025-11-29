@@ -69,7 +69,7 @@ The ACP client will provide two output modes:
 
 Output mode is controlled by the `--output` flag in `ah agent start`, consistent with other agent types.
 
-The Agent Activity TUI (detailed in [`Public/Agent-Activity-TUI-PRD.md`](Public/Agent-Activity-TUI-PRD.md)) is nested within the standard SessionViewer UI (described in [`Public/ah-agent-record.md`](Public/ah-agent-record.md)), replacing only the terminal rendering area that is used for third-party agents. The SessionViewer UI continues to handle snapshot indicators, task entry UI, pipeline explorers, and all other standard functionality.
+The Agent Activity TUI (detailed in [`Public/Agent-Activity-TUI-PRD.md`](Public/Agent-Activity-TUI-PRD.md)) is a full alternative to the standard SessionViewer UI (described in [`Public/ah-agent-record.md`](Public/ah-agent-record.md)). It covers all functionality of the SessionViewer while providing a specialized experience for ACP-based agents with structured data (thoughts, tools, files). Both interfaces integrate with the `ah agent record` command, which selects the appropriate UI to launch based on the agent type and output configuration.
 
 ---
 

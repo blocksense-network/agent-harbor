@@ -78,10 +78,6 @@ Tasks display in four different states with optimized heights and consistent lay
 
 The initially focused element is the top draft task card.
 
-#### Handling Arrow Keys within text areas
-
-Within text areas, the up and down arrow keys move the caret within the text area when this is possible. Only when they have exhausted the possible movements (i.e. the caret is already on the top line when moving up, or already on the bottom line when moving down), the focus should be moved to the next navigation item in the hierarchy (settings button, draft cards, filter bar, existing tasks, etc).
-
 ##### Completed/Merged Cards (2 lines)
 
 ```
@@ -98,17 +94,17 @@ The **summary of changes** shows the total impact across all modified files in V
 **Delivery indicators** show delivery method outcome with ANSI color coding:
 
 - **Unicode symbols** (default, `tui-font-style = "unicode"`):
-  - Branch exists: `⎇` (branch glyph) in **cyan**
-  - PR exists: `⇄` (two-way arrows) in **yellow**
-  - PR merged: `✓` (checkmark) in **green**
+  - Branch exists: `⎇` (branch glyph) in `color:branch`
+  - PR exists: `⇄` (two-way arrows) in `color:pr`
+  - PR merged: `✓` (checkmark) in `color:success`
 - **Nerd Font symbols** (`tui-font-style = "nerdfont"`):
-  - Branch exists: `` (Powerline branch glyph) in **cyan**
-  - PR exists: `` (nf-oct-git-pull-request) in **yellow**
-  - PR merged: `` (nf-oct-git-merge) in **green**
+  - Branch exists: `` (Powerline branch glyph) in `color:branch`
+  - PR exists: `` (nf-oct-git-pull-request) in `color:pr`
+  - PR merged: `` (nf-oct-git-merge) in `color:success`
 - **ASCII fallback** (`tui-font-style = "ascii"`):
-  - Branch exists: `br` in **cyan**
-  - PR exists: `pr` in **yellow**
-  - PR merged: `ok` in **green**
+  - Branch exists: `br` in `color:branch`
+  - PR exists: `pr` in `color:pr`
+  - PR merged: `ok` in `color:success`
 
 **Example output with ANSI color coding:**
 
@@ -132,52 +128,13 @@ Repository • Branch • Agent • Timestamp • Pause Button • Delete Button
 
 ##### Draft Cards (Variable height)
 
-Variable height cards with auto-expandable text area and controls (keyboard navigable, Enter to submit):
+Draft cards follow the shared **Task Entry TUI** specification.
 
-- Shows placeholder text when empty: "Describe what you want the agent to do..."
-- Always-visible text area for task description with expandable height
-- Single line of compact controls below the text area:
-  - Left side: Repository Selector, Branch Selector, Model Selector (horizontally laid out)
-  - Right side: "⏎ Go" button and "⚙️" advanced options button (right-aligned, horizontally adjacent)
-- **Model Selector Button Display**: Shows selected models as comma-separated list with instance counts
-  - Format: "🤖 model1, model2 x2, model3 x3" (shows "xN" only when count > 1)
-  - Falls back to "🤖 Models" when no models are selected
-- **Agent Selection Dialogs**: When buttons are activated (Tab/Enter), display overlay dialog windows
-  - Repository Selector: Fuzzy search through available repositories
-  - Branch Selector: Fuzzy search through repository branches
-  - Agent Multi-Selector: Multi-select interface with instance counts and +/- controls
-  - **Characteristics**: Full-screen overlay, dedicated input box, ESC to cancel, Enter to confirm
-- **Advanced Options Menu**: Gear button (⚙️) opens a modal displaying launch options with visible keyboard shortcuts. Options are stored in the draft card and persist for the TUI lifetime. Split mode selections (t/s/h/v/T/S/H/V) are remembered and applied as the default for subsequent launches via Enter or Go button.
-- TAB navigation between controls (Repository → Branch → Model → Go → Advanced Options → wrap around)
-- Multiple draft tasks supported - users can create several draft tasks in progress
-- Auto-save drafts to local storage and restore across sessions (debounced, 500ms delay)
-- Default values from last used selections
-- **Auto-completion support** with popup menu:
-  - `@filename` - Auto-completes file names within the repository
-  - `/workflow` - Auto-completes available workflow commands from `.agents/workflows/`
-  - **Immediate menu opening**: Menu opens immediately when trigger characters (`/` or `@`) are typed, showing cached results while background refresh occurs
-  - **Caching and refresh**: File and workflow lists are cached for instant display. When trigger characters are typed, cached results are shown immediately, and a background refresh is triggered. When refresh completes, results are updated automatically, preserving the currently selected item if it exists in the refreshed results (matched by name)
-  - **Fuzzy matching**: All autocomplete suggestions use fuzzy matching for efficient filtering as the user types
-  - **Popup menu navigation**: Tab or arrow keys to navigate suggestions, mouse wheel to scroll, Mouse click or Enter to select
-  - **Quick selection**: Right arrow key selects the currently active suggestion
-  - **Ghost text**: Currently active suggestion appears as dimmed/ghost text in the text area
-  - Inline completions now present **two dimmed segments**: the shared continuation (characters guaranteed across every match) and the shortest possible completion. The shared portion uses a lighter dim + muted color, while the full completion remainder uses a slightly brighter dim + normal text color so the two steps are visually distinguishable.
-  - **Workspace terms menu**: The background `WorkspaceTermsEnumerator` continuously indexes repository tokens. When the `workspace_terms_menu` preference is enabled (default), typing a regular token (two or more characters without a trigger) opens a `Workspace Terms` popup that lists the ranked matches. The menu uses the same navigation semantics as the `/` and `@` menus and Right Arrow accepts the currently highlighted entry.
-  - **Autocomplete active mode**: Whenever a ghost suggestion or popup menu entry is visible, the input system switches into an `Autocomplete Active` mode that exposes the `IndentOrComplete` operation (Tab by default). This mode is consulted before any of the standard navigation modes, so Tab inserts the suggested text. As soon as no suggestion is present, Tab reverts to its usual "next field" navigation role automatically.
-  - While the menu is focused, the inline ghost text mirrors the currently selected term—users always see exactly what the next Tab/Right Arrow action will insert. Moving the highlight immediately updates the ghost text so that the “longer” completion segment reflects the candidate under the cursor.
-  - Users who prefer ghost-only completions can disable the menu by setting `workspace_terms_menu = false` in their settings; inline completions (shared + shortest segments) remain available even when the popup is hidden.
-  - Pressing `Tab` inside the textarea inserts the shared continuation when one exists. Pressing `Tab` again (without moving the caret) inserts the remainder needed to reach the shortest matching term. When the lookup returns a single match, both segments are identical so one press is enough. Tab completion takes precedence over focus navigation—only when no inline completion is available does `Tab` move the cursor to the next form control.
-  - These completions are powered by the `WorkspaceTermsEnumerator::lookup` results, which expose both the shared suffix and the shortest completion suffix for any prefix. The inline ghost renderer consumes those values directly and never needs to re-scan the filesystem on every keystroke.
-- **Auto-save status indicators** in text area corners (low-contrast/dimmed text):
-  - **Unsaved** (gray): User has typed but no save request is in flight OR current in-flight request is invalidated
-  - **Saving...** (yellow): There is a valid (non-invalidated) save request currently in flight
-  - **Saved** (green): No pending changes AND most recent save request completed successfully
-  - **Error** (red): Most recent save request failed and no new typing has occurred
-- Context-sensitive keyboard shortcuts:
-  - While focus is inside a draft text area, footer shows: "Enter Launch Agent(s) • Shift+Enter New Line • Tab Complete/Next Field" to reflect the two-step completion behavior described above. When no inline completion is available, `Tab` falls back to navigating to the next field.
-  - "Agent(s)" is plural if multiple agents are selected
-  - Enter key launches the task (calls Go button action)
-  - Shift+Enter creates a new line in the text area
+> **Reference**: See [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md) for detailed behavior, layout, and interaction rules.
+
+- **Context**: In the Dashboard, draft cards appear at the top of the task list.
+- **Multiple Drafts**: Users can create multiple draft cards (`keys:draft-new-task`).
+- **Navigation**: Arrow keys navigate between draft cards and other dashboard elements.
 
 #### Agent Multi-Selector Modal
 
@@ -192,14 +149,14 @@ The agent selection dialog provides advanced agent configuration:
   - The count editing buttons (described below) are visible in the status bar while the menu is opened
   - When text is typed into the input box, the models are filtered normally. If there are models that don't match the filder, but have non-zero counts, they are displayed below the models that match the filter.
 - **Keyboard Controls**:
-  - `↑↓`: Navigate between sections and items
+  - `keys:navigate-up`/`keys:navigate-down`: Navigate between sections and items
   - `Mouse Wheel`: Scroll through model selection menu
-  - `Shift+=` or `Right`: Increment instance count
-  - `-` or `Left`: Decrement instance count
-  - `Enter`: Close the dialog with the current model and count selections:
+  - `keys:increment-value` or `keys:navigate-right`: Increment instance count
+  - `keys:decrement-value` or `keys:navigate-left`: Decrement instance count
+  - `keys:activate-current-item`: Close the dialog with the current model and count selections:
     - If the currently selected model has count zero: select ONLY this model with count 1, remove all other model selections
     - If the currently selected model has non-zero count: keep all current non-zero count models with their counts
-  - `Esc`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place. Focus returns to the model picker button.
+  - `keys:dismiss-overlay`: Close without applying the special logic for the Enter key. Any changes to counts made while the dialog was opened remain in place. Focus returns to the model picker button.
 
 #### Modal Focus Restoration
 
@@ -233,7 +190,7 @@ The settings dialog provides comprehensive configuration management through a ta
 
 #### Settings Dialog Activation
 
-- **Access**: Click settings button in header (upper-right corner) or press Up arrow from top draft card
+- **Access**: Click settings button in header (upper-right corner) or press `keys:navigate-up` from top draft card
 - **Modal Layout**: Full-screen overlay with tabbed interface
 - **Footer Scope Selection**: Bottom footer allows choosing configuration scope (user, project, global/system)
 - **Persistence**: Changes written to the selected scope's configuration file
@@ -351,10 +308,10 @@ The settings dialog uses tabs to organize configuration options:
 
 #### Settings Dialog Navigation
 
-- **Tab Navigation**: Left/Right arrows or mouse clicks to switch tabs
-- **Within Tab**: Up/Down arrows navigate options, Left/Right modify values
-- **Modal Controls**: ESC to cancel changes, Enter to save, Tab to cycle focus
-- **Search**: Global search across all settings (Ctrl+F)
+- **Tab Navigation**: `keys:navigate-left`/`keys:navigate-right` or mouse clicks to switch tabs
+- **Within Tab**: `keys:navigate-up`/`keys:navigate-down` navigate options, `keys:navigate-left`/`keys:navigate-right` modify values
+- **Modal Controls**: `keys:dismiss-overlay` to cancel changes, `keys:activate-current-item` to save, `keys:move-to-next-field` to cycle focus
+- **Search**: Global search across all settings (`keys:incremental-search-forward`)
 - **Reset**: Per-setting or tab-wide reset to defaults
 - **Help**: Context-sensitive help for each setting
 
@@ -465,12 +422,12 @@ After new "thought" event (scrolls up, oldest row disappears):
 
 Single-line footer without borders showing context-sensitive shortcuts that change dynamically based on application state:
 
-- **Task feed focused**: "↑↓ Navigate • Enter Select Task • Ctrl+C x2 Quit"
-- **Draft card selected**: "↑↓ Navigate • Enter Edit Draft • Ctrl+C x2 Quit"
-- **Draft textarea focused**: "Ctrl+Enter Advanced Options • Enter Launch Agent(s) • Shift+Enter New Line • Tab Complete/Next Field"
-- **Active task focused**: "↑↓ Navigate • Enter Show Task Progress • Ctrl+C x2 Quit"
-- **Completed/merged task focused**: "↑↓ Navigate • Enter Show Task Details • Ctrl+C x2 Quit"
-- **Modal active**: "↑↓ Navigate • Enter Select • Esc Back"
+- **Task feed focused**: "keys:navigate-up/keys:navigate-down Navigate • keys:activate-current-item Select Task • keys:quit x2 Quit"
+- **Draft card selected**: "keys:navigate-up/keys:navigate-down Navigate • keys:activate-current-item Edit Draft • keys:quit x2 Quit"
+- **Draft textarea focused**: "keys:show-launch-options Advanced Options • keys:activate-current-item Launch Agent(s) • keys:open-new-line New Line • keys:indent-or-complete Complete/Next Field"
+- **Active task focused**: "keys:navigate-up/keys:navigate-down Navigate • keys:activate-current-item Show Task Progress • keys:quit x2 Quit"
+- **Completed/merged task focused**: "keys:navigate-up/keys:navigate-down Navigate • keys:activate-current-item Show Task Details • keys:quit x2 Quit"
+- **Modal active**: "keys:navigate-up/keys:navigate-down Navigate • keys:activate-current-item Select • keys:dismiss-overlay Back"
 
 **Shortcut behavior notes:**
 
@@ -527,6 +484,45 @@ This dual-mode architecture enables the TUI to work seamlessly with both local S
 
 ### Commands and Hotkeys
 
+The Agent Activity TUI follows the standard keyboard operations defined in [`TUI-Keyboard-Shortcuts.md`](./TUI-Keyboard-Shortcuts.md).
+
+#### Global Help Dialog
+
+A global help dialog is available in all TUI contexts (Dashboard, Agent Activity, Session Viewer) to provide quick access to keyboard shortcuts.
+
+- **Activation**: Press `keys:show-help` (Default: `?` or `Ctrl+?`).
+  - **Availability**:
+    - `?`: Active whenever input is not being consumed by a focused text editing component.
+    - `Ctrl+?`: Active globally, even within text areas.
+- **Content**: Displays a well-formatted, scrollable list of all currently active keyboard shortcuts, grouped by category (e.g., Navigation, Editing, Application Actions).
+- **Interaction**:
+  - `keys:dismiss-overlay` (Esc) or `keys:show-help` (?) closes the dialog.
+  - Arrow keys or Page Up/Down scroll the list.
+
+#### Card List Keyboard Shortcuts
+
+While the focus is on a task card, the user can press Ctrl+W (CUA/PC), Cmd+W (macOS), C-x k (Emacs) to delete the task.
+
+Draft and active cards are deleted without leaving a trace. Deleting an active cards aborts any running agents.
+
+Pressing `keys:stop` on an active card pauses/stops the agent execution.
+
+The delete operation is mapped to archiving the card for completed/merged task. Archived tasks are removed from listings and search results by default.
+
+Both Ctrl+N (CUA/PC), Cmd+N (macOS) create a new draft task card.
+
+#### Handling Arrow Keys within text areas
+
+Within text areas, the up and down arrow keys move the caret within the text area.
+
+- **If the text area is empty**: `Up` and `Down` cycle through the prompt history (equivalent to pressing `keys:history-prev` / `keys:history-next`).
+- **If the text area is NOT empty**:
+  - `Up` moves the caret up one line. If at the top line, it moves to the start of the line.
+  - `Down` moves the caret down one line. If at the bottom line, it moves to the end of the line.
+  - These keys do **not** bubble focus to the parent context (e.g., they will not move focus to the dashboard list).
+
+The user can navigate away from the text area by pressing `keys:navigate-up` or `keys:navigate-down`.
+
 #### Mouse Support
 
 The TUI provides comprehensive mouse support alongside keyboard navigation:
@@ -557,53 +553,27 @@ Right click is left for the native terminal UI to handle in order to preserve it
 
 #### Global Navigation
 
-- **↑↓**: Navigate between ALL cards (draft tasks first, then sessions newest first)
-- **Ctrl+C** (twice): Quit the TUI
+- **keys:navigate-up/keys:navigate-down**: Navigate between ALL cards (draft tasks first, then sessions newest first)
+- **keys:quit** (twice): Quit the TUI
 
 #### Task Selection and Navigation
 
-- **↑↓**: Navigate between cards with visual selection state
-- **Enter**:
+- **keys:navigate-up/keys:navigate-down**: Navigate between cards with visual selection state
+- **keys:activate-current-item**:
   - When on draft card: Focus the textarea for editing
   - When on session card: Navigate to task details page
 
 #### Advanced Keyboard Navigation
 
-**Button Navigation in Draft Cards:**
+**Draft Cards:**
 
-- `Tab` or `Right`: Repository → Branch → Model → Go → Advanced Options → (wrap to Repository)
-- `Shift+Tab` or `Left`: Advanced Options → Go → Model → Branch → Repository → (wrap to Go)
-- `Esc` on buttons: Return focus to text area (don't exit application)
-
-**Text Area Focus:**
-
-- `Enter`: Launch task (same as Go button)
-- `Shift+Enter`: Insert new line
-- `Tab`: Move to next button
-- `Esc`: Remove current focus. If none was focused, exit the application
-- `↑` inside textarea:
-  - If the caret is not already at column 0 of the first line, the first press moves it to the start of that line
-  - When the caret is already at the first column of the first line, the operation bubbles to dashboard navigation (focus shifts to the previous UI element)
-- `↓` inside textarea:
-  - If the caret is not at the end of the last line, the first press moves it to the end of that line
-  - When the caret is already at the end of the last line, the operation bubbles to dashboard navigation (focus shifts to the next UI element)
-
-#### Draft Task Editing
-
-- **Tab/Shift+Tab**: Cycle between buttons (Repository, Branch, Models, Advanced Options, Go) when not in textarea
-- **Enter**: Activate focused button or select item in modal (when in textarea: launch task)
-- **Esc**: Close modal or go back to navigation mode
-- **Shift+Enter**: Create new line in textarea (when focused)
-- **Ctrl+Enter**: Show advanced launch options menu (when in textarea)
-- **Any key**: Type in description area when focused
-- **Backspace**: Delete characters
-- **Auto-complete menu**: When certain characters like / or @ are entered in the text area, show auto-completion menu with dynamically populated choices (@ for citing files, / for selecting workflows, etc)
+See [`Task-Entry-TUI-PRD.md`](./Task-Entry-TUI-PRD.md) for detailed keyboard navigation within draft cards (text editing and button navigation).
 
 #### Advanced Task Launch Options Modal
 
 The advanced task launch options modal provides comprehensive control over task execution parameters, exposing the full range of options available in the `ah task` and `ah agent start` commands. These options are stored in the draft card and persist for the current TUI lifetime. When you launch a task, the options are preserved for the next draft card, making it easy to launch multiple tasks with the same configuration. Split mode preferences are also remembered for the TUI lifetime. Neither advanced options nor split mode preferences are persisted to disk - they reset when the TUI restarts.
 
-- **Modal Activation**: Click gear button (⚙️) or press Ctrl+Enter when in draft textarea
+- **Modal Activation**: Click gear button (⚙️) or press `keys:show-launch-options` when in draft textarea
 - **Modal Layout**: Two-column layout with options on the left and launch shortcuts/menu on the right
 
 ##### Left Column: Task Options
@@ -649,7 +619,7 @@ The left column contains grouped configuration options organized by category and
 - **Codex Workspace**: Cloud workspace identifier for Codex
 - **Workspace**: Generic workspace identifier for cloud agents
 
-**Option Navigation**: Left/Right arrow keys move between left and right columns. Up/Down arrows navigate within each column. Tab cycles through all controls in left-to-right, top-to-bottom order.
+**Option Navigation**: `keys:navigate-left`/`keys:navigate-right` move between left and right columns. `keys:navigate-up`/`keys:navigate-down` navigate within each column. `keys:move-to-next-field` cycles through all controls in left-to-right, top-to-bottom order.
 
 ##### Right Column: Launch Shortcuts & Menu
 
@@ -661,7 +631,7 @@ The right column provides launch action selection with keyboard shortcuts:
 - **Launch in vertical split** - Type `v` when menu is visible (creates vertical split pane)
 - **Focus variants**: Capital letters `T`, `S`, `H`, `V` launch and automatically focus the new task window/pane
 
-**Launch Menu Navigation**: Arrow keys navigate between launch options. Enter selects the highlighted option. Single letters (t/s/h/v) or capitals (T/S/H/V) can be typed directly to select when modal is visible.
+**Launch Menu Navigation**: `keys:navigate-up`/`keys:navigate-down` navigate between launch options. `keys:activate-current-item` selects the highlighted option. Single letters (t/s/h/v) or capitals (T/S/H/V) can be typed directly to select when modal is visible.
 
 - **Modal dismissal and changes**:
   - **'Space' key**: Toggles boolean values and opens enum selection popups for editing option values
@@ -722,10 +692,10 @@ These policies serve as defaults in the advanced launch options modal but can be
 
 #### Modal Navigation (Telescope-style)
 
-- **↑↓**: Navigate through options in fuzzy search
-- **Enter**: Select current item
-- **Esc**: Close modal
-- **Left/Right** or **Shift+= / -**: Adjust model instance counts in model selection
+- **keys:navigate-up`/`keys:navigate-down**: Navigate through options in fuzzy search
+- **keys:activate-current-item**: Select current item
+- **keys:dismiss-overlay**: Close modal
+- **keys:navigate-left`/`keys:navigate-right** or **keys:increment-value`/`keys:decrement-value**: Adjust model instance counts in model selection
 
 #### Advanced Launch Options Modal Navigation
 
@@ -790,12 +760,12 @@ For detailed information about configuration file locations, precedence rules, a
 The TUI follows Charm (Bubble Tea/Lip Gloss) design principles with multiple theme options:
 
 - **Default Theme**: Catppuccin Mocha - Dark theme with cohesive colors
-  - Background: `#11111B`
-  - Surface/Card backgrounds: `#242437`
-  - Text: `#CDD6F4`
-  - Primary: `#89B4FA` (blue for actions)
-  - Accent: `#A6E3A1` (green for success)
-  - Muted: `#7F849C` (secondary text)
+  - Background: `color:bg`
+  - Surface/Card backgrounds: `color:surface`
+  - Text: `color:text`
+  - Primary: `color:primary` (blue for actions)
+  - Accent: `color:accent` (green for success)
+  - Muted: `color:muted` (secondary text)
 - **Multiple Theme Support**: Users can choose from various themes including:
   - Catppuccin variants (Latte, Frappe, Macchiato, Mocha)
   - Other popular dark themes (Nord, Dracula, Solarized Dark, etc.)
@@ -861,111 +831,6 @@ The dialog style preference can be configured via `tui.selection-dialog-style`:
 - `modal` (default): Use modal dialogs for all selection interfaces
 - `inline`: Use inline dialogs for all selection interfaces where possible
 - `default`: Each dialog uses the style prescribed by the designers of the Agent Harbor interface.
-
-#### Text Area Shortcuts
-
-All inputs should have appropriate placeholder text.
-Text inputs should support a combination of CUA, macOS and Emacs key bindings.
-The user can override any of the default key bindings through configuration variables listed below.
-All such variables are in under the "[tui.keymap]" section.
-
-## Configuration Variable Mapping
-
-| Category                        | Operation                                     | Config Variable                  | Key Bindings                                                                    |
-| ------------------------------- | --------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------- |
-| **Cursor Movement**             | Move to beginning of line                     | `move-to-beginning-of-line`      | C-a (Emacs), Home (CUA/PC), Cmd+Left (macOS)                                    |
-|                                 | Move to end of line                           | `move-to-end-of-line`            | C-e (Emacs), End (CUA/PC), Cmd+Right (macOS)                                    |
-|                                 | Move forward one character                    | `move-forward-one-character`     | C-f (Emacs), Right                                                              |
-|                                 | Move backward one character                   | `move-backward-one-character`    | Left                                                                            |
-|                                 | Move to next line                             | `move-to-next-line`              | Down                                                                            |
-|                                 | Move to previous line                         | `move-to-previous-line`          | Up, C-p (Emacs)                                                                 |
-|                                 | Move forward one word                         | `move-forward-one-word`          | M-f (Emacs), Ctrl+Right (CUA/PC), Opt+Right (macOS)                             |
-|                                 | Move backward one word                        | `move-backward-one-word`         | M-b (Emacs), Ctrl+Left (CUA/PC), Opt+Left (macOS)                               |
-|                                 | Move to beginning of sentence                 | `move-to-beginning-of-sentence`  | M-a (Emacs)                                                                     |
-|                                 | Move to end of sentence                       | `move-to-end-of-sentence`        | M-e (Emacs)                                                                     |
-|                                 | Scroll down one screen                        | `scroll-down-one-screen`         | C-v (Emacs), PgDn (CUA/PC), Fn+Down (macOS)                                     |
-|                                 | Scroll up one screen                          | `scroll-up-one-screen`           | M-v (Emacs), PgUp (CUA/PC), Fn+Up (macOS)                                       |
-|                                 | Recenter screen on cursor                     | `recenter-screen-on-cursor`      | C-l (Emacs)                                                                     |
-|                                 | Move to beginning of document                 | `move-to-beginning-of-document`  | Ctrl+Home (CUA/PC), Cmd+Up (macOS)                                              |
-|                                 | Move to end of document                       | `move-to-end-of-document`        | Ctrl+End (CUA/PC), Cmd+Down (macOS)                                             |
-|                                 | Move to beginning of paragraph                | `move-to-beginning-of-paragraph` | Opt+Up (macOS)                                                                  |
-|                                 | Move to end of paragraph                      | `move-to-end-of-paragraph`       | Opt+Down (macOS)                                                                |
-|                                 | Go to line number                             | `go-to-line-number`              | Ctrl+G (CUA/PC in some), Cmd+L (macOS in some), M-g g (Emacs)                   |
-|                                 | Move to matching parenthesis                  | `move-to-matching-parenthesis`   | C-M-f (Emacs forward), C-M-b (Emacs backward)                                   |
-| **Editing and Deletion**        | Delete character forward                      | `delete-character-forward`       | C-d (Emacs), Delete (CUA/PC and macOS; Fn+Delete on macOS laptops)              |
-|                                 | Delete character backward                     | `delete-character-backward`      | DEL or C-h (Emacs), Backspace (CUA/PC and macOS)                                |
-|                                 | Delete word forward                           | `delete-word-forward`            | M-d (Emacs), Ctrl+Delete (CUA/PC), Opt+Delete (macOS; Opt+Fn+Delete on laptops) |
-|                                 | Delete word backward                          | `delete-word-backward`           | M-DEL (Emacs), Ctrl+Backspace (CUA/PC), Opt+Backspace (macOS)                   |
-|                                 | Kill (cut) to end of line                     | `delete-to-end-of-line`          | C-k (Emacs), Ctrl+K (macOS in some text fields)                                 |
-|                                 | Kill region (cut selected text)               | `cut`                            | C-w (Emacs), Ctrl+X (CUA/PC), Cmd+X (macOS)                                     |
-|                                 | Copy region to kill ring (copy selected text) | `copy`                           | M-w (Emacs), Ctrl+C (CUA/PC), Cmd+C (macOS)                                     |
-|                                 | Yank (paste) from kill ring                   | `paste`                          | C-y (Emacs), Ctrl+V (CUA/PC), Cmd+V (macOS)                                     |
-|                                 | Cycle through kill ring (after yank)          | `cycle-through-clipboard`        | M-y (Emacs)                                                                     |
-|                                 | Transpose characters                          | `transpose-characters`           | C-t (Emacs)                                                                     |
-|                                 | Transpose words                               | `transpose-words`                | M-t (Emacs)                                                                     |
-|                                 | Undo                                          | `undo`                           | C-\_ or C-/ (Emacs), Ctrl+Z (CUA/PC), Cmd+Z (macOS)                             |
-|                                 | Redo                                          | `redo`                           | C-? (Emacs, Ctrl+Shift+/), Ctrl+Y (CUA/PC), Cmd+Shift+Z (macOS)                 |
-|                                 | Open (insert) new line                        | `open-new-line`                  | C-o (Emacs), Enter (CUA/PC and macOS), Shift+Enter (TUI)                        |
-|                                 | Indent or complete                            | `indent-or-complete`             | TAB (Emacs)                                                                     |
-|                                 | Move to next field                            | `move-to-next-field`             | Tab                                                                             |
-|                                 | Move to previous field                        | `move-to-previous-field`         | Shift+Tab                                                                       |
-|                                 | Dismiss overlay                               | `dismiss-overlay`                | Esc                                                                             |
-|                                 | Apply modal changes                           | `apply-modal-changes`            | A (in modal context)                                                            |
-|                                 | Increment value                               | `increment-value`                | Shift+=, Right                                                                  |
-|                                 | Decrement value                               | `decrement-value`                | -, Left                                                                         |
-|                                 | Delete to beginning of line                   | `delete-to-beginning-of-line`    | Cmd+Backspace (macOS)                                                           |
-|                                 | Toggle insert mode                            | `toggle-insert-mode`             | Insert                                                                          |
-| **Text Transformation**         | Uppercase word                                | `uppercase-word`                 | M-u (Emacs)                                                                     |
-|                                 | Lowercase word                                | `lowercase-word`                 | M-l (Emacs)                                                                     |
-|                                 | Capitalize word                               | `capitalize-word`                | M-c (Emacs)                                                                     |
-|                                 | Fill/justify paragraph                        | `justify-paragraph`              | M-q (Emacs)                                                                     |
-|                                 | Join lines                                    | `join-lines`                     | M-^ (Emacs)                                                                     |
-| **Formatting (Markdown Style)** | Bold                                          | `bold`                           | Ctrl+B (CUA/PC), Cmd+B (macOS)                                                  |
-|                                 | Italic                                        | `italic`                         | Ctrl+I (CUA/PC), Cmd+I (macOS)                                                  |
-|                                 | Underline                                     | `underline`                      | Ctrl+U (CUA/PC), Cmd+U (macOS)                                                  |
-| **Code Editing**                | Toggle comment                                | `toggle-comment`                 | M-; (Emacs), Ctrl+/ (CUA/PC), Cmd+/ (macOS)                                     |
-|                                 | Duplicate line/selection                      | `duplicate-line-selection`       | Ctrl+Shift+D (CUA/PC), Cmd+Shift+D (macOS)                                      |
-|                                 | Move line up                                  | `move-line-up`                   | Alt+Up (CUA/PC), Opt+Up (macOS)                                                 |
-|                                 | Move line down                                | `move-line-down`                 | Alt+Down (CUA/PC), Opt+Down (macOS)                                             |
-|                                 | Indent region                                 | `indent-region`                  | C-M-\ (Emacs), Ctrl+] (CUA/PC), Cmd+] (macOS)                                   |
-|                                 | Dedent region                                 | `dedent-region`                  | Ctrl+[ (CUA/PC), Cmd+[ (macOS)                                                  |
-| **Search and Replace**          | Incremental search forward                    | `incremental-search-forward`     | C-s (Emacs), Ctrl+F (CUA/PC), Cmd+F (macOS)                                     |
-|                                 | Incremental search backward                   | `incremental-search-backward`    | C-r (Emacs)                                                                     |
-|                                 | Query replace                                 | `find-and-replace`               | M-% (Emacs), Ctrl+H (CUA/PC in some apps)                                       |
-|                                 | Query replace with regex                      | `find-and-replace-with-regex`    | C-M-% (Emacs)                                                                   |
-|                                 | Find next                                     | `find-next`                      | F3 (CUA/PC), Cmd+G (macOS)                                                      |
-|                                 | Find previous                                 | `find-previous`                  | Shift+F3 (CUA/PC), Cmd+Shift+G (macOS)                                          |
-| **Mark and Region**             | Set mark (start selection)                    | `set-mark`                       | C-SPC or C-@ (Emacs)                                                            |
-|                                 | Select all (mark whole text area)             | `select-all`                     | C-x h (Emacs), Ctrl+A (CUA/PC), Cmd+A (macOS)                                   |
-|                                 | Select word under cursor                      | `select-word-under-cursor`       | Alt+@                                                                           |
-|                                 | Extend selection                              | no config variable               | Shift+movement key (CUA/PC and macOS)                                           |
-| **Application Actions**         | Draft new task                                | `draft-new-task`                 | Ctrl+N                                                                          |
-|                                 | Show Advanced Launch Options                  | `show-launch-options`            | Ctrl+Enter                                                                      |
-|                                 | Launch and focus                              | `launch-and-focus`               | No Default Shortcut                                                             |
-|                                 | Launch in split view                          | `launch-in-split-view`           | No Default Shortcut                                                             |
-|                                 | Launch in split view and focus                | `launch-in-split-view-and-focus` | No Default Shortcut                                                             |
-|                                 | Launch in horizontal split                    | `launch-in-horizontal-split`     | No Default Shortcut                                                             |
-|                                 | Launch in vertical split                      | `launch-in-vertical-split`       | No Default Shortcut                                                             |
-|                                 | Activate current item                         | `activate-current-item`          | Enter                                                                           |
-|                                 | Delete current task                           | `delete-current-task`            | Ctrl+W (CUA/PC), Cmd+W (macOS), C-x k (Emacs)                                   |
-| **Session Viewer Task Entry**   | Move to next snapshot                         | `move-to-next-snapshot`          | Ctrl+Shift+Down                                                                 |
-|                                 | Move to previous snapshot                     | `move-to-previous-snapshot`      | Ctrl+Shift+Up                                                                   |
-
-Note: In the table, "C-" means Control, "M-" means Meta (often Alt/Option), and combinations like "C-M-" use both. Please note that the Meta key should be the Option key on macOS and the Alt key otherwise. This can be overridden with the configuration option `tui.keymap.meta-key`.
-
-### Emacs Key Binding Conflicts
-
-Several traditional Emacs key bindings (C-b, C-f, C-n) for cursor movement have been simplified to use only arrow keys in the current implementation due to conflicts with other application shortcuts (C-b conflicts with "Bold", C-f conflicts with "Incremental search forward", C-n conflicts with "Draft new task"). Users who prefer full Emacs-style navigation can configure custom key bindings using the `tui.keymap` configuration section.
-
-### Card List Keyboard Shortcuts
-
-While the focus is on a task card, the user can press Ctrl+W (CUA/PC), Cmd+W (macOS), C-x k (Emacs) to delete the task.
-
-Draft and active cards are deleted without leaving a trace. Deleting an active cards aborts any running agents.
-
-The delete operation is mapped to archiving the card for completed/merged task. Archived tasks are removed from listings and search results by default.
-
-Both Ctrl+N (CUA/PC), Cmd+N (macOS) create a new draft task card.
 
 ### Accessibility
 
