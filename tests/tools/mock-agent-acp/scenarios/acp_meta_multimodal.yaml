@@ -1,0 +1,35 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: acp_meta_multimodal
+tags: [acp, meta, multimodal]
+acp:
+  capabilities:
+    loadSession: false
+    promptCapabilities:
+      image: true
+      audio: true
+timeline:
+  - userInputs:
+      - relativeTime: 0
+        input:
+          - type: text
+            text: 'Describe the image and audio'
+          - type: image
+            data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wIAAgMBApT9swAAAABJRU5ErkJggg=='
+            mimeType: image/png
+          - type: audio
+            data: 'UklGRigAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA='
+            mimeType: audio/wav
+        meta:
+          note: 'prompt-meta'
+  - sessionStart:
+      sessionId: 'meta-mm'
+      meta:
+        note: 'session-start-meta'
+  - llmResponse:
+      - assistant:
+          - relativeTime: 0
+            content: 'Received image and audio.'
+        meta:
+          note: 'assistant-meta'

@@ -9,6 +9,7 @@ use ah_rest_server::{
     Server, ServerConfig,
     mock_dependencies::{MockServerDependencies, ScenarioPlaybackOptions},
 };
+use ah_scenario_format::SymbolTable;
 use clap::Parser;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -40,6 +41,10 @@ struct Args {
     /// Seconds to keep connections open after a scenario timeline completes (helps tests capture trailing events)
     #[arg(long = "scenario-linger-secs")]
     scenario_linger_secs: Option<f64>,
+
+    /// Symbols for scenario rule evaluation (KEY=VAL). Repeatable.
+    #[arg(long = "scenario-define", value_name = "KEY=VAL", action = clap::ArgAction::Append)]
+    scenario_defines: Vec<String>,
 }
 
 #[tokio::main]
@@ -63,6 +68,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
     playback.linger_after_timeline_secs = args.scenario_linger_secs;
+    if !args.scenario_defines.is_empty() {
+        playback.symbols = Some(SymbolTable::from_kv_pairs(&args.scenario_defines));
+    }
     if !args.scenarios.is_empty() {
         playback.scenario_files = args.scenarios.clone();
     } else if let Ok(env_path) = std::env::var("AH_SCENARIO_DIR") {

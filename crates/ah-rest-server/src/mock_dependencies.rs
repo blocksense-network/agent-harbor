@@ -11,11 +11,12 @@ use ah_local_db::Database;
 use ah_rest_api_contract::*;
 use ah_scenario_format::{
     PlaybackEventKind, PlaybackIterator, PlaybackOptions, Scenario, ScenarioLoader, ScenarioRecord,
-    ScenarioSource,
+    ScenarioSource, SymbolTable,
 };
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
+use serde_yaml;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,6 +33,8 @@ pub struct ScenarioPlaybackOptions {
     pub speed_multiplier: f64,
     /// Optional linger (seconds) to keep connections open after timeline finishes.
     pub linger_after_timeline_secs: Option<f64>,
+    /// Optional symbol table for scenario rule evaluation.
+    pub symbols: Option<SymbolTable>,
 }
 
 impl ScenarioPlaybackOptions {
@@ -49,6 +52,7 @@ impl Default for ScenarioPlaybackOptions {
             scenario_files: Vec::new(),
             speed_multiplier: 1.0,
             linger_after_timeline_secs: None,
+            symbols: None,
         }
     }
 }
@@ -83,7 +87,11 @@ impl MockServerDependencies {
                     }
                 })
                 .collect::<Vec<_>>();
-            match ScenarioLoader::from_sources(sources) {
+            let symbols = options
+                .symbols
+                .clone()
+                .unwrap_or_else(|| SymbolTable::from_env_var("AH_SCENARIO_DEFINES"));
+            match ScenarioLoader::from_sources_with_symbols(sources, symbols) {
                 Ok(loader) => Arc::new(ScenarioSessionStore::new(
                     loader,
                     options.speed_multiplier,
@@ -667,6 +675,94 @@ impl ScenarioSessionStore {
                 )
                 .await?;
                 self.update_status(session_id, SessionStatus::Failed, timestamp_ms).await?;
+            }
+            PlaybackEventKind::PlanUpdate(plan) => {
+                self.push_event(
+                    session_id,
+                    SessionEvent::log(
+                        SessionLogLevel::Info,
+                        format!("plan update: {:?}", plan),
+                        None,
+                        timestamp_ms,
+                    ),
+                )
+                .await?;
+            }
+            PlaybackEventKind::ModeChange(mode) => {
+                self.push_event(
+                    session_id,
+                    SessionEvent::log(
+                        SessionLogLevel::Info,
+                        format!("mode change: {:?}", mode),
+                        None,
+                        timestamp_ms,
+                    ),
+                )
+                .await?;
+            }
+            PlaybackEventKind::ModelChange(model) => {
+                self.push_event(
+                    session_id,
+                    SessionEvent::log(
+                        SessionLogLevel::Info,
+                        format!("model change: {:?}", model),
+                        None,
+                        timestamp_ms,
+                    ),
+                )
+                .await?;
+            }
+            PlaybackEventKind::Cancel => {
+                self.push_event(
+                    session_id,
+                    SessionEvent::log(
+                        SessionLogLevel::Info,
+                        "session cancelled".into(),
+                        None,
+                        timestamp_ms,
+                    ),
+                )
+                .await?;
+            }
+            PlaybackEventKind::AgentFileReads { data: reads, meta } => {
+                let meta_str = meta
+                    .as_ref()
+                    .and_then(|m| serde_yaml::to_string(m).ok())
+                    .map(|s| s.replace('\n', " "));
+                self.push_event(
+                    session_id,
+                    SessionEvent::log(
+                        SessionLogLevel::Info,
+                        format!(
+                            "agent file reads: {:?}{}",
+                            reads,
+                            meta_str.map(|m| format!(" meta={}", m.trim())).unwrap_or_default()
+                        ),
+                        None,
+                        timestamp_ms,
+                    ),
+                )
+                .await?;
+            }
+            PlaybackEventKind::AgentPermissionRequest { data: req, meta } => {
+                let meta_str = meta
+                    .as_ref()
+                    .and_then(|m| serde_yaml::to_string(m).ok())
+                    .map(|s| s.replace('\n', " "));
+                self.push_event(
+                    session_id,
+                    SessionEvent::log(
+                        SessionLogLevel::Info,
+                        format!(
+                            "agent permission request: {:?}{}",
+                            req,
+                            meta_str.map(|m| format!(" meta={}", m.trim())).unwrap_or_default()
+                        ),
+                        None,
+                        timestamp_ms,
+                    ),
+                )
+                .await?;
             }
         }
         Ok(())

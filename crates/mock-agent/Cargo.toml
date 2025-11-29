@@ -1,0 +1,36 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "mock-agent"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[dependencies]
+ah-scenario-format = { path = "../ah-scenario-format" }
+agent-client-protocol = { path = "../../vendor/acp-rust-sdk" }
+agent-client-protocol-schema = "0.4.11"
+anyhow = "1.0"
+async-trait = "0.1"
+clap = { version = "4.5", features = ["derive"] }
+futures = "0.3"
+piper = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uuid = { version = "1.0", features = ["v4"] }
+base64 = "0.21"
+
+# TODO: Add ACP Rust SDK dependency when available
+# acp-rust-sdk = { path = "../../vendor/acp-rust-sdk" }
+
+[dev-dependencies]
+portable-pty = "0.8"
+shell-words = "1.1"
+tempfile = "3.10"

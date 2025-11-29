@@ -122,8 +122,9 @@ use crate::{
 };
 use ah_scenario_format::{
     AssistantStep, ErrorData, FileEditData, ResponseElement, Scenario, ScenarioLoader,
-    ScenarioMatcher, ScenarioRecord, ScenarioSource, ThinkingStep, TimelineEvent, ToolResultData,
-    ToolUseData, UserInputEntry, extract_prompt_from_input_value, extract_text_from_content_block,
+    ScenarioMatcher, ScenarioRecord, ScenarioSource, SymbolTable, ThinkingStep, TimelineEvent,
+    ToolResultData, ToolUseData, UserInputEntry, extract_prompt_from_input_content,
+    extract_text_from_content_block,
 };
 
 // Add missing dependencies for timeline processing
@@ -199,7 +200,15 @@ impl ScenarioPlayer {
             if sources.is_empty() {
                 Vec::new()
             } else {
-                ScenarioLoader::from_sources(sources)
+                let symbols = {
+                    let cfg = config.read().await;
+                    cfg.scenario
+                        .scenario_defines
+                        .as_ref()
+                        .map(|v| SymbolTable::from_kv_pairs(v))
+                        .unwrap_or_else(|| SymbolTable::from_env_var("AH_SCENARIO_DEFINES"))
+                };
+                ScenarioLoader::from_sources_with_symbols(sources, symbols)
                     .map_err(|e| Error::Scenario {
                         message: format!("Failed to load scenarios: {}", e),
                     })?
@@ -684,7 +693,7 @@ impl ScenarioPlayer {
     /// Validate scenario structure and constraints
     fn validate_scenario(scenario: &Scenario) -> Result<()> {
         for event in &scenario.timeline {
-            if let TimelineEvent::LlmResponse { llm_response } = event {
+            if let TimelineEvent::LlmResponse { llm_response, .. } = event {
                 let mut has_thinking = false;
                 let mut has_assistant = false;
 
@@ -772,6 +781,7 @@ struct AggregatedResponse {
 }
 
 /// Response part collected from timeline events
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum ResponsePart {
     Think(Vec<ThinkingStep>),
@@ -914,7 +924,7 @@ impl ScenarioSession {
         streaming: bool,
     ) -> Result<ProxyResponse> {
         for next_idx in (idx + 1)..scenario.timeline.len() {
-            if let TimelineEvent::LlmResponse { llm_response } = &scenario.timeline[next_idx] {
+            if let TimelineEvent::LlmResponse { llm_response, .. } = &scenario.timeline[next_idx] {
                 let mut response_parts = Vec::new();
                 for element in llm_response {
                     match element {
@@ -953,7 +963,7 @@ impl ScenarioSession {
 
         // Scan timeline to find matching agentToolUse and its following llmResponse
         for (idx, event) in scenario.timeline.iter().enumerate() {
-            if let TimelineEvent::AgentToolUse { agent_tool_use } = event {
+            if let TimelineEvent::AgentToolUse { agent_tool_use, .. } = event {
                 let agent_yaml = serde_yaml::to_value(agent_tool_use)?;
                 if self.tool_execution_matches(&agent_yaml, &tool_content)? {
                     return self.llm_response_after_index(scenario, idx, client_format, streaming);
@@ -1055,8 +1065,7 @@ impl ScenarioSession {
     /// Check new typed user input entries
     fn user_input_entries_match(&self, entries: &[UserInputEntry], actual_content: &str) -> bool {
         entries.iter().any(|entry| {
-            extract_prompt_from_input_value(&entry.input)
-                .or_else(|| extract_text_from_content_block(&entry.input))
+            extract_prompt_from_input_content(&entry.input)
                 .map(|prompt| actual_content.contains(&prompt))
                 .unwrap_or(false)
         })
@@ -1110,7 +1119,7 @@ impl ScenarioSession {
         while self.current_event_index < scenario.timeline.len() {
             let event = &scenario.timeline[self.current_event_index];
             match event {
-                TimelineEvent::LlmResponse { llm_response } => {
+                TimelineEvent::LlmResponse { llm_response, .. } => {
                     let mut response_parts = Vec::new();
                     for element in llm_response {
                         match element {
@@ -1131,7 +1140,7 @@ impl ScenarioSession {
                         self.generate_api_response(aggregated, client_format)
                     };
                 }
-                TimelineEvent::AgentToolUse { agent_tool_use } => {
+                TimelineEvent::AgentToolUse { agent_tool_use, .. } => {
                     self.current_event_index += 1;
                     let aggregated = self.process_response_parts(vec![ResponsePart::ToolUse(
                         agent_tool_use.clone(),
@@ -1142,7 +1151,7 @@ impl ScenarioSession {
                         self.generate_api_response(aggregated, client_format)
                     };
                 }
-                TimelineEvent::AgentEdits { agent_edits } => {
+                TimelineEvent::AgentEdits { agent_edits, .. } => {
                     self.current_event_index += 1;
                     let aggregated = self.process_response_parts(vec![ResponsePart::FileEdit(
                         agent_edits.clone(),
@@ -1368,6 +1377,11 @@ impl ScenarioSession {
             } => Ok(ResponsePart::FileEdit(edit_data.clone())),
             ResponseElement::Assistant { assistant: steps } => {
                 Ok(ResponsePart::Assistant(steps.clone()))
+            }
+            ResponseElement::AgentPlan { agent_plan: _ } => {
+                // Agent plan elements might need special handling
+                // For now, we'll ignore them in the response
+                Ok(ResponsePart::Assistant(vec![]))
             }
         }
     }

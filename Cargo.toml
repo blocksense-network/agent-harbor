@@ -57,6 +57,7 @@ members = [
   "crates/ah-client-api",
   "crates/ah-rest-server",
   "crates/ah-scenario-format",
+  "crates/mock-agent",
   "crates/ah-test-scenarios",
   "crates/ah-rest-client-mock",
   "crates/ah-rest-mock-client",

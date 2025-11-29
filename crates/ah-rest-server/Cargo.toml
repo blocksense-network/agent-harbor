@@ -103,6 +103,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "json",
 ] }
+serde_yaml = { workspace = true }
 
 # ACP runtime (vendored)
 agent-client-protocol = { workspace = true }

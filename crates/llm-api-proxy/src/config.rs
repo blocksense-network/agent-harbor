@@ -364,6 +364,9 @@ pub struct ScenarioConfig {
 
     /// Minimize JSON logs (default: false, pretty-print by default)
     pub minimize_logs: bool,
+
+    /// Symbols for scenario rule evaluation (KEY=VAL). When provided, these take precedence over the environment variable AH_SCENARIO_DEFINES.
+    pub scenario_defines: Option<Vec<String>>,
 }
 
 impl ProxyConfig {

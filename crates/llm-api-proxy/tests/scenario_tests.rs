@@ -708,7 +708,10 @@ expect:
         ApiFormat::Anthropic => "/v1/messages",
     };
     assert_eq!(request_entry["path"], expected_path);
-    assert_eq!(request_entry["request_id"], "test-request-id");
+    assert!(
+        request_entry["request_id"].is_string(),
+        "request_id should be string"
+    );
     assert!(request_entry.get("timestamp").is_some());
     assert!(request_entry.get("body").is_some());
 

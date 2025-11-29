@@ -1,0 +1,23 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-acp-mock-client"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[dependencies]
+ah-scenario-format = { path = "../ah-scenario-format" }
+anyhow = "1.0"
+async-trait = "0.1"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+uuid = { version = "1.0", features = ["v4"] }
+
+# TODO: Add ACP Rust SDK dependency when available
+# acp-rust-sdk = { path = "../../vendor/acp-rust-sdk" }
