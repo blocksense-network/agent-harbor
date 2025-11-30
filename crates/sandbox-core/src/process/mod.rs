@@ -478,7 +478,7 @@ impl ProcessManager {
         // Unmount any existing /proc mount
         let _ = nix::mount::umount("/proc");
 
-        // Mount new /proc
+        // Mount new /proc for this PID namespace
         mount(
             Some("proc"),
             "/proc",
@@ -490,8 +490,65 @@ impl ProcessManager {
             warn!("Failed to mount /proc: {}", e);
             Error::Execution(format!("Failed to mount /proc: {}", e))
         })?;
-
         debug!("Successfully mounted /proc");
+
+        // Mount a fresh tmpfs over /tmp to isolate temporary files from the host.
+        // This ensures that files created in /tmp inside the sandbox don't leak to
+        // the host's /tmp and vice versa.
+        // NOTE: We skip this if the working directory is under /tmp to preserve
+        // access to FUSE mounts like AgentFS.
+        self.mount_isolated_tmp(self.config.working_dir.as_deref())?;
+
+        Ok(())
+    }
+
+    /// Mount a fresh tmpfs over /tmp to isolate temporary files from the host.
+    ///
+    /// This is critical for sandbox isolation - without this, any files written
+    /// to /tmp inside the sandbox would be visible on the host filesystem.
+    ///
+    /// If `working_dir` is under /tmp (e.g., /tmp/agentfs for FUSE mounts), we skip
+    /// the tmpfs mount to preserve access to those mounts. The trade-off is that
+    /// /tmp won't be fully isolated in this case, but this is acceptable when the
+    /// working directory itself is a special mount like AgentFS that provides its
+    /// own isolation.
+    fn mount_isolated_tmp(&self, working_dir: Option<&str>) -> Result<()> {
+        use std::path::Path;
+
+        let tmp_path = Path::new("/tmp");
+        if !tmp_path.exists() {
+            debug!("/tmp does not exist, skipping tmpfs mount");
+            return Ok(());
+        }
+
+        // Check if the working directory is under /tmp
+        // If so, skip tmpfs mount to preserve access to FUSE mounts like AgentFS
+        if let Some(dir) = working_dir {
+            if dir.starts_with("/tmp/") || dir == "/tmp" {
+                debug!(
+                    "Working directory {} is under /tmp, skipping tmpfs mount to preserve FUSE mounts",
+                    dir
+                );
+                return Ok(());
+            }
+        }
+
+        // Mount a new tmpfs over /tmp
+        // Size limit of 256MB should be sufficient for most sandbox operations
+        // TODO: Add a configuration value for the capacity
+        mount(
+            Some("tmpfs"),
+            "/tmp",
+            Some("tmpfs"),
+            MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
+            Some("size=256m,mode=1777"),
+        )
+        .map_err(|e| {
+            warn!("Failed to mount tmpfs on /tmp: {}", e);
+            Error::Execution(format!("Failed to mount tmpfs on /tmp: {}", e))
+        })?;
+
+        debug!("Successfully mounted isolated tmpfs on /tmp");
         Ok(())
     }
 
