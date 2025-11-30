@@ -873,7 +873,7 @@ This milestone implements the overlay materialization policies described in [Age
   - [x] T16.0 Test Harness – `scripts/test-agentfs-sandbox.sh` (`just test-agentfs-sandbox`) implemented covering T16.1–T16.24; outputs structured logs to `logs/agentfs-sandbox-<timestamp>/` with JSON summary
   - [x] T16.0.1 Enhanced Telemetry – structured logging added to `sandbox.rs` with `target: "ah::sandbox::agentfs"` covering provider selection, capability detection, transport type, and troubleshooting hints
   - [x] T16.1 Basic Execution – **PASSED** – sandbox command executes successfully with AgentFS provider
-  - [~] T16.2 Filesystem Isolation – **SKIPPED** – full `/tmp` isolation requires tmpfs overlay (not yet implemented); PID namespace isolation verified
+  - [x] T16.2 Filesystem Isolation – **PASSED** – tmpfs mounted on `/tmp` for isolation; when working under AgentFS mount, AgentFS provides isolation instead
   - [~] T16.3 Overlay Persistence – **SKIPPED** – each sandbox creates new branch; persistence requires explicit branch reuse
   - [x] T16.4 Branch Binding – **PASSED** – telemetry shows branch/workspace preparation
   - [x] T16.5 Process Isolation – **PASSED** – PID namespace active; `ps` shows only sandbox processes (< 10 PIDs)
@@ -906,8 +906,9 @@ This milestone implements the overlay materialization policies described in [Age
 - **Implementation Notes** (Nov 2025):
   - **Double-fork pattern**: The sandbox now correctly uses a double-fork pattern for PID namespace isolation. After `unshare(CLONE_NEWPID)`, the process is NOT in the new PID namespace—only its children are. The implementation forks twice: (1) first fork escapes tokio's multi-threaded runtime, (2) second fork enters the new PID namespace as PID 1.
   - **UID/GID mapping protocol**: After `unshare(CLONE_NEWUSER)`, the child cannot write its own `/proc/self/uid_map`. The parent process must write to `/proc/<child_pid>/uid_map` and `/proc/<child_pid>/gid_map`. The implementation uses pipe-based synchronization between parent and child.
-  - **Test results**: 13 passed, 4 skipped, 0 failed. Skipped tests document features not yet implemented (network namespace, filesystem overlay for /tmp, secrets protection).
-  - **Key source files**: `crates/sandbox-core/src/process/mod.rs` (double-fork + uid_map), `crates/sandbox-core/src/tests.rs` (integration tests)
+  - **`/tmp` isolation**: A fresh tmpfs is mounted over `/tmp` inside the sandbox to prevent file leakage to the host. Exception: when working directory is under `/tmp` (like `/tmp/agentfs`), tmpfs mounting is skipped to preserve FUSE mounts—AgentFS provides its own isolation in this case.
+  - **Test results**: 13 passed, 4 skipped, 0 failed. Skipped tests document features not yet implemented (network namespace, overlay persistence, secrets protection).
+  - **Key source files**: `crates/sandbox-core/src/process/mod.rs` (double-fork + uid_map + tmpfs), `crates/sandbox-core/src/tests.rs` (integration tests)
 
 **F17. `ah agent start` Integration with AgentFS** (3–4d)
 
