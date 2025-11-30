@@ -29,6 +29,7 @@ async fn test_sandbox_integration() {
         command: vec!["echo".to_string(), "sandbox test".to_string()],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     // Create filesystem configuration
@@ -178,6 +179,7 @@ async fn test_cgroups_integration() {
         command: vec!["echo".to_string(), "cgroup test".to_string()],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     let mut sandbox = Sandbox::with_namespace_config(namespace_config)
@@ -504,6 +506,7 @@ async fn test_filesystem_isolation_overlay() {
         ],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     let fs_config = FilesystemConfig {
@@ -642,6 +645,7 @@ async fn test_filesystem_isolation_readonly_mount() {
         ],
         working_dir: Some(temp_dir.path().to_string_lossy().to_string()),
         env: vec![],
+        tmpfs_size: None,
     };
 
     let fs_config = FilesystemConfig {

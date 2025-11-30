@@ -44,6 +44,10 @@ pub struct ProcessConfig {
     pub working_dir: Option<String>,
     /// Environment variables
     pub env: Vec<(String, String)>,
+    /// Size limit for isolated /tmp tmpfs mount (e.g., "256m", "1G").
+    /// Set to "0" or empty string to disable /tmp isolation entirely.
+    /// Default: "256m"
+    pub tmpfs_size: Option<String>,
 }
 
 impl Default for ProcessConfig {
@@ -52,6 +56,7 @@ impl Default for ProcessConfig {
             command: vec!["/bin/sh".to_string()],
             working_dir: None,
             env: Vec::new(),
+            tmpfs_size: None, // Uses default "256m" when None
         }
     }
 }
@@ -512,6 +517,9 @@ impl ProcessManager {
     /// This is critical for sandbox isolation - without this, any files written
     /// to /tmp inside the sandbox would be visible on the host filesystem.
     ///
+    /// The tmpfs size is configurable via `ProcessConfig::tmpfs_size`. The default
+    /// is "256m" (256 megabytes). Set to "0" to disable /tmp isolation entirely.
+    ///
     /// If `working_dir` is under /tmp (e.g., /tmp/agentfs for FUSE mounts), we skip
     /// the tmpfs mount to preserve access to those mounts. The trade-off is that
     /// /tmp won't be fully isolated in this case, but this is acceptable when the
@@ -519,6 +527,18 @@ impl ProcessManager {
     /// own isolation.
     fn mount_isolated_tmp(&self, working_dir: Option<&str>) -> Result<()> {
         use std::path::Path;
+
+        // Get the configured tmpfs size, defaulting to "256m"
+        let tmpfs_size = self.config.tmpfs_size.as_deref().unwrap_or("256m");
+
+        // Check if /tmp isolation is disabled (size = "0" or empty)
+        if tmpfs_size == "0" || tmpfs_size.is_empty() {
+            debug!(
+                "tmpfs_size is '{}', skipping /tmp isolation as requested",
+                tmpfs_size
+            );
+            return Ok(());
+        }
 
         let tmp_path = Path::new("/tmp");
         if !tmp_path.exists() {
@@ -538,22 +558,26 @@ impl ProcessManager {
             }
         }
 
-        // Mount a new tmpfs over /tmp
-        // Size limit of 256MB should be sufficient for most sandbox operations
-        // TODO: Add a configuration value for the capacity
+        // Build mount options with the configured size
+        // Format: "size=<SIZE>,mode=1777" where SIZE is like "256m", "1G", etc.
+        let mount_options = format!("size={},mode=1777", tmpfs_size);
+
         mount(
             Some("tmpfs"),
             "/tmp",
             Some("tmpfs"),
             MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
-            Some("size=256m,mode=1777"),
+            Some(mount_options.as_str()),
         )
         .map_err(|e| {
             warn!("Failed to mount tmpfs on /tmp: {}", e);
             Error::Execution(format!("Failed to mount tmpfs on /tmp: {}", e))
         })?;
 
-        debug!("Successfully mounted isolated tmpfs on /tmp");
+        debug!(
+            "Successfully mounted isolated tmpfs on /tmp (size={})",
+            tmpfs_size
+        );
         Ok(())
     }
 
@@ -739,9 +763,11 @@ mod tests {
             command: vec!["echo".to_string(), "hello".to_string()],
             working_dir: Some("/tmp".to_string()),
             env: vec![("TEST".to_string(), "value".to_string())],
+            tmpfs_size: Some("512m".to_string()), // Test custom tmpfs size
         };
         let manager = ProcessManager::with_config(config.clone());
         assert_eq!(manager.config().command, config.command);
         assert_eq!(manager.config().working_dir, config.working_dir);
+        assert_eq!(manager.config().tmpfs_size, config.tmpfs_size);
     }
 }

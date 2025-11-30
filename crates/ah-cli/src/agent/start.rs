@@ -295,6 +295,7 @@ impl AgentStartArgs {
                     command: full_cmd,
                     working_dir: Some(config.working_dir.to_string_lossy().to_string()),
                     env: env_vars,
+                    tmpfs_size: None, // Use default tmpfs size for /tmp isolation
                 };
 
                 sandbox = sandbox.with_process_config(process_config);

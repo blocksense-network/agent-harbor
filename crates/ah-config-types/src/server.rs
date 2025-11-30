@@ -36,9 +36,14 @@ pub struct FleetMember {
     pub url: Option<String>,
 }
 
+/// Named sandbox profile for fleet configurations.
+///
+/// This defines a reusable sandbox profile that can be referenced by fleet members.
+/// For sandbox runtime configuration (mode, limits, etc.), see `SandboxConfig` in
+/// the `sandbox` module.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
-pub struct Sandbox {
+pub struct SandboxProfile {
     /// Sandbox profile name
     pub name: Option<String>,
     /// Sandbox type

@@ -191,6 +191,45 @@ Behavior:
 - `cow-overlay` requests isolation at the original repo path (Linux: namespaces/binds; macOS/Windows: AgentFS). When impossible, the system falls back to `worktree` with a diagnostic.
 - `in-place` runs the agent directly on the original working copy. Isolation is disabled, but FsSnapshots may still be available when the chosen provider supports in‑place capture (e.g., Git shadow commits, ZFS/Btrfs snapshots). Use `fs-snapshots = "disable"` to turn snapshots off entirely.
 
+### Sandbox Configuration
+
+Control Linux local sandboxing behavior and resource limits. These options apply to `ah agent sandbox` commands.
+
+TOML keys (top-level section):
+
+```toml
+[sandbox]
+mode = "dynamic"         # dynamic|static - Interactive read allow-list vs RO with blacklists
+debug = true             # Enable debugging/ptrace inside sandbox (default: true)
+allow-network = false    # Enable internet egress via slirp4netns (default: false)
+containers = false       # Allow rootless containers inside sandbox (default: false)
+vm = false               # Allow VMs inside sandbox (default: false)
+allow-kvm = false        # Expose /dev/kvm for VM acceleration (default: false)
+tmpfs-size = "256m"      # Size limit for isolated /tmp tmpfs mount (default: "256m")
+rw-paths = []            # List of read-write path carve-outs
+overlay-paths = []       # List of overlay mount paths
+blacklist-paths = []     # List of blocked/hidden paths (for static mode)
+
+  [sandbox.limits]
+  pids-max = 1024        # Maximum PIDs for fork-bomb protection
+  memory-max = "2G"      # Maximum memory limit
+  memory-high = "1G"     # Memory high watermark
+  cpu-max = "80000 100000"  # CPU quota/period (e.g., "80000 100000" for 80% of one core)
+  io-max = ""            # I/O throttle settings (optional)
+```
+
+Flag and ENV mapping:
+
+- Flags: `--mode`, `--debug`, `--allow-network`, `--containers`, `--vm`, `--allow-kvm`, `--tmpfs-size`, `--rw`, `--overlay`, `--blacklist`, `--pids-max`, `--memory-max`, `--memory-high`, `--cpu-max`
+- ENV: `AH_SANDBOX_MODE`, `AH_SANDBOX_DEBUG`, `AH_SANDBOX_ALLOW_NETWORK`, etc.
+
+Behavior:
+
+- `dynamic` mode provides interactive read allow-listing with supervisor prompts for file access
+- `static` mode makes the filesystem read-only with blacklists, no interactive gating
+- `--tmpfs-size` accepts size suffixes (k, m, g) or "0" to disable `/tmp` isolation entirely
+- Resource limits apply to the cgroup v2 subtree created for each sandbox session
+
 ### Example TOML (partial)
 
 ```toml
@@ -219,6 +258,17 @@ supported-agents = "all" # or ["codex","claude","cursor"]
   devcontainer = true
   direnv = true
   task-runner = "just"
+
+[sandbox]
+mode = "dynamic"
+debug = true
+allow-network = false
+tmpfs-size = "512m"
+
+  [sandbox.limits]
+  pids-max = 2048
+  memory-max = "4G"
+  memory-high = "2G"
 ```
 
 Notes:
