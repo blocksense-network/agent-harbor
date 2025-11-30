@@ -287,7 +287,7 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **M9 supervisor integration**: Foundation for supervisor-based policy enforcement
   - **M10 CLI integration**: User-facing dynamic access control prompts
 
-**M6. Networking** ✅ COMPLETED (4–5d)
+**M6. Networking** ✅ COMPLETED for `sbx-helper` / ⚠️ NOT INTEGRATED with `ah agent sandbox` (4–5d)
 
 - Deliverables:
   - Default loopback only; `--allow-network` starts slirp4netns tied to target PID.
@@ -298,6 +298,8 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - ✅ **E2E test: inside sandbox `curl 1.1.1.1` succeeds with `--allow-network` flag** - Implemented with slirp4netns integration and PID targeting
   - ✅ **E2E test: same-port binds do not collide with host processes** - Implemented with `port_collision_tester` binary
   - ✅ **Unit tests: slirp4netns process lifecycle managed correctly** - 3 unit tests covering NetworkManager functionality
+
+- **Integration Gap (Nov 2025)**: The `sandbox-net` crate and slirp4netns integration work in the standalone `sbx-helper` binary, but are **not yet integrated** with the `ah agent sandbox` CLI command. The CLI command does not use `CLONE_NEWNET` for network namespace isolation. See **M12** for the integration milestone.
 
 - Implementation details:
   - **`NetworkManager`** (`crates/sandbox-net/src/lib.rs`): Core networking orchestration with loopback setup, slirp4netns integration, and process lifecycle management
@@ -462,6 +464,82 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - E2E test: `ah session audit` displays sandbox events correctly
   - Integration test: config keys properly mapped and applied
   - E2E test: all sandbox features work end-to-end in CLI workflow
+
+**M11. Sandbox Configuration System Integration** (3–4d)
+
+- Deliverables:
+  - Define `SandboxConfig` struct in `ah-config-types` with all sandbox options from spec Section 13
+  - Integrate sandbox configuration with layered config system (user/project/org scopes)
+  - Map CLI flags to configuration keys with proper precedence (config < env < CLI flags)
+  - Add JSON Schema generation for sandbox configuration section
+  - Implement configuration validation for sandbox settings
+
+- Configuration Keys (from Local-Sandboxing-on-Linux.md Section 13 & 26):
+  - `sandbox.mode` - Sandbox mode: `dynamic` (interactive read allow-list) or `static` (RO with blacklists)
+  - `sandbox.debug` - Enable debugging/ptrace inside sandbox (default: true)
+  - `sandbox.allow-network` - Enable internet egress via slirp4netns (default: false)
+  - `sandbox.containers` - Allow rootless containers inside sandbox (default: false)
+  - `sandbox.vm` - Allow VMs inside sandbox (default: false)
+  - `sandbox.allow-kvm` - Expose /dev/kvm for VM acceleration (default: false)
+  - `sandbox.rw-paths` - List of read-write path carve-outs
+  - `sandbox.overlay-paths` - List of overlay mount paths
+  - `sandbox.blacklist-paths` - List of blocked/hidden paths (for static mode)
+  - `sandbox.tmpfs-size` - Size limit for isolated `/tmp` tmpfs mount (default: "256m"). Accepts size suffixes: k, m, g. Set to "0" to disable `/tmp` isolation.
+  - `sandbox.limits.pids-max` - Maximum PIDs for fork-bomb protection (default: 1024)
+  - `sandbox.limits.memory-max` - Maximum memory limit (default: "2G")
+  - `sandbox.limits.memory-high` - Memory high watermark (default: "1G")
+  - `sandbox.limits.cpu-max` - CPU quota/period (default: "80000 100000")
+  - `sandbox.limits.io-max` - I/O throttle settings
+
+- Key Source Files:
+  - `crates/ah-config-types/src/sandbox.rs` - SandboxConfig and SandboxLimits structs
+  - `crates/ah-cli/src/sandbox.rs` - CLI flag to config integration
+  - `crates/config-core/src/lib.rs` - Schema generation updates
+
+- Verification:
+  - [ ] SandboxConfig struct defined with all configuration options from spec
+  - [ ] Configuration integrates with layered config system (user/project/org scopes)
+  - [ ] CLI flags override configuration correctly (precedence: config < env < flags)
+  - [ ] JSON Schema includes sandbox configuration section
+  - [ ] Configuration validation rejects invalid values
+  - [ ] E2E test: sandbox respects user-level config defaults
+  - [ ] E2E test: project-level config overrides user-level
+  - [ ] E2E test: CLI flags override all config levels
+  - [ ] Integration test: environment variables (AH*SANDBOX*\*) work correctly
+
+- Spec Updates Required (once implemented):
+  - [ ] Update `Local-Sandboxing-on-Linux.md` Section 13 to add `--tmpfs-size <SIZE>` toggle
+  - [ ] Update `Local-Sandboxing-on-Linux.md` Section 16 step 8 to reference configurable tmpfs size
+  - [ ] Update `Configuration.md` to include sandbox configuration section
+  - [ ] Update `Agent-Harbor-Sandboxing-Strategies.md` to reference configuration options
+
+- Integration Points:
+  - **Configuration.status.md**: Extends existing config system with sandbox section
+  - **M2-M8**: All sandbox features become configurable via config files
+  - **M9 supervisor**: Policy persistence uses configuration scopes
+  - **M10 CLI**: Config keys mapped to CLI behavior
+
+**M12. Network Isolation Integration** (2–3d)
+
+- **Status**: ⚠️ NOT STARTED - M6 completed for `sbx-helper` but not integrated into `ah agent sandbox`
+
+- Deliverables:
+  - Integrate `sandbox-net` crate with `ah agent sandbox` CLI command
+  - Add `CLONE_NEWNET` to namespace creation in sandbox-core
+  - Wire slirp4netns to `--allow-network` flag in CLI
+  - Ensure network isolation works in AgentFS sandbox context
+
+- Verification:
+  - [ ] `ah agent sandbox` creates network namespace by default
+  - [ ] Network is isolated (curl fails without `--allow-network`)
+  - [ ] `--allow-network` enables slirp4netns for internet access
+  - [ ] T16.6 Network Isolation test passes (not skipped)
+  - [ ] T16.7 Network Egress test passes with slirp4netns
+
+- Key Source Files:
+  - `crates/ah-cli/src/sandbox.rs` - CLI integration with sandbox-net
+  - `crates/sandbox-core/src/lib.rs` - Network namespace integration
+  - `crates/sandbox-net/src/lib.rs` - Existing NetworkManager (from M6)
 
 ### Test strategy & tooling
 
