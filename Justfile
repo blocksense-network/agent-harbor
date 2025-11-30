@@ -466,6 +466,11 @@ test-fuse-security-robustness:
 test-fuse-compat:
     ./scripts/test-fuse-compat.sh
 
+# CLI control plane parity harness (F15/T15.1)
+# Requires: AgentFS mounted with --allow-other, or run with sudo
+test-agentfs-cli-parity:
+    ./scripts/test-agentfs-cli-control-plane.sh
+
 # Run all FUSE tests (requires sudo)
 # This runs all FUSE harness tests and the full pjdfstest suite
 test-fuse-all:
