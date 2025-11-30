@@ -547,27 +547,43 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **M9 supervisor**: Policy persistence uses configuration scopes
   - **M10 CLI**: Config keys mapped to CLI behavior
 
-**M12. Network Isolation Integration** (2–3d)
+**M12. Network Isolation Integration** ✅ COMPLETED (2–3d)
 
-- **Status**: ⚠️ NOT STARTED - M6 completed for `sbx-helper` but not integrated into `ah agent sandbox`
+- **Status**: COMPLETED - Network namespace isolation integrated with `ah agent sandbox`
 
 - Deliverables:
-  - Integrate `sandbox-net` crate with `ah agent sandbox` CLI command
-  - Add `CLONE_NEWNET` to namespace creation in sandbox-core
-  - Wire slirp4netns to `--allow-network` flag in CLI
-  - Ensure network isolation works in AgentFS sandbox context
+  - ✅ Integrate `sandbox-net` crate with `ah agent sandbox` CLI command
+  - ✅ Add `CLONE_NEWNET` to namespace creation in sandbox-core
+  - ✅ Wire slirp4netns to `--allow-network` flag in CLI
+  - ✅ Ensure network isolation works in AgentFS sandbox context
 
 - Verification:
-  - [ ] `ah agent sandbox` creates network namespace by default
-  - [ ] Network is isolated (curl fails without `--allow-network`)
-  - [ ] `--allow-network` enables slirp4netns for internet access
-  - [ ] T16.6 Network Isolation test passes (not skipped)
-  - [ ] T16.7 Network Egress test passes with slirp4netns
+  - [x] `ah agent sandbox` creates network namespace by default
+  - [x] Network is isolated (curl fails without `--allow-network`)
+  - [x] `--allow-network` enables slirp4netns for internet access
+  - [x] T16.6 Network Isolation test passes (not skipped)
+  - [x] T16.7 Network Egress test passes with slirp4netns
+
+- Implementation details:
+  - **`NamespaceConfig.net_ns`** (`crates/sandbox-core/src/namespaces/mod.rs`): Added `net_ns: bool` field to enable network namespace isolation via `CLONE_NEWNET`
+  - **`ProcessConfig` networking** (`crates/sandbox-core/src/process/mod.rs`): Added `net_isolation: bool` and `allow_internet: bool` fields to control network behavior per-process
+  - **Loopback setup** (`crates/sandbox-core/src/process/mod.rs`): Added `setup_network_isolation()` method that brings up the loopback interface inside the new network namespace using `ip link set lo up`
+  - **slirp4netns integration** (`crates/sandbox-core/src/process/mod.rs`): Added `spawn_slirp4netns()` method that starts slirp4netns from the parent process with the child's PID to provide user-mode TCP/IP stack for internet access
+  - **CLI wiring** (`crates/ah-cli/src/sandbox.rs`): Updated `create_sandbox()` to enable network namespace by default and configure slirp4netns when `--allow-network yes` is specified
+  - **Default behavior**: Network is isolated by default (loopback only). Use `--allow-network yes` to enable internet access via slirp4netns.
 
 - Key Source Files:
-  - `crates/ah-cli/src/sandbox.rs` - CLI integration with sandbox-net
-  - `crates/sandbox-core/src/lib.rs` - Network namespace integration
-  - `crates/sandbox-net/src/lib.rs` - Existing NetworkManager (from M6)
+  - `crates/sandbox-core/src/namespaces/mod.rs` - Added `net_ns` field to NamespaceConfig, `CLONE_NEWNET` flag handling
+  - `crates/sandbox-core/src/process/mod.rs` - Loopback setup, slirp4netns spawning, network config fields
+  - `crates/sandbox-core/src/lib.rs` - Default network namespace enabled in `Sandbox::new()`
+  - `crates/ah-cli/src/sandbox.rs` - CLI integration with network namespace and slirp4netns
+  - `crates/sbx-helper/src/main.rs` - Updated to include network config fields
+  - `scripts/test-agentfs-sandbox.sh` - Updated T16.6 and T16.7 tests to expect network isolation
+
+- Verification Commands:
+  - `cargo test -p sandbox-core` - Unit tests for namespace and process management
+  - `just test-agentfs-sandbox` - Run F16 integration tests including network isolation
+  - `./scripts/test-agentfs-sandbox.sh test_network_isolation test_network_egress_enabled` - Run specific network tests
 
 ### Test strategy & tooling
 
