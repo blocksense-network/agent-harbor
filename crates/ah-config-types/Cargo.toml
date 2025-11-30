@@ -12,3 +12,7 @@ license = "MIT OR Apache-2.0"
 ah-domain-types = { workspace = true }
 serde.workspace = true
 schemars = { version = "0.8", features = ["preserve_order"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+toml.workspace = true

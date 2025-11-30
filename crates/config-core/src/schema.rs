@@ -27,13 +27,18 @@ pub struct SchemaRoot {
     /// Keep path-local sections as fields (not flattened):
     pub repo: Option<ah_config_types::repo::RepoSection>,
 
+    /// Sandbox configuration for Linux local sandboxing.
+    /// See `specs/Public/Sandboxing/Local-Sandboxing-on-Linux.md` for details.
+    pub sandbox: Option<ah_config_types::sandbox::SandboxConfig>,
+
     /// Collections stay at known top-level keys
     #[serde(default)]
     pub server: Vec<ah_config_types::server::Server>,
     #[serde(default)]
     pub fleet: Vec<ah_config_types::server::Fleet>,
-    #[serde(default)]
-    pub sandbox: Vec<ah_config_types::server::Sandbox>,
+    /// Named sandbox profiles for fleet configurations (reusable sandbox definitions)
+    #[serde(default, rename = "sandbox-profile")]
+    pub sandbox_profile: Vec<ah_config_types::server::SandboxProfile>,
 
     /// Optional: a system-only key to declare enforced dotted keys
     #[serde(default)]

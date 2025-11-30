@@ -7,6 +7,7 @@
 //! configurations using Serde flattening. Configuration is loaded once at
 //! application startup and distributed to subsystems as typed objects.
 
+use ah_config_types::sandbox::SandboxConfig;
 use ah_core::task_config::TaskConfig;
 use ah_fs_snapshots::fs_snapshots_config::FsSnapshotsConfig;
 use ah_logging::logging_config::LoggingConfig;
@@ -51,6 +52,10 @@ pub struct Config {
     // Logging configuration
     #[serde(flatten)]
     pub logging: LoggingConfig,
+
+    /// Sandbox configuration for Linux local sandboxing.
+    /// See specs/Public/Sandboxing/Local-Sandboxing-on-Linux.md
+    pub sandbox: Option<SandboxConfig>,
 }
 
 /// Startup configuration - decisions made before UI initialization
@@ -181,6 +186,11 @@ impl Config {
     pub fn logging(&self) -> &LoggingConfig {
         &self.logging
     }
+
+    /// Get sandbox configuration
+    pub fn sandbox(&self) -> Option<&SandboxConfig> {
+        self.sandbox.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -289,6 +299,7 @@ mod tests {
                 level: Some(CliLogLevel::Debug),
                 ..LoggingConfig::default()
             },
+            sandbox: None,
         };
 
         // Test subsystem access methods

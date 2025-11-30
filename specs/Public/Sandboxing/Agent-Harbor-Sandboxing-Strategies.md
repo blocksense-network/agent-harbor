@@ -69,3 +69,4 @@
 - Debugging of in‑session processes works; host processes remain invisible/inaccessible.
 - Enabling internet egress or container/VM support is a **conscious, explicit action** documented by the tooling.
 - Clear test matrix validating isolation (process, filesystem, network) and resource limits.
+- All sandbox behaviors are configurable via user/project/org configuration files, with CLI flags providing per-session overrides (see Configuration.md for details).
