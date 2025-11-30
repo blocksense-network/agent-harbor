@@ -471,6 +471,19 @@ test-fuse-compat:
 test-agentfs-cli-parity:
     ./scripts/test-agentfs-cli-control-plane.sh
 
+# CLI failure injection harness (F15/T15.2)
+# Tests error handling when daemon stops mid-run or is unavailable
+test-agentfs-cli-failure-injection:
+    ./scripts/test-agentfs-cli-failure-injection.sh
+
+# CLI SSZ schema validation tests (F15/T15.3)
+# Validates CLI request builders against agentfs-control.request.logical.json
+test-agentfs-cli-schema:
+    cargo test -p ah-cli --test cli_request_builders_test --features agentfs
+
+# Run all F15 CLI control plane tests
+test-agentfs-cli-all: test-agentfs-cli-parity test-agentfs-cli-failure-injection test-agentfs-cli-schema
+
 # Run all FUSE tests (requires sudo)
 # This runs all FUSE harness tests and the full pjdfstest suite
 test-fuse-all:
