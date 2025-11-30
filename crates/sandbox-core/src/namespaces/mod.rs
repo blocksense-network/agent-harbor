@@ -115,9 +115,12 @@ impl NamespaceManager {
         if let Some(uid_map) = &self.config.uid_map {
             self.write_mapping("/proc/self/uid_map", uid_map)?;
         } else {
-            // Default mapping: current UID maps to root in namespace (equivalent to --map-root-user)
+            // Default mapping: UID 0 inside namespace maps to current UID outside
+            // This is equivalent to `unshare --map-root-user` behavior.
+            // Format: <inside_ns_uid> <outside_ns_uid> <count>
+            // So "0 1000 1" means: UID 0 inside -> UID 1000 outside
             let uid = getuid().as_raw();
-            let default_uid_map = format!("{} 0 1", uid);
+            let default_uid_map = format!("0 {} 1", uid);
             self.write_mapping("/proc/self/uid_map", &default_uid_map)?;
         }
 
@@ -135,9 +138,12 @@ impl NamespaceManager {
         if let Some(gid_map) = &self.config.gid_map {
             self.write_mapping("/proc/self/gid_map", gid_map)?;
         } else {
-            // Default mapping: current GID maps to root in namespace (equivalent to --map-root-user)
+            // Default mapping: GID 0 inside namespace maps to current GID outside
+            // This is equivalent to `unshare --map-root-user` behavior.
+            // Format: <inside_ns_gid> <outside_ns_gid> <count>
+            // So "0 1000 1" means: GID 0 inside -> GID 1000 outside
             let gid = nix::unistd::getgid().as_raw();
-            let default_gid_map = format!("{} 0 1", gid);
+            let default_gid_map = format!("0 {} 1", gid);
             self.write_mapping("/proc/self/gid_map", &default_gid_map)?;
         }
 

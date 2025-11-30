@@ -484,6 +484,15 @@ test-agentfs-cli-schema:
 # Run all F15 CLI control plane tests
 test-agentfs-cli-all: test-agentfs-cli-parity test-agentfs-cli-failure-injection test-agentfs-cli-schema
 
+# F16 AgentFS sandbox integration tests
+# Requires: AgentFS daemon running (just start-ah-fs-snapshots-daemon)
+test-agentfs-sandbox:
+    cargo build -p ah-cli --features agentfs
+    ./scripts/test-agentfs-sandbox.sh
+
+# Run all F16 sandbox tests
+test-agentfs-sandbox-all: test-agentfs-sandbox
+
 # Run all FUSE tests (requires sudo)
 # This runs all FUSE harness tests and the full pjdfstest suite
 test-fuse-all:

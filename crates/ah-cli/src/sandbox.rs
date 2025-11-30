@@ -307,12 +307,25 @@ pub async fn prepare_workspace_with_fallback(
         FsProviderArg::Agentfs => {
             #[cfg(feature = "agentfs")]
             {
-                tracing::info!("Trying AgentFS provider (explicitly requested)");
+                // F16: Enhanced telemetry for AgentFS provider selection
+                tracing::info!(
+                    target: "ah::sandbox::agentfs",
+                    provider_requested = "agentfs",
+                    workspace_path = %workspace_path.display(),
+                    platform = std::env::consts::OS,
+                    "AgentFS provider explicitly requested for sandbox"
+                );
+
                 let provider = ah_fs_snapshots::AgentFsProvider::new();
 
                 if let Some(socket_path) = agentfs_socket {
                     // Use existing daemon socket
-                    tracing::debug!(socket = %socket_path.display(), "Using existing AgentFS daemon socket");
+                    tracing::info!(
+                        target: "ah::sandbox::agentfs",
+                        socket = %socket_path.display(),
+                        transport = if cfg!(target_os = "linux") { "fuse" } else { "interpose" },
+                        "Connecting to existing AgentFS daemon"
+                    );
                     let mode = WorkingCopyMode::CowOverlay; // Default for socket reuse
                     match provider.prepare_writable_workspace_with_socket(
                         workspace_path,
@@ -321,20 +334,41 @@ pub async fn prepare_workspace_with_fallback(
                     ) {
                         Ok(workspace) => {
                             tracing::info!(
+                                target: "ah::sandbox::agentfs",
                                 provider = "AgentFS",
                                 mode = ?mode,
                                 agentfs_socket = %socket_path.display(),
+                                exec_path = %workspace.exec_path.display(),
+                                cleanup_token = %workspace.cleanup_token,
+                                transport = if cfg!(target_os = "linux") { "fuse" } else { "interpose" },
                                 "Successfully prepared AgentFS workspace with existing daemon"
                             );
                             return Ok(workspace);
                         }
                         Err(e) => {
-                            tracing::warn!(socket = %socket_path.display(), error = %e, "Failed to prepare AgentFS workspace with existing daemon");
+                            tracing::warn!(
+                                target: "ah::sandbox::agentfs",
+                                socket = %socket_path.display(),
+                                error = %e,
+                                "Failed to prepare AgentFS workspace with existing daemon"
+                            );
                         }
                     }
                 } else {
-                    // Start new daemon
+                    // Auto-discover daemon or start new one
+                    tracing::debug!(
+                        target: "ah::sandbox::agentfs",
+                        "Detecting AgentFS capabilities for workspace"
+                    );
                     let capabilities = provider.detect_capabilities(workspace_path);
+
+                    tracing::info!(
+                        target: "ah::sandbox::agentfs",
+                        capability_score = capabilities.score,
+                        supports_cow_overlay = capabilities.supports_cow_overlay,
+                        notes = ?capabilities.notes,
+                        "AgentFS capability detection completed"
+                    );
 
                     if capabilities.score > 0 {
                         let modes_to_try = if capabilities.supports_cow_overlay {
@@ -344,21 +378,30 @@ pub async fn prepare_workspace_with_fallback(
                         };
 
                         for mode in modes_to_try {
-                            tracing::debug!(mode = ?mode, "Trying AgentFS workspace preparation mode");
+                            tracing::debug!(
+                                target: "ah::sandbox::agentfs",
+                                mode = ?mode,
+                                "Trying AgentFS workspace preparation mode"
+                            );
                             match provider.prepare_writable_workspace(workspace_path, mode) {
                                 Ok(workspace) => {
                                     tracing::info!(
+                                        target: "ah::sandbox::agentfs",
                                         provider = "AgentFS",
                                         mode = ?mode,
-                                        "Successfully prepared AgentFS workspace"
+                                        exec_path = %workspace.exec_path.display(),
+                                        cleanup_token = %workspace.cleanup_token,
+                                        transport = if cfg!(target_os = "linux") { "fuse" } else { "interpose" },
+                                        "Successfully prepared AgentFS sandbox workspace"
                                     );
                                     return Ok(workspace);
                                 }
                                 Err(err) => {
                                     tracing::debug!(
-                                        "AgentFS provider failed in {:?} mode: {}",
-                                        mode,
-                                        err
+                                        target: "ah::sandbox::agentfs",
+                                        mode = ?mode,
+                                        error = %err,
+                                        "AgentFS provider failed in this mode"
                                     );
                                     continue;
                                 }
@@ -367,7 +410,11 @@ pub async fn prepare_workspace_with_fallback(
                     }
                 }
                 return Err(anyhow::anyhow!(
-                    "AgentFS provider explicitly requested but not available or failed to initialize"
+                    "AgentFS provider explicitly requested but not available or failed to initialize. \
+                     Troubleshooting hints: \
+                     1. Ensure daemon is running: just start-ah-fs-snapshots-daemon \
+                     2. Check mount: ls /tmp/agentfs/.agentfs/control \
+                     3. View daemon logs: just check-ah-fs-snapshots-daemon"
                 ));
             }
             #[cfg(not(feature = "agentfs"))]
@@ -508,13 +555,27 @@ pub async fn prepare_workspace_with_fallback(
         }
         FsProviderArg::Auto => {
             // Auto mode: Try providers in order of preference: AgentFS -> ZFS -> Btrfs -> Git
-            tracing::info!("Auto-detecting best available filesystem snapshot provider");
+            tracing::info!(
+                target: "ah::sandbox::provider",
+                workspace_path = %workspace_path.display(),
+                "Auto-detecting best available filesystem snapshot provider"
+            );
 
             #[cfg(feature = "agentfs")]
             {
-                tracing::debug!("Trying AgentFS provider (auto mode)");
+                tracing::debug!(
+                    target: "ah::sandbox::agentfs",
+                    "Probing AgentFS provider availability (auto mode)"
+                );
                 let provider = ah_fs_snapshots::AgentFsProvider::new();
                 let capabilities = provider.detect_capabilities(workspace_path);
+
+                tracing::debug!(
+                    target: "ah::sandbox::agentfs",
+                    capability_score = capabilities.score,
+                    supports_cow_overlay = capabilities.supports_cow_overlay,
+                    "AgentFS capability probe result"
+                );
 
                 if capabilities.score > 0 {
                     let modes_to_try = if capabilities.supports_cow_overlay {
@@ -524,22 +585,31 @@ pub async fn prepare_workspace_with_fallback(
                     };
 
                     for mode in modes_to_try {
-                        tracing::debug!(mode = ?mode, "Trying AgentFS workspace preparation mode");
+                        tracing::debug!(
+                            target: "ah::sandbox::agentfs",
+                            mode = ?mode,
+                            "Trying AgentFS workspace preparation mode"
+                        );
                         match provider.prepare_writable_workspace(workspace_path, mode) {
                             Ok(workspace) => {
                                 tracing::info!(
+                                    target: "ah::sandbox::agentfs",
                                     provider = "AgentFS",
                                     mode = ?mode,
+                                    exec_path = %workspace.exec_path.display(),
+                                    cleanup_token = %workspace.cleanup_token,
+                                    transport = if cfg!(target_os = "linux") { "fuse" } else { "interpose" },
                                     agentfs_socket = ?agentfs_socket,
-                                    "Successfully prepared AgentFS workspace (auto-selected)"
+                                    "Successfully auto-selected AgentFS provider for sandbox"
                                 );
                                 return Ok(workspace);
                             }
                             Err(err) => {
                                 tracing::debug!(
-                                    "AgentFS provider failed in {:?} mode: {}",
-                                    mode,
-                                    err
+                                    target: "ah::sandbox::agentfs",
+                                    mode = ?mode,
+                                    error = %err,
+                                    "AgentFS provider failed in this mode (auto-detect will try next provider)"
                                 );
                                 continue;
                             }
