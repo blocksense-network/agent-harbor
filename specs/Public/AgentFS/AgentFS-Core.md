@@ -52,6 +52,18 @@ Core provides `fd_open(req)` which **always materializes an upper entry** for in
 - **Fallback**: When forwarding unavailable, shim falls back to KBP (mounted volume) for that process/file.
   Core maintains path ↔ handle bookkeeping for snapshots/branch isolation and validates path ops (`rename/unlink/chmod/...`) via control messages.
 
+**Why reads also require upperization in interpose mode**:
+
+When FD forwarding is enabled, even read-only opens must receive an upper-layer handle rather than a lower-layer handle. Consider this scenario:
+
+1. Sandbox process A opens file X for reading (gets a handle)
+2. Sandbox process B opens file X for writing (triggers copy-up, creates upper entry)
+3. Process B writes to file X
+
+If process A received a lower-layer FD, it would never see process B's writes—the two processes would be reading/writing different files. By always materializing an upper entry on first interposed open (including reads), all subsequent opens within the same branch share the same upper file, preserving intra-branch coherence.
+
+This is why `OverlayConfig.materialization` mode is less relevant for interpose workflows: FD forwarding inherently requires eager upperization to maintain correct semantics. The materialization mode primarily affects KBP (Kernel-Backstore Proxy) workflows where the FUSE/FSKit adapter can intercept each read/write individually.
+
 ### Snapshot semantics with backstore
 
 If `supports_native_snapshots==true`, `snapshot_native(label)` maps branch roots to native snapshot IDs and records cross-mapping. Otherwise core computes the **active set** (upper objects/metadata) and materializes a copy in a snapshot store (efficient for typical small active sets).
@@ -132,6 +144,8 @@ pub struct FsConfig {
     pub lower: Option<LowerConfig>,
     /// Backing store mode for upper data
     pub backstore: BackstoreConfig,
+    /// Overlay materialization policy (controls snapshot isolation strength)
+    pub overlay: OverlayConfig,
     /// Interpose/FD-forwarding configuration
     pub interpose: InterposeConfig,
 }
@@ -150,6 +164,64 @@ pub enum ForwardingMode {
     Disabled,
     /// Eager upperization for all interposed opens
     EagerUpperize,
+}
+
+/// Controls when files from the lower layer are materialized into the upper layer.
+/// This directly impacts snapshot isolation guarantees and memory/storage usage.
+pub struct OverlayConfig {
+    /// Materialization mode for upper layer entries
+    pub materialization: MaterializationMode,
+    /// For CloneEager mode: whether to fail if the filesystem doesn't support clonefile/reflink
+    pub require_clone_support: bool,
+}
+
+/// Determines how and when files are copied from the lower layer to the upper layer.
+///
+/// The choice of materialization mode affects both performance and isolation:
+/// - **Isolation**: Eager modes provide ZFS-like snapshot semantics where the sandbox
+///   sees a frozen view of the filesystem at snapshot time, immune to concurrent
+///   changes in the base layer.
+/// - **Performance**: Lazy modes avoid upfront copying costs but may expose sandbox
+///   processes to base layer changes that occur after branch creation.
+pub enum MaterializationMode {
+    /// **Lazy (Copy-on-Write)**: Default mode. Files remain in the lower layer until
+    /// first write; reads pass through to the lower layer. Concurrent modifications
+    /// to the base layer after branch creation MAY be visible to sandbox processes
+    /// that haven't yet read the affected files. This matches classic OverlayFS behavior.
+    ///
+    /// **Best for**: Controlled environments (CI runners, containers, dedicated build
+    /// machines) where the base layer is stable and not subject to concurrent modifications.
+    ///
+    /// **Trade-offs**: Minimal memory/storage overhead, instant branch creation; requires
+    /// a stable base layer for deterministic results.
+    Lazy,
+
+    /// **Eager (Full Copy)**: At branch/snapshot creation time, all files from the
+    /// lower layer are immediately copied into the upper layer (memory or backstore).
+    /// This provides ZFS-like snapshot semantics: the sandbox sees a frozen view
+    /// that is completely independent of subsequent base layer changes.
+    ///
+    /// **Best for**: User machines where user or background activity (file sync, IDE indexing,
+    /// package managers) may modify the base layer during sandbox execution.
+    ///
+    /// **Trade-offs**: Higher memory/storage usage, slower branch creation; provides
+    /// strong isolation guarantees equivalent to ZFS/Btrfs snapshots.
+    Eager,
+
+    /// **Clone-Eager (Reflink)**: At branch creation, create upper entries using
+    /// filesystem-native block cloning (APFS `clonefile`, Btrfs/XFS reflink, ReFS
+    /// block cloning). This provides strong isolation with minimal storage overhead
+    /// since unmodified blocks are shared at the filesystem level.
+    ///
+    /// **Best for**: User machines when the backstore resides on APFS, Btrfs, XFS,
+    /// or ReFS—combines the isolation benefits of Eager with storage efficiency.
+    ///
+    /// **Requirements**: Backstore must reside on a filesystem supporting reflink.
+    /// Falls back to `Eager` if reflink fails and `require_clone_support` is false.
+    ///
+    /// **Trade-offs**: Strong isolation with efficient storage; requires filesystem
+    /// with reflink/clonefile support.
+    CloneEager,
 }
 
 pub struct LowerConfig {

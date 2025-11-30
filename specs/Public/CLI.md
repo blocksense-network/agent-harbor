@@ -75,6 +75,7 @@ Shell completions are provided via the `ah shell-completion` command group. They
   - `--log-level <debug|info|warn|error>`: Defaults to `info` in release builds and `debug` in debug builds.
   - `--no-color`: Automatically enabled when not running inside a TTY. Otherwise, enabled by default.
   - `--fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>`: Select snapshot strategy (default: `auto`).
+  - `--overlay-materialization <lazy|eager|clone-eager>`: Control when files are copied from the base layer to the overlay layer (default: `lazy`). Only applies when `--fs-snapshots agentfs` is active. See [AgentFS Overlay Materialization](AgentFS/AgentFS.md#overlay-materialization-modes) for details on isolation guarantees. Use `lazy` in controlled environments (CI, containers); use `eager` or `clone-eager` on user machines where user or background activity may modify the base layer.
   - `--working-copy <auto|cow-overlay|worktree|in-place>`: Select how the agent's workspace is presented (default: `auto`).
   - `--experimental-features <gemini|copilot|cursor-cli|goose>`: Enable experimental features (can be specified multiple times). Currently supported: `gemini` (Google Gemini agent), `copilot` (GitHub Copilot CLI agent), `cursor-cli` (Cursor CLI agent), `goose` (Block's Goose agent).
 
@@ -1162,6 +1163,11 @@ OPTIONS:
   --timeout <DURATION>           Auto-terminate sandbox after wall clock timeout.
   --fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
                                    Filesystem snapshot provider (default: auto).
+  --overlay-materialization <lazy|eager|clone-eager>
+                                   Control when files are copied from the base layer
+                                   to the AgentFS overlay (default: lazy). Use lazy in
+                                   controlled environments; eager/clone-eager on user
+                                   machines where user or background activity may modify files.
   --agentfs-socket <PATH>         Path to existing AgentFS daemon socket (reuses existing daemon).
 ```
 

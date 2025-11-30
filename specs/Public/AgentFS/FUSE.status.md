@@ -442,7 +442,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] T13.1b Interpose Hint Test – `cargo test -p ah-fs-snapshots-daemon interpose_manager::tests::mount_respects_socket_hint` proves the supervisor honours per-request socket/runtime overrides and persists the metadata for status consumers.
   - [x] T13.2 Harness Regression – `cargo test -p ah-fs-snapshots --lib --features agentfs` exercises the updated `AgentFsHarness::start` path, proving the provider prepares workspaces using the daemon-managed interpose mount with the same readiness logs consumed by `tests/fs-snapshots-test-harness`.
 
-**F14. AgentFS FUSE Provider Validation in FS Snapshots Harness** (3–4d)
+**F14. AgentFS FUSE Provider Validation in FS Snapshots Harness** (3–4d) - COMPLETE
 
 - **Deliverables**:
   - Extend `tests/fs-snapshots-test-harness/src/bin/driver.rs` so Linux runs can select the AgentFS provider by exporting `AGENTFS_TRANSPORT=fuse` (today this simply discriminates against the future `AGENTFS_TRANSPORT=interpose` mode we plan to support on Linux via `LD_PRELOAD`), discovering the already-running daemon/mount (same pattern used by existing FS snapshot tests), and passing the resolved mount/root into the scenarios module.
@@ -451,6 +451,14 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - Parameterize the FS snapshots suite to run against multiple AgentFS backstores (InMemory, HostFs directory, RamDisk) so every provider test exercises the Kernel-Backstore Proxy behaviors documented in `specs/Public/AgentFS/AgentFS.md` (§Backstore) and `AgentFS-Core.md` (§Backstore Manager). Each run must tag logs with `backstore=<mode>` for triage.
   - Remove the legacy `AH_ENABLE_AGENTFS_PROVIDER` opt-in on Linux so the provider is always available when the FUSE mount can be detected; expose helpful skip messages only when prerequisites (daemon, fuse device) are missing.
   - Provide reusable Rust helpers to probe the daemon socket/mount status (mirroring the current FS snapshot policy where tests assume the daemon was started out-of-band via `just start-ah-fs-snapshots-daemon`); fail fast with actionable skips when the daemon is unavailable instead of trying to launch it.
+
+- **Implementation Details**:
+  - `tests/fs-snapshots-test-harness/src/agentfs.rs` provides `FuseHarness` with `new()`, `socket_path()`, `mount_point()`, `repo_root()`, `ensure_mounted()`, and `prepare_repo()` methods.
+  - Transport selection (`AGENTFS_TRANSPORT=fuse` vs `interpose`) is implemented via `requested_transport()` with platform-specific defaults (Linux→FUSE, macOS→interpose).
+  - `BackstoreSpec` enum supports `InMemory`, `HostFs`, and `RamDisk` modes; `parse_backstore_matrix()` parses `AGENTFS_BACKSTORE_MATRIX` environment variable.
+  - Linux opt-in removed: `experimental_flag_enabled()` in `crates/ah-fs-snapshots/src/agentfs.rs` returns `true` unconditionally on Linux.
+  - `agentfs_provider_matrix_linux()` in `scenarios.rs` drives the provider matrix test for AgentFS on Linux FUSE.
+  - Linux tests in `agentfs_provider.rs` (`agentfs_prepare_snapshot_and_cleanup_cycle_fuse`) and `provider_core_behavior_agentfs.rs` exercise the FUSE-backed provider with graceful skips when prerequisites are missing.
 
 - **Success criteria (automated integration tests)**:
   - `cargo test --package ah-fs-snapshots --features agentfs -- --nocapture integration` passes on a Linux FUSE host without requiring any opt-in environment variables, assuming the daemon is already running (tests should emit clear skips when it is not).
@@ -469,13 +477,34 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] T14.3 Provider Matrix (FUSE) – driver + scenarios can run the provider matrix via `AGENTFS_TRANSPORT=fuse`, discovering the mount through the daemon helpers
   - [x] T14.4 Backstore Sweep – harness iterates over InMemory, HostFs, and RamDisk backstores, tagging logs with the active mode and skipping gracefully when prerequisites are missing
 
-**F15. AgentFS Control Plane Wiring for `ah agent fs snapshot`** (3–4d)
+**F15. AgentFS Control Plane Wiring for `ah agent fs snapshot`** (3–4d) - PARTIALLY COMPLETE
 
 - **Deliverables**:
   - Reuse the existing `agentfs-control-cli` (`crates/agentfs-control-cli`) logic to implement ioctl + SSZ request/response handling inside the `ah agent fs snapshot` command, so snapshot create/list/branch/bind requests can target the mounted FUSE filesystem through `.agentfs/control`.
   - Add configuration discovery so `ah agent fs snapshot` can locate the mount started by `just start-fs-snapshots-daemon` (default `/tmp/agentfs`), overridable via CLI flags/env vars that also feed upcoming `ah agent sandbox` / `ah agent start` flows.
   - Ensure the command records structured logs (snapshot IDs, branch IDs, errno on failure) and integrates with the existing `agentfs-control.request.logical.json` SSZ schema validation.
   - Provide documentation/examples showing how to replace `cargo run -p agentfs-control-cli` with the user-facing `ah agent fs snapshot` flows while keeping the low-level CLI available for debugging.
+
+- **Implementation Status**:
+  The CLI structure has been implemented in `crates/ah-cli/src/agent/fs.rs` with the following commands:
+
+  **Fully Implemented:**
+  - `ah agent fs status [--path PATH] [--json] [--verbose] [--detect-only]` – Runs filesystem detection and reports provider capabilities; uses the `provider_for()` detection machinery.
+  - `ah agent fs snapshot [--recorder-socket PATH]` – Creates a snapshot using the detected provider's `snapshot_now()` method. Works with all providers (ZFS, Btrfs, AgentFS, Git).
+  - `ah agent fs interpose get --mount PATH` – Retrieves interpose configuration via ioctl SSZ requests to `.agentfs/control`.
+  - `ah agent fs interpose set --mount PATH [--enabled BOOL] [--max-copy-bytes N] [--require-reflink BOOL]` – Sets interpose configuration via ioctl SSZ requests.
+
+  **Stub Implementations (TODO):**
+  - `ah agent fs init-session` – Prints placeholder message; no actual session initialization.
+  - `ah agent fs snapshots <SESSION_ID>` – Prints placeholder message; does not issue ioctl `snapshot_list` request to control plane.
+  - `ah agent fs branch create <SNAPSHOT_ID> [--name NAME]` – Prints placeholder; no provider call.
+  - `ah agent fs branch bind <BRANCH_ID>` – Prints placeholder; no process binding.
+  - `ah agent fs branch exec <BRANCH_ID> <CMD>` – Prints placeholder; no branch execution.
+
+  **Gap Analysis:**
+  - The `snapshots` command should call `provider.list_snapshots()` (which on AgentFS/Linux issues `snapshot_list` via ioctl) but currently prints a placeholder.
+  - The `branch create/bind/exec` commands should call the corresponding provider methods (which on AgentFS/Linux issue `branch_create`/`branch_bind` via ioctl) but currently print placeholders.
+  - Note: The AgentFS provider in `crates/ah-fs-snapshots/src/agentfs.rs` already implements the FUSE-specific ioctl control plane I/O via `ControlClient`. The CLI correctly uses the generic provider abstraction.
 
 - **Success criteria (automated integration tests)**:
   - `ah agent fs snapshot create --name smoke --mount /tmp/agentfs` successfully issues ioctl requests against the FUSE control file and prints the new snapshot ID, matching the behavior of `agentfs-control-cli snapshot-create`.
@@ -485,35 +514,401 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
 - **Automated Test Plan**:
   - **T15.1 CLI Parity Harness**: New Rust integration test (or shell script under `scripts/test-agentfs-cli-control-plane.sh`) that starts the daemon, runs both `agentfs-control-cli` and `ah agent fs snapshot` for create/list/bind, and diff-checks their stdout/JSON outputs.
   - **T15.2 Failure Injection**: Add a harness subtest that intentionally stops the daemon mid-run to ensure `ah agent fs snapshot` reports ioctl failures with errno context and cleans up temporary files.
-  - **T15.3 Schema Validation**: Extend SSZ golden tests to cover the command’s request builders so deviations from `agentfs-control.request.logical.json` fail CI immediately.
+  - **T15.3 Schema Validation**: Extend SSZ golden tests to cover the command's request builders so deviations from `agentfs-control.request.logical.json` fail CI immediately.
 
 - **Verification Results**:
-  - [ ] T15.1 CLI Parity Harness – pending
-  - [ ] T15.2 Failure Injection – pending
-  - [ ] T15.3 Schema Validation – pending
+  - [~] T15.0 CLI Structure – `ah agent fs` subcommand structure implemented with status/snapshot/interpose fully working; init-session/snapshots/branch are stubs
+  - [ ] T15.1 CLI Parity Harness – pending (no test script exists)
+  - [ ] T15.2 Failure Injection – pending (no test exists)
+  - [ ] T15.3 Schema Validation – pending (interpose commands use ioctl SSZ; other commands use provider layer)
 
-**F16. Agent CLI Integration (`ah agent sandbox` / `ah agent start`) with AgentFS** (4–5d)
+**F15.5. Overlay Materialization Modes Implementation** (5–6d)
+
+This milestone implements the overlay materialization policies described in [AgentFS.md §Overlay Materialization Modes](AgentFS.md#overlay-materialization-modes) and [AgentFS-Core.md](AgentFS-Core.md). It must be completed before F16 and F17, which depend on the `--overlay-materialization` CLI flag.
+
+- **Prerequisites**: F1–F5 complete (basic FUSE adapter working with overlay mode).
 
 - **Deliverables**:
-  - Update the CLI runtime selection logic (`ah agent sandbox` and `ah agent start`, see `specs/Public/CLI.md`) so when `--fs-snapshots agentfs` (or the auto detector chooses AgentFS) the commands ensure the daemon (Linux FUSE or macOS interpose) is running, mount paths are exported, and per-process branches are managed through the control plane.
-  - Reuse the `ah agent fs snapshot` plumbing to create/restore snapshots as part of workspace preparation, ensuring snapshot IDs flow into the task metadata that currently records provider selection.
-  - Wire branch binding so every agent process is assigned to its own branch by calling the control plane before `ah agent record` launches the workload; track bindings for cleanup on exit.
-  - Add user-facing logging/telemetry describing when the CLI switches between AgentFS interpose (macOS) and FUSE (Linux) backends, and expose troubleshooting hints (mount status, control file path, daemon logs).
 
-- **Success criteria (automated integration tests)**:
-  - New end-to-end tests run `ah agent sandbox --fs-snapshots agentfs --sandbox local --repo <temp>` and verify the CLI snapshot list contains entries created through the control plane while the daemon logs show per-process branch binding.
-  - `ah agent start --agent echo --fs-snapshots agentfs --working-copy auto` completes end-to-end with recorded workspace metadata referencing the AgentFS provider, and subsequent `ah agent fs snapshot list` shows the automatically created checkpoints.
-  - Mount lifecycle automation guarantees no stale mounts remain after the CLI terminates, even when the agent crashes or the user interrupts the command.
+  **Core Implementation (`crates/agentfs-core`):**
+  - Add `MaterializationMode` enum to `config.rs` with variants `Lazy`, `Eager`, and `CloneEager`. Note: this is distinct from the existing `CopyUpMode` which controls per-file copy-up timing during operations; `MaterializationMode` controls whether the entire lower layer is materialized at branch creation time.
+  - Add `materialization: MaterializationMode` and `require_clone_support: bool` to `OverlayConfig`.
+  - Implement branch creation materialization logic in `vfs.rs`:
+    - **Lazy**: No change to current behavior—files remain in lower layer until first write.
+    - **Eager**: On `branch_create_from_snapshot` or `branch_create_from_current`, recursively copy all files from lower layer into the new branch's upper layer before returning. Files already in upper (from parent snapshot) are cloned via existing CoW logic.
+    - **CloneEager**: Same as Eager but use filesystem-native reflink/clonefile operations (`copy_file_range` with `FICLONE`, `clonefile()` on macOS, `FSCTL_DUPLICATE_EXTENTS_TO_FILE` on Windows) instead of full data copy. Fall back to Eager if reflink fails and `require_clone_support` is false.
+  - Add platform detection helpers (`can_reflink(path)`) to probe whether the backstore filesystem supports reflink.
+  - Expose `MaterializationMode` through the control-plane SSZ schema so daemon clients can specify the mode when creating branches.
+
+  **FUSE Host (`crates/agentfs-fuse-host`):**
+  - Add `--overlay-materialization <lazy|eager|clone-eager>` CLI flag to `main.rs`.
+  - Wire the flag through to `FsConfig.overlay.materialization` passed to `FsCore::new`.
+  - Add structured log messages when materialization runs (file count, elapsed time, reflink vs copy fallback).
+
+  **Daemon Integration (`crates/ah-fs-snapshots-daemon`):**
+  - Extend the `MountAgentfsFuse` RPC to accept an optional `materialization_mode` field.
+  - Forward the mode to the FUSE host process via CLI flag or config file.
+
+- **Success criteria (automated tests)**:
+  - Branch creation with `Lazy` mode completes in O(1) time regardless of lower layer file count.
+  - Branch creation with `Eager` mode copies all lower layer files into the upper layer; verify via backstore inspection.
+  - Branch creation with `CloneEager` mode uses reflink when available (detect via `statx` reflink flag or inode comparison); falls back to Eager when reflink unavailable.
+  - Files created in lower layer AFTER branch creation with `Eager`/`CloneEager` are NOT visible in the branch.
+  - Modifications to lower layer files AFTER branch creation with `Eager`/`CloneEager` do NOT affect branch contents.
+  - The `require_clone_support=true` + no-reflink-filesystem combination fails branch creation with actionable error.
 
 - **Automated Test Plan**:
-  - **T16.1 Sandbox Smoke (`just test-agentfs-sandbox`)**: Scripted test that runs `ah agent sandbox` against a throwaway repo on both Linux and macOS, asserts branch binding succeeded via control-plane logs, and validates cleanup.
-  - **T16.2 Agent Start Integration (`just test-agentfs-cli-e2e`)**: Launches `ah agent start` with a lightweight dummy agent, inspects the SQLite state DB to ensure the recorded provider is `AgentFs` with mount metadata, and confirms a follow-up `ah agent fs snapshot list` returns the expected snapshot IDs.
-  - **T16.3 Abort/Crash Cleanup**: Injects a forced termination (e.g., `SIGKILL` to the agent subprocess) and verifies the CLI stop hook unbinds branches and unmounts/tears down daemon resources before returning.
+  - **T15.5.1 `test_materialization_lazy_branch_creation_time`**:
+    - **Properties verified**: Lazy mode branch creation is O(1)
+    - **Steps**: (1) Create lower layer with 10,000 files, (2) create branch with `materialization=Lazy`, (3) verify creation time < 100ms, (4) verify backstore has 0 files (no eager copy)
+    - **Platforms**: Linux (FUSE)
+
+  - **T15.5.2 `test_materialization_eager_copies_all_files`**:
+    - **Properties verified**: Eager mode copies all lower layer files to upper at branch creation
+    - **Steps**: (1) Create lower layer with 100 files, (2) create branch with `materialization=Eager`, (3) inspect backstore directory, (4) verify all 100 files present in upper layer
+    - **Platforms**: Linux (FUSE)
+
+  - **T15.5.3 `test_materialization_eager_isolation_from_lower_creates`**:
+    - **Properties verified**: Files created in lower layer after Eager branch creation are NOT visible
+    - **Steps**: (1) Create lower layer, (2) create branch with `materialization=Eager`, (3) create new file in lower layer, (4) verify file NOT visible in branch
+    - **Spec reference**: [AgentFS.md §Overlay Materialization Modes](AgentFS.md)
+
+  - **T15.5.4 `test_materialization_eager_isolation_from_lower_modifications`**:
+    - **Properties verified**: Modifications to lower layer files after Eager branch creation do NOT affect branch
+    - **Steps**: (1) Create lower layer with file "test.txt" containing "original", (2) create branch with `materialization=Eager`, (3) modify lower layer file to "modified", (4) verify branch still sees "original"
+    - **Spec reference**: [AgentFS.md §Overlay Materialization Modes](AgentFS.md)
+
+  - **T15.5.5 `test_materialization_clone_eager_uses_reflink`** (Linux with Btrfs/XFS only):
+    - **Properties verified**: CloneEager mode uses filesystem reflink, not full copy
+    - **Steps**: (1) Create lower layer on Btrfs/XFS with 10 large files (100MB each), (2) create branch with `materialization=CloneEager`, (3) verify backstore size is < 10MB (shared blocks), (4) verify files are accessible and have correct content
+    - **Platforms**: Linux with Btrfs or XFS backstore
+
+  - **T15.5.6 `test_materialization_clone_eager_fallback_to_eager`**:
+    - **Properties verified**: CloneEager falls back to Eager on filesystems without reflink (e.g., ext4, tmpfs)
+    - **Steps**: (1) Create lower layer on ext4/tmpfs, (2) create branch with `materialization=CloneEager`, (3) verify branch creation succeeds, (4) verify files are copied (not reflinked), (5) verify structured log indicates fallback
+    - **Platforms**: Linux with ext4/tmpfs backstore
+
+  - **T15.5.7 `test_materialization_clone_eager_require_clone_fails`**:
+    - **Properties verified**: Branch creation fails when `require_clone_support=true` and reflink unavailable
+    - **Steps**: (1) Create lower layer on ext4/tmpfs, (2) attempt branch creation with `materialization=CloneEager` and `require_clone_support=true`, (3) verify creation fails with actionable error message
+    - **Platforms**: Linux with ext4/tmpfs backstore
+
+  - **T15.5.8 `test_materialization_fuse_host_cli_flag`**:
+    - **Properties verified**: FUSE host accepts `--overlay-materialization` flag
+    - **Steps**: (1) Start FUSE host with `--overlay-materialization eager`, (2) create branch via control plane, (3) verify branch uses Eager materialization (inspect backstore)
+    - **Platforms**: Linux (FUSE)
+
+  - **T15.5.9 `test_materialization_daemon_rpc_parameter`**:
+    - **Properties verified**: Daemon RPC accepts materialization mode
+    - **Steps**: (1) Send `MountAgentfsFuse` RPC with `materialization_mode=Eager`, (2) create branch, (3) verify branch uses Eager materialization
+    - **Platforms**: Linux (FUSE)
+
+  - **T15.5.10 `test_materialization_lazy_lower_visibility`**:
+    - **Properties verified**: Lazy mode allows lower layer changes to be visible (documenting expected behavior)
+    - **Steps**: (1) Create lower layer, (2) create branch with `materialization=Lazy`, (3) create new file in lower layer, (4) verify file IS visible in branch (expected lazy behavior)
+    - **Spec reference**: [AgentFS.md §Overlay Materialization Modes](AgentFS.md)
+
+  - **T15.5.11 `test_materialization_eager_large_directory_performance`**:
+    - **Properties verified**: Eager mode handles large directories without timeout
+    - **Steps**: (1) Create lower layer with 50,000 small files, (2) create branch with `materialization=Eager`, (3) verify creation completes within 60s, (4) verify all files accessible in branch
+    - **Platforms**: Linux (FUSE)
+
+  - **T15.5.12 `test_materialization_clone_eager_macos_clonefile`** (macOS only):
+    - **Properties verified**: CloneEager mode uses APFS clonefile() on macOS
+    - **Steps**: (1) Create lower layer on APFS with large files, (2) create branch with `materialization=CloneEager`, (3) verify files share blocks (inspect via `stat` or disk usage), (4) verify copy-on-write works for subsequent modifications
+    - **Platforms**: macOS (interpose)
+
+  - **T15.5.13 `test_materialization_mode_persisted_in_branch_metadata`**:
+    - **Properties verified**: Branch metadata records which materialization mode was used
+    - **Steps**: (1) Create branch with `materialization=Eager`, (2) query branch info via control plane, (3) verify response includes materialization mode field
+    - **Platforms**: Linux (FUSE), macOS (interpose)
+
+- **Implementation Details** (to be filled after implementation):
+  - Key source files: `crates/agentfs-core/src/config.rs`, `crates/agentfs-core/src/vfs.rs`, `crates/agentfs-fuse-host/src/main.rs`
 
 - **Verification Results**:
-  - [ ] T16.1 Sandbox Smoke – pending
-  - [ ] T16.2 Agent Start Integration – pending
-  - [ ] T16.3 Abort/Crash Cleanup – pending
+  - [ ] T15.5.1 Lazy Branch Creation Time – pending
+  - [ ] T15.5.2 Eager Copies All Files – pending
+  - [ ] T15.5.3 Eager Isolation from Lower Creates – pending
+  - [ ] T15.5.4 Eager Isolation from Lower Modifications – pending
+  - [ ] T15.5.5 CloneEager Uses Reflink – pending
+  - [ ] T15.5.6 CloneEager Fallback to Eager – pending
+  - [ ] T15.5.7 CloneEager Require Clone Fails – pending
+  - [ ] T15.5.8 FUSE Host CLI Flag – pending
+  - [ ] T15.5.9 Daemon RPC Parameter – pending
+  - [ ] T15.5.10 Lazy Lower Visibility – pending
+  - [ ] T15.5.11 Eager Large Directory Performance – pending
+  - [ ] T15.5.12 CloneEager macOS Clonefile – pending
+  - [ ] T15.5.13 Mode Persisted in Branch Metadata – pending
+
+**F16. `ah agent sandbox` Integration with AgentFS** (4–5d)
+
+- **Prerequisites**: The AgentFS daemon must be running before executing these tests. Start it with `just start-ah-fs-snapshots-daemon` (requires sudo privileges). See [AgentFS Harness Runbook](../../../docs/AgentFS-Harness-Runbook.md) and [legacy/ruby/test/AGENTS.md](../../../legacy/ruby/test/AGENTS.md) for daemon startup documentation.
+
+- **Deliverables**:
+  - Update the `ah agent sandbox` CLI runtime selection logic (see `specs/Public/CLI.md`) so when `--fs-snapshots agentfs` (or the auto detector chooses AgentFS) the command discovers the already-running daemon, reuses its mount, and manages per-process branches through the control plane. In dev environments the daemon is started via `just start-ah-fs-snapshots-daemon`; in production environments, the daemon is installed as a system service and its socket is managed through the [configuration system](../Configuration.md)).
+  - Wire branch binding so every sandboxed process and its child processes are assigned to its own branch by calling the control plane before launching the workload; track bindings for cleanup on exit.
+  - Add user-facing logging/telemetry describing when the CLI switches between AgentFS interpose (macOS) and FUSE (Linux) backends, and expose troubleshooting hints (mount status, control file path, daemon logs).
+  - Implement the high-level sandbox properties defined in [Agent-Harbor-Sandboxing-Strategies.md](../Sandboxing/Agent-Harbor-Sandboxing-Strategies.md) and [Local-Sandboxing-on-Linux.md](../Sandboxing/Local-Sandboxing-on-Linux.md) when using the AgentFS provider.
+
+- **Success criteria (automated integration tests)**:
+  - New end-to-end tests run `ah agent sandbox --fs-snapshots agentfs -- <cmd>` and verify the CLI snapshot list contains entries created through the control plane while the daemon logs show per-process branch binding.
+  - Mount lifecycle automation guarantees no stale mounts remain after the CLI terminates, even when the sandboxed process crashes or the user interrupts the command.
+  - All high-level sandbox properties (filesystem isolation, process isolation, network isolation, resource governance) are verified through dedicated test scenarios.
+
+- **Automated Test Plan**:
+
+  All tests assume the daemon is running via `just start-ah-fs-snapshots-daemon`. Tests should skip gracefully with actionable messages when the daemon is unavailable.
+  - **T16.1 `test_sandbox_agentfs_basic_execution`** (`scripts/test-agentfs-sandbox.sh`):
+    - **Properties verified**: Basic command execution inside sandbox with AgentFS FUSE provider
+    - **Steps**: Run `ah agent sandbox --fs-snapshots agentfs -- echo "sandbox test"`, verify exit code 0 and expected output
+    - **Platforms**: Linux (FUSE), macOS (interpose)
+
+  - **T16.2 `test_sandbox_agentfs_filesystem_isolation`**:
+    - **Properties verified**: Per-task workspace isolated from real working tree (snapshot + CoW); no writes outside the workspace
+    - **Steps**: (1) Capture directory contents before sandbox execution, (2) run `ah agent sandbox --fs-snapshots agentfs -- bash -c "touch /tmp/marker && echo 'test' > newfile.txt"`, (3) verify host directory contents are identical before/after, (4) verify marker file does NOT exist on host
+    - **Spec reference**: [Agent-Harbor-Sandboxing-Strategies.md §3 File-system semantics](../Sandboxing/Agent-Harbor-Sandboxing-Strategies.md)
+
+  - **T16.3 `test_sandbox_agentfs_overlay_persistence`**:
+    - **Properties verified**: Files written in AgentFS branch persist across sandbox invocations using the same branch
+    - **Steps**: (1) Create a branch via control plane, (2) run sandbox bound to that branch and create a file, (3) run a second sandbox bound to the same branch and verify file exists
+    - **Spec reference**: [AgentFS.md §Per-process branch binding](AgentFS.md)
+
+  - **T16.4 `test_sandbox_agentfs_branch_binding`**:
+    - **Properties verified**: Every sandboxed process is assigned to its own branch; control-plane logs show binding
+    - **Steps**: Run sandbox, parse daemon/control-plane logs for branch binding messages, verify branch ID is recorded
+
+  - **T16.5 `test_sandbox_agentfs_process_isolation`** (Linux only):
+    - **Properties verified**: Process isolation so tools see only session processes; host PIDs invisible/inaccessible
+    - **Steps**: Run `ah agent sandbox --fs-snapshots agentfs -- ps aux` inside sandbox, verify host processes are NOT visible; run `ah agent sandbox -- kill -0 1` and verify it fails (cannot signal host PID 1)
+    - **Spec reference**: [Local-Sandboxing-on-Linux.md §4 Isolation requirements](../Sandboxing/Local-Sandboxing-on-Linux.md)
+
+  - **T16.6 `test_sandbox_agentfs_network_isolation`** (Linux only):
+    - **Properties verified**: Isolated networking to avoid port clashes; same-port binds possible without conflict; egress off by default
+    - **Steps**: (1) Start a listener on port 8080 on host, (2) run sandbox and attempt to bind port 8080 inside, verify success (no conflict), (3) verify `curl` to external URL fails (egress blocked by default)
+    - **Spec reference**: [Local-Sandboxing-on-Linux.md §7 Networking requirements](../Sandboxing/Local-Sandboxing-on-Linux.md)
+
+  - **T16.7 `test_sandbox_agentfs_network_egress_enabled`** (Linux only):
+    - **Properties verified**: Opt-in egress works when `--allow-network yes` is specified
+    - **Steps**: Run `ah agent sandbox --fs-snapshots agentfs --allow-network yes -- curl -s https://example.com`, verify success
+
+  - **T16.8 `test_sandbox_agentfs_secrets_protection`**:
+    - **Properties verified**: Sensitive areas shielded by default (e.g., `~/.ssh`, `~/.gnupg`)
+    - **Steps**: Run sandbox and attempt to read `~/.ssh/id_rsa` (if exists), verify access is denied or path is hidden
+    - **Spec reference**: [Agent-Harbor-Sandboxing-Strategies.md §3 File-system semantics](../Sandboxing/Agent-Harbor-Sandboxing-Strategies.md)
+
+  - **T16.9 `test_sandbox_agentfs_writable_carveouts`**:
+    - **Properties verified**: Writable working copy and writable package manager caches work correctly
+    - **Steps**: Run sandbox with `--mount-rw /tmp/test-cache`, verify writes to that path succeed while writes to `/etc` fail
+    - **Spec reference**: [Local-Sandboxing-on-Linux.md §5.1 Baseline](../Sandboxing/Local-Sandboxing-on-Linux.md)
+
+  - **T16.10 `test_sandbox_agentfs_cleanup_on_exit`**:
+    - **Properties verified**: Deterministic teardown that removes mounts, processes, and limits; no stale mounts after CLI terminates
+    - **Steps**: Run sandbox, capture mount table and cgroup list, verify cleanup after sandbox exits
+
+  - **T16.11 `test_sandbox_agentfs_crash_cleanup`**:
+    - **Properties verified**: Cleanup works even when the sandboxed process crashes or is killed
+    - **Steps**: Run `ah agent sandbox --fs-snapshots agentfs -- sleep 60` in background, send SIGKILL after 2s, verify branch unbinding and mount cleanup
+    - **Spec reference**: [Agent-Harbor-Sandboxing-Strategies.md §9 Platform integrations](../Sandboxing/Agent-Harbor-Sandboxing-Strategies.md)
+
+  - **T16.12 `test_sandbox_agentfs_interrupt_cleanup`**:
+    - **Properties verified**: Cleanup works when user sends SIGINT (Ctrl+C)
+    - **Steps**: Run sandbox in background, send SIGINT, verify graceful cleanup
+
+  - **T16.13 `test_sandbox_agentfs_resource_limits`** (Linux only):
+    - **Properties verified**: CPU/memory/pids limits enforced on per-session basis
+    - **Steps**: Run sandbox with cgroup limits, spawn fork bomb inside, verify it is contained
+    - **Spec reference**: [Local-Sandboxing-on-Linux.md §11 Resource governance](../Sandboxing/Local-Sandboxing-on-Linux.md)
+
+  - **T16.14 `test_sandbox_agentfs_debugging_enabled`** (Linux only):
+    - **Properties verified**: Debugging supported within the sandbox only
+    - **Steps**: Run sandbox with a child process, attempt `ptrace` attach from within sandbox (should succeed), attempt `ptrace` attach to supervisor from within sandbox (should fail)
+    - **Spec reference**: [Local-Sandboxing-on-Linux.md §6 Process & debugging](../Sandboxing/Local-Sandboxing-on-Linux.md)
+
+  - **T16.15 `test_sandbox_agentfs_readonly_baseline`**:
+    - **Properties verified**: Read-only baseline of the host/system image
+    - **Steps**: Run sandbox and attempt to write to `/usr/bin/`, `/etc/`, `/lib/`, verify all fail with EROFS or EPERM
+    - **Spec reference**: [Local-Sandboxing-on-Linux.md §5.1 Baseline](../Sandboxing/Local-Sandboxing-on-Linux.md)
+
+  - **T16.16 `test_sandbox_agentfs_provider_telemetry`**:
+    - **Properties verified**: Structured logs report provider selection (AgentFS), mount path, and troubleshooting hints
+    - **Steps**: Run sandbox with `RUST_LOG=debug`, parse logs for expected telemetry fields
+
+  - **T16.17 `test_sandbox_agentfs_child_process_fork`**:
+    - **Properties verified**: Child processes spawned via fork() inherit branch binding and filesystem isolation
+    - **Steps**: Run sandbox with `bash -c 'echo before > /tmp/test.txt && (echo child > /tmp/child.txt) && cat /tmp/child.txt'`, verify both files exist in branch but not on host
+    - **Spec reference**: [AgentFS.md §Per-process branch binding](AgentFS.md)
+
+  - **T16.18 `test_sandbox_agentfs_child_process_exec`**:
+    - **Properties verified**: Processes launched via exec() maintain branch binding
+    - **Steps**: Run sandbox with `bash -c 'exec cat /etc/hostname'`, verify output comes from branch view (not host)
+
+  - **T16.19 `test_sandbox_agentfs_child_process_system`**:
+    - **Properties verified**: Subprocesses via system() or popen() maintain isolation
+    - **Steps**: Run sandbox with a C/Python program that calls system("touch /tmp/marker"), verify marker in branch, not on host
+
+  - **T16.20 `test_sandbox_agentfs_child_process_nohup`**:
+    - **Properties verified**: Backgrounded/nohup processes maintain branch binding
+    - **Steps**: Run sandbox with `bash -c 'nohup touch /tmp/bg.txt &>/dev/null & sleep 0.5'`, verify file exists in branch
+
+  - **T16.21 `test_sandbox_agentfs_child_process_setsid`**:
+    - **Properties verified**: Processes that create new sessions maintain branch binding
+    - **Steps**: Run sandbox with `setsid touch /tmp/setsid.txt`, verify file in branch not on host
+
+  - **T16.22 `test_sandbox_agentfs_child_process_double_fork`**:
+    - **Properties verified**: Double-fork daemon pattern maintains branch binding
+    - **Steps**: Run sandbox with script that double-forks (classic daemonization), verify daemon's writes are in branch
+
+  - **T16.23 `test_sandbox_agentfs_child_process_shell_pipeline`**:
+    - **Properties verified**: Shell pipelines with multiple processes maintain branch binding
+    - **Steps**: Run sandbox with `bash -c 'echo test | tee /tmp/pipe1.txt | cat > /tmp/pipe2.txt'`, verify both files in branch
+
+  - **T16.24 `test_sandbox_agentfs_child_process_subshell`**:
+    - **Properties verified**: Subshells maintain branch binding
+    - **Steps**: Run sandbox with `bash -c '(touch /tmp/sub.txt); [ -f /tmp/sub.txt ] && echo ok'`, verify "ok" output and file in branch
+
+  - **T16.25 `test_sandbox_agentfs_base_layer_concurrent_create`**:
+    - **Properties verified**: Files created in base layer after branch creation are NOT visible in sandbox (with Eager mode)
+    - **Steps**: (1) Start sandbox with `--overlay-materialization eager`, (2) externally create `/tmp/base_new.txt` on host, (3) verify file is NOT visible inside sandbox
+    - **Spec reference**: [AgentFS.md §Overlay Materialization Modes](AgentFS.md)
+
+  - **T16.26 `test_sandbox_agentfs_base_layer_concurrent_modify`**:
+    - **Properties verified**: Modifications to base layer files after branch creation are NOT visible in sandbox (with Eager mode)
+    - **Steps**: (1) Create `/tmp/base_test.txt` with content "original", (2) start sandbox with `--overlay-materialization eager`, (3) externally modify file to "modified", (4) verify sandbox still sees "original"
+    - **Spec reference**: [AgentFS.md §Overlay Materialization Modes](AgentFS.md)
+
+  - **T16.27 `test_sandbox_agentfs_base_layer_lazy_visibility`**:
+    - **Properties verified**: In Lazy mode (designed for controlled environments), unaccessed base layer modifications MAY be visible—this is expected behavior in stable base layer environments
+    - **Steps**: (1) Start sandbox with `--overlay-materialization lazy`, (2) externally create `/tmp/lazy_new.txt`, (3) verify file IS visible inside sandbox (expected in lazy mode)
+    - **Spec reference**: [AgentFS.md §Overlay Materialization Modes](AgentFS.md)
+
+  - **T16.28 `test_sandbox_agentfs_base_layer_delete_isolation`**:
+    - **Properties verified**: Files deleted from base layer after branch creation remain visible in sandbox (with Eager mode)
+    - **Steps**: (1) Create `/tmp/will_delete.txt`, (2) start sandbox with `--overlay-materialization eager`, (3) externally delete file, (4) verify file is STILL visible inside sandbox
+    - **Spec reference**: [AgentFS.md §Overlay Materialization Modes](AgentFS.md)
+
+  - **T16.29 `test_sandbox_agentfs_child_process_thread_spawn`**:
+    - **Properties verified**: Threads spawned within sandbox inherit branch binding
+    - **Steps**: Run sandbox with multi-threaded program that writes from different threads, verify all writes land in branch
+
+  - **T16.30 `test_sandbox_agentfs_child_process_cloexec`**:
+    - **Properties verified**: FD_CLOEXEC handles are properly cleaned up and child processes get fresh branch-bound FDs
+    - **Steps**: Run sandbox with program that sets CLOEXEC then execs, verify exec'd process can still access branch files
+
+- **Verification Results**:
+  - [ ] T16.1 Basic Execution – pending
+  - [ ] T16.2 Filesystem Isolation – pending
+  - [ ] T16.3 Overlay Persistence – pending
+  - [ ] T16.4 Branch Binding – pending
+  - [ ] T16.5 Process Isolation – pending
+  - [ ] T16.6 Network Isolation – pending
+  - [ ] T16.7 Network Egress Enabled – pending
+  - [ ] T16.8 Secrets Protection – pending
+  - [ ] T16.9 Writable Carveouts – pending
+  - [ ] T16.10 Cleanup on Exit – pending
+  - [ ] T16.11 Crash Cleanup – pending
+  - [ ] T16.12 Interrupt Cleanup – pending
+  - [ ] T16.13 Resource Limits – pending
+  - [ ] T16.14 Debugging Enabled – pending
+  - [ ] T16.15 Read-only Baseline – pending
+  - [ ] T16.16 Provider Telemetry – pending
+  - [ ] T16.17 Child Process Fork – pending
+  - [ ] T16.18 Child Process Exec – pending
+  - [ ] T16.19 Child Process System – pending
+  - [ ] T16.20 Child Process Nohup – pending
+  - [ ] T16.21 Child Process Setsid – pending
+  - [ ] T16.22 Child Process Double Fork – pending
+  - [ ] T16.23 Child Process Shell Pipeline – pending
+  - [ ] T16.24 Child Process Subshell – pending
+  - [ ] T16.25 Base Layer Concurrent Create (Eager) – pending
+  - [ ] T16.26 Base Layer Concurrent Modify (Eager) – pending
+  - [ ] T16.27 Base Layer Lazy Visibility – pending
+  - [ ] T16.28 Base Layer Delete Isolation (Eager) – pending
+  - [ ] T16.29 Child Process Thread Spawn – pending
+  - [ ] T16.30 Child Process Cloexec – pending
+
+**F17. `ah agent start` Integration with AgentFS** (3–4d)
+
+- **Prerequisites**: The AgentFS daemon must be running before executing these tests. Start it with `just start-ah-fs-snapshots-daemon` (requires sudo privileges). See [AgentFS Harness Runbook](../../../docs/AgentFS-Harness-Runbook.md) for daemon startup documentation.
+
+- **Deliverables**:
+  - Update the `ah agent start` CLI runtime selection logic so when `--fs-snapshots agentfs` (or the auto detector chooses AgentFS) the command discovers the already-running daemon, reuses its mount, and manages per-process branches through the control plane.
+  - Reuse the `ah agent fs snapshot` plumbing to create/restore snapshots as part of workspace preparation, ensuring snapshot IDs flow into the task metadata that currently records provider selection.
+  - Wire branch binding so every agent process is assigned to its own branch by calling the control plane before `ah agent record` launches the workload; track bindings for cleanup on exit.
+  - Integrate with the local task manager and REST server workflows, ensuring AgentFS metadata is recorded in session payloads.
+
+- **Success criteria (automated integration tests)**:
+  - `ah agent start --agent echo --fs-snapshots agentfs --working-copy auto` completes end-to-end with recorded workspace metadata referencing the AgentFS provider.
+  - Subsequent `ah agent fs snapshot list` shows the automatically created checkpoints.
+  - Mount lifecycle automation guarantees no stale mounts remain after the agent terminates, even when the agent crashes or is interrupted.
+  - Agent workspace is properly isolated; host filesystem remains untouched while agent edits persist in the AgentFS branch.
+
+- **Automated Test Plan**:
+
+  All tests assume the daemon is running via `just start-ah-fs-snapshots-daemon`. Tests should skip gracefully with actionable messages when the daemon is unavailable.
+  - **T17.1 `test_agent_start_agentfs_basic_execution`** (`scripts/test-agentfs-agent-start.sh`):
+    - **Properties verified**: Basic agent execution with AgentFS provider
+    - **Steps**: Run `ah agent start --agent echo --fs-snapshots agentfs`, verify exit code 0
+    - **Platforms**: Linux (FUSE), macOS (interpose)
+
+  - **T17.2 `test_agent_start_agentfs_provider_recorded`**:
+    - **Properties verified**: Provider metadata correctly recorded in SQLite state DB
+    - **Steps**: Run `ah agent start --agent echo --fs-snapshots agentfs`, inspect SQLite state DB, verify recorded provider is `AgentFs` with mount metadata (mount path, branch ID)
+
+  - **T17.3 `test_agent_start_agentfs_snapshot_creation`**:
+    - **Properties verified**: Automatic snapshot creation during workspace preparation
+    - **Steps**: Run `ah agent start`, then run `ah agent fs snapshot list`, verify at least one snapshot ID is returned
+
+  - **T17.4 `test_agent_start_agentfs_workspace_isolation`**:
+    - **Properties verified**: Agent workspace isolated from host; host filesystem untouched
+    - **Steps**: (1) Capture host directory contents, (2) run agent that creates/modifies files, (3) verify host directory unchanged, (4) verify changes exist in AgentFS branch via control plane query
+
+  - **T17.5 `test_agent_start_agentfs_branch_binding`**:
+    - **Properties verified**: Agent process bound to dedicated branch; recorded in task metadata
+    - **Steps**: Run agent start, parse recorder output for branch binding, verify branch ID in REC_SNAPSHOT entries
+
+  - **T17.6 `test_agent_start_agentfs_cleanup_on_success`**:
+    - **Properties verified**: Clean teardown when agent completes successfully
+    - **Steps**: Run agent start with short-running agent, verify branch unbinding and no stale mounts
+
+  - **T17.7 `test_agent_start_agentfs_crash_cleanup`**:
+    - **Properties verified**: Cleanup when agent crashes (SIGKILL)
+    - **Steps**: Start agent in background, send SIGKILL after 2s, verify branch unbinding and mount cleanup
+    - **Spec reference**: Same cleanup requirements as F16.11
+
+  - **T17.8 `test_agent_start_agentfs_interrupt_cleanup`**:
+    - **Properties verified**: Cleanup when user interrupts (SIGINT)
+    - **Steps**: Start agent in background, send SIGINT, verify graceful cleanup
+
+  - **T17.9 `test_agent_start_agentfs_recorder_integration`**:
+    - **Properties verified**: AgentFS branch IDs flow into `ah agent record` REC_SNAPSHOT entries
+    - **Steps**: Run agent with recording enabled, parse recording output, verify REC_SNAPSHOT entries reference correct AgentFS branch labels
+
+  - **T17.10 `test_agent_start_agentfs_sandbox_combined`** (Linux only):
+    - **Properties verified**: Combined sandbox + AgentFS works (sandbox isolation + AgentFS overlay)
+    - **Steps**: Run `ah agent start --agent echo --fs-snapshots agentfs --sandbox local`, verify both sandbox properties and AgentFS isolation
+
+  - **T17.11 `test_agent_start_agentfs_telemetry`**:
+    - **Properties verified**: Structured logs report provider selection, mount path, and branch ID
+    - **Steps**: Run agent start with `RUST_LOG=debug`, parse logs for expected telemetry fields
+
+  - **T17.12 `test_agent_start_agentfs_multiple_agents`**:
+    - **Properties verified**: Multiple concurrent agents get separate branches; no cross-contamination
+    - **Steps**: Start two agents in parallel, each creating unique files, verify each agent's files are isolated in their respective branches
+
+- **Verification Results**:
+  - [ ] T17.1 Basic Execution – pending
+  - [ ] T17.2 Provider Recorded – pending
+  - [ ] T17.3 Snapshot Creation – pending
+  - [ ] T17.4 Workspace Isolation – pending
+  - [ ] T17.5 Branch Binding – pending
+  - [ ] T17.6 Cleanup on Success – pending
+  - [ ] T17.7 Crash Cleanup – pending
+  - [ ] T17.8 Interrupt Cleanup – pending
+  - [ ] T17.9 Recorder Integration – pending
+  - [ ] T17.10 Sandbox Combined – pending
+  - [ ] T17.11 Telemetry – pending
+  - [ ] T17.12 Multiple Agents – pending
 
 ### Test strategy & tooling
 
