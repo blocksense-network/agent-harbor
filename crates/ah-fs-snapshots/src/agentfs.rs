@@ -1024,10 +1024,22 @@ mod fuse {
         }
 
         fn send_request(&self, request: Request) -> Result<Response> {
+            // The ioctl uses a fixed 4096-byte buffer for both request and response.
+            // The request is written at the start, and the response overwrites it.
+            const IOCTL_BUFFER_SIZE: usize = 4096;
+
             let payload = request.as_ssz_bytes();
-            let mut frame = Vec::with_capacity(payload.len() + 4);
+            if payload.len() + 4 > IOCTL_BUFFER_SIZE {
+                return Err(Error::provider(format!(
+                    "AgentFS control request too large ({} bytes)",
+                    payload.len()
+                )));
+            }
+
+            let mut frame = Vec::with_capacity(IOCTL_BUFFER_SIZE);
             frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
             frame.extend_from_slice(&payload);
+            frame.resize(IOCTL_BUFFER_SIZE, 0); // Ensure buffer is large enough for response
 
             let file = OpenOptions::new().read(true).write(true).open(&self.control_path).map_err(
                 |err| {

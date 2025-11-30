@@ -477,7 +477,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] T14.3 Provider Matrix (FUSE) – driver + scenarios can run the provider matrix via `AGENTFS_TRANSPORT=fuse`, discovering the mount through the daemon helpers
   - [x] T14.4 Backstore Sweep – harness iterates over InMemory, HostFs, and RamDisk backstores, tagging logs with the active mode and skipping gracefully when prerequisites are missing
 
-**F15. AgentFS Control Plane Wiring for `ah agent fs snapshot`** (3–4d) - MOSTLY COMPLETE
+**F15. AgentFS Control Plane Wiring for `ah agent fs snapshot`** (3–4d) - COMPLETE
 
 - **Deliverables**:
   - Reuse the existing `agentfs-control-cli` (`crates/agentfs-control-cli`) logic to implement ioctl + SSZ request/response handling inside the `ah agent fs snapshot` command, so snapshot create/list/branch/bind requests can target the mounted FUSE filesystem through `.agentfs/control`.
@@ -512,10 +512,12 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
 - **Key Source Files**:
   - `crates/ah-cli/src/agent/fs.rs` – Main CLI implementation for `ah agent fs` commands
   - `crates/ah-cli/src/transport.rs` – Control plane transport layer with ioctl SSZ request/response handling
+  - `crates/ah-cli/tests/cli_request_builders_test.rs` – SSZ schema validation tests (T15.3)
   - `crates/agentfs-control-cli/src/main.rs` – Reference CLI implementation for parity testing
   - `crates/ah-fs-snapshots-daemon/src/fuse_manager.rs` – Daemon FUSE mount management with privilege dropping
   - `crates/agentfs-fuse-host/src/adapter.rs` – FUSE adapter with process-based control file ownership
   - `scripts/test-agentfs-cli-control-plane.sh` – CLI parity test harness (T15.1)
+  - `scripts/test-agentfs-cli-failure-injection.sh` – Failure injection test harness (T15.2)
 
 - **Success criteria (automated integration tests)**:
   - `ah agent fs snapshot create --name smoke --mount /tmp/agentfs` successfully issues ioctl requests against the FUSE control file and prints the new snapshot ID, matching the behavior of `agentfs-control-cli snapshot-create`.
@@ -530,8 +532,8 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
 - **Verification Results**:
   - [x] T15.0 CLI Structure – `ah agent fs` subcommand structure fully implemented with status/snapshot/interpose/snapshots/branch commands; only init-session remains a stub
   - [x] T15.1 CLI Parity Harness – `scripts/test-agentfs-cli-control-plane.sh` (`just test-agentfs-cli-parity`) validates that `ah agent fs` commands produce output compatible with `agentfs-control-cli` for snapshot list, branch create, and branch bind operations. The daemon spawns the FUSE host as the requesting user, so the control file is owned by the user and no `--allow-other` or sudo is required.
-  - [ ] T15.2 Failure Injection – pending (no test exists yet)
-  - [ ] T15.3 Schema Validation – pending (interpose commands use ioctl SSZ; other commands use provider layer)
+  - [x] T15.2 Failure Injection – `scripts/test-agentfs-cli-failure-injection.sh` (`just test-agentfs-cli-failure-injection`) validates error handling when the daemon stops mid-run or is unavailable. Tests include: control file not found, I/O error after daemon kill, errno context in error messages, invalid mount path handling, and branch/interpose operations with dead daemon. All tests verify proper error reporting with actionable messages and non-zero exit codes.
+  - [x] T15.3 Schema Validation – `crates/ah-cli/tests/cli_request_builders_test.rs` (`just test-agentfs-cli-schema`) validates that CLI request builders produce SSZ-encoded requests compatible with `agentfs-control.request.logical.json`. Tests cover all control plane requests (snapshot create/list, branch create/bind, interpose get/set) with roundtrip SSZ encoding verification, schema validation, edge cases (Unicode, long names, special characters), and binary format stability. All 22 tests pass.
 
 **F15.5. Overlay Materialization Modes Implementation** (5–6d)
 
