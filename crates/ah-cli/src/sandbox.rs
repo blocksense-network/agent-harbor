@@ -1,7 +1,19 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
+//! Sandbox CLI command implementation.
+//!
+//! This module implements the `ah agent sandbox` command, which runs processes
+//! inside a sandboxed environment on Linux and macOS. Configuration is loaded
+//! from the layered configuration system with the following precedence:
+//!
+//! CLI flags > Environment variables > CLI config file > Repo config > User config > System config
+//!
+//! See `specs/Public/Sandboxing/Local-Sandboxing-on-Linux.md` for the full specification.
+
+use crate::SubcommandOverrides;
 use crate::tui::FsSnapshotsType;
+use ah_config_types::sandbox::{SandboxConfig, SandboxMode};
 use ah_fs_snapshots::{
     FsSnapshotProvider, PreparedWorkspace, SnapshotProviderKind, WorkingCopyMode,
 };
@@ -30,74 +42,361 @@ enum FsProviderArg {
     Disable,
 }
 
-/// Arguments for running a command in a sandbox
-#[derive(Args, Clone)]
+/// Arguments for running a command in a sandbox.
+///
+/// CLI flags override configuration file settings. Use environment variables
+/// with the `AH_SANDBOX_*` prefix to set defaults.
+///
+/// # Configuration Precedence
+///
+/// 1. CLI flags (highest precedence)
+/// 2. Environment variables (`AH_SANDBOX_*`)
+/// 3. CLI config file (`--config`)
+/// 4. Repo config (`.agents/config.toml`)
+/// 5. User config (`~/.config/agent-harbor/config.toml`)
+/// 6. System config (`/etc/agent-harbor/config.toml`)
+///
+/// # Example
+///
+/// ```sh
+/// # From CLI flags
+/// ah agent sandbox --allow-network yes -- curl https://example.com
+///
+/// # From config file (~/.config/agent-harbor/config.toml)
+/// # [sandbox]
+/// # allow-network = true
+/// # limits.pids-max = 2048
+/// ```
+#[derive(Args, Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct SandboxRunArgs {
     /// Sandbox type (currently only 'local' is supported)
     #[arg(long = "type", default_value = "local")]
+    #[serde(skip)]
     pub sandbox_type: String,
 
+    /// Sandbox mode: 'dynamic' (interactive read allow-list) or 'static' (RO with blacklists)
+    #[arg(long, value_enum)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<SandboxModeArg>,
+
     /// Allow internet access via slirp4netns
-    #[arg(long = "allow-network", value_name = "BOOL", default_value = "no")]
+    #[arg(long = "allow-network", value_name = "BOOL")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[allow(unused)]
-    pub allow_network: String,
+    pub allow_network: Option<String>,
 
     /// Enable container device access (/dev/fuse, storage dirs)
-    #[arg(long = "allow-containers", value_name = "BOOL", default_value = "no")]
+    #[arg(long = "allow-containers", value_name = "BOOL")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[allow(unused)]
-    pub allow_containers: String,
+    pub allow_containers: Option<String>,
 
     /// Enable KVM device access for VMs (/dev/kvm)
-    #[arg(long = "allow-kvm", value_name = "BOOL", default_value = "no")]
+    #[arg(long = "allow-kvm", value_name = "BOOL")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[allow(unused)]
-    pub allow_kvm: String,
+    pub allow_kvm: Option<String>,
 
     /// Enable dynamic filesystem access control
-    #[arg(long = "seccomp", value_name = "BOOL", default_value = "no")]
+    #[arg(long = "seccomp", value_name = "BOOL")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[allow(unused)]
-    pub seccomp: String,
+    pub seccomp: Option<String>,
 
-    /// Enable debugging operations in sandbox
-    #[arg(long = "seccomp-debug", value_name = "BOOL", default_value = "no")]
+    /// Enable debugging operations in sandbox (default: enabled)
+    #[arg(long = "debug", value_name = "BOOL")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[allow(unused)]
-    pub seccomp_debug: String,
+    pub debug: Option<String>,
+
+    /// Size limit for isolated /tmp tmpfs mount (e.g., "256m", "1G")
+    #[arg(long = "tmpfs-size")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tmpfs_size: Option<String>,
+
+    /// Maximum PIDs allowed in sandbox (for fork-bomb protection)
+    #[arg(long = "pids-max")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pids_max: Option<u32>,
+
+    /// Maximum memory limit (e.g., "2G", "4096m")
+    #[arg(long = "memory-max")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_max: Option<String>,
+
+    /// Memory high watermark (triggers reclaim, e.g., "1G")
+    #[arg(long = "memory-high")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_high: Option<String>,
+
+    /// CPU quota and period (e.g., "80000 100000" for 80% of one core)
+    #[arg(long = "cpu-max")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_max: Option<String>,
 
     /// Additional writable paths to bind mount
     #[arg(long = "mount-rw", value_name = "PATH")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     #[allow(unused)]
     pub mount_rw: Vec<PathBuf>,
 
     /// Paths to promote to copy-on-write overlays
     #[arg(long = "overlay", value_name = "PATH")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     #[allow(unused)]
     pub overlay: Vec<PathBuf>,
 
+    /// Paths to block/hide in static mode
+    #[arg(long = "blacklist", value_name = "PATH")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[allow(unused)]
+    pub blacklist: Vec<PathBuf>,
+
     /// Path to existing AgentFS daemon socket (reuses existing daemon)
     #[arg(long = "agentfs-socket", value_name = "PATH")]
+    #[serde(skip)]
     #[allow(unused)]
     pub agentfs_socket: Option<PathBuf>,
 
     /// Command and arguments to run in the sandbox
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    #[serde(skip)]
     pub command: Vec<String>,
 }
 
+/// Sandbox mode CLI argument
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SandboxModeArg {
+    /// Dynamic mode: interactive read allow-list with supervisor prompts
+    Dynamic,
+    /// Static mode: read-only with blacklists, no interactive gating
+    Static,
+}
+
+impl From<SandboxModeArg> for SandboxMode {
+    fn from(arg: SandboxModeArg) -> Self {
+        match arg {
+            SandboxModeArg::Dynamic => SandboxMode::Dynamic,
+            SandboxModeArg::Static => SandboxMode::Static,
+        }
+    }
+}
+
+impl SubcommandOverrides for SandboxRunArgs {
+    fn config_path(&self) -> &'static str {
+        "sandbox"
+    }
+
+    fn to_config_json(&self) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+
+        if let Some(mode) = &self.mode {
+            map.insert(
+                "mode".to_string(),
+                serde_json::to_value(mode).unwrap_or_default(),
+            );
+        }
+
+        if let Some(allow_network) = &self.allow_network {
+            if let Ok(val) = parse_bool_flag(allow_network) {
+                map.insert("allow-network".to_string(), serde_json::Value::Bool(val));
+            }
+        }
+
+        if let Some(allow_containers) = &self.allow_containers {
+            if let Ok(val) = parse_bool_flag(allow_containers) {
+                map.insert("containers".to_string(), serde_json::Value::Bool(val));
+            }
+        }
+
+        if let Some(allow_kvm) = &self.allow_kvm {
+            if let Ok(val) = parse_bool_flag(allow_kvm) {
+                map.insert("allow-kvm".to_string(), serde_json::Value::Bool(val));
+            }
+        }
+
+        if let Some(debug) = &self.debug {
+            if let Ok(val) = parse_bool_flag(debug) {
+                map.insert("debug".to_string(), serde_json::Value::Bool(val));
+            }
+        }
+
+        if let Some(tmpfs_size) = &self.tmpfs_size {
+            map.insert(
+                "tmpfs-size".to_string(),
+                serde_json::Value::String(tmpfs_size.clone()),
+            );
+        }
+
+        if !self.mount_rw.is_empty() {
+            let paths: Vec<String> =
+                self.mount_rw.iter().map(|p| p.to_string_lossy().to_string()).collect();
+            map.insert("rw-paths".to_string(), serde_json::to_value(paths).unwrap());
+        }
+
+        if !self.overlay.is_empty() {
+            let paths: Vec<String> =
+                self.overlay.iter().map(|p| p.to_string_lossy().to_string()).collect();
+            map.insert(
+                "overlay-paths".to_string(),
+                serde_json::to_value(paths).unwrap(),
+            );
+        }
+
+        if !self.blacklist.is_empty() {
+            let paths: Vec<String> =
+                self.blacklist.iter().map(|p| p.to_string_lossy().to_string()).collect();
+            map.insert(
+                "blacklist-paths".to_string(),
+                serde_json::to_value(paths).unwrap(),
+            );
+        }
+
+        // Handle limits as a nested structure
+        let mut limits = serde_json::Map::new();
+        if let Some(pids_max) = self.pids_max {
+            limits.insert(
+                "pids-max".to_string(),
+                serde_json::Value::Number(pids_max.into()),
+            );
+        }
+        if let Some(memory_max) = &self.memory_max {
+            limits.insert(
+                "memory-max".to_string(),
+                serde_json::Value::String(memory_max.clone()),
+            );
+        }
+        if let Some(memory_high) = &self.memory_high {
+            limits.insert(
+                "memory-high".to_string(),
+                serde_json::Value::String(memory_high.clone()),
+            );
+        }
+        if let Some(cpu_max) = &self.cpu_max {
+            limits.insert(
+                "cpu-max".to_string(),
+                serde_json::Value::String(cpu_max.clone()),
+            );
+        }
+        if !limits.is_empty() {
+            map.insert("limits".to_string(), serde_json::Value::Object(limits));
+        }
+
+        serde_json::Value::Object(map)
+    }
+}
+
 impl SandboxRunArgs {
-    /// Execute the sandbox run command
-    pub async fn run(self, fs_snapshots: Option<FsSnapshotsType>) -> Result<()> {
+    /// Build effective configuration by merging CLI args over config file settings.
+    ///
+    /// CLI arguments take precedence over config file values. Default values are
+    /// applied last for any unspecified options.
+    fn build_effective_config(&self, config: Option<&SandboxConfig>) -> SandboxConfig {
+        use ah_config_types::sandbox::SandboxLimits;
+
+        // Start with config file values or defaults
+        let mut effective = config.cloned().unwrap_or_default();
+
+        // Override with CLI arguments (only if explicitly provided)
+        if let Some(mode) = self.mode {
+            effective.mode = Some(mode.into());
+        }
+
+        if let Some(ref allow_network) = self.allow_network {
+            if let Ok(val) = parse_bool_flag(allow_network) {
+                effective.allow_network = Some(val);
+            }
+        }
+
+        if let Some(ref allow_containers) = self.allow_containers {
+            if let Ok(val) = parse_bool_flag(allow_containers) {
+                effective.containers = Some(val);
+            }
+        }
+
+        if let Some(ref allow_kvm) = self.allow_kvm {
+            if let Ok(val) = parse_bool_flag(allow_kvm) {
+                effective.allow_kvm = Some(val);
+            }
+        }
+
+        if let Some(ref debug) = self.debug {
+            if let Ok(val) = parse_bool_flag(debug) {
+                effective.debug = Some(val);
+            }
+        }
+
+        if let Some(ref tmpfs_size) = self.tmpfs_size {
+            effective.tmpfs_size = Some(tmpfs_size.clone());
+        }
+
+        // Merge path lists (CLI paths append/replace config paths)
+        if !self.mount_rw.is_empty() {
+            effective.rw_paths =
+                self.mount_rw.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        }
+
+        if !self.overlay.is_empty() {
+            effective.overlay_paths =
+                self.overlay.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        }
+
+        if !self.blacklist.is_empty() {
+            effective.blacklist_paths =
+                self.blacklist.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        }
+
+        // Merge limits
+        let mut limits = effective.limits.clone().unwrap_or_default();
+        if let Some(pids_max) = self.pids_max {
+            limits.pids_max = Some(pids_max);
+        }
+        if let Some(ref memory_max) = self.memory_max {
+            limits.memory_max = Some(memory_max.clone());
+        }
+        if let Some(ref memory_high) = self.memory_high {
+            limits.memory_high = Some(memory_high.clone());
+        }
+        if let Some(ref cpu_max) = self.cpu_max {
+            limits.cpu_max = Some(cpu_max.clone());
+        }
+
+        // Only set limits if any were specified
+        if limits != SandboxLimits::default()
+            || self.pids_max.is_some()
+            || self.memory_max.is_some()
+            || self.memory_high.is_some()
+            || self.cpu_max.is_some()
+        {
+            effective.limits = Some(limits);
+        }
+
+        effective
+    }
+
+    /// Execute the sandbox run command with merged configuration.
+    ///
+    /// Configuration is merged with precedence: CLI flags > config file > defaults
+    pub async fn run(
+        self,
+        fs_snapshots: Option<FsSnapshotsType>,
+        config: Option<&SandboxConfig>,
+    ) -> Result<()> {
         let fs_snapshots = fs_snapshots.unwrap_or(FsSnapshotsType::Auto);
+
+        // Build effective configuration by merging CLI args with config file settings
+        let effective_config = self.build_effective_config(config);
+
+        // Validate the effective configuration
+        effective_config.validate().map_err(|e| anyhow::anyhow!("{}", e))?;
+
         let SandboxRunArgs {
             sandbox_type,
-            allow_network,
-            allow_containers,
-            allow_kvm,
-            seccomp,
-            seccomp_debug,
-            mount_rw,
-            #[allow(unused_variables)]
-            overlay,
             agentfs_socket,
             command,
+            ..
         } = self;
 
         if sandbox_type != "local" {
@@ -106,15 +405,34 @@ impl SandboxRunArgs {
             ));
         }
 
-        let allow_network = parse_bool_flag(&allow_network)?;
+        // Extract effective values from merged configuration
+        let allow_network = effective_config.effective_allow_network();
         #[allow(unused_variables)]
-        let allow_containers = parse_bool_flag(&allow_containers)?;
+        let allow_containers = effective_config.effective_containers();
         #[allow(unused_variables)]
-        let allow_kvm = parse_bool_flag(&allow_kvm)?;
+        let allow_kvm = effective_config.effective_allow_kvm();
         #[allow(unused_variables)]
-        let seccomp = parse_bool_flag(&seccomp)?;
+        let debug_enabled = effective_config.effective_debug();
         #[allow(unused_variables)]
-        let seccomp_debug = parse_bool_flag(&seccomp_debug)?;
+        let seccomp = effective_config.mode == Some(SandboxMode::Dynamic);
+        #[allow(unused_variables)]
+        let mount_rw: Vec<PathBuf> = effective_config.rw_paths.iter().map(PathBuf::from).collect();
+        #[allow(unused_variables)]
+        let overlay: Vec<PathBuf> =
+            effective_config.overlay_paths.iter().map(PathBuf::from).collect();
+        #[allow(unused_variables)]
+        let tmpfs_size = effective_config.effective_tmpfs_size().to_string();
+
+        // Log effective configuration
+        tracing::info!(
+            mode = ?effective_config.effective_mode(),
+            debug_enabled = debug_enabled,
+            allow_network = allow_network,
+            allow_containers = allow_containers,
+            allow_kvm = allow_kvm,
+            tmpfs_size = %tmpfs_size,
+            "Sandbox effective configuration"
+        );
 
         // On non-Linux targets, these variables are unused; mark them as used to silence warnings
         #[cfg(not(target_os = "linux"))]
@@ -123,9 +441,10 @@ impl SandboxRunArgs {
             &allow_containers,
             &allow_kvm,
             &seccomp,
-            &seccomp_debug,
+            &debug_enabled,
             &mount_rw,
             &overlay,
+            &tmpfs_size,
         );
 
         if command.is_empty() {
@@ -188,27 +507,29 @@ impl SandboxRunArgs {
                 allow_containers = allow_containers,
                 allow_kvm = allow_kvm,
                 seccomp = seccomp,
-                seccomp_debug = seccomp_debug,
+                debug_enabled = debug_enabled,
                 mount_rw = ?mount_rw,
                 overlay = ?overlay,
                 "Running command inside sandbox workspace"
             );
 
-            #[allow(deprecated)]
-            let mut sandbox = create_sandbox_from_args(
+            // Use the new SandboxArgs struct instead of deprecated function
+            let mut sandbox = create_sandbox(SandboxArgs {
                 allow_network,
                 allow_containers,
                 allow_kvm,
                 seccomp,
-                seccomp_debug,
-                &mount_rw,
-                &overlay,
-                Some(exec_dir.as_path()),
-            )?
+                seccomp_debug: debug_enabled,
+                mount_rw: &mount_rw,
+                overlay: &overlay,
+                working_dir: Some(exec_dir.as_path()),
+                tmpfs_size: Some(&tmpfs_size),
+            })?
             .with_process_config(ProcessConfig {
                 command,
                 working_dir: Some(exec_dir.to_string_lossy().to_string()),
                 env: env_vars,
+                tmpfs_size: Some(tmpfs_size.clone()),
             });
 
             let exec_result = sandbox.exec_process().await;
@@ -742,6 +1063,10 @@ pub struct SandboxArgs<'a> {
     pub mount_rw: &'a [PathBuf],
     pub overlay: &'a [PathBuf],
     pub working_dir: Option<&'a Path>,
+    /// Size limit for isolated /tmp tmpfs mount (e.g., "256m", "1G").
+    /// Set to "0" to disable /tmp isolation entirely.
+    /// Default: "256m"
+    pub tmpfs_size: Option<&'a str>,
 }
 
 // New API with single config struct to reduce argument count
@@ -828,6 +1153,7 @@ pub fn create_sandbox_from_args(
         mount_rw,
         overlay,
         working_dir,
+        tmpfs_size: None, // Use default
     })
 }
 

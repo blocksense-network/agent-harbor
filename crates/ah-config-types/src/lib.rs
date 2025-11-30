@@ -11,5 +11,6 @@
 //! like `RepoConfig` remain as nested sections.
 
 pub mod repo;
+pub mod sandbox;
 pub mod server;
 pub mod ui;
