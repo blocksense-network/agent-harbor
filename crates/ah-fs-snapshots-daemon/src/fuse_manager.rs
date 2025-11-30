@@ -19,6 +19,8 @@ use tokio::time::{Duration, Instant, sleep};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
+#[cfg(test)]
+use crate::types::AgentfsMaterializationMode;
 use crate::types::{
     AgentfsFuseBackstore, AgentfsFuseMountRequest, AgentfsFuseState, AgentfsFuseStatusData,
 };
@@ -718,6 +720,9 @@ async fn spawn_agentfs_host(
     if request.writeback_cache {
         cmd.arg("--writeback-cache");
     }
+    // Add overlay materialization mode
+    cmd.arg("--overlay-materialization");
+    cmd.arg(request.materialization_mode.to_cli_arg());
     cmd.arg(mount_point);
 
     let stdout_file = OpenOptions::new().create(true).append(true).open(&runtime.log_path)?;
@@ -912,6 +917,7 @@ while true; do sleep 1; done
             writeback_cache: false,
             mount_timeout_ms: 2_000,
             backstore: AgentfsFuseBackstore::InMemory(Vec::new()),
+            materialization_mode: AgentfsMaterializationMode::default(),
         }
     }
 

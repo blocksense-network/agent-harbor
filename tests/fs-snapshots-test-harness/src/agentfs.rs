@@ -223,6 +223,7 @@ impl FuseHarness {
             writeback_cache: false,
             mount_timeout_ms: 15_000,
             backstore: spec.to_proto()?,
+            materialization_mode: ah_fs_snapshots_daemon::types::AgentfsMaterializationMode::lazy(),
         };
 
         if !self.mount_point.exists() {

@@ -156,6 +156,19 @@ pub struct OverlayConfig {
     pub copyup_mode: CopyUpMode,
     /// Optional subdirectory within the lower filesystem exposed to clients (defaults to root)
     pub visible_subdir: Option<PathBuf>,
+    /// Materialization mode for branch creation (default: Lazy)
+    ///
+    /// Controls whether the entire lower layer is materialized at branch creation time.
+    /// See `MaterializationMode` for detailed semantics.
+    #[serde(default)]
+    pub materialization: MaterializationMode,
+    /// Require filesystem clone support for CloneEager mode (default: false)
+    ///
+    /// When true and `materialization` is `CloneEager`, branch creation fails with
+    /// an actionable error if the backstore filesystem doesn't support reflink.
+    /// When false, CloneEager falls back to Eager mode.
+    #[serde(default)]
+    pub require_clone_support: bool,
 }
 
 impl Default for OverlayConfig {
@@ -165,12 +178,17 @@ impl Default for OverlayConfig {
             lower_root: None,
             copyup_mode: CopyUpMode::Lazy,
             visible_subdir: None,
+            materialization: MaterializationMode::default(),
+            require_clone_support: false,
         }
     }
 }
 
 /// Copy-up mode for overlay operations
-#[derive(Clone, Debug, Serialize, Deserialize)]
+///
+/// This controls *per-file* copy-up timing during operations - when a file
+/// in the lower layer should be copied to the upper layer.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CopyUpMode {
     /// Copy up on first data write only
     Lazy,
@@ -182,6 +200,56 @@ impl Default for CopyUpMode {
     fn default() -> Self {
         Self::Lazy
     }
+}
+
+/// Materialization mode for branch creation
+///
+/// This controls whether the *entire lower layer* is materialized at branch
+/// creation time. This is distinct from `CopyUpMode` which controls per-file
+/// copy-up timing during operations.
+///
+/// See [AgentFS.md §Overlay Materialization Modes](specs/Public/AgentFS/AgentFS.md)
+/// for detailed semantics and use case guidance.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum MaterializationMode {
+    /// No upfront materialization - files remain in lower layer until first write.
+    ///
+    /// This is the default mode, providing O(1) branch creation time and minimal
+    /// storage overhead. Files are copied to upper layer on-demand when written.
+    ///
+    /// **Note**: In lazy mode, modifications to the lower layer after branch creation
+    /// may be visible to branch processes that haven't yet accessed those files.
+    /// Use this mode in controlled environments (CI, containers) where the lower
+    /// layer is stable.
+    #[default]
+    Lazy,
+
+    /// Eager materialization - copy all lower layer files to upper at branch creation.
+    ///
+    /// Provides ZFS-like point-in-time snapshot semantics. The branch sees a frozen
+    /// view of the filesystem as it existed at branch creation time, completely
+    /// immune to subsequent lower layer modifications.
+    ///
+    /// Trade-offs:
+    /// - Branch creation time: O(n) where n = file count
+    /// - Storage overhead: Full copy of all files
+    /// - Use case: User machines where background activity may modify lower layer
+    Eager,
+
+    /// Clone-eager materialization - use filesystem reflink to materialize.
+    ///
+    /// Same strong isolation guarantees as Eager mode, but uses filesystem-native
+    /// block cloning (APFS `clonefile()`, Btrfs/XFS reflink, ReFS block cloning)
+    /// to create upper entries with minimal storage overhead.
+    ///
+    /// Falls back to Eager mode if the backstore filesystem doesn't support reflink.
+    /// If `require_clone_support` is true, branch creation fails instead of falling back.
+    ///
+    /// Trade-offs:
+    /// - Branch creation time: O(n) metadata operations
+    /// - Storage overhead: Minimal (shared blocks via reflink)
+    /// - Use case: User machines with reflink-capable backstore
+    CloneEager,
 }
 
 /// Interpose configuration for FD-forwarding mode
