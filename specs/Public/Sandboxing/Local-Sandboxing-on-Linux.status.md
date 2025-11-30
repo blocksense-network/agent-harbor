@@ -124,6 +124,35 @@ All crates target stable Rust; Linux‑only crates gated behind `cfg(target_os =
   - **Security-first design**: Multiple isolation layers (namespaces, filesystem restrictions, capability dropping) with fail-safe defaults
   - **Test environment compatibility**: All privileged operations handle permission failures gracefully in CI/test environments
 
+- **Critical Implementation Fix (Nov 2025)**: The original implementation had two bugs that prevented proper PID namespace isolation:
+  1. **UID/GID Mapping Order**: After `unshare(CLONE_NEWUSER)`, the child cannot write its own `/proc/self/uid_map`. The parent must write to `/proc/<child_pid>/uid_map` from the parent user namespace. Fixed by adding pipe-based synchronization between parent and child.
+
+  2. **Double-Fork Pattern for PID Namespace**: After `unshare(CLONE_NEWPID)`, the calling process is NOT in the new PID namespace - only processes forked AFTER the unshare will be. To execute as PID 1, a second fork is required. This is the pattern used by `unshare --fork --pid --mount-proc`.
+
+  The specification in `Local-Sandboxing-on-Linux.md` (Section 16, step 3) correctly described this requirement:
+
+  > **PID ns**: `unshare(CLONE_NEWPID)` → Execute fork(). The child process becomes **PID 1** inside the user namespace
+
+  The implementation now correctly implements:
+  1. First fork: escape multi-threaded Tokio runtime
+  2. Child: `unshare(CLONE_NEWUSER | CLONE_NEWPID | ...)`
+  3. Parent: write uid_map/gid_map to `/proc/<child>/...`
+  4. Child: second fork
+  5. Grandchild (now PID 1): make root private, mount `/proc`, exec command
+
+- **Test Gap Analysis**: The original tests were too shallow and didn't verify actual namespace isolation:
+  - Tests only checked object creation, not functional behavior
+  - Tests silently skipped on "privilege errors" instead of failing, masking real bugs
+  - No tests verified the process was actually PID 1 in the namespace
+  - No tests verified `/proc` showed isolated PIDs
+
+  New tests added to `crates/sandbox-core/src/tests.rs`:
+  - `test_sandbox_process_is_pid_1` - verifies the process sees itself as PID 1/2
+  - `test_sandbox_proc_shows_only_sandbox_pids` - verifies `/proc` shows isolated PIDs
+  - `test_sandbox_user_is_root_in_namespace` - verifies UID mapping works
+  - `test_sandbox_basic_command_execution` - verifies basic sandbox functionality
+  - `test_sandbox_environment_variables` - verifies env var passing
+
 - Key Source Files:
   - `crates/sandbox-core/src/lib.rs` - Main `Sandbox` struct and public API
   - `crates/sandbox-core/src/namespaces/mod.rs` - Namespace creation and management
