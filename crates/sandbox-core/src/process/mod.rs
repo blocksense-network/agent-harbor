@@ -499,6 +499,11 @@ impl ProcessManager {
         // access to FUSE mounts like AgentFS.
         self.mount_isolated_tmp(self.config.working_dir.as_deref())?;
 
+        // Hide sensitive directories (SSH keys, credentials, etc.) by mounting
+        // empty tmpfs filesystems over them. This prevents processes inside the
+        // sandbox from accessing secrets that might exist on the host.
+        self.hide_sensitive_paths()?;
+
         Ok(())
     }
 
@@ -549,6 +554,81 @@ impl ProcessManager {
         })?;
 
         debug!("Successfully mounted isolated tmpfs on /tmp");
+        Ok(())
+    }
+
+    /// Hide sensitive directories by mounting empty tmpfs filesystems over them.
+    ///
+    /// This prevents processes inside the sandbox from accessing secrets that might
+    /// exist on the host filesystem. The following paths are protected:
+    /// - `~/.ssh` - SSH private keys and known_hosts
+    /// - `~/.gnupg` - GPG keys
+    /// - `~/.aws` - AWS credentials
+    /// - `~/.config/gcloud` - Google Cloud credentials
+    /// - `~/.kube` - Kubernetes credentials
+    /// - `~/.docker` - Docker credentials
+    ///
+    /// For each path that exists, we mount an empty tmpfs over it. This makes the
+    /// directory appear empty from inside the sandbox while preserving the original
+    /// contents on the host.
+    fn hide_sensitive_paths(&self) -> Result<()> {
+        use std::path::Path;
+
+        // Get the user's home directory
+        let home = match std::env::var("HOME") {
+            Ok(h) => h,
+            Err(_) => {
+                debug!("HOME not set, skipping sensitive path protection");
+                return Ok(());
+            }
+        };
+
+        // List of sensitive directories relative to home
+        // These contain credentials, keys, and other secrets that should not
+        // be accessible inside the sandbox
+        let sensitive_paths = [
+            ".ssh",           // SSH keys
+            ".gnupg",         // GPG keys
+            ".aws",           // AWS credentials
+            ".config/gcloud", // Google Cloud credentials
+            ".kube",          // Kubernetes credentials
+            ".docker",        // Docker credentials
+        ];
+
+        let mut protected_count = 0;
+        for rel_path in &sensitive_paths {
+            let full_path = format!("{}/{}", home, rel_path);
+            let path = Path::new(&full_path);
+
+            // Only protect paths that exist
+            if !path.exists() {
+                continue;
+            }
+
+            // Mount an empty tmpfs over the sensitive directory
+            // This makes it appear empty from inside the sandbox
+            match mount(
+                Some("tmpfs"),
+                full_path.as_str(),
+                Some("tmpfs"),
+                MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC,
+                Some("size=1k,mode=0700"),
+            ) {
+                Ok(()) => {
+                    debug!("Protected sensitive path: {}", full_path);
+                    protected_count += 1;
+                }
+                Err(e) => {
+                    // Not a fatal error - some paths might fail if they're not directories
+                    debug!("Could not protect {}: {} (non-fatal)", full_path, e);
+                }
+            }
+        }
+
+        if protected_count > 0 {
+            debug!("Protected {} sensitive directories", protected_count);
+        }
+
         Ok(())
     }
 

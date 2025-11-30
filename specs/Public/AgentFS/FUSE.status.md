@@ -879,7 +879,7 @@ This milestone implements the overlay materialization policies described in [Age
   - [x] T16.5 Process Isolation – **PASSED** – PID namespace active; `ps` shows only sandbox processes (< 10 PIDs)
   - [~] T16.6 Network Isolation – **SKIPPED** – requires `CLONE_NEWNET` (not yet implemented)
   - [x] T16.7 Network Egress Enabled – **PASSED** – network access works (no isolation by default)
-  - [~] T16.8 Secrets Protection – **SKIPPED** – requires filesystem restrictions (bind mounts/seccomp not yet implemented)
+  - [x] T16.8 Secrets Protection – **PASSED** – sensitive directories (`~/.ssh`, `~/.gnupg`, `~/.aws`, etc.) hidden via tmpfs mounts
   - [x] T16.9 Writable Carveouts – **PASSED** – `--mount-rw` works correctly
   - [x] T16.10 Cleanup on Exit – **PASSED** – no stale mounts after normal exit
   - [x] T16.11 Crash Cleanup – **PASSED** – cleanup works after SIGKILL
@@ -907,7 +907,8 @@ This milestone implements the overlay materialization policies described in [Age
   - **Double-fork pattern**: The sandbox now correctly uses a double-fork pattern for PID namespace isolation. After `unshare(CLONE_NEWPID)`, the process is NOT in the new PID namespace—only its children are. The implementation forks twice: (1) first fork escapes tokio's multi-threaded runtime, (2) second fork enters the new PID namespace as PID 1.
   - **UID/GID mapping protocol**: After `unshare(CLONE_NEWUSER)`, the child cannot write its own `/proc/self/uid_map`. The parent process must write to `/proc/<child_pid>/uid_map` and `/proc/<child_pid>/gid_map`. The implementation uses pipe-based synchronization between parent and child.
   - **`/tmp` isolation**: A fresh tmpfs is mounted over `/tmp` inside the sandbox to prevent file leakage to the host. Exception: when working directory is under `/tmp` (like `/tmp/agentfs`), tmpfs mounting is skipped to preserve FUSE mounts—AgentFS provides its own isolation in this case.
-  - **Test results**: 13 passed, 4 skipped, 0 failed. Skipped tests document features not yet implemented (network namespace, overlay persistence, secrets protection).
+  - **Secrets protection**: Sensitive directories (`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gcloud`, `~/.kube`, `~/.docker`) are hidden by mounting empty tmpfs filesystems over them. This prevents sandboxed processes from accessing credentials.
+  - **Test results**: 14 passed, 3 skipped, 0 failed. Skipped tests document features not yet implemented (network namespace, overlay persistence) or handled by AgentFS (/tmp isolation when working under AgentFS mount).
   - **Key source files**: `crates/sandbox-core/src/process/mod.rs` (double-fork + uid_map + tmpfs), `crates/sandbox-core/src/tests.rs` (integration tests)
 
 **F17. `ah agent start` Integration with AgentFS** (3–4d)
