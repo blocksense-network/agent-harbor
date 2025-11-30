@@ -49,6 +49,59 @@ pub struct AgentfsFuseMountRequest {
     pub writeback_cache: bool,
     pub mount_timeout_ms: u32,
     pub backstore: AgentfsFuseBackstore,
+    /// Overlay materialization mode for branch creation.
+    /// See AgentFS.md §Overlay Materialization Modes for semantics.
+    pub materialization_mode: AgentfsMaterializationMode,
+}
+
+/// Overlay materialization mode for branch creation.
+///
+/// Controls whether the entire lower layer is materialized at branch creation time.
+/// See [AgentFS.md §Overlay Materialization Modes] for detailed semantics.
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+#[ssz(enum_behaviour = "union")]
+pub enum AgentfsMaterializationMode {
+    /// Lazy mode: files remain in lower layer until first write. O(1) branch creation.
+    Lazy(Vec<u8>),
+    /// Eager mode: copy all files to upper layer at branch creation. ZFS-like isolation.
+    Eager(Vec<u8>),
+    /// CloneEager mode: use reflink to materialize. Falls back to Eager if unsupported.
+    CloneEager(Vec<u8>),
+}
+
+impl Default for AgentfsMaterializationMode {
+    fn default() -> Self {
+        Self::Lazy(vec![])
+    }
+}
+
+impl AgentfsMaterializationMode {
+    /// Create a Lazy materialization mode (files remain in lower layer until first write).
+    #[allow(dead_code)] // Used by daemonctl and test harness
+    pub fn lazy() -> Self {
+        Self::Lazy(vec![])
+    }
+
+    /// Create an Eager materialization mode (copy all files at branch creation).
+    #[allow(dead_code)] // Used by daemonctl and test harness
+    pub fn eager() -> Self {
+        Self::Eager(vec![])
+    }
+
+    /// Create a CloneEager materialization mode (use reflink to materialize).
+    #[allow(dead_code)] // Used by daemonctl and test harness
+    pub fn clone_eager() -> Self {
+        Self::CloneEager(vec![])
+    }
+
+    /// Convert to CLI argument string for passing to agentfs-fuse-host.
+    pub fn to_cli_arg(&self) -> &'static str {
+        match self {
+            Self::Lazy(_) => "lazy",
+            Self::Eager(_) => "eager",
+            Self::CloneEager(_) => "clone-eager",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]

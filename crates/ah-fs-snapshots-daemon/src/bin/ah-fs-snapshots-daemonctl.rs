@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use ah_fs_snapshots_daemon::client::{
     AgentfsFuseBackstore, AgentfsFuseMountRequest, AgentfsFuseState, AgentfsFuseStatusData,
     AgentfsHostFsBackstore, AgentfsInterposeMountHints, AgentfsInterposeMountRequest,
-    AgentfsInterposeStatusData, AgentfsRamDiskBackstore, DEFAULT_SOCKET_PATH, DaemonClient,
+    AgentfsInterposeStatusData, AgentfsMaterializationMode, AgentfsRamDiskBackstore,
+    DEFAULT_SOCKET_PATH, DaemonClient,
 };
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -108,9 +109,39 @@ struct MountArgs {
     #[arg(long, default_value_t = 1024)]
     ramdisk_size_mb: u32,
 
+    /// Overlay materialization mode for branch creation.
+    /// Controls whether files are copied to upper layer at branch creation time.
+    #[arg(long, value_enum, default_value_t = MaterializationModeKind::Lazy)]
+    materialization: MaterializationModeKind,
+
     /// Print JSON status output
     #[arg(long)]
     json: bool,
+}
+
+/// Overlay materialization mode for branch creation
+#[derive(ValueEnum, Clone, Debug, Default, PartialEq, Eq)]
+enum MaterializationModeKind {
+    /// Files remain in lower layer until first write. O(1) branch creation.
+    #[default]
+    #[value(name = "lazy")]
+    Lazy,
+    /// Copy all files to upper layer at branch creation. ZFS-like isolation.
+    #[value(name = "eager")]
+    Eager,
+    /// Use reflink to materialize. Falls back to eager if unsupported.
+    #[value(name = "clone-eager")]
+    CloneEager,
+}
+
+impl MaterializationModeKind {
+    fn as_proto(&self) -> AgentfsMaterializationMode {
+        match self {
+            Self::Lazy => AgentfsMaterializationMode::lazy(),
+            Self::Eager => AgentfsMaterializationMode::eager(),
+            Self::CloneEager => AgentfsMaterializationMode::clone_eager(),
+        }
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -309,6 +340,7 @@ fn to_mount_request(args: &MountArgs) -> Result<AgentfsFuseMountRequest> {
         writeback_cache: args.writeback_cache,
         mount_timeout_ms: args.mount_timeout_ms,
         backstore,
+        materialization_mode: args.materialization.as_proto(),
     })
 }
 

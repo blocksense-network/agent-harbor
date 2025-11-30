@@ -12,7 +12,7 @@ use std::path::Path;
 pub use crate::types::{
     AgentfsFuseBackstore, AgentfsFuseMountRequest, AgentfsFuseState, AgentfsFuseStatusData,
     AgentfsHostFsBackstore, AgentfsInterposeMountHints, AgentfsInterposeMountRequest,
-    AgentfsInterposeStatusData, AgentfsRamDiskBackstore,
+    AgentfsInterposeStatusData, AgentfsMaterializationMode, AgentfsRamDiskBackstore,
 };
 use tracing::warn;
 

@@ -145,6 +145,12 @@ pub struct BranchInfo {
     pub id: BranchId,
     pub parent: Option<SnapshotId>,
     pub name: Option<String>,
+    /// The materialization mode used when this branch was created.
+    /// See [AgentFS.md §Overlay Materialization Modes] for semantics.
+    pub materialization_mode: crate::config::MaterializationMode,
+    /// Whether this branch is "sealed" from lower layer visibility.
+    /// When true (Eager/CloneEager modes), files not in the upper layer are NOT visible.
+    pub sealed_from_lower: bool,
 }
 
 /// Opaque handle identifier
@@ -467,6 +473,31 @@ pub trait Backstore: Send + Sync {
         snapshot_name: &str,
         upper_files: &[(std::path::PathBuf, std::path::PathBuf)],
     ) -> crate::error::FsResult<()>;
+
+    // -------------------------------------------------------------------------
+    // Materialization support methods (used by Eager/CloneEager modes)
+    // -------------------------------------------------------------------------
+
+    /// Create a directory in the backstore at the given relative path.
+    /// Creates parent directories as needed.
+    fn create_dir(&self, relative_path: &std::path::Path) -> crate::error::FsResult<()>;
+
+    /// Create a symbolic link in the backstore.
+    fn create_symlink(
+        &self,
+        relative_path: &std::path::Path,
+        target: &std::path::Path,
+    ) -> crate::error::FsResult<()>;
+
+    /// Write content to a file in the backstore, creating it if it doesn't exist.
+    fn write_file(
+        &self,
+        relative_path: &std::path::Path,
+        content: &[u8],
+    ) -> crate::error::FsResult<()>;
+
+    /// Set the mode (permissions) of a file in the backstore.
+    fn set_mode(&self, relative_path: &std::path::Path, mode: u32) -> crate::error::FsResult<()>;
 }
 
 /// Information about a backstore configuration

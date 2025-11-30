@@ -46,6 +46,31 @@ struct Args {
     /// Enable FUSE writeback cache (kernel buffers writes until fsync/close).
     #[arg(long)]
     writeback_cache: bool,
+
+    /// Overlay materialization mode for branch creation.
+    ///
+    /// Controls whether the entire lower layer is materialized at branch creation time:
+    /// - lazy: (default) Files remain in lower layer until first write. O(1) branch creation.
+    /// - eager: Copy all files to upper layer at branch creation. ZFS-like isolation.
+    /// - clone-eager: Use reflink to materialize files. Falls back to eager if unsupported.
+    ///
+    /// See AgentFS.md §Overlay Materialization Modes for detailed semantics.
+    #[arg(long, value_parser = parse_materialization_mode, default_value = "lazy")]
+    overlay_materialization: agentfs_core::MaterializationMode,
+}
+
+/// Parse materialization mode from CLI string
+fn parse_materialization_mode(s: &str) -> Result<agentfs_core::MaterializationMode, String> {
+    use agentfs_core::MaterializationMode;
+    match s.to_lowercase().as_str() {
+        "lazy" => Ok(MaterializationMode::Lazy),
+        "eager" => Ok(MaterializationMode::Eager),
+        "clone-eager" | "cloneeager" | "clone_eager" => Ok(MaterializationMode::CloneEager),
+        _ => Err(format!(
+            "Invalid materialization mode '{}'. Expected one of: lazy, eager, clone-eager",
+            s
+        )),
+    }
 }
 
 fn load_config(config_path: Option<PathBuf>) -> Result<FsConfig> {
@@ -78,6 +103,14 @@ fn main() -> Result<()> {
     {
         config.cache.writeback_cache = true;
     }
+
+    // Apply overlay materialization mode from CLI
+    config.overlay.materialization = args.overlay_materialization;
+    info!(
+        "Overlay materialization mode: {:?}",
+        config.overlay.materialization
+    );
+
     info!("Configuration loaded: {:?}", config);
 
     #[cfg(all(feature = "fuse", target_os = "linux"))]
