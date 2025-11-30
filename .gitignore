@@ -10,6 +10,7 @@ test/logs/
 legacy/ruby/test/logs/
 
 # Test run artifacts
+logs/
 test-runs/
 manual-tests/
 
