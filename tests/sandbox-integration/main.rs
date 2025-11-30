@@ -19,6 +19,7 @@ async fn test_sandbox_integration() {
         pid_ns: true,
         uts_ns: true,
         ipc_ns: true,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -30,6 +31,8 @@ async fn test_sandbox_integration() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     // Create filesystem configuration
@@ -170,6 +173,7 @@ async fn test_cgroups_integration() {
         pid_ns: true,
         uts_ns: true,
         ipc_ns: true,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -180,6 +184,8 @@ async fn test_cgroups_integration() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let mut sandbox = Sandbox::with_namespace_config(namespace_config)
@@ -492,6 +498,7 @@ async fn test_filesystem_isolation_overlay() {
         pid_ns: true,
         uts_ns: true,
         ipc_ns: true,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -507,6 +514,8 @@ async fn test_filesystem_isolation_overlay() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let fs_config = FilesystemConfig {
@@ -633,6 +642,7 @@ async fn test_filesystem_isolation_readonly_mount() {
         pid_ns: true,
         uts_ns: true,
         ipc_ns: true,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -646,6 +656,8 @@ async fn test_filesystem_isolation_readonly_mount() {
         working_dir: Some(temp_dir.path().to_string_lossy().to_string()),
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let fs_config = FilesystemConfig {

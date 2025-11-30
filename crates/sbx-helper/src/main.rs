@@ -106,12 +106,15 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting sandbox helper with args: {:?}", args);
 
     // Create sandbox configuration
+    // Network namespace is enabled by default for isolation; slirp4netns provides
+    // internet access when --allow-network is specified.
     let namespace_config = NamespaceConfig {
         user_ns: !args.no_user_ns,
         mount_ns: !args.no_mount_ns,
         pid_ns: !args.no_pid_ns,
         uts_ns: true,
         ipc_ns: true,
+        net_ns: true, // Network isolation enabled by default
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -134,7 +137,9 @@ async fn main() -> anyhow::Result<()> {
         command,
         working_dir: args.working_dir.clone(),
         env: env_vars,
-        tmpfs_size: None, // Use default tmpfs size for /tmp isolation
+        tmpfs_size: None,    // Use default tmpfs size for /tmp isolation
+        net_isolation: true, // Network isolation enabled by default
+        allow_internet: args.allow_network, // Internet access via slirp4netns if --allow-network
     };
 
     // Create filesystem configuration

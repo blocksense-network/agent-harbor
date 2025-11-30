@@ -30,6 +30,12 @@ pub struct NamespaceConfig {
     pub uts_ns: bool,
     /// Enable IPC namespace isolation
     pub ipc_ns: bool,
+    /// Enable network namespace isolation
+    ///
+    /// When enabled, creates an isolated network stack with only loopback available by default.
+    /// This prevents the sandboxed process from accessing the host network.
+    /// Use slirp4netns to provide internet access when needed.
+    pub net_ns: bool,
     /// Enable time namespace isolation (optional, newer kernel feature)
     pub time_ns: bool,
     /// UID mapping for user namespace
@@ -76,6 +82,9 @@ impl NamespaceManager {
         }
         if self.config.ipc_ns {
             flags |= CloneFlags::CLONE_NEWIPC;
+        }
+        if self.config.net_ns {
+            flags |= CloneFlags::CLONE_NEWNET;
         }
         if self.config.time_ns {
             // TIME namespace requires kernel 5.6+
@@ -205,6 +214,12 @@ impl NamespaceManager {
             debug!("Mount namespace: {:?}", mount_ns);
         }
 
+        if self.config.net_ns {
+            let net_ns = std::fs::read_link("/proc/self/ns/net")
+                .map_err(|e| Error::Namespace(format!("Failed to read net namespace: {}", e)))?;
+            debug!("Network namespace: {:?}", net_ns);
+        }
+
         Ok(())
     }
 }
@@ -219,6 +234,7 @@ mod tests {
             user_ns: true,
             mount_ns: true,
             pid_ns: true,
+            net_ns: true,
             ..Default::default()
         };
         let manager = NamespaceManager::new(config);
@@ -226,5 +242,6 @@ mod tests {
         assert!(manager.config.user_ns);
         assert!(manager.config.mount_ns);
         assert!(manager.config.pid_ns);
+        assert!(manager.config.net_ns);
     }
 }
