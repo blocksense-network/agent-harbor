@@ -434,17 +434,16 @@ test_secrets_protection() {
       return 0
     fi
 
-    # NOTE: Secrets protection requires filesystem restrictions (bind mounts, seccomp, etc.)
-    # which is not yet implemented. The sandbox currently only provides namespace isolation.
-    # For now, if we see the key contents, it's expected behavior.
+    # Secrets protection is achieved by mounting empty tmpfs over sensitive directories.
+    # This makes SSH keys and other credentials inaccessible from inside the sandbox.
     if echo "$output" | grep -q "BEGIN.*PRIVATE KEY"; then
-      # Secrets are visible - expected since blacklist/filesystem restrictions not yet implemented
-      record_result "8 Secrets Protection" "skip" "0" "Secrets protection not yet implemented (requires fs restrictions)"
-      return 0
+      # Secrets are visible - protection failed
+      record_result "8 Secrets Protection" "fail" "0" "SSH private key was accessible inside sandbox"
+      return 1
     fi
 
-    # If ACCESS_DENIED or no output, something blocked access (unexpected but good!)
-    if echo "$output" | grep -q "ACCESS_DENIED\|No such file\|Permission denied"; then
+    # If ACCESS_DENIED, No such file, Permission denied, or empty directory - protection worked!
+    if echo "$output" | grep -qE "ACCESS_DENIED|No such file|Permission denied|directory"; then
       local duration=$(($(date +%s) - start_time))
       record_result "8 Secrets Protection" "pass" "$duration"
       return 0
