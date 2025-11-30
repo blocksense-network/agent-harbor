@@ -3,7 +3,8 @@
 
 #[cfg(feature = "agentfs")]
 use crate::transport::{
-    ControlTransport, build_interpose_get_request, build_interpose_set_request,
+    ControlTransport, build_branch_bind_request, build_branch_create_request,
+    build_interpose_get_request, build_interpose_set_request, build_snapshot_list_request,
     send_control_request,
 };
 #[cfg(feature = "agentfs")]
@@ -89,9 +90,17 @@ pub struct InitSessionOptions {
 
 #[derive(Args, Clone)]
 pub struct SnapshotsOptions {
-    /// Session ID (branch name or repo/branch)
+    /// Session ID (branch name or repo/branch) - currently ignored, lists all snapshots
     #[arg(value_name = "SESSION_ID")]
-    session_id: String,
+    session_id: Option<String>,
+
+    /// AgentFS mount point (defaults to /tmp/agentfs)
+    #[arg(long)]
+    mount: Option<PathBuf>,
+
+    /// Emit machine-readable JSON output
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Args, Clone)]
@@ -112,12 +121,24 @@ pub enum BranchCommands {
         /// Optional name for the branch
         #[arg(short, long)]
         name: Option<String>,
+
+        /// AgentFS mount point (defaults to /tmp/agentfs)
+        #[arg(long)]
+        mount: Option<PathBuf>,
     },
     /// Bind current process to a branch
     Bind {
         /// Branch ID to bind to
         #[arg(value_name = "BRANCH_ID")]
         branch_id: String,
+
+        /// Process ID to bind (defaults to current process)
+        #[arg(long)]
+        pid: Option<u32>,
+
+        /// AgentFS mount point (defaults to /tmp/agentfs)
+        #[arg(long)]
+        mount: Option<PathBuf>,
     },
     /// Execute command in branch context
     Exec {
@@ -125,8 +146,12 @@ pub enum BranchCommands {
         #[arg(value_name = "BRANCH_ID")]
         branch_id: String,
 
+        /// AgentFS mount point (defaults to /tmp/agentfs)
+        #[arg(long)]
+        mount: Option<PathBuf>,
+
         /// Command to execute
-        #[arg(value_name = "COMMAND")]
+        #[arg(value_name = "COMMAND", trailing_var_arg = true, required = true)]
         command: Vec<String>,
     },
 }
@@ -196,13 +221,21 @@ impl AgentFsCommands {
             AgentFsCommands::Snapshot(opts) => Self::snapshot(opts).await,
             AgentFsCommands::Snapshots(opts) => Self::list_snapshots(opts).await,
             AgentFsCommands::Branch { subcommand } => match subcommand {
-                BranchCommands::Create { snapshot_id, name } => {
-                    Self::branch_create(snapshot_id, name).await
-                }
-                BranchCommands::Bind { branch_id } => Self::branch_bind(branch_id).await,
-                BranchCommands::Exec { branch_id, command } => {
-                    Self::branch_exec(branch_id, command).await
-                }
+                BranchCommands::Create {
+                    snapshot_id,
+                    name,
+                    mount,
+                } => Self::branch_create(snapshot_id, name, mount).await,
+                BranchCommands::Bind {
+                    branch_id,
+                    pid,
+                    mount,
+                } => Self::branch_bind(branch_id, pid, mount).await,
+                BranchCommands::Exec {
+                    branch_id,
+                    mount,
+                    command,
+                } => Self::branch_exec(branch_id, mount, command).await,
             },
             #[cfg(feature = "agentfs")]
             AgentFsCommands::Interpose { subcommand } => match subcommand {
@@ -215,6 +248,14 @@ impl AgentFsCommands {
                 } => Self::interpose_set(mount, enabled, max_copy_bytes, require_reflink).await,
             },
         }
+    }
+
+    /// Default AgentFS mount point
+    const DEFAULT_MOUNT_POINT: &'static str = "/tmp/agentfs";
+
+    /// Get the mount point from an optional override or use the default
+    fn get_mount_point(mount: Option<PathBuf>) -> PathBuf {
+        mount.unwrap_or_else(|| PathBuf::from(Self::DEFAULT_MOUNT_POINT))
     }
 
     async fn status(opts: StatusOptions) -> Result<()> {
@@ -419,68 +460,266 @@ impl AgentFsCommands {
     }
 
     async fn list_snapshots(opts: SnapshotsOptions) -> Result<()> {
-        // TODO: Once database persistence is implemented, this will:
-        // 1. Parse session_id (branch name or repo/branch)
-        // 2. Query fs_snapshots table to find snapshots for the session
-        // 3. Display formatted list of snapshots with metadata
+        #[cfg(feature = "agentfs")]
+        {
+            let mount_point = Self::get_mount_point(opts.mount);
+            let control_path = mount_point.join(".agentfs").join("control");
 
-        tracing::info!(target: "ah-cli", "Snapshots for session '{}':", opts.session_id);
-        tracing::info!(target: "ah-cli", "Note: Database persistence not yet implemented in this milestone");
-        tracing::info!(target: "ah-cli", "When implemented, this will show:");
-        tracing::info!(target: "ah-cli", "- Snapshot ID");
-        tracing::info!(target: "ah-cli", "- Timestamp");
-        tracing::info!(target: "ah-cli", "- Provider type");
-        tracing::info!(target: "ah-cli", "- Reference/path");
-        tracing::info!(target: "ah-cli", "- Optional labels and metadata");
+            if !control_path.exists() {
+                return Err(anyhow!(
+                    "AgentFS control file not found at {:?}. Is the filesystem mounted?",
+                    control_path
+                ));
+            }
 
-        // For now, show that the command structure is ready
-        tracing::info!(target: "ah-cli", "Command parsing successful for session: {}", opts.session_id);
+            let transport = ControlTransport::new(mount_point.clone())?;
+            let request = build_snapshot_list_request();
 
-        Ok(())
-    }
-
-    async fn branch_create(snapshot_id: String, name: Option<String>) -> Result<()> {
-        // TODO: Once AgentFS integration is implemented, this will:
-        // 1. Validate snapshot_id exists
-        // 2. Get the provider for the snapshot
-        // 3. Call provider.branch_from_snapshot() to create writable branch
-        // 4. Record branch metadata in database
-
-        tracing::info!(target: "ah-cli", "Creating branch from snapshot '{}'", snapshot_id);
-        if let Some(name) = &name {
-            tracing::info!(target: "ah-cli", "Branch name: {}", name);
+            match send_control_request(transport, request).await {
+                Ok(Response::SnapshotList(list)) => {
+                    if opts.json {
+                        // JSON output
+                        let snapshots: Vec<serde_json::Value> = list
+                            .snapshots
+                            .iter()
+                            .map(|s| {
+                                let id = String::from_utf8_lossy(&s.id).into_owned();
+                                let name = s
+                                    .name
+                                    .as_ref()
+                                    .map(|n| String::from_utf8_lossy(n).into_owned());
+                                serde_json::json!({
+                                    "id": id,
+                                    "name": name
+                                })
+                            })
+                            .collect();
+                        tracing::info!(target: "ah-cli", "{}", serde_json::to_string_pretty(&snapshots)?);
+                    } else {
+                        // Human-readable output
+                        if list.snapshots.is_empty() {
+                            tracing::info!(target: "ah-cli", "No snapshots found");
+                        } else {
+                            tracing::info!(target: "ah-cli", "Snapshots:");
+                            for snapshot in &list.snapshots {
+                                let id = String::from_utf8_lossy(&snapshot.id);
+                                let name = snapshot
+                                    .name
+                                    .as_ref()
+                                    .map(|n| String::from_utf8_lossy(n).into_owned())
+                                    .unwrap_or_else(|| "-".to_string());
+                                tracing::info!(target: "ah-cli", "  SNAPSHOT\t{}\t{}", id, name);
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                Ok(Response::Error(err)) => Err(anyhow!(
+                    "snapshot_list failed: {} (errno={})",
+                    String::from_utf8_lossy(&err.error),
+                    err.code.unwrap_or_default()
+                )),
+                Ok(other) => Err(anyhow!("unexpected response: {:?}", other)),
+                Err(e) => Err(anyhow!("control request failed: {}", e)),
+            }
         }
-        tracing::info!(target: "ah-cli", "Note: AgentFS integration not yet implemented in this milestone");
-        tracing::info!(target: "ah-cli", "When implemented, this will create a writable branch for time travel");
 
-        Ok(())
+        #[cfg(not(feature = "agentfs"))]
+        {
+            let _ = opts;
+            Err(anyhow::anyhow!(
+                "AgentFS support not compiled in; enable the 'agentfs' feature"
+            ))
+        }
     }
 
-    async fn branch_bind(branch_id: String) -> Result<()> {
-        // TODO: Once AgentFS integration is implemented, this will:
-        // 1. Validate branch_id exists
-        // 2. Bind the current process to the branch view
-        // 3. Set up the filesystem overlay for the process
+    async fn branch_create(
+        snapshot_id: String,
+        name: Option<String>,
+        mount: Option<PathBuf>,
+    ) -> Result<()> {
+        #[cfg(feature = "agentfs")]
+        {
+            let mount_point = Self::get_mount_point(mount);
+            let control_path = mount_point.join(".agentfs").join("control");
 
-        tracing::info!(target: "ah-cli", "Binding to branch '{}'", branch_id);
-        tracing::info!(target: "ah-cli", "Note: AgentFS process binding not yet implemented in this milestone");
-        tracing::info!(target: "ah-cli", "When implemented, this will make the branch view available to child processes");
+            if !control_path.exists() {
+                return Err(anyhow!(
+                    "AgentFS control file not found at {:?}. Is the filesystem mounted?",
+                    control_path
+                ));
+            }
 
-        Ok(())
+            let transport = ControlTransport::new(mount_point.clone())?;
+            let request = build_branch_create_request(snapshot_id.clone(), name.clone());
+
+            match send_control_request(transport, request).await {
+                Ok(Response::BranchCreate(resp)) => {
+                    let branch_id = String::from_utf8_lossy(&resp.branch.id);
+                    let branch_name = resp
+                        .branch
+                        .name
+                        .as_ref()
+                        .map(|n| String::from_utf8_lossy(n).into_owned())
+                        .unwrap_or_else(|| "-".to_string());
+
+                    if branch_name != "-" {
+                        tracing::info!(target: "ah-cli", "BRANCH_ID={}\tNAME={}", branch_id, branch_name);
+                    } else {
+                        tracing::info!(target: "ah-cli", "BRANCH_ID={}", branch_id);
+                    }
+                    Ok(())
+                }
+                Ok(Response::Error(err)) => Err(anyhow!(
+                    "branch_create failed: {} (errno={})",
+                    String::from_utf8_lossy(&err.error),
+                    err.code.unwrap_or_default()
+                )),
+                Ok(other) => Err(anyhow!("unexpected response: {:?}", other)),
+                Err(e) => Err(anyhow!("control request failed: {}", e)),
+            }
+        }
+
+        #[cfg(not(feature = "agentfs"))]
+        {
+            let _ = (snapshot_id, name, mount);
+            Err(anyhow::anyhow!(
+                "AgentFS support not compiled in; enable the 'agentfs' feature"
+            ))
+        }
     }
 
-    async fn branch_exec(branch_id: String, command: Vec<String>) -> Result<()> {
-        // TODO: Once AgentFS integration is implemented, this will:
-        // 1. Bind to the specified branch
-        // 2. Execute the command in that branch context
-        // 3. Return the command's exit status
+    async fn branch_bind(
+        branch_id: String,
+        pid: Option<u32>,
+        mount: Option<PathBuf>,
+    ) -> Result<()> {
+        #[cfg(feature = "agentfs")]
+        {
+            let mount_point = Self::get_mount_point(mount);
+            let control_path = mount_point.join(".agentfs").join("control");
 
-        tracing::info!(target: "ah-cli", "Executing command in branch '{}' context", branch_id);
-        tracing::info!(target: "ah-cli", "Command: {:?}", command);
-        tracing::info!(target: "ah-cli", "Note: AgentFS branch execution not yet implemented in this milestone");
-        tracing::info!(target: "ah-cli", "When implemented, this will run the command with the branch filesystem view");
+            if !control_path.exists() {
+                return Err(anyhow!(
+                    "AgentFS control file not found at {:?}. Is the filesystem mounted?",
+                    control_path
+                ));
+            }
 
-        Ok(())
+            // Use provided PID or default to current process
+            let target_pid = pid.unwrap_or_else(std::process::id);
+
+            let transport = ControlTransport::new(mount_point.clone())?;
+            let request = build_branch_bind_request(branch_id.clone(), Some(target_pid));
+
+            match send_control_request(transport, request).await {
+                Ok(Response::BranchBind(resp)) => {
+                    tracing::info!(target: "ah-cli", "BRANCH_BIND_OK\tBRANCH={}\tPID={}",
+                        String::from_utf8_lossy(&resp.branch),
+                        resp.pid
+                    );
+                    Ok(())
+                }
+                Ok(Response::Error(err)) => Err(anyhow!(
+                    "branch_bind failed: {} (errno={})",
+                    String::from_utf8_lossy(&err.error),
+                    err.code.unwrap_or_default()
+                )),
+                Ok(other) => Err(anyhow!("unexpected response: {:?}", other)),
+                Err(e) => Err(anyhow!("control request failed: {}", e)),
+            }
+        }
+
+        #[cfg(not(feature = "agentfs"))]
+        {
+            let _ = (branch_id, pid, mount);
+            Err(anyhow::anyhow!(
+                "AgentFS support not compiled in; enable the 'agentfs' feature"
+            ))
+        }
+    }
+
+    async fn branch_exec(
+        branch_id: String,
+        mount: Option<PathBuf>,
+        command: Vec<String>,
+    ) -> Result<()> {
+        #[cfg(feature = "agentfs")]
+        {
+            use std::process::Command;
+
+            if command.is_empty() {
+                return Err(anyhow!("No command specified to execute"));
+            }
+
+            let mount_point = Self::get_mount_point(mount);
+            let control_path = mount_point.join(".agentfs").join("control");
+
+            if !control_path.exists() {
+                return Err(anyhow!(
+                    "AgentFS control file not found at {:?}. Is the filesystem mounted?",
+                    control_path
+                ));
+            }
+
+            // First, bind the current process to the branch
+            let transport = ControlTransport::new(mount_point.clone())?;
+            let current_pid = std::process::id();
+            let request = build_branch_bind_request(branch_id.clone(), Some(current_pid));
+
+            match send_control_request(transport, request).await {
+                Ok(Response::BranchBind(_)) => {
+                    debug!(
+                        "Successfully bound PID {} to branch {}",
+                        current_pid, branch_id
+                    );
+                }
+                Ok(Response::Error(err)) => {
+                    return Err(anyhow!(
+                        "branch_bind failed: {} (errno={})",
+                        String::from_utf8_lossy(&err.error),
+                        err.code.unwrap_or_default()
+                    ));
+                }
+                Ok(other) => {
+                    return Err(anyhow!("unexpected response: {:?}", other));
+                }
+                Err(e) => {
+                    return Err(anyhow!("control request failed: {}", e));
+                }
+            }
+
+            // Execute the command
+            // The child process should inherit the branch binding
+            let program = &command[0];
+            let args = if command.len() > 1 {
+                &command[1..]
+            } else {
+                &[]
+            };
+
+            debug!("Executing command: {} {:?}", program, args);
+
+            let status = Command::new(program)
+                .args(args)
+                .status()
+                .map_err(|e| anyhow!("failed to execute command '{}': {}", program, e))?;
+
+            if status.success() {
+                Ok(())
+            } else {
+                let code = status.code().unwrap_or(1);
+                Err(anyhow!("command exited with status {}", code))
+            }
+        }
+
+        #[cfg(not(feature = "agentfs"))]
+        {
+            let _ = (branch_id, mount, command);
+            Err(anyhow::anyhow!(
+                "AgentFS support not compiled in; enable the 'agentfs' feature"
+            ))
+        }
     }
 
     #[cfg(feature = "agentfs")]
