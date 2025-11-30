@@ -255,3 +255,66 @@ fn test_sandbox_environment_variables() {
         result.err()
     );
 }
+
+/// Verify that /tmp is isolated from the host filesystem.
+///
+/// This test creates a unique file in /tmp inside the sandbox and verifies
+/// that the file does NOT appear on the host's /tmp. This is critical for
+/// sandbox isolation - without tmpfs mounting over /tmp, files would leak.
+#[test]
+fn test_sandbox_tmp_isolation() {
+    use std::path::Path;
+
+    // Generate a unique filename for this test
+    let unique_id = std::process::id();
+    let marker_filename = format!("/tmp/sandbox_isolation_test_{}", unique_id);
+
+    // Make sure the marker doesn't exist on the host before the test
+    let _ = std::fs::remove_file(&marker_filename);
+    assert!(
+        !Path::new(&marker_filename).exists(),
+        "Marker file should not exist before test"
+    );
+
+    // Run a command inside the sandbox that creates the marker file
+    let config = ProcessConfig {
+        command: vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            format!("touch {} && test -f {}", marker_filename, marker_filename),
+        ],
+        working_dir: None,
+        env: vec![],
+    };
+
+    let namespace_config = NamespaceConfig {
+        user_ns: true,
+        mount_ns: true,
+        pid_ns: true,
+        uts_ns: true,
+        ipc_ns: true,
+        time_ns: false,
+        uid_map: None,
+        gid_map: None,
+    };
+
+    let manager = ProcessManager::with_config(config).with_namespace_config(namespace_config);
+    let result = manager.exec_as_pid1();
+
+    assert!(
+        result.is_ok(),
+        "Sandbox command to create /tmp file failed: {:?}",
+        result.err()
+    );
+
+    // CRITICAL: The marker file should NOT exist on the host's /tmp
+    // because the sandbox mounted a fresh tmpfs over /tmp
+    assert!(
+        !Path::new(&marker_filename).exists(),
+        "ISOLATION FAILURE: File created in sandbox leaked to host /tmp at {}",
+        marker_filename
+    );
+
+    // Cleanup (shouldn't be necessary since file should not exist)
+    let _ = std::fs::remove_file(&marker_filename);
+}
