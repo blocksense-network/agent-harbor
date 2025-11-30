@@ -11,7 +11,9 @@ pub mod error;
 pub mod types;
 
 // Re-export key types for convenience
-pub use config::{CachePolicy, CaseSensitivity, FsConfig, FsLimits, MemoryPolicy};
+pub use config::{
+    CachePolicy, CaseSensitivity, FsConfig, FsLimits, MaterializationMode, MemoryPolicy,
+};
 pub use error::FsError;
 pub use types::*;
 
@@ -1775,6 +1777,7 @@ mod tests {
                 lower_root: Some(temp_dir.path().join("lower")),
                 copyup_mode: CopyUpMode::Lazy,
                 visible_subdir: None,
+                ..Default::default()
             },
             interpose: InterposeConfig::default(),
         };
@@ -2097,6 +2100,7 @@ mod tests {
                     lower_root: Some(lower_dir.clone()),
                     copyup_mode: crate::config::CopyUpMode::Lazy,
                     visible_subdir: None,
+                    ..Default::default()
                 },
                 interpose: InterposeConfig {
                     enabled: true,
@@ -2185,6 +2189,7 @@ mod tests {
                     lower_root: Some(lower_dir.clone()),
                     copyup_mode: crate::config::CopyUpMode::Lazy,
                     visible_subdir: None,
+                    ..Default::default()
                 },
                 interpose: InterposeConfig {
                     enabled: true,
@@ -2247,6 +2252,7 @@ mod tests {
                     lower_root: Some(lower_dir.clone()),
                     copyup_mode: crate::config::CopyUpMode::Lazy,
                     visible_subdir: None,
+                    ..Default::default()
                 },
                 interpose: InterposeConfig {
                     enabled: false, // Interpose disabled
@@ -2309,6 +2315,7 @@ mod tests {
                     lower_root: Some(lower_dir.clone()),
                     copyup_mode: crate::config::CopyUpMode::Lazy,
                     visible_subdir: None,
+                    ..Default::default()
                 },
                 interpose: InterposeConfig {
                     enabled: true,
@@ -2620,3 +2627,6 @@ mod tests {
 }
 #[cfg(test)]
 mod test_export;
+
+#[cfg(test)]
+mod test_materialization;
