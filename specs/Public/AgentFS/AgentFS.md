@@ -80,8 +80,33 @@ AgentFS implements the necessary filesystem snapshot and per-process mounting ca
 
 ### Branch Isolation Guarantees
 
-- The only exception is the base underlying filesystem: if no branch has overridden a file, they all see the same underlying content.
+- **Intra-branch isolation:** Changes in one branch are never visible in any other branch unless explicitly merged or rebased.
+- **Base layer visibility (default lazy mode):** When using the default `Lazy` materialization mode, files that have not been overridden in a branch are read directly from the lower layer. This means **concurrent modifications to the base filesystem after branch creation may be visible** to processes that haven't yet accessed those files. Once a file is read or written in a branch, subsequent accesses use the branched copy.
 - **Overlay rule:** When a path has no upper entry in the active branch, lookups/stat/readdir/readlink read **directly from the lower layer** via the LowerFS provider. No branch state is created by reads alone.
+
+### Overlay Materialization Modes
+
+AgentFS supports multiple materialization strategies that trade off between performance and isolation strength. The choice is configured via `FsConfig.overlay.materialization` (see [AgentFS-Core.md](AgentFS-Core.md)):
+
+| Mode               | Isolation                                            | Branch Creation Cost      | Storage Overhead       | When to Use                                                                                  |
+| ------------------ | ---------------------------------------------------- | ------------------------- | ---------------------- | -------------------------------------------------------------------------------------------- |
+| **Lazy** (default) | Conditional: base changes visible until first access | O(1)                      | Minimal                | Controlled environments (CI, containers, dedicated runners)                                  |
+| **Eager**          | Strong: ZFS-like snapshot semantics                  | O(n) where n = file count | Full copy of all files | User machines where user or background activity may lead to modifications to the lower layer |
+| **CloneEager**     | Strong: ZFS-like semantics                           | O(n) metadata ops         | Minimal (reflink)      | User machines when backstore supports reflink                                                |
+
+**Lazy mode** provides classic overlay filesystem behavior: reads pass through to the lower layer, and only writes trigger copy-up. This is fast and memory-efficient but means that if the underlying host filesystem changes after a branch is created, those changes may become visible to sandbox processes that haven't yet accessed the affected files.
+
+**Eager mode** copies all files from the lower layer into the upper layer at branch creation time. This provides true point-in-time snapshot semantics equivalent to ZFS or Btrfs: the sandbox sees a frozen view of the filesystem as it existed when the branch was created, completely immune to subsequent base layer modifications.
+
+**CloneEager mode** uses filesystem-native block cloning (APFS `clonefile()`, Btrfs/XFS reflink, ReFS block cloning) to create upper entries. This provides the same strong isolation guarantees as Eager mode but with minimal storage overhead since unmodified blocks are shared at the filesystem level. This is the preferred mode when the backstore resides on a filesystem with reflink support.
+
+**Choosing a mode:**
+
+- **Lazy mode is ideal for production/controlled environments** such as CI runners, containerized workloads, and dedicated build machines where the base layer is stable and not subject to concurrent modifications. The performance benefits (instant branch creation, minimal memory overhead) make it the best choice when the environment is controlled.
+
+- **Eager/CloneEager modes are recommended for user machines** where user or background activity (file sync services, IDE indexing, package managers, antivirus scanners) may modify the base layer while the sandbox is running. These modes eliminate the risk of user activity causing non-deterministic sandbox behavior.
+
+**Note:** On filesystems with proper native snapshot support (ZFS, Btrfs, APFS), the underlying filesystem itself provides strong isolation guarantees, making the materialization mode less critical. The materialization mode primarily matters when AgentFS operates as an overlay atop a filesystem without native snapshot support (e.g., ext4, NTFS without ReFS).
 
 ### Kernel-Backstore Proxy (KBP) vs Interpose modes
 
