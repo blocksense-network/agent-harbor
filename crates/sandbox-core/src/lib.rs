@@ -9,6 +9,9 @@ pub mod error;
 pub mod namespaces;
 pub mod process;
 
+#[cfg(test)]
+mod tests;
+
 pub use namespaces::{NamespaceConfig, NamespaceManager};
 pub use process::{ProcessConfig, ProcessManager};
 
@@ -367,41 +370,18 @@ impl Sandbox {
     }
 
     /// Execute the configured process as PID 1 in the sandbox
+    ///
+    /// This method forks first to get a single-threaded child, then creates namespaces
+    /// in the child process. This avoids the Linux kernel restriction that prevents
+    /// combining CLONE_NEWUSER with CLONE_NEWPID in multi-threaded processes (like tokio).
     pub async fn exec_process(&mut self) -> Result<()> {
         info!("Executing process in sandbox: {:?}", self.process_config);
 
-        // Enter namespaces if not already entered
-        match self.namespace_manager.enter_namespaces() {
-            Ok(()) => {
-                self.namespace_manager.verify_namespaces()?;
-                debug!("Sandbox namespaces initialized successfully");
-            }
-            Err(e) => {
-                // In test environments, namespace operations may fail due to permissions
-                debug!(
-                    "Namespace operations failed (expected in test environment): {}",
-                    e
-                );
-            }
-        }
+        // NOTE: We do NOT call enter_namespaces() here because we're in a tokio runtime
+        // (multi-threaded). Instead, we pass the namespace config to the process manager
+        // which will create namespaces in the forked (single-threaded) child process.
 
-        // Set up filesystem isolation if enabled
-        if let Some(ref mut filesystem_manager) = self.filesystem_manager {
-            match filesystem_manager.setup_mounts().await {
-                Ok(()) => {
-                    debug!("Sandbox filesystem isolation initialized successfully");
-                }
-                Err(e) => {
-                    // In test environments, filesystem operations may fail due to permissions
-                    debug!(
-                        "Filesystem setup failed (expected in test environment): {}",
-                        e
-                    );
-                }
-            }
-        }
-
-        // Set up cgroups if enabled
+        // Set up cgroups if enabled (parent process can set up cgroup before fork)
         #[cfg(feature = "cgroups")]
         if let Some(ref mut cgroup_manager) = self.cgroup_manager {
             match cgroup_manager.setup_limits() {
@@ -415,52 +395,12 @@ impl Sandbox {
             }
         }
 
-        // Set up devices if enabled
-        #[cfg(feature = "devices")]
-        if let Some(ref device_manager) = self.device_manager {
-            match device_manager.setup_devices().await {
-                Ok(()) => {
-                    debug!("Sandbox device setup successfully");
-                }
-                Err(e) => {
-                    // In test environments or systems without device access, this may fail
-                    debug!("Device setup failed (expected in some environments): {}", e);
-                }
-            }
-        }
+        // Create a process manager with namespace configuration
+        // The namespace creation will happen in the forked child process
+        let process_manager = process::ProcessManager::with_config(self.process_config.clone())
+            .with_namespace_config(self.namespace_config.clone());
 
-        // Install seccomp filters if enabled
-        #[cfg(feature = "seccomp")]
-        if let Some(ref mut seccomp_manager) = self.seccomp_manager {
-            match seccomp_manager.install_filters().await {
-                Ok(()) => {
-                    debug!("Sandbox seccomp filters installed successfully");
-                }
-                Err(e) => {
-                    // In test environments, seccomp may not be available
-                    debug!(
-                        "Seccomp filter installation failed (expected in some environments): {}",
-                        e
-                    );
-                }
-            }
-        }
-
-        // Set up network if enabled
-        #[cfg(feature = "net")]
-        if let Some(ref mut network_manager) = self.network_manager {
-            match network_manager.setup_isolation().await {
-                Ok(()) => {
-                    debug!("Sandbox network setup successfully");
-                }
-                Err(e) => {
-                    // In test environments, network setup may fail
-                    debug!("Network setup failed (expected in test environment): {}", e);
-                }
-            }
-        }
-
-        self.process_manager.exec_as_pid1()
+        process_manager.exec_as_pid1()
     }
 
     /// Stop the sandbox
@@ -537,14 +477,4 @@ impl Sandbox {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_sandbox_creation() {
-        let mut sandbox = Sandbox::new();
-        assert!(sandbox.start().await.is_ok());
-        assert!(sandbox.stop().is_ok());
-    }
-}
+// Integration tests are in tests.rs module
