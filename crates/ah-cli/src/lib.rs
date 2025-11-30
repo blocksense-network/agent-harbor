@@ -164,6 +164,11 @@ impl Cli {
             Commands::Health(health_args) => {
                 self.merge_subcommand_config(json_map, health_args);
             }
+            Commands::Agent {
+                subcommand: AgentCommands::Sandbox(sandbox_args),
+            } => {
+                self.merge_subcommand_config(json_map, sandbox_args);
+            }
             // Add more subcommands as they implement SubcommandOverrides
             _ => {}
         }

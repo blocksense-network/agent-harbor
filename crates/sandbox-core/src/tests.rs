@@ -43,6 +43,7 @@ fn test_sandbox_process_is_pid_1() {
         ],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -101,6 +102,7 @@ fn test_sandbox_proc_shows_only_sandbox_pids() {
         ],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -151,6 +153,7 @@ fn test_sandbox_user_is_root_in_namespace() {
         command: vec!["id".to_string(), "-u".to_string()],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -199,6 +202,7 @@ fn test_sandbox_basic_command_execution() {
         command: vec!["echo".to_string(), "sandbox works".to_string()],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -233,6 +237,7 @@ fn test_sandbox_environment_variables() {
         ],
         working_dir: None,
         env: vec![("TEST_VAR".to_string(), "sandbox_test_value".to_string())],
+        tmpfs_size: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -285,6 +290,7 @@ fn test_sandbox_tmp_isolation() {
         ],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -336,6 +342,7 @@ fn test_sandbox_secrets_protection() {
         ],
         working_dir: None,
         env: vec![],
+        tmpfs_size: None,
     };
 
     let namespace_config = NamespaceConfig {

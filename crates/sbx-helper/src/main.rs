@@ -134,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
         command,
         working_dir: args.working_dir.clone(),
         env: env_vars,
+        tmpfs_size: None, // Use default tmpfs size for /tmp isolation
     };
 
     // Create filesystem configuration

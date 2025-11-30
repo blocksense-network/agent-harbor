@@ -187,7 +187,7 @@
 
   - Containers/VMs = **disabled**.
 
-- **Toggles:** `--no-debug`, `--allow-network`, `--containers`, `--vm`, `--static` (enables RO/overlay mode), `--rw <path>`, `--overlay <path>`, `--blacklist <path>`.
+- **Toggles:** `--no-debug`, `--allow-network`, `--containers`, `--vm`, `--static` (enables RO/overlay mode), `--rw <path>`, `--overlay <path>`, `--blacklist <path>`, `--tmpfs-size <SIZE>`.
 
 - Config files: user‑level, project‑level (checked into repo as needed), org‑level baseline.
 
@@ -249,7 +249,7 @@
 
 7. **devpts & /dev**: Similarly, mount **devpts** in the child (`newinstance,gid=tty,mode=0620,ptmxmode=0666`); mount a minimal **/dev** (tmpfs) and populate required nodes (`null,zero,urandom,tty,ptmx,pts/*`).
 
-8. **tmpfs** (in child): mount tmpfs for `/tmp` and `/run` (per‑session private state).
+8. **tmpfs** (in child): mount tmpfs for `/tmp` and `/run` (per‑session private state). Use configured `--tmpfs-size` for `/tmp` capacity (default 256MB).
 
 9. **Filesystem sealing** (executed within user namespace context):
    - Make the existing mount tree **read‑only** recursively using `mount_setattr(AT_RECURSIVE, MS_RDONLY)` if available; otherwise bind‑remount each subtree RO.
