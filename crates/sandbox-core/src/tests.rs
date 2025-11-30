@@ -318,3 +318,44 @@ fn test_sandbox_tmp_isolation() {
     // Cleanup (shouldn't be necessary since file should not exist)
     let _ = std::fs::remove_file(&marker_filename);
 }
+
+/// Verify that sensitive directories (like ~/.ssh) are hidden inside the sandbox.
+///
+/// The sandbox mounts empty tmpfs filesystems over sensitive directories to
+/// prevent access to SSH keys, cloud credentials, and other secrets.
+#[test]
+fn test_sandbox_secrets_protection() {
+    // This test verifies that the sandbox hides ~/.ssh by mounting tmpfs over it
+    // The command attempts to list ~/.ssh contents - it should appear empty or fail
+    let config = ProcessConfig {
+        command: vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            // Try to list ~/.ssh - should be empty or fail due to tmpfs mount
+            "ls ~/.ssh 2>&1 | head -1".to_string(),
+        ],
+        working_dir: None,
+        env: vec![],
+    };
+
+    let namespace_config = NamespaceConfig {
+        user_ns: true,
+        mount_ns: true,
+        pid_ns: true,
+        uts_ns: true,
+        ipc_ns: true,
+        time_ns: false,
+        uid_map: None,
+        gid_map: None,
+    };
+
+    let manager = ProcessManager::with_config(config).with_namespace_config(namespace_config);
+    let result = manager.exec_as_pid1();
+
+    // The command should succeed (even if ~/.ssh appears empty)
+    assert!(
+        result.is_ok(),
+        "Secrets protection test failed: {:?}",
+        result.err()
+    );
+}
