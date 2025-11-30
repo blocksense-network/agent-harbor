@@ -28,6 +28,7 @@ use nix::unistd::{
 use std::ffi::CString;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::process::{Command as StdCommand, Stdio};
 use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, info, warn};
 
@@ -48,6 +49,13 @@ pub struct ProcessConfig {
     /// Set to "0" or empty string to disable /tmp isolation entirely.
     /// Default: "256m"
     pub tmpfs_size: Option<String>,
+    /// Enable network isolation (creates isolated network namespace with loopback only)
+    /// Default: true (network is isolated by default)
+    pub net_isolation: bool,
+    /// Enable internet access via slirp4netns
+    /// Only relevant when net_isolation is true.
+    /// Default: false
+    pub allow_internet: bool,
 }
 
 impl Default for ProcessConfig {
@@ -56,7 +64,9 @@ impl Default for ProcessConfig {
             command: vec!["/bin/sh".to_string()],
             working_dir: None,
             env: Vec::new(),
-            tmpfs_size: None, // Uses default "256m" when None
+            tmpfs_size: None,      // Uses default "256m" when None
+            net_isolation: true,   // Network is isolated by default for security
+            allow_internet: false, // No internet access by default
         }
     }
 }
@@ -207,10 +217,48 @@ impl ProcessManager {
                 let _ = close(child_to_parent_read);
                 let _ = close(parent_to_child_write);
 
+                // Spawn slirp4netns if internet access is requested and network namespace is enabled
+                let has_net_ns = self.namespace_config.as_ref().map(|c| c.net_ns).unwrap_or(false);
+                let mut slirp_child = None;
+                if has_net_ns && self.config.allow_internet {
+                    match self.spawn_slirp4netns(child) {
+                        Ok(proc) => {
+                            info!(
+                                "slirp4netns spawned for internet access (PID {})",
+                                proc.id()
+                            );
+                            slirp_child = Some(proc);
+                            // Give slirp4netns a moment to set up the TAP interface
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                        Err(e) => {
+                            // Log but don't fail - internet access is optional
+                            warn!(
+                                "Failed to spawn slirp4netns for internet access: {}. \
+                                 The sandbox will run without internet access.",
+                                e
+                            );
+                        }
+                    }
+                }
+
                 // Wait for child to complete
                 info!("Parent process waiting for child PID {}", child);
-                self.wait_for_child(child)?;
-                Ok(())
+                let result = self.wait_for_child(child);
+
+                // Clean up slirp4netns if it was started
+                if let Some(mut slirp) = slirp_child {
+                    debug!("Terminating slirp4netns process");
+                    if let Err(e) = slirp.kill() {
+                        debug!(
+                            "Failed to kill slirp4netns (may have already exited): {}",
+                            e
+                        );
+                    }
+                    let _ = slirp.wait();
+                }
+
+                result
             }
             Ok(nix::unistd::ForkResult::Child) => {
                 // First child process: close unused pipe ends
@@ -277,6 +325,17 @@ impl ProcessManager {
                             if let Err(e) = self.mount_proc() {
                                 warn!("Failed to mount /proc in grandchild (PID 1): {}", e);
                                 // Continue execution - some functionality may be limited
+                            }
+
+                            // Set up network isolation if network namespace is enabled
+                            // We're now inside the new network namespace, so bring up loopback
+                            let has_net_ns =
+                                self.namespace_config.as_ref().map(|c| c.net_ns).unwrap_or(false);
+                            if has_net_ns {
+                                if let Err(e) = self.setup_network_isolation() {
+                                    warn!("Failed to set up network isolation: {}", e);
+                                    // Continue - network isolation is a best-effort feature
+                                }
                             }
 
                             // Continue to exec below
@@ -410,6 +469,9 @@ impl ProcessManager {
         }
         if config.ipc_ns {
             flags |= CloneFlags::CLONE_NEWIPC;
+        }
+        if config.net_ns {
+            flags |= CloneFlags::CLONE_NEWNET;
         }
 
         if !flags.is_empty() {
@@ -656,6 +718,103 @@ impl ProcessManager {
         Ok(())
     }
 
+    /// Set up network isolation in the new network namespace.
+    ///
+    /// This method should be called after entering the network namespace (CLONE_NEWNET).
+    /// It brings up the loopback interface, which is required for localhost connectivity.
+    ///
+    /// By default, a new network namespace has:
+    /// - Only a loopback interface (lo), which is DOWN
+    /// - No other network interfaces
+    /// - No routes to external networks
+    ///
+    /// This provides complete network isolation - the process cannot communicate
+    /// with the host network or the internet.
+    fn setup_network_isolation(&self) -> Result<()> {
+        info!("Setting up network isolation (loopback only)");
+
+        // Bring up the loopback interface using the `ip` command.
+        // This is required for localhost connectivity (127.0.0.1).
+        // Without this, even connections to localhost would fail.
+        let output = StdCommand::new("ip")
+            .args(["link", "set", "lo", "up"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| {
+                warn!("Failed to run 'ip link set lo up': {}", e);
+                Error::Execution(format!("Failed to bring up loopback interface: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            warn!("Failed to bring up loopback: {}", stderr);
+            // Don't fail - loopback might already be up or `ip` might not be available
+            // The sandbox will still work, just without localhost connectivity
+        } else {
+            debug!("Loopback interface brought up successfully");
+        }
+
+        Ok(())
+    }
+
+    /// Spawn slirp4netns to provide internet access for the sandboxed process.
+    ///
+    /// slirp4netns creates a user-mode TCP/IP stack that bridges the sandbox's
+    /// network namespace to the host's network. It works without root privileges
+    /// and doesn't require any special capabilities.
+    ///
+    /// This must be called from the parent process (outside the sandbox) with the
+    /// PID of the sandboxed process that has created a new network namespace.
+    ///
+    /// The spawned process will:
+    /// - Attach to the sandbox's network namespace via the PID
+    /// - Create a TAP interface (tap0) inside the sandbox
+    /// - Provide NAT-style internet access through the host
+    ///
+    /// Returns the spawned child process so the caller can manage its lifecycle.
+    fn spawn_slirp4netns(&self, target_pid: Pid) -> Result<std::process::Child> {
+        info!(
+            "Spawning slirp4netns for internet access (target PID: {})",
+            target_pid
+        );
+
+        // Build slirp4netns arguments
+        // --configure: automatically configure the interface with IP
+        // --mtu: set the MTU (default 1500)
+        // --enable-sandbox: run slirp4netns with seccomp sandbox for security
+        // --enable-seccomp: enable seccomp filtering for extra security
+        let args = [
+            "--configure",
+            "--mtu",
+            "1500",
+            "--enable-sandbox",
+            "--enable-seccomp",
+            &target_pid.to_string(),
+            "tap0",
+        ];
+
+        debug!("Starting slirp4netns with args: {:?}", args);
+
+        let child = StdCommand::new("slirp4netns")
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                error!("Failed to spawn slirp4netns: {}", e);
+                Error::Execution(format!(
+                    "Failed to spawn slirp4netns for internet access: {}. \
+                     Make sure slirp4netns is installed (e.g., 'apt install slirp4netns')",
+                    e
+                ))
+            })?;
+
+        info!("slirp4netns started with PID {}", child.id());
+        Ok(child)
+    }
+
     /// Wait for child process to complete and handle cleanup
     fn wait_for_child(&self, child_pid: Pid) -> Result<()> {
         info!("Waiting for child process {} to complete", child_pid);
@@ -764,10 +923,14 @@ mod tests {
             working_dir: Some("/tmp".to_string()),
             env: vec![("TEST".to_string(), "value".to_string())],
             tmpfs_size: Some("512m".to_string()), // Test custom tmpfs size
+            net_isolation: true,                  // Test network isolation enabled
+            allow_internet: false,                // Test no internet access
         };
         let manager = ProcessManager::with_config(config.clone());
         assert_eq!(manager.config().command, config.command);
         assert_eq!(manager.config().working_dir, config.working_dir);
         assert_eq!(manager.config().tmpfs_size, config.tmpfs_size);
+        assert!(manager.config().net_isolation);
+        assert!(!manager.config().allow_internet);
     }
 }

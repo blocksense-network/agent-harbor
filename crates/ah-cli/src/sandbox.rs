@@ -530,6 +530,10 @@ impl SandboxRunArgs {
                 working_dir: Some(exec_dir.to_string_lossy().to_string()),
                 env: env_vars,
                 tmpfs_size: Some(tmpfs_size.clone()),
+                // Network isolation is enabled by default (net_ns = true)
+                // When allow_network is true, slirp4netns provides internet access
+                net_isolation: true,           // Always isolate for security
+                allow_internet: allow_network, // Internet access via slirp4netns if requested
             });
 
             let exec_result = sandbox.exec_process().await;
@@ -1073,7 +1077,24 @@ pub struct SandboxArgs<'a> {
 #[cfg(target_os = "linux")]
 #[allow(unexpected_cfgs)] // seccomp feature may not be defined in all configurations
 pub fn create_sandbox(args: SandboxArgs) -> Result<sandbox_core::Sandbox> {
-    let mut sandbox = sandbox_core::Sandbox::new();
+    use sandbox_core::NamespaceConfig;
+
+    // Create namespace config with network namespace enabled by default for isolation
+    // Network namespace provides: loopback only by default, no access to host network
+    // When allow_network is true, slirp4netns will provide internet access
+    let namespace_config = NamespaceConfig {
+        user_ns: true,
+        mount_ns: true,
+        pid_ns: true,
+        uts_ns: true,
+        ipc_ns: true,
+        net_ns: true, // Network isolation enabled by default
+        time_ns: false,
+        uid_map: None,
+        gid_map: None,
+    };
+
+    let mut sandbox = sandbox_core::Sandbox::with_namespace_config(namespace_config);
 
     #[allow(unexpected_cfgs)]
     #[cfg(not(feature = "seccomp"))]
@@ -1081,8 +1102,19 @@ pub fn create_sandbox(args: SandboxArgs) -> Result<sandbox_core::Sandbox> {
 
     sandbox = sandbox.with_default_cgroups();
 
+    // If allow_network is true, configure network manager for internet access via slirp4netns
+    // If false (default), network is isolated (loopback only)
     if args.allow_network {
-        sandbox = sandbox.with_default_network();
+        // Configure network manager with internet access enabled
+        let net_config = sandbox_core::NetworkConfig {
+            allow_internet: true,
+            target_pid: None, // Will be set by the process manager
+            slirp4netns_path: None,
+            disable_ipv6: false,
+            mtu: Some(1500),
+            cidr: None,
+        };
+        sandbox = sandbox.with_network(net_config);
     }
 
     #[allow(unexpected_cfgs)]

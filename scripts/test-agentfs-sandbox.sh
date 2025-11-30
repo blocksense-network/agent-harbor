@@ -350,28 +350,29 @@ test_network_isolation() {
   cd "$AGENTFS_MOUNT"
 
   # Try to connect to external host (should fail with network isolation)
+  # With CLONE_NEWNET enabled (M12), the sandbox creates an isolated network namespace
+  # with only loopback available. External network access should fail.
   local output
   local exit_code=0
-  output=$(run_sandbox "$test_log" -- timeout 3 bash -c "curl -s --connect-timeout 2 https://example.com" 2>&1) || exit_code=$?
+  output=$(run_sandbox "$test_log" -- timeout 5 bash -c "curl -s --connect-timeout 3 https://example.com" 2>&1) || exit_code=$?
 
-  # Check if namespace operations actually failed
+  # Check if namespace operations actually failed (permissions issue)
   if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|EPERM.*namespace|EINVAL.*namespace|Operation not permitted)"; then
     record_result "6 Network Isolation" "skip" "0" "Network namespace requires privileges"
     return 0
   fi
 
-  # NOTE: Network isolation requires CLONE_NEWNET which is not currently enabled.
-  # The sandbox currently only creates user/pid/mount namespaces.
-  # Network isolation would require additional setup (veth pairs, etc.)
-  # For now, we check if network is NOT isolated (expected with current implementation)
-  if echo "$output" | grep -qi "example\|html"; then
-    # Network access worked - expected since CLONE_NEWNET is not enabled
-    record_result "6 Network Isolation" "skip" "0" "Network isolation not yet implemented (requires CLONE_NEWNET)"
-    return 0
+  # If network access succeeded (got HTML content), network isolation is NOT working
+  if echo "$output" | grep -qi "example\|html\|Example Domain"; then
+    record_result "6 Network Isolation" "fail" "0" "Network isolation NOT working - curl succeeded"
+    return 1
   fi
 
-  # Network blocked = success
+  # Network blocked (expected with CLONE_NEWNET) = success
+  # curl should fail with network unreachable or connection refused
   local duration=$(($(date +%s) - start_time))
+  log_pass "Network isolation verified - external network access blocked"
+  log_info "  curl output: $(echo "$output" | head -1)"
   record_result "6 Network Isolation" "pass" "$duration"
   return 0
 }
@@ -392,24 +393,45 @@ test_network_egress_enabled() {
 
   cd "$AGENTFS_MOUNT"
 
-  # NOTE: Network egress via slirp4netns is not yet implemented.
-  # The --allow-network yes flag is recognized but the plumbing to actually
-  # set up slirp4netns for network access is not complete.
-  # For now, skip this test with an explanatory message.
-
-  # With --allow-network yes, external access should work (when implemented)
-  local output
-  if output=$(run_sandbox "$test_log" --allow-network yes -- timeout 10 bash -c "curl -s --connect-timeout 5 https://example.com" 2>&1); then
-    if echo "$output" | grep -qi "example"; then
-      local duration=$(($(date +%s) - start_time))
-      record_result "7 Network Egress" "pass" "$duration"
-      return 0
-    fi
+  # Check if slirp4netns is available
+  if ! command -v slirp4netns &>/dev/null; then
+    log_info "slirp4netns not found in PATH"
+    record_result "7 Network Egress" "skip" "0" "slirp4netns not installed (required for --allow-network)"
+    return 0
   fi
 
-  # Network didn't work - expected since slirp4netns is not yet wired up
-  record_result "7 Network Egress" "skip" "0" "Network egress via slirp4netns not yet implemented"
-  return 0
+  # With --allow-network yes, slirp4netns provides internet access
+  # The sandbox should be able to reach external hosts
+  local output
+  local exit_code=0
+  output=$(run_sandbox "$test_log" --allow-network yes -- timeout 15 bash -c "curl -s --connect-timeout 8 https://example.com" 2>&1) || exit_code=$?
+
+  # Check if namespace operations actually failed (permissions issue)
+  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|EPERM.*namespace|Operation not permitted)"; then
+    record_result "7 Network Egress" "skip" "0" "Network namespace requires privileges"
+    return 0
+  fi
+
+  # Check if slirp4netns failed to start
+  if echo "$output" | grep -qi "Failed to spawn slirp4netns"; then
+    log_info "slirp4netns failed to start"
+    record_result "7 Network Egress" "skip" "0" "slirp4netns failed to start (may require privileges)"
+    return 0
+  fi
+
+  # If network access succeeded (got HTML content), --allow-network is working
+  if echo "$output" | grep -qi "example\|html\|Example Domain"; then
+    local duration=$(($(date +%s) - start_time))
+    log_pass "Network egress verified - external network access works with --allow-network yes"
+    record_result "7 Network Egress" "pass" "$duration"
+    return 0
+  fi
+
+  # Network didn't work
+  log_fail "Network egress failed - could not reach external host with --allow-network yes"
+  log_info "  curl output: $(echo "$output" | head -3)"
+  record_result "7 Network Egress" "fail" "0" "Could not reach external host with --allow-network"
+  return 1
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════

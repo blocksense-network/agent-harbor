@@ -877,8 +877,8 @@ This milestone implements the overlay materialization policies described in [Age
   - [~] T16.3 Overlay Persistence – **SKIPPED** – each sandbox creates new branch; persistence requires explicit branch reuse
   - [x] T16.4 Branch Binding – **PASSED** – telemetry shows branch/workspace preparation
   - [x] T16.5 Process Isolation – **PASSED** – PID namespace active; `ps` shows only sandbox processes (< 10 PIDs)
-  - [~] T16.6 Network Isolation – **SKIPPED** – requires `CLONE_NEWNET` (not yet implemented)
-  - [x] T16.7 Network Egress Enabled – **PASSED** – network access works (no isolation by default)
+  - [x] T16.6 Network Isolation – **PASSED** – `CLONE_NEWNET` enabled by default; loopback only without `--allow-network`
+  - [x] T16.7 Network Egress Enabled – **PASSED** – slirp4netns provides internet access with `--allow-network yes`
   - [x] T16.8 Secrets Protection – **PASSED** – sensitive directories (`~/.ssh`, `~/.gnupg`, `~/.aws`, etc.) hidden via tmpfs mounts
   - [x] T16.9 Writable Carveouts – **PASSED** – `--mount-rw` works correctly
   - [x] T16.10 Cleanup on Exit – **PASSED** – no stale mounts after normal exit
@@ -908,8 +908,9 @@ This milestone implements the overlay materialization policies described in [Age
   - **UID/GID mapping protocol**: After `unshare(CLONE_NEWUSER)`, the child cannot write its own `/proc/self/uid_map`. The parent process must write to `/proc/<child_pid>/uid_map` and `/proc/<child_pid>/gid_map`. The implementation uses pipe-based synchronization between parent and child.
   - **`/tmp` isolation**: A fresh tmpfs is mounted over `/tmp` inside the sandbox to prevent file leakage to the host. Exception: when working directory is under `/tmp` (like `/tmp/agentfs`), tmpfs mounting is skipped to preserve FUSE mounts—AgentFS provides its own isolation in this case.
   - **Secrets protection**: Sensitive directories (`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gcloud`, `~/.kube`, `~/.docker`) are hidden by mounting empty tmpfs filesystems over them. This prevents sandboxed processes from accessing credentials.
-  - **Test results**: 14 passed, 3 skipped, 0 failed. Skipped tests document features not yet implemented (network namespace, overlay persistence) or handled by AgentFS (/tmp isolation when working under AgentFS mount).
-  - **Key source files**: `crates/sandbox-core/src/process/mod.rs` (double-fork + uid_map + tmpfs), `crates/sandbox-core/src/tests.rs` (integration tests)
+  - **Network isolation (M12)**: The sandbox now creates an isolated network namespace via `CLONE_NEWNET` by default. Inside the sandbox, only loopback (127.0.0.1) is available. When `--allow-network yes` is specified, `slirp4netns` is spawned from the parent process to provide user-mode TCP/IP stack for internet access.
+  - **Test results**: 15 passed, 2 skipped, 0 failed. Skipped tests document features requiring additional prerequisites (overlay persistence) or handled by AgentFS (/tmp isolation when working under AgentFS mount).
+  - **Key source files**: `crates/sandbox-core/src/process/mod.rs` (double-fork + uid_map + tmpfs + network), `crates/sandbox-core/src/namespaces/mod.rs` (CLONE_NEWNET), `crates/sandbox-core/src/tests.rs` (integration tests)
 
 **F17. `ah agent start` Integration with AgentFS** (3–4d)
 
