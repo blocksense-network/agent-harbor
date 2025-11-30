@@ -1,4 +1,4 @@
-1327
+1356
 "Fran\xE7ois"
 "fa\xE7ade"
 ACCES
@@ -26,6 +26,7 @@ Authenticode
 Automations
 Ayron
 BACKSTORE
+Backgrounded
 Backstore
 Bdnvw
 Beaconfuzz
@@ -43,6 +44,7 @@ CMSG
 COMPREPLY
 CONSOLAS
 CWORD
+Carveouts
 Catppuccin
 Ccolumn
 Charmbracelet
@@ -103,6 +105,7 @@ FFAND
 FFCOPY
 FFLAGSMASK
 FFOR
+FICLONE
 FILEOP
 FIPS
 FIRSTHDR
@@ -112,6 +115,7 @@ Firewalling
 Fitzl
 Flathub
 François
+Frontmatter
 Futhermore
 GETLK
 GETPATH
@@ -199,6 +203,7 @@ NTSTATUS
 NVRAM
 NXDOMAIN
 NetBird
+Nohup
 Nord
 Notifyd
 OPENROUTER
@@ -283,6 +288,8 @@ Spiffe
 Starlark
 Statfs
 Statsig
+Subshell
+Subshells
 Subvolume
 Suda
 TCGETS
@@ -362,6 +369,7 @@ altkey
 altool
 amfi
 anotherword
+apikey
 appex
 appleid
 applypatch
@@ -424,6 +432,7 @@ cachix
 calcsize
 callsites
 capsh
+carveouts
 cbindgen
 cbor
 ccache
@@ -452,6 +461,7 @@ chroots
 classmethod
 clippy
 clonable
+cloneable
 clonefile
 closedir
 cmdline
@@ -462,6 +472,7 @@ cntlm
 coalescer
 codegen
 codesign
+codexpolicy
 compadd
 compdef
 compgen
@@ -497,6 +508,7 @@ deamon
 debootstrap
 debugfs
 debuginfo
+decrc
 defescape
 defscrollback
 defun
@@ -552,6 +564,7 @@ endswith
 enew
 entrancy
 enum
+enumset
 envgen
 envp
 envrc
@@ -565,6 +578,7 @@ esac
 euid
 eventlist
 eventsource
+exampleagentrules
 execpolicy
 execv
 execve
@@ -572,6 +586,7 @@ execveat
 execvp
 execvpe
 exfil
+exfiltrating
 exfiltration
 exitstatus
 expectrl
@@ -593,6 +608,7 @@ fcopyfile
 fdatasync
 fdopendir
 fflags
+fgcolor
 fgetxattr
 fiemap
 filder
@@ -656,6 +672,7 @@ gitlink
 gitmodules
 glitchier
 glpat
+gofmt
 goldens
 googlecode
 grantpt
@@ -735,6 +752,7 @@ keymap
 keypair
 keypresses
 keyrings
+keyutils
 killall
 kprobe
 kqueue
@@ -775,6 +793,7 @@ listpids
 listxattr
 lldb
 llistxattr
+lmstudio
 loadSession
 lockdown
 lockfiles
@@ -811,6 +830,7 @@ mkstemps
 mktemp
 mktmpdir
 mlink
+mlock
 mlterm
 mmap
 mmio
@@ -880,6 +900,7 @@ noauto
 nocapture
 nodev
 noexec
+nohup
 nomount
 nonblocking
 nosandbox
@@ -1013,6 +1034,7 @@ redcanaryco
 redhook
 refcounts
 reflink
+reflinked
 reflinks
 reflog
 reimplementation
@@ -1040,6 +1062,7 @@ rlib
 rlimit
 rlimits
 rmcdongit
+rmcp
 rollouts
 rootfs
 rpath
@@ -1096,11 +1119,13 @@ setuid
 setxattr
 shellapi
 shellwords
+shlex
 signtool
 silgen
 simulable
 sixel
 slirp
+smoketests
 snapshotting
 socat
 sockaddr
@@ -1146,8 +1171,10 @@ struct
 stty
 subcrate
 subcrates
+subparameters
 subprocess
 subrange
+subshell
 substituters
 substreams
 subtest
@@ -1218,11 +1245,13 @@ ucred
 udata
 uiautomation
 uintptr
+unaccessed
 unalias
 unallowed
 unentitled
 uniffi
 unikernels
+uninit
 unistd
 unlimiteds
 unlinkat
