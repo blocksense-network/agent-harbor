@@ -477,7 +477,7 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - [x] T14.3 Provider Matrix (FUSE) – driver + scenarios can run the provider matrix via `AGENTFS_TRANSPORT=fuse`, discovering the mount through the daemon helpers
   - [x] T14.4 Backstore Sweep – harness iterates over InMemory, HostFs, and RamDisk backstores, tagging logs with the active mode and skipping gracefully when prerequisites are missing
 
-**F15. AgentFS Control Plane Wiring for `ah agent fs snapshot`** (3–4d) - PARTIALLY COMPLETE
+**F15. AgentFS Control Plane Wiring for `ah agent fs snapshot`** (3–4d) - MOSTLY COMPLETE
 
 - **Deliverables**:
   - Reuse the existing `agentfs-control-cli` (`crates/agentfs-control-cli`) logic to implement ioctl + SSZ request/response handling inside the `ah agent fs snapshot` command, so snapshot create/list/branch/bind requests can target the mounted FUSE filesystem through `.agentfs/control`.
@@ -493,18 +493,29 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - `ah agent fs snapshot [--recorder-socket PATH]` – Creates a snapshot using the detected provider's `snapshot_now()` method. Works with all providers (ZFS, Btrfs, AgentFS, Git).
   - `ah agent fs interpose get --mount PATH` – Retrieves interpose configuration via ioctl SSZ requests to `.agentfs/control`.
   - `ah agent fs interpose set --mount PATH [--enabled BOOL] [--max-copy-bytes N] [--require-reflink BOOL]` – Sets interpose configuration via ioctl SSZ requests.
+  - `ah agent fs snapshots [SESSION_ID] [--mount PATH] [--json]` – Lists snapshots from the AgentFS control plane via ioctl SSZ requests. Outputs in human-readable or JSON format.
+  - `ah agent fs branch create <SNAPSHOT_ID> [--name NAME] [--mount PATH]` – Creates a branch from a snapshot via ioctl SSZ requests.
+  - `ah agent fs branch bind <BRANCH_ID> [--pid PID] [--mount PATH]` – Binds a process (default: current) to a branch via ioctl SSZ requests.
+  - `ah agent fs branch exec <BRANCH_ID> [--mount PATH] -- <CMD>` – Binds to a branch and executes a command in that context.
 
   **Stub Implementations (TODO):**
-  - `ah agent fs init-session` – Prints placeholder message; no actual session initialization.
-  - `ah agent fs snapshots <SESSION_ID>` – Prints placeholder message; does not issue ioctl `snapshot_list` request to control plane.
-  - `ah agent fs branch create <SNAPSHOT_ID> [--name NAME]` – Prints placeholder; no provider call.
-  - `ah agent fs branch bind <BRANCH_ID>` – Prints placeholder; no process binding.
-  - `ah agent fs branch exec <BRANCH_ID> <CMD>` – Prints placeholder; no branch execution.
+  - `ah agent fs init-session` – Prints placeholder message; no actual session initialization. Requires database persistence integration.
 
-  **Gap Analysis:**
-  - The `snapshots` command should call `provider.list_snapshots()` (which on AgentFS/Linux issues `snapshot_list` via ioctl) but currently prints a placeholder.
-  - The `branch create/bind/exec` commands should call the corresponding provider methods (which on AgentFS/Linux issue `branch_create`/`branch_bind` via ioctl) but currently print placeholders.
-  - Note: The AgentFS provider in `crates/ah-fs-snapshots/src/agentfs.rs` already implements the FUSE-specific ioctl control plane I/O via `ControlClient`. The CLI correctly uses the generic provider abstraction.
+  **Implementation Details:**
+  - All ioctl-based commands share the transport layer from `crates/ah-cli/src/transport.rs` which provides `ControlTransport`, `build_*_request()` helpers, and `send_control_request()`.
+  - Mount point discovery defaults to `/tmp/agentfs` and can be overridden via `--mount` flag on all relevant commands.
+  - Error handling surfaces actionable messages (control file missing, ioctl errno) and exits non-zero when the daemon is unavailable.
+  - The `branch exec` command binds the current process to the specified branch before spawning the child command, enabling child processes to inherit the branch view.
+  - **Privilege Dropping**: The `ah-fs-snapshots-daemon` now spawns `agentfs-fuse-host` as the requesting user (via `setuid`/`setgid` in `pre_exec`), ensuring the FUSE mount and control file are owned by the user. This eliminates the need for `--allow-other` to access the control file.
+  - **Control File Ownership**: The FUSE adapter now uses the process UID/GID for the `.agentfs/control` file and `.agentfs` directory attributes instead of hardcoding root ownership.
+
+- **Key Source Files**:
+  - `crates/ah-cli/src/agent/fs.rs` – Main CLI implementation for `ah agent fs` commands
+  - `crates/ah-cli/src/transport.rs` – Control plane transport layer with ioctl SSZ request/response handling
+  - `crates/agentfs-control-cli/src/main.rs` – Reference CLI implementation for parity testing
+  - `crates/ah-fs-snapshots-daemon/src/fuse_manager.rs` – Daemon FUSE mount management with privilege dropping
+  - `crates/agentfs-fuse-host/src/adapter.rs` – FUSE adapter with process-based control file ownership
+  - `scripts/test-agentfs-cli-control-plane.sh` – CLI parity test harness (T15.1)
 
 - **Success criteria (automated integration tests)**:
   - `ah agent fs snapshot create --name smoke --mount /tmp/agentfs` successfully issues ioctl requests against the FUSE control file and prints the new snapshot ID, matching the behavior of `agentfs-control-cli snapshot-create`.
@@ -517,9 +528,9 @@ Approach: The core FUSE adapter implementation is now complete and compiles succ
   - **T15.3 Schema Validation**: Extend SSZ golden tests to cover the command's request builders so deviations from `agentfs-control.request.logical.json` fail CI immediately.
 
 - **Verification Results**:
-  - [~] T15.0 CLI Structure – `ah agent fs` subcommand structure implemented with status/snapshot/interpose fully working; init-session/snapshots/branch are stubs
-  - [ ] T15.1 CLI Parity Harness – pending (no test script exists)
-  - [ ] T15.2 Failure Injection – pending (no test exists)
+  - [x] T15.0 CLI Structure – `ah agent fs` subcommand structure fully implemented with status/snapshot/interpose/snapshots/branch commands; only init-session remains a stub
+  - [x] T15.1 CLI Parity Harness – `scripts/test-agentfs-cli-control-plane.sh` (`just test-agentfs-cli-parity`) validates that `ah agent fs` commands produce output compatible with `agentfs-control-cli` for snapshot list, branch create, and branch bind operations. The daemon spawns the FUSE host as the requesting user, so the control file is owned by the user and no `--allow-other` or sudo is required.
+  - [ ] T15.2 Failure Injection – pending (no test exists yet)
   - [ ] T15.3 Schema Validation – pending (interpose commands use ioctl SSZ; other commands use provider layer)
 
 **F15.5. Overlay Materialization Modes Implementation** (5–6d)
@@ -923,9 +934,9 @@ This milestone implements the overlay materialization policies described in [Age
 #### End-to-end regression harness
 
 - `scripts/run-fuse-regression.sh [mountpoint]` orchestrates the FUSE-specific workflow (manual mount, `sudo just test-fuse-basic`, `just test-fuse-basic-ops`, `just test-fuse-mount-cycle`, `just test-fuse-mount-concurrent`, and `just test-pjdfstest-full`). `just test-rust` is intentionally excluded to avoid unrelated blockers (e.g., missing git identity or tmux).
-- The `mount-fuse.sh` helper now enables `--allow-other` by default (matching the production runtime). Override by exporting `AGENTFS_FUSE_ALLOW_OTHER=0` before invoking a `just` target if a test requires the legacy behavior.
+- The `mount-fuse.sh` helper enables `--allow-other` by default for multi-user scenarios. However, since the daemon now spawns the FUSE host as the requesting user (via privilege dropping), the control file `.agentfs/control` is owned by the user and does not require `--allow-other` for single-user CLI access.
 - The script performs an initial cleanup (`umount-fuse` if the mountpoint is busy), captures per-step logs under `logs/fuse-e2e-<ts>/`, and enforces that the pjdfstest `summary.json` exactly matches the known-failure baseline (open/00, open/06, rename/00, rename/09, rename/10, chown/05, ftruncate/05, symlink/06, truncate/05, chmod/12, plus the chown/00 TODOs).
-- Usage requires password-less `sudo` for the pjdfstest harness and the `test-fuse-basic` smoke test.
+- Usage requires password-less `sudo` for the pjdfstest harness and the `test-fuse-basic` smoke test. Note that `just test-agentfs-cli-parity` no longer requires sudo since the FUSE mount is owned by the requesting user.
 
 ### Deliverables
 

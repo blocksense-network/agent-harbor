@@ -429,6 +429,10 @@ pub struct AgentFsFuse {
     internal_pid: PID,
     /// Configuration
     config: FsConfig,
+    /// UID of the FUSE host process (used for control file ownership)
+    process_uid: u32,
+    /// GID of the FUSE host process (used for control file ownership)
+    process_gid: u32,
     /// TTL for attribute cache responses
     attr_ttl: Duration,
     /// TTL for directory entry cache responses
@@ -555,10 +559,24 @@ impl AgentFsFuse {
         let write_dispatcher = WriteDispatcher::new(Arc::clone(&core), write_worker_count());
         let notifier_slot = Arc::new(Mutex::new(None));
 
+        // Get the process UID/GID to use for control file ownership.
+        // When the FUSE host runs as the user (not root), this ensures the control file
+        // is accessible to the user without requiring --allow-other.
+        let process_uid = unsafe { libc::getuid() };
+        let process_gid = unsafe { libc::getgid() };
+        debug!(
+            target: "agentfs::fuse",
+            process_uid,
+            process_gid,
+            "FUSE host process identity"
+        );
+
         Ok(Self {
             core,
             internal_pid,
             config,
+            process_uid,
+            process_gid,
             attr_ttl,
             entry_ttl,
             negative_ttl,
@@ -1930,8 +1948,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 kind: FileType::Directory,
                 perm: 0o755,
                 nlink: 2,
-                uid: 0,
-                gid: 0,
+                uid: self.process_uid,
+                gid: self.process_gid,
                 rdev: 0,
                 blksize: 512,
                 flags: 0,
@@ -1952,8 +1970,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 kind: FileType::RegularFile,
                 perm: 0o600,
                 nlink: 1,
-                uid: 0,
-                gid: 0,
+                uid: self.process_uid,
+                gid: self.process_gid,
                 rdev: 0,
                 blksize: 512,
                 flags: 0,
@@ -2095,8 +2113,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 kind: FileType::Directory,
                 perm: 0o755,
                 nlink: 2,
-                uid: 0,
-                gid: 0,
+                uid: self.process_uid,
+                gid: self.process_gid,
                 rdev: 0,
                 blksize: 512,
                 flags: 0,
@@ -2117,8 +2135,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 kind: FileType::Directory,
                 perm: 0o755,
                 nlink: 2,
-                uid: 0,
-                gid: 0,
+                uid: self.process_uid,
+                gid: self.process_gid,
                 rdev: 0,
                 blksize: 512,
                 flags: 0,
@@ -2139,8 +2157,8 @@ impl fuser::Filesystem for AgentFsFuse {
                 kind: FileType::RegularFile,
                 perm: 0o600,
                 nlink: 1,
-                uid: 0,
-                gid: 0,
+                uid: self.process_uid,
+                gid: self.process_gid,
                 rdev: 0,
                 blksize: 512,
                 flags: 0,

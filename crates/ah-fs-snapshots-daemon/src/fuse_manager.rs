@@ -343,6 +343,19 @@ impl FuseRuntimePaths {
             let mut perms = fs::metadata(&root)?.permissions();
             perms.set_mode(0o755);
             fs::set_permissions(&root, perms)?;
+
+            // Chown the runtime directory to the requesting user so the FUSE host
+            // process (which runs as that user) can write logs and status files.
+            if request.uid != 0 {
+                let path_cstr = CString::new(root.as_os_str().as_bytes())
+                    .map_err(|_| FuseError::runtime("runtime path contains null bytes"))?;
+                unsafe {
+                    if libc::chown(path_cstr.as_ptr(), request.uid, request.gid) != 0 {
+                        let err = std::io::Error::last_os_error();
+                        warn!(error = %err, path = %root.display(), "failed to chown runtime directory");
+                    }
+                }
+            }
         }
 
         let runtime = Self {
@@ -712,9 +725,45 @@ async fn spawn_agentfs_host(
     cmd.stdout(Stdio::from(stdout_file));
     cmd.stderr(Stdio::from(stderr_file));
 
+    // Drop privileges to the requesting user before spawning.
+    // This ensures the FUSE mount is owned by the user, making the control file
+    // at .agentfs/control accessible without --allow-other. The fuser crate will
+    // use fusermount3 (setuid helper) to perform the actual mount.
+    #[cfg(unix)]
+    if request.uid != 0 {
+        // Only drop privileges if the request is from a non-root user.
+        // The unsafe block is required by CommandExt but the operation itself
+        // is safe - we're just setting the uid/gid for the child process.
+        unsafe {
+            let uid = request.uid;
+            let gid = request.gid;
+            cmd.pre_exec(move || {
+                // Set supplementary groups first (must be done before setuid)
+                if libc::setgroups(0, std::ptr::null()) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // Set GID before UID (setuid drops privilege to change gid)
+                if libc::setgid(gid) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::setuid(uid) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        debug!(
+            uid = request.uid,
+            gid = request.gid,
+            "dropping privileges for FUSE host process"
+        );
+    }
+
     info!(
         mount_point = %mount_point.display(),
         binary = %binary.display(),
+        uid = request.uid,
+        gid = request.gid,
         allow_other = request.allow_other,
         auto_unmount = request.auto_unmount,
         "spawning agentfs-fuse-host"
