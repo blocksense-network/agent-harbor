@@ -47,6 +47,7 @@ fn test_export_snapshot_overlay() {
             lower_root: Some(lower_dir.clone()),
             copyup_mode: crate::config::CopyUpMode::Lazy,
             visible_subdir: None,
+            ..Default::default()
         },
         interpose: InterposeConfig {
             enabled: true,
@@ -111,6 +112,7 @@ fn test_export_snapshot_upper_layer() {
             lower_root: Some(lower_dir.clone()),
             copyup_mode: crate::config::CopyUpMode::Lazy,
             visible_subdir: None,
+            ..Default::default()
         },
         interpose: InterposeConfig {
             enabled: true,

@@ -303,6 +303,26 @@ impl Backstore for InMemoryBackstore {
         // In-memory backstore has no filesystem to clonefile on
         Err(FsError::Unsupported)
     }
+
+    fn create_dir(&self, _relative_path: &Path) -> FsResult<()> {
+        // In-memory backstore doesn't support directory operations
+        Err(FsError::Unsupported)
+    }
+
+    fn create_symlink(&self, _relative_path: &Path, _target: &Path) -> FsResult<()> {
+        // In-memory backstore doesn't support symlink operations
+        Err(FsError::Unsupported)
+    }
+
+    fn write_file(&self, _relative_path: &Path, _content: &[u8]) -> FsResult<()> {
+        // In-memory backstore doesn't support file operations
+        Err(FsError::Unsupported)
+    }
+
+    fn set_mode(&self, _relative_path: &Path, _mode: u32) -> FsResult<()> {
+        // In-memory backstore doesn't support mode operations
+        Err(FsError::Unsupported)
+    }
 }
 
 impl Default for InMemoryBackstore {
@@ -874,6 +894,70 @@ impl Backstore for HostFsBackstore {
                     fs::copy(upper_path, &snapshot_path)?;
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    fn create_dir(&self, relative_path: &Path) -> FsResult<()> {
+        let abs_path = self.root.join(relative_path);
+        std::fs::create_dir_all(&abs_path)?;
+        Ok(())
+    }
+
+    fn create_symlink(&self, relative_path: &Path, target: &Path) -> FsResult<()> {
+        let abs_path = self.root.join(relative_path);
+
+        // Ensure parent directories exist
+        if let Some(parent) = abs_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, &abs_path)?;
+        }
+
+        #[cfg(windows)]
+        {
+            // On Windows, determine if target is a directory for the appropriate symlink type
+            if target.is_dir() {
+                std::os::windows::fs::symlink_dir(target, &abs_path)?;
+            } else {
+                std::os::windows::fs::symlink_file(target, &abs_path)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_file(&self, relative_path: &Path, content: &[u8]) -> FsResult<()> {
+        let abs_path = self.root.join(relative_path);
+
+        // Ensure parent directories exist
+        if let Some(parent) = abs_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(&abs_path, content)?;
+        Ok(())
+    }
+
+    fn set_mode(&self, relative_path: &Path, mode: u32) -> FsResult<()> {
+        let abs_path = self.root.join(relative_path);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(mode);
+            std::fs::set_permissions(&abs_path, permissions)?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            // On non-Unix systems, we can only set readonly status
+            let _ = mode; // Suppress warning
+            // No-op for now; Windows ACL handling would go here
         }
 
         Ok(())

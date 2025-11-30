@@ -218,6 +218,12 @@ pub(crate) struct Branch {
     pub root_id: NodeId,
     pub parent_snapshot: Option<SnapshotId>,
     pub name: Option<String>,
+    /// The materialization mode used when this branch was created.
+    pub materialization_mode: crate::config::MaterializationMode,
+    /// Whether this branch is "sealed" from lower layer visibility.
+    /// When true, files not in the upper layer are NOT visible (Eager/CloneEager isolation).
+    /// When false, files fall back to the lower layer (Lazy mode behavior).
+    pub sealed_from_lower: bool,
 }
 
 /// Active byte-range lock
@@ -528,6 +534,9 @@ impl FsCore {
             root_id: root_node_id,
             parent_snapshot: None, // Default branch has no parent snapshot
             name: Some("default".to_string()),
+            materialization_mode: self.config.overlay.materialization,
+            // Default branch is NOT sealed - it uses normal overlay semantics
+            sealed_from_lower: false,
         };
 
         self.nodes.lock().unwrap().insert(root_node_id, root_node);
@@ -568,6 +577,27 @@ impl FsCore {
     /// Check if overlay mode is enabled
     fn is_overlay_enabled(&self) -> bool {
         self.config.overlay.enabled
+    }
+
+    /// Check if the given process's branch is sealed from lower layer visibility.
+    /// When sealed, files not in the upper layer are NOT visible (Eager/CloneEager isolation).
+    fn is_branch_sealed_for_pid(&self, pid: &PID) -> bool {
+        let process_branches = self.process_branches.lock().unwrap();
+        if let Some(branch_id) = process_branches.get(&pid.0) {
+            let branches = self.branches.lock().unwrap();
+            if let Some(branch) = branches.get(branch_id) {
+                return branch.sealed_from_lower;
+            }
+        }
+        // Default branch or not found - check default branch
+        let branches = self.branches.lock().unwrap();
+        branches.get(&BranchId::DEFAULT).map(|b| b.sealed_from_lower).unwrap_or(false)
+    }
+
+    /// Check if lower layer fallback should be used for the given process.
+    /// Returns false if the branch is sealed (Eager/CloneEager), true otherwise.
+    fn should_fallback_to_lower(&self, pid: &PID) -> bool {
+        self.is_overlay_enabled() && !self.is_branch_sealed_for_pid(pid)
     }
 
     /// Check if a path has an upper entry in the current branch
@@ -1671,7 +1701,10 @@ impl FsCore {
                 Ok((attrs, Some(node_id)))
             }
             Err(FsError::NotFound) => {
-                if self.is_overlay_enabled() {
+                // Fall back to lower layer only if:
+                // 1. Overlay is enabled
+                // 2. The branch is NOT sealed (i.e., Lazy mode allows lower fallback)
+                if self.should_fallback_to_lower(pid) {
                     if let Some(lower_fs) = &self.lower_fs {
                         return lower_fs.stat(path).map(|attrs| (attrs, None));
                     }
@@ -2044,13 +2077,38 @@ impl FsCore {
 
         // Clone the snapshot's root directory for the branch (immediate CoW for directory structure)
         let branch_root_id = self.clone_node_cow(snapshot.root_id)?;
+        drop(snapshots);
+
+        let materialization_mode = self.config.overlay.materialization;
+
+        // Apply materialization based on configuration
+        let start_time = std::time::Instant::now();
+        let (materialized_count, used_reflink) =
+            self.apply_materialization(branch_root_id, materialization_mode)?;
+        let elapsed = start_time.elapsed();
+
+        if materialized_count > 0 {
+            debug!(
+                "Branch materialization complete: mode={:?}, files={}, reflink={}, elapsed={:?}",
+                materialization_mode, materialized_count, used_reflink, elapsed
+            );
+        }
 
         let branch_id = BranchId::new();
+        // Eager and CloneEager modes seal the branch from lower layer visibility,
+        // providing ZFS-like point-in-time isolation semantics.
+        let sealed_from_lower = matches!(
+            materialization_mode,
+            crate::config::MaterializationMode::Eager
+                | crate::config::MaterializationMode::CloneEager
+        );
         let branch = Branch {
             id: branch_id,
             root_id: branch_root_id, // Branch gets its own copy of the directory structure
             parent_snapshot: Some(snapshot_id),
             name: name.map(|s| s.to_string()),
+            materialization_mode,
+            sealed_from_lower,
         };
 
         self.branches.lock().unwrap().insert(branch_id, branch);
@@ -2072,16 +2130,40 @@ impl FsCore {
 
         // Clone the current branch's root directory for the new branch
         let new_branch_root_id = self.clone_node_cow(branch.root_id)?;
+        drop(branches);
+
+        let materialization_mode = self.config.overlay.materialization;
+
+        // Apply materialization based on configuration
+        let start_time = std::time::Instant::now();
+        let (materialized_count, used_reflink) =
+            self.apply_materialization(new_branch_root_id, materialization_mode)?;
+        let elapsed = start_time.elapsed();
+
+        if materialized_count > 0 {
+            debug!(
+                "Branch materialization complete: mode={:?}, files={}, reflink={}, elapsed={:?}",
+                materialization_mode, materialized_count, used_reflink, elapsed
+            );
+        }
 
         let branch_id = BranchId::new();
+        // Eager and CloneEager modes seal the branch from lower layer visibility,
+        // providing ZFS-like point-in-time isolation semantics.
+        let sealed_from_lower = matches!(
+            materialization_mode,
+            crate::config::MaterializationMode::Eager
+                | crate::config::MaterializationMode::CloneEager
+        );
         let new_branch = Branch {
             id: branch_id,
             root_id: new_branch_root_id, // New branch gets its own copy of the directory structure
             parent_snapshot: None,       // Not based on a snapshot
             name: name.map(|s| s.to_string()),
+            materialization_mode,
+            sealed_from_lower,
         };
 
-        drop(branches);
         self.branches.lock().unwrap().insert(branch_id, new_branch);
         Ok(branch_id)
     }
@@ -2094,8 +2176,428 @@ impl FsCore {
                 id: b.id,
                 parent: b.parent_snapshot,
                 name: b.name.clone(),
+                materialization_mode: b.materialization_mode,
+                sealed_from_lower: b.sealed_from_lower,
             })
             .collect()
+    }
+
+    /// Apply materialization strategy based on the configured mode.
+    ///
+    /// Returns `(files_materialized, used_reflink)`:
+    /// - `files_materialized`: number of files copied from lower to upper layer
+    /// - `used_reflink`: true if reflink/clonefile was used (CloneEager mode)
+    fn apply_materialization(
+        &self,
+        branch_root_id: NodeId,
+        mode: crate::config::MaterializationMode,
+    ) -> FsResult<(usize, bool)> {
+        use crate::config::MaterializationMode;
+
+        match mode {
+            MaterializationMode::Lazy => {
+                // Lazy mode: no upfront materialization, files remain in lower layer
+                // until first write triggers copy-up. O(1) branch creation time.
+                Ok((0, false))
+            }
+            MaterializationMode::Eager | MaterializationMode::CloneEager => {
+                // Eager/CloneEager mode: copy all files from lower layer to VFS now.
+                // This provides ZFS-like point-in-time snapshot semantics.
+                // The branch will be sealed from lower layer visibility.
+                let lower_fs = match &self.lower_fs {
+                    Some(lower) => lower,
+                    None => {
+                        // No lower layer configured, nothing to materialize
+                        return Ok((0, false));
+                    }
+                };
+
+                // For CloneEager, check if reflink is required but unavailable
+                if mode == MaterializationMode::CloneEager {
+                    if let Some(backstore) = &self.backstore {
+                        let backstore_path = backstore.root_path();
+                        let reflink_supported = Self::can_reflink(&backstore_path);
+                        if !reflink_supported && self.config.overlay.require_clone_support {
+                            return Err(FsError::Unsupported);
+                        }
+                    }
+                }
+
+                // Populate the VFS tree with files from lower layer
+                let mut count = 0;
+                self.populate_vfs_from_lower(
+                    lower_fs.as_ref(),
+                    branch_root_id,
+                    Path::new("/"),
+                    &mut count,
+                )?;
+
+                // Also write to backstore if configured (for persistence)
+                if let Some(backstore) = &self.backstore {
+                    let backstore_path = backstore.root_path();
+                    let use_reflink = mode == MaterializationMode::CloneEager
+                        && Self::can_reflink(&backstore_path);
+
+                    let mut _backstore_count = 0;
+                    self.materialize_directory_recursive(
+                        lower_fs.as_ref(),
+                        backstore.as_ref(),
+                        Path::new("/"),
+                        Path::new(""),
+                        &mut _backstore_count,
+                        use_reflink,
+                    )?;
+                }
+
+                Ok((count, mode == MaterializationMode::CloneEager))
+            }
+        }
+    }
+
+    /// Populate the VFS tree with files from the lower layer.
+    ///
+    /// This is used by Eager/CloneEager modes to copy all lower layer files into
+    /// the VFS, providing point-in-time snapshot isolation.
+    fn populate_vfs_from_lower(
+        &self,
+        lower_fs: &dyn LowerFs,
+        parent_node_id: NodeId,
+        lower_path: &Path,
+        count: &mut usize,
+    ) -> FsResult<()> {
+        // List entries in the lower layer directory
+        let entries = match lower_fs.readdir(lower_path) {
+            Ok(e) => e,
+            Err(FsError::NotFound) => return Ok(()), // Directory doesn't exist in lower
+            Err(e) => return Err(e),
+        };
+
+        for entry in entries {
+            let entry_lower_path = lower_path.join(&entry.name);
+
+            if entry.is_dir {
+                // Create directory node and recurse
+                let dir_node_id = self.create_directory_node()?;
+
+                // Set attributes from lower layer
+                if let Ok(attrs) = lower_fs.stat(&entry_lower_path) {
+                    let mut nodes = self.nodes.lock().unwrap();
+                    if let Some(node) = nodes.get_mut(&dir_node_id) {
+                        node.mode = attrs.mode_bits;
+                        node.uid = attrs.uid;
+                        node.gid = attrs.gid;
+                        node.times = attrs.times;
+                    }
+                }
+
+                // Link to parent
+                self.link_child_into_parent(parent_node_id, &entry.name, dir_node_id)?;
+
+                // Recurse into subdirectory
+                self.populate_vfs_from_lower(lower_fs, dir_node_id, &entry_lower_path, count)?;
+            } else if entry.is_symlink {
+                // Create symlink node
+                if let Ok(target) = lower_fs.readlink(&entry_lower_path) {
+                    let symlink_node_id =
+                        self.create_symlink_node(target.to_string_lossy().to_string())?;
+
+                    // Set attributes from lower layer
+                    if let Ok(attrs) = lower_fs.stat(&entry_lower_path) {
+                        let mut nodes = self.nodes.lock().unwrap();
+                        if let Some(node) = nodes.get_mut(&symlink_node_id) {
+                            node.uid = attrs.uid;
+                            node.gid = attrs.gid;
+                            node.times = attrs.times;
+                        }
+                    }
+
+                    // Link to parent
+                    self.link_child_into_parent(parent_node_id, &entry.name, symlink_node_id)?;
+                    *count += 1;
+                }
+            } else {
+                // Regular file - read content and create VFS file node
+                let file_node_id = self.create_file_from_lower(lower_fs, &entry_lower_path)?;
+
+                // Link to parent
+                self.link_child_into_parent(parent_node_id, &entry.name, file_node_id)?;
+                *count += 1;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Create a VFS file node by reading content from the lower layer.
+    fn create_file_from_lower(
+        &self,
+        lower_fs: &dyn LowerFs,
+        lower_path: &Path,
+    ) -> FsResult<NodeId> {
+        // Read the file content from lower layer
+        let mut reader = lower_fs.open_ro(lower_path)?;
+        let mut contents = Vec::new();
+        std::io::Read::read_to_end(&mut reader, &mut contents)?;
+
+        // Allocate storage for the content
+        let content_id = self.storage.allocate(&contents)?;
+
+        // Create the file node
+        let node_id = self.allocate_node_id();
+        let (now_sec, now_nsec) = Self::current_time_components();
+
+        let mut streams = HashMap::new();
+        streams.insert(
+            "".to_string(),
+            StreamState::new(content_id, contents.len() as u64),
+        );
+
+        // Get attributes from lower layer
+        let (mode, uid, gid, times) = if let Ok(attrs) = lower_fs.stat(lower_path) {
+            (attrs.mode_bits, attrs.uid, attrs.gid, attrs.times)
+        } else {
+            (
+                0o644,
+                self.config.security.default_uid,
+                self.config.security.default_gid,
+                FileTimes {
+                    atime: now_sec,
+                    atime_nsec: now_nsec,
+                    mtime: now_sec,
+                    mtime_nsec: now_nsec,
+                    ctime: now_sec,
+                    ctime_nsec: now_nsec,
+                    birthtime: now_sec,
+                    birthtime_nsec: now_nsec,
+                },
+            )
+        };
+
+        let node = Node {
+            id: node_id,
+            kind: NodeKind::File { streams },
+            times,
+            mode,
+            uid,
+            gid,
+            special_kind: None,
+            xattrs: HashMap::new(),
+            acls: HashMap::new(),
+            flags: 0,
+            nlink: 1,
+        };
+
+        self.nodes.lock().unwrap().insert(node_id, node);
+        Ok(node_id)
+    }
+
+    /// Recursively materialize a directory and all its contents to the backstore.
+    ///
+    /// This writes files from the lower layer to the backstore for persistence,
+    /// complementing the VFS population done by `populate_vfs_from_lower`.
+    fn materialize_directory_recursive(
+        &self,
+        lower_fs: &dyn LowerFs,
+        backstore: &dyn Backstore,
+        lower_path: &Path,
+        upper_relative_path: &Path,
+        count: &mut usize,
+        use_reflink: bool,
+    ) -> FsResult<()> {
+        // List entries in the lower layer directory
+        let entries = match lower_fs.readdir(lower_path) {
+            Ok(e) => e,
+            Err(FsError::NotFound) => return Ok(()), // Directory doesn't exist in lower
+            Err(e) => return Err(e),
+        };
+
+        for entry in entries {
+            let entry_lower_path = lower_path.join(&entry.name);
+            let entry_upper_path = upper_relative_path.join(&entry.name);
+
+            if entry.is_dir {
+                // Create directory in backstore and recurse
+                backstore.create_dir(&entry_upper_path)?;
+                self.materialize_directory_recursive(
+                    lower_fs,
+                    backstore,
+                    &entry_lower_path,
+                    &entry_upper_path,
+                    count,
+                    use_reflink,
+                )?;
+            } else if entry.is_symlink {
+                // Copy symlink
+                if let Ok(target) = lower_fs.readlink(&entry_lower_path) {
+                    backstore.create_symlink(&entry_upper_path, &target)?;
+                    *count += 1;
+                }
+            } else {
+                // Regular file - copy or reflink
+                self.materialize_file(
+                    lower_fs,
+                    backstore,
+                    &entry_lower_path,
+                    &entry_upper_path,
+                    use_reflink,
+                )?;
+                *count += 1;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Materialize a single file from lower to upper layer.
+    fn materialize_file(
+        &self,
+        lower_fs: &dyn LowerFs,
+        backstore: &dyn Backstore,
+        lower_path: &Path,
+        upper_path: &Path,
+        use_reflink: bool,
+    ) -> FsResult<()> {
+        // Get the lower layer root to construct the absolute source path
+        let lower_root = self.config.overlay.lower_root.as_ref().ok_or(FsError::InvalidArgument)?;
+        let abs_lower_path = lower_root.join(lower_path.strip_prefix("/").unwrap_or(lower_path));
+        let abs_upper_path = backstore.root_path().join(upper_path);
+
+        if use_reflink {
+            // Try reflink first
+            match Self::try_reflink(&abs_lower_path, &abs_upper_path) {
+                Ok(()) => return Ok(()),
+                Err(_) => {
+                    // Fall back to regular copy
+                    debug!(
+                        "Reflink failed for {:?} -> {:?}, falling back to copy",
+                        lower_path, upper_path
+                    );
+                }
+            }
+        }
+
+        // Regular copy: read from lower, write to backstore
+        let mut reader = lower_fs.open_ro(lower_path)?;
+        let mut contents = Vec::new();
+        std::io::Read::read_to_end(&mut reader, &mut contents)?;
+        backstore.write_file(upper_path, &contents)?;
+
+        // Copy metadata
+        if let Ok(attrs) = lower_fs.stat(lower_path) {
+            backstore.set_mode(upper_path, attrs.mode_bits)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if the filesystem at the given path supports reflink/copy-on-write cloning.
+    ///
+    /// This probes the filesystem by attempting a reflink operation on a temporary file.
+    /// Returns true if reflink is supported (Btrfs, XFS with reflink, APFS, ReFS).
+    pub fn can_reflink(path: &Path) -> bool {
+        use std::io::Write;
+
+        // Create a temporary source file
+        let src_path = path.join(".agentfs_reflink_test_src");
+        let dst_path = path.join(".agentfs_reflink_test_dst");
+
+        // Clean up any stale test files
+        let _ = std::fs::remove_file(&src_path);
+        let _ = std::fs::remove_file(&dst_path);
+
+        // Create source file with some content
+        let mut src_file = match std::fs::File::create(&src_path) {
+            Ok(f) => f,
+            Err(_) => return false,
+        };
+        if src_file.write_all(b"reflink test").is_err() {
+            let _ = std::fs::remove_file(&src_path);
+            return false;
+        }
+        drop(src_file);
+
+        // Try reflink
+        let result = Self::try_reflink(&src_path, &dst_path).is_ok();
+
+        // Cleanup
+        let _ = std::fs::remove_file(&src_path);
+        let _ = std::fs::remove_file(&dst_path);
+
+        result
+    }
+
+    /// Attempt to create a reflink (copy-on-write clone) of a file.
+    ///
+    /// This uses platform-specific mechanisms:
+    /// - Linux: FICLONE ioctl (Btrfs, XFS) or copy_file_range with COPY_FILE_RANGE_REFLINK
+    /// - macOS: clonefile() syscall (APFS)
+    /// - Windows: FSCTL_DUPLICATE_EXTENTS_TO_FILE (ReFS)
+    fn try_reflink(src: &Path, dst: &Path) -> FsResult<()> {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::io::AsRawFd;
+
+            let src_file = std::fs::File::open(src)?;
+            let dst_file = std::fs::File::create(dst)?;
+
+            // Try FICLONE ioctl first (works on Btrfs, XFS with reflink)
+            // FICLONE = 0x40049409
+            const FICLONE: libc::c_ulong = 0x40049409;
+
+            let result =
+                unsafe { libc::ioctl(dst_file.as_raw_fd(), FICLONE, src_file.as_raw_fd()) };
+
+            if result == 0 {
+                return Ok(());
+            }
+
+            // FICLONE failed, clean up and return error
+            drop(dst_file);
+            let _ = std::fs::remove_file(dst);
+            Err(FsError::Unsupported)
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use std::ffi::CString;
+            use std::os::unix::ffi::OsStrExt;
+
+            extern "C" {
+                fn clonefile(
+                    src: *const libc::c_char,
+                    dst: *const libc::c_char,
+                    flags: u32,
+                ) -> libc::c_int;
+            }
+
+            let src_cstr =
+                CString::new(src.as_os_str().as_bytes()).map_err(|_| FsError::InvalidArgument)?;
+            let dst_cstr =
+                CString::new(dst.as_os_str().as_bytes()).map_err(|_| FsError::InvalidArgument)?;
+
+            let result = unsafe { clonefile(src_cstr.as_ptr(), dst_cstr.as_ptr(), 0) };
+
+            if result == 0 {
+                Ok(())
+            } else {
+                Err(FsError::Unsupported)
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            // Windows ReFS block cloning via FSCTL_DUPLICATE_EXTENTS_TO_FILE
+            // This is complex and requires specific alignment, so we'll return
+            // Unsupported for now and let the fallback handle it
+            let _ = (src, dst);
+            Err(FsError::Unsupported)
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        {
+            let _ = (src, dst);
+            Err(FsError::Unsupported)
+        }
     }
 
     // Process binding operations
@@ -2624,8 +3126,9 @@ impl FsCore {
                 Ok(handle_id)
             }
             Err(FsError::NotFound) => {
-                // No upper entry, check if we can open from lower filesystem in overlay mode
-                if self.is_overlay_enabled() && opts.read && !opts.write && !opts.create {
+                // No upper entry, check if we can open from lower filesystem in overlay mode.
+                // This is only allowed if the branch is not sealed (Lazy mode).
+                if self.should_fallback_to_lower(pid) && opts.read && !opts.write && !opts.create {
                     if let Some(lower_fs) = &self.lower_fs {
                         // Check if lower file exists and is readable
                         if lower_fs.stat(path).is_ok() {
@@ -3794,12 +4297,13 @@ impl FsCore {
                             }
                         }
 
-                        // In overlay mode, merge upper and lower entries
-                        if self.is_overlay_enabled() {
+                        // In overlay mode with unsealed branch, merge upper and lower entries.
+                        // For sealed branches (Eager/CloneEager), only show upper entries.
+                        if self.should_fallback_to_lower(pid) {
                             return self.readdir_plus_overlay(pid, path, children, &nodes);
                         }
 
-                        // Non-overlay mode: just upper entries
+                        // Non-overlay or sealed branch: just upper entries
                         return self.readdir_plus_upper_only(children, &nodes);
                     }
                     NodeKind::File { .. } => return Err(FsError::NotADirectory),
@@ -3812,8 +4316,8 @@ impl FsCore {
             Err(e) => return Err(e),
         }
 
-        // No upper entry, check lower filesystem in overlay mode
-        if self.is_overlay_enabled() {
+        // No upper entry, check lower filesystem in overlay mode (only for unsealed branches)
+        if self.should_fallback_to_lower(pid) {
             if let Some(lower_fs) = &self.lower_fs {
                 let lower_entries = lower_fs.readdir(path)?;
                 let mut entries = Vec::new();

@@ -224,6 +224,8 @@ impl AgentFsDaemon {
                     lower_root: Some(lower),
                     copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
                     visible_subdir: None,
+                    materialization: agentfs_core::config::MaterializationMode::Lazy,
+                    require_clone_support: false,
                 },
                 ..Default::default()
             }
@@ -314,6 +316,8 @@ impl AgentFsDaemon {
                     lower_root: Some(lower),
                     copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
                     visible_subdir: None,
+                    materialization: agentfs_core::config::MaterializationMode::Lazy,
+                    require_clone_support: false,
                 },
                 backstore: backstore_mode,
                 ..Default::default()
