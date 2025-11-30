@@ -291,11 +291,14 @@ impl AgentStartArgs {
                     }
                 }
 
+                let allow_network = self.allow_network.unwrap_or(false);
                 let process_config = ProcessConfig {
                     command: full_cmd,
                     working_dir: Some(config.working_dir.to_string_lossy().to_string()),
                     env: env_vars,
-                    tmpfs_size: None, // Use default tmpfs size for /tmp isolation
+                    tmpfs_size: None,    // Use default tmpfs size for /tmp isolation
+                    net_isolation: true, // Network isolation enabled by default
+                    allow_internet: allow_network, // Internet access via slirp4netns if requested
                 };
 
                 sandbox = sandbox.with_process_config(process_config);

@@ -73,6 +73,9 @@ impl Sandbox {
     /// The default configuration enables user namespaces, which allows unprivileged
     /// users (on systems that permit it) to create the other namespaces within the
     /// same unshare() call. This is the standard approach for sandboxing.
+    ///
+    /// Network namespace is enabled by default for network isolation (loopback only).
+    /// Use `--allow-network` flag to enable internet access via slirp4netns.
     pub fn new() -> Self {
         let namespace_config = namespaces::NamespaceConfig {
             user_ns: true, // Enables unprivileged namespace creation where supported
@@ -80,6 +83,7 @@ impl Sandbox {
             pid_ns: true,
             uts_ns: true,
             ipc_ns: true,
+            net_ns: true,   // Network isolation enabled by default
             time_ns: false, // Optional, newer kernel feature
             uid_map: None,
             gid_map: None,

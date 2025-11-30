@@ -44,6 +44,8 @@ fn test_sandbox_process_is_pid_1() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let namespace_config = NamespaceConfig {
@@ -52,6 +54,7 @@ fn test_sandbox_process_is_pid_1() {
         pid_ns: true,
         uts_ns: false,
         ipc_ns: false,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -103,6 +106,8 @@ fn test_sandbox_proc_shows_only_sandbox_pids() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let namespace_config = NamespaceConfig {
@@ -111,6 +116,7 @@ fn test_sandbox_proc_shows_only_sandbox_pids() {
         pid_ns: true,
         uts_ns: false,
         ipc_ns: false,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -154,6 +160,8 @@ fn test_sandbox_user_is_root_in_namespace() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let namespace_config = NamespaceConfig {
@@ -162,6 +170,7 @@ fn test_sandbox_user_is_root_in_namespace() {
         pid_ns: true,
         uts_ns: false,
         ipc_ns: false,
+        net_ns: true,
         time_ns: false,
         uid_map: None, // Use default mapping (current UID -> root in namespace)
         gid_map: None,
@@ -203,6 +212,8 @@ fn test_sandbox_basic_command_execution() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let namespace_config = NamespaceConfig {
@@ -211,6 +222,7 @@ fn test_sandbox_basic_command_execution() {
         pid_ns: true,
         uts_ns: true,
         ipc_ns: true,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -238,6 +250,8 @@ fn test_sandbox_environment_variables() {
         working_dir: None,
         env: vec![("TEST_VAR".to_string(), "sandbox_test_value".to_string())],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let namespace_config = NamespaceConfig {
@@ -246,6 +260,7 @@ fn test_sandbox_environment_variables() {
         pid_ns: true,
         uts_ns: false,
         ipc_ns: false,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -291,6 +306,8 @@ fn test_sandbox_tmp_isolation() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let namespace_config = NamespaceConfig {
@@ -299,6 +316,7 @@ fn test_sandbox_tmp_isolation() {
         pid_ns: true,
         uts_ns: true,
         ipc_ns: true,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
@@ -343,6 +361,8 @@ fn test_sandbox_secrets_protection() {
         working_dir: None,
         env: vec![],
         tmpfs_size: None,
+        net_isolation: true,
+        allow_internet: false,
     };
 
     let namespace_config = NamespaceConfig {
@@ -351,6 +371,7 @@ fn test_sandbox_secrets_protection() {
         pid_ns: true,
         uts_ns: true,
         ipc_ns: true,
+        net_ns: true,
         time_ns: false,
         uid_map: None,
         gid_map: None,
