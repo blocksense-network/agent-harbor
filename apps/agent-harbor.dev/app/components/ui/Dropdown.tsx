@@ -55,8 +55,8 @@ export function Dropdown({ value, onChange, options, placeholder, required }: Dr
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
-        className={`w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 text-left text-white focus:border-brand focus:ring-1 focus:ring-brand outline-none transition-colors flex items-center justify-between font-mono ${
-          !value ? 'text-gray-500' : ''
+        className={`w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 text-left focus:border-brand focus:ring-1 focus:ring-brand outline-none transition-colors flex items-center justify-between font-mono ${
+          !value ? 'text-gray-600' : 'text-white'
         }`}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
