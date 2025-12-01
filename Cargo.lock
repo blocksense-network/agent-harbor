@@ -3277,6 +3277,8 @@ dependencies = [
  "ctor",
  "libc",
  "stackable-hooks",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

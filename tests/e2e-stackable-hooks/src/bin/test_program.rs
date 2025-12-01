@@ -9,6 +9,12 @@ use std::io::{self, Write};
 
 #[allow(clippy::print_stdout, clippy::print_stderr, clippy::disallowed_methods)]
 fn main() {
+    // Initialize tracing to stderr for shim library logging
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
     println!("Test program started");
 
     let args: Vec<String> = env::args().collect();

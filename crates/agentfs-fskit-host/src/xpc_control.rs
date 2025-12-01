@@ -80,6 +80,8 @@ impl XpcControlService {
             .as_ssz_bytes()),
             Request::BranchCreate((_, req)) => self.handle_branch_create(req).await,
             Request::BranchBind((_, req)) => self.handle_branch_bind(req).await,
+            Request::BranchUnbind(_) => todo!("BranchUnbind not implemented for XPC control"),
+            Request::BranchDelete(_) => todo!("BranchDelete not implemented for XPC control"),
             Request::FdOpen(_) => todo!("FdOpen not implemented for XPC control"),
             Request::FdDup(_) => todo!("FdDup not implemented for XPC control"),
             Request::DirOpen(_) => todo!("DirOpen not implemented for XPC control"),
