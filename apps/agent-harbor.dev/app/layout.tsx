@@ -21,7 +21,12 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: 'Agent Harbor',
-  description: 'Agent Harbor application',
+  description:
+    'The YOLO mode harness for long-horizon vibe engineering. Orchestrate Claude, Gemini & Codex in a local sandbox with effortless rollbacks.',
+  openGraph: {
+    images: [{ url: 'https://agent-harbor.dev/opengraph-image.png', alt: 'Agent Harbor' }],
+    type: 'website',
+  },
 };
 
 export default function RootLayout({
