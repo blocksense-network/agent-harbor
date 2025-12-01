@@ -1,8 +1,3 @@
-/**
- * Copyright 2025 Schelling Point Labs Inc
- * SPDX-License-Identifier: AGPL-3.0-only
- */
-
 /// <reference types="next" />
 /// <reference types="next/image-types/global" />
 import "./.next/dev/types/routes.d.ts";
