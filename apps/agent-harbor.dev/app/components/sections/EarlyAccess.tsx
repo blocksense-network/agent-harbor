@@ -340,7 +340,7 @@ export default function EarlyAccess() {
               </label>
               <input
                 type="text"
-                placeholder="How should we address you?"
+                placeholder="Bob"
                 value={formData.name}
                 onChange={e => {
                   setFormData({ ...formData, name: e.target.value });
@@ -381,7 +381,7 @@ export default function EarlyAccess() {
               </label>
               <input
                 type="email"
-                placeholder="Where can we reach you with early-access updates?"
+                placeholder="bob@email.com"
                 value={formData.email}
                 onChange={e => {
                   setFormData({ ...formData, email: e.target.value });
