@@ -10,6 +10,8 @@
       pre-commit = {
         settings = {
           hooks = {
+            nixfmt.enable = true;
+
             prettier = {
               enable = true;
               excludes = [ "\\.yarn" ];
@@ -21,6 +23,7 @@
                 log-level = "warn";
               };
             };
+
             eslint = {
               enable = true;
               excludes = [
@@ -33,6 +36,7 @@
                 extensions = "\\.[jt]s(x?)$";
               };
             };
+
             # Fast auto-fixers and sanity checks
             # Local replacements for common sanity checks (portable, no Python deps)
             check-merge-conflict = {
@@ -45,6 +49,7 @@
               pass_filenames = true;
               types = [ "text" ];
             };
+
             check-added-large-files = {
               enable = true;
               name = "check added large files (>1MB)";
