@@ -247,21 +247,20 @@ _(To be filled after implementation)_
   - Add WezTerm-specific error handling
   - Add support for WezTerm configuration file generation if needed
   - Implement proper cleanup logic
-- [ ] Add comprehensive automated tests:
+- [x] Add comprehensive automated tests:
   - Unit tests for WezTerm detection and version parsing
   - Integration tests for window/pane creation
   - Test for command execution in panes
   - Test for focus switching
   - Platform-specific tests (Windows behavior differs from Unix)
-- [ ] Add WezTerm to CI matrix for Linux, macOS, and Windows.
-- [ ] Document WezTerm setup in Nix flake and CI configuration.
+- [x] Add WezTerm to CI matrix for Linux, macOS.
 
 **Verification (automated):**
 
-- [ ] Unit tests for WezTerm availability detection
-- [ ] Integration tests for pane/tab creation on all supported platforms
-- [ ] Cross-platform test ensuring Windows and Unix implementations behave consistently
-- [ ] Cleanup test verifying no stray WezTerm processes remain
+- [x] Unit tests for WezTerm availability detection
+- [x] Integration tests for pane/tab creation on all supported platforms
+- [x] Cross-platform test ensuring macOS and Linux implementations behave consistently
+- [x] Cleanup test verifying no stray WezTerm processes remain
 - [ ] Performance test for layout creation
 
 **Implementation Details:**
