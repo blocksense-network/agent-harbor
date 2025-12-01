@@ -569,6 +569,36 @@ impl Backstore for RealBackstore {
 
         Ok(())
     }
+
+    fn create_dir(&self, relative_path: &Path) -> FsResult<()> {
+        let full_path = self.root.join(relative_path);
+        std::fs::create_dir_all(&full_path).map_err(agentfs_core::error::FsError::Io)
+    }
+
+    fn create_symlink(&self, relative_path: &Path, target: &Path) -> FsResult<()> {
+        let full_path = self.root.join(relative_path);
+        // Create parent directories if needed
+        if let Some(parent) = full_path.parent() {
+            std::fs::create_dir_all(parent).map_err(agentfs_core::error::FsError::Io)?;
+        }
+        std::os::unix::fs::symlink(target, &full_path).map_err(agentfs_core::error::FsError::Io)
+    }
+
+    fn write_file(&self, relative_path: &Path, content: &[u8]) -> FsResult<()> {
+        let full_path = self.root.join(relative_path);
+        // Create parent directories if needed
+        if let Some(parent) = full_path.parent() {
+            std::fs::create_dir_all(parent).map_err(agentfs_core::error::FsError::Io)?;
+        }
+        std::fs::write(&full_path, content).map_err(agentfs_core::error::FsError::Io)
+    }
+
+    fn set_mode(&self, relative_path: &Path, mode: u32) -> FsResult<()> {
+        let full_path = self.root.join(relative_path);
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = std::fs::Permissions::from_mode(mode);
+        std::fs::set_permissions(&full_path, permissions).map_err(agentfs_core::error::FsError::Io)
+    }
 }
 
 impl RealBackstore {
@@ -743,6 +773,36 @@ impl Backstore for MockApfsBackstore {
         }
 
         Ok(())
+    }
+
+    fn create_dir(&self, relative_path: &Path) -> FsResult<()> {
+        let full_path = self.root.path().join(relative_path);
+        std::fs::create_dir_all(&full_path).map_err(agentfs_core::error::FsError::Io)
+    }
+
+    fn create_symlink(&self, relative_path: &Path, target: &Path) -> FsResult<()> {
+        let full_path = self.root.path().join(relative_path);
+        // Create parent directories if needed
+        if let Some(parent) = full_path.parent() {
+            std::fs::create_dir_all(parent).map_err(agentfs_core::error::FsError::Io)?;
+        }
+        std::os::unix::fs::symlink(target, &full_path).map_err(agentfs_core::error::FsError::Io)
+    }
+
+    fn write_file(&self, relative_path: &Path, content: &[u8]) -> FsResult<()> {
+        let full_path = self.root.path().join(relative_path);
+        // Create parent directories if needed
+        if let Some(parent) = full_path.parent() {
+            std::fs::create_dir_all(parent).map_err(agentfs_core::error::FsError::Io)?;
+        }
+        std::fs::write(&full_path, content).map_err(agentfs_core::error::FsError::Io)
+    }
+
+    fn set_mode(&self, relative_path: &Path, mode: u32) -> FsResult<()> {
+        let full_path = self.root.path().join(relative_path);
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = std::fs::Permissions::from_mode(mode);
+        std::fs::set_permissions(&full_path, permissions).map_err(agentfs_core::error::FsError::Io)
     }
 }
 
@@ -1867,6 +1927,8 @@ fn m7_overlay_copy_up_on_write_then_snapshot() -> Result<(), Box<dyn std::error:
             lower_root: Some(lower_dir.clone()),
             copyup_mode: CopyUpMode::Lazy,
             visible_subdir: None,
+            materialization: MaterializationMode::Lazy,
+            require_clone_support: false,
         },
         interpose: InterposeConfig::default(),
     };
@@ -1959,6 +2021,8 @@ fn m7_branch_from_snapshot_clones_only_metadata() -> Result<(), Box<dyn std::err
             lower_root: None,
             copyup_mode: CopyUpMode::Lazy,
             visible_subdir: None,
+            materialization: MaterializationMode::Lazy,
+            require_clone_support: false,
         },
         limits: FsLimits::default(),
         ..Default::default()
@@ -2049,6 +2113,8 @@ fn m7_interpose_fd_open_reflink_1gb_file() -> Result<(), Box<dyn std::error::Err
             lower_root: None,
             copyup_mode: CopyUpMode::Lazy,
             visible_subdir: None,
+            materialization: MaterializationMode::Lazy,
+            require_clone_support: false,
         },
         interpose: InterposeConfig {
             enabled: true,
@@ -2152,6 +2218,8 @@ fn m7_concurrent_writers_snapshot_read() -> Result<(), Box<dyn std::error::Error
             lower_root: None, // No lower - all files in upper
             copyup_mode: CopyUpMode::Lazy,
             visible_subdir: None,
+            materialization: MaterializationMode::Lazy,
+            require_clone_support: false,
         },
         limits: FsLimits {
             max_open_handles: 1000,
@@ -2372,6 +2440,8 @@ mod benches {
                 lower_root: Some(lower_dir.clone()),
                 copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
                 visible_subdir: None,
+                materialization: agentfs_core::config::MaterializationMode::Lazy,
+                require_clone_support: false,
             },
             interpose: agentfs_core::config::InterposeConfig::default(),
         };
@@ -2511,6 +2581,8 @@ mod benches {
                 lower_root: Some(lower_dir.clone()),
                 copyup_mode: agentfs_core::config::CopyUpMode::Lazy,
                 visible_subdir: None,
+                materialization: agentfs_core::config::MaterializationMode::Lazy,
+                require_clone_support: false,
             },
             interpose: agentfs_core::config::InterposeConfig::default(),
         };

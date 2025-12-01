@@ -38,14 +38,63 @@ hook! {
     priority: 20,
     unsafe fn open(path: *const libc::c_char, flags: libc::c_int, mode: libc::mode_t)
         -> libc::c_int => my_open {
-        // Print a message to indicate the hook is active
-        info!("SHIM_B: open() intercepted (priority 20), flags={}, mode={}", flags, mode);
+        // Print a message to indicate the hook is active (use direct libc write to avoid tracing issues)
+        let msg = format!("SHIM_B: open() intercepted (priority 20), flags={}, mode={}\n", flags, mode);
+        let c_msg = std::ffi::CString::new(msg).unwrap();
+        unsafe {
+            libc::write(
+                libc::STDERR_FILENO,
+                c_msg.as_ptr() as *const libc::c_void,
+                c_msg.as_bytes().len(),
+            );
+        }
 
         // Call the next hook in the chain or the real function
         let result = stackable_hooks::call_next!(path, flags, mode);
 
-        // Log the result
-        info!("SHIM_B: open() returned {}", result);
+        // Log the result (use direct libc write to avoid tracing issues)
+        let result_msg = format!("SHIM_B: open() returned {}\n", result);
+        let c_result_msg = std::ffi::CString::new(result_msg).unwrap();
+        unsafe {
+            libc::write(
+                libc::STDERR_FILENO,
+                c_result_msg.as_ptr() as *const libc::c_void,
+                c_result_msg.as_bytes().len(),
+            );
+        }
+
+        result
+    }
+}
+
+#[cfg(target_os = "macos")]
+hook! {
+    priority: 20,
+    unsafe fn close(fd: libc::c_int) -> libc::c_int => my_close {
+        // Print a message to indicate the hook is active (use direct libc write to avoid tracing issues)
+        let msg = format!("SHIM_B: close() intercepted (priority 20), fd={}\n", fd);
+        let c_msg = std::ffi::CString::new(msg).unwrap();
+        unsafe {
+            libc::write(
+                libc::STDERR_FILENO,
+                c_msg.as_ptr() as *const libc::c_void,
+                c_msg.as_bytes().len(),
+            );
+        }
+
+        // Call the next hook in the chain or the real function
+        let result = stackable_hooks::call_next!(fd);
+
+        // Log the result (use direct libc write to avoid tracing issues)
+        let result_msg = format!("SHIM_B: close() returned {}\n", result);
+        let c_result_msg = std::ffi::CString::new(result_msg).unwrap();
+        unsafe {
+            libc::write(
+                libc::STDERR_FILENO,
+                c_result_msg.as_ptr() as *const libc::c_void,
+                c_result_msg.as_bytes().len(),
+            );
+        }
 
         result
     }
