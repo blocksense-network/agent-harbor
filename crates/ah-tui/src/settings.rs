@@ -1719,10 +1719,10 @@ pub struct Settings {
 
     /// Default split mode for task launches
     ///
-    /// This is loaded from the config file at TUI startup. During a TUI session,
+    /// This is loaded from the config file at TUI startup. During a TUI lifetime,
     /// when the user selects a different split mode (via keyboard shortcut or modal),
     /// this field is updated in-memory to remember the preference for subsequent
-    /// direct launches within the same session. The preference is NOT persisted to disk,
+    /// direct launches within the same TUI lifetime. The preference is NOT persisted to disk,
     /// so each TUI restart will reload the original config value.
     pub default_split_mode: Option<SplitMode>,
 
