@@ -334,7 +334,7 @@ export default function EarlyAccess() {
             )}
 
             <div>
-              <label className="block text-sm font-mono text-gray-400 mb-2">
+              <label className="relative block text-sm font-mono text-gray-400 mb-2">
                 Name
                 <InfoIcon text="Personalization in future emails." />
               </label>
@@ -375,7 +375,7 @@ export default function EarlyAccess() {
             </div>
 
             <div>
-              <label className="block text-sm font-mono text-gray-400 mb-2">
+              <label className="relative block text-sm font-mono text-gray-400 mb-2">
                 Email Address
                 <InfoIcon text="We prefer work emails if you're evaluating for your team, but personal emails are great too." />
               </label>
@@ -416,7 +416,7 @@ export default function EarlyAccess() {
             </div>
 
             <div>
-              <label className="block text-sm font-mono text-gray-400 mb-2">
+              <label className="relative block text-sm font-mono text-gray-400 mb-2">
                 What best describes you?
                 <InfoIcon text="We welcome everyone from curious students to CTOs. Let us know where you fit in!" />
               </label>
@@ -454,7 +454,7 @@ export default function EarlyAccess() {
             </div>
 
             <div>
-              <label className="block text-sm font-mono text-gray-400 mb-2">
+              <label className="relative block text-sm font-mono text-gray-400 mb-2">
                 Code hosting platform profile URL (Optional)
                 <InfoIcon text="Add full URLs (starting with http:// or https://) to your profiles on code hosting platforms like GitHub, GitLab, etc." />
               </label>
