@@ -418,7 +418,7 @@ export default function EarlyAccess() {
             <div>
               <label className="block text-sm font-mono text-gray-400 mb-2">
                 What best describes you?
-                <InfoIcon text='Marketing segmentation. You speak differently to a "Student" than you do to a "VP of Engineering."' />
+                <InfoIcon text="We welcome everyone from curious students to CTOs. Let us know where you fit in!" />
               </label>
               <Dropdown
                 value={formData.primaryRole}
