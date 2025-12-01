@@ -1116,10 +1116,10 @@ mod mouse {
 
     #[tokio::test]
     async fn ctrl_enter_opens_advanced_launch_options_menu() {
-        // See also: session_persistence_tests.rs for tests covering:
-        // - Advanced options stored in draft cards and persisting for the session
-        // - Split mode preferences remembered session-only
-        // - Options preserved across task launches within a session
+        // See also: lifetime_persistence_tests.rs for tests covering:
+        // - Advanced options stored in draft cards and persisting for the TUI lifetime
+        // - Split mode preferences remembered for the TUI lifetime
+        // - Options preserved across task launches within a TUI lifetime
         // - Consistent behavior across all launch methods
         let (mut vm, _mock_client) = new_view_model_with_mock_client();
         if let Some(card) = vm.draft_cards.first_mut() {
@@ -1151,7 +1151,7 @@ mod mouse {
 
     #[tokio::test]
     async fn tab_navigation_to_advanced_options_button_then_enter() {
-        // See also: session_persistence_tests.rs for comprehensive tests on
+        // See also: lifetime_persistence_tests.rs for comprehensive tests on
         // keyboard shortcuts working from textarea (Ctrl+Enter) and advanced
         // options preservation across multiple task launches.
         let (mut vm, _mock_client) = new_view_model_with_mock_client();
@@ -1437,10 +1437,10 @@ mod mouse {
     //   `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs`
     #[tokio::test]
     async fn advanced_options_button_click_opens_menu() {
-        // See also: session_persistence_tests.rs for tests covering:
+        // See also: lifetime_persistence_tests.rs for tests covering:
         // - Advanced options stored in draft cards after modal closes
         // - Independent options across multiple draft cards
-        // - Session-only storage (not persisted to disk)
+        // - TUI-lifetime-only storage (not persisted to disk)
         let (mut vm, _mock_client) = new_view_model_with_mock_client();
         if let Some(card) = vm.draft_cards.first_mut() {
             card.repository = std::env::current_dir().expect("cwd").to_string_lossy().into_owned();

@@ -173,9 +173,9 @@ The TUI implementation provides these core capabilities:
 
 - **Deliverables**:
   - ✅ Advanced options modal with two-column layout (options + launch shortcuts)
-  - ✅ Session-only persistence for advanced options in draft cards
-  - ✅ Split mode preference memory (session-only, not persisted to disk)
-  - ✅ Advanced options preserved across task launches within session
+  - ✅ TUI lifetime-only persistence for advanced options in draft cards
+  - ✅ Split mode preference memory (TUI lifetime-only, not persisted to disk)
+  - ✅ Advanced options preserved across task launches within TUI lifetime
   - ✅ Comprehensive keyboard shortcuts (t/s/h/v/T/S/H/V) from modal
   - ✅ Consistent behavior across all launch methods (keyboard, modal, Go button)
   - ✅ Modal keyboard shortcuts: 'A' key to apply changes, 'Esc' key to discard changes
@@ -199,8 +199,8 @@ The TUI implementation provides these core capabilities:
   - ✅ Focus restoration verified when using split launch shortcuts (test: `test_split_launch_shortcut_restores_focus_to_task_description`)
 
 - **Implementation Details**:
-  - **Advanced Options Storage**: Stored in `TaskEntryViewModel.advanced_options` field, persisting for the session
-  - **Split Mode Memory**: Stored in `Settings.default_split_mode` (session-only, not written to disk)
+  - **Advanced Options Storage**: Stored in `TaskEntryViewModel.advanced_options` field, persisting for the TUI lifetime
+  - **Split Mode Memory**: Stored in `Settings.default_split_mode` (TUI-lifetime-only, not written to disk)
   - **Disk Persistence Removed**: Removed `Settings::save_default_split_mode()` to prevent configuration file pollution
   - **Consistent Launch Flow**: All launch paths retrieve options from draft card or use defaults
   - **Options Flow**: Configure → Store in Card → Launch with Options
@@ -212,13 +212,13 @@ The TUI implementation provides these core capabilities:
 - **Architecture**:
   - **Before**: Advanced options extracted from modal at launch time → inconsistent behavior based on launch method
   - **After**: Advanced options stored in draft card state → consistent across all launch methods
-  - **Benefits**: Session-only storage prevents config pollution while maintaining convenience; configure once, launch multiple times
+  - **Benefits**: TUI lifetime-only storage prevents config pollution while maintaining convenience; configure once, launch multiple times
 
 - **Key Source Files**:
   - `crates/ah-tui/src/view_model/agents_selector_model.rs` - Launch flow, advanced options handling, modal interaction logic, and mouse action handlers
   - `crates/ah-tui/src/view_model/dashboard_model.rs` - Dashboard launch implementation
   - `crates/ah-tui/src/view_model/task_entry.rs` - TaskEntryViewModel with advanced_options field
-  - `crates/ah-tui/src/settings.rs` - Settings with session-only default_split_mode and ApplyModalChanges keyboard operation
+  - `crates/ah-tui/src/settings.rs` - Settings with TUI-lifetime-only default_split_mode and ApplyModalChanges keyboard operation
   - `crates/ah-tui/src/view/launch_options_modal.rs` - Modal rendering with clickable hint text and visual feedback
   - `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs` - Comprehensive test suite for keyboard and mouse interactions
 
