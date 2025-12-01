@@ -4,7 +4,7 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::prelude::Stylize;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
 use unicode_width::UnicodeWidthStr;
@@ -37,7 +37,7 @@ pub fn render_advanced_launch_options_modal(
     let mut shadow_area = modal_area;
     shadow_area.x += 1;
     shadow_area.y += 1;
-    let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
+    let shadow = Block::default().style(Style::default().bg(theme.shadow));
     frame.render_widget(Clear, shadow_area);
     frame.render_widget(shadow, shadow_area);
 

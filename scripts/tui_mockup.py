@@ -59,6 +59,10 @@ FOOTER_ALIGNMENT = "left" # "left", "center", "right"
 FOOTER_MARGIN_X = 3
 
 def color(text, fg_key=None, bg_key=None, bold=False):
+    import os
+    if os.environ.get("NO_COLOR"):
+        return text
+
     code = ""
     if fg_key:
         r, g, b = COLORS[fg_key]
@@ -95,11 +99,18 @@ def get_visual_len(text):
     return length
 
 def print_line(text=""):
+    import os
+    no_color = os.environ.get("NO_COLOR")
+
     cols, _ = shutil.get_terminal_size()
     vlen = get_visual_len(text)
     padding = cols - vlen
     if padding < 0: padding = 0
     
+    if no_color:
+        print(text + " " * padding)
+        return
+
     # Global BG color
     br, bg, bb = COLORS[APP_BG_KEY]
     bg_code = f"\033[48;2;{br};{bg};{bb}m"

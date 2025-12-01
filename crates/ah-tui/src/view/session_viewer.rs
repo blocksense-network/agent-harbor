@@ -131,7 +131,8 @@ pub fn render_session_viewer(
     theme: &Theme,
 ) {
     let area = frame.area();
-    frame.render_widget(Clear, area);
+    // Paint the full viewport with the app background so no terminal pixels bleed through.
+    frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), area);
 
     let status_height = 1u16;
 
@@ -191,7 +192,7 @@ pub fn render_session_viewer(
         if let Some(task_entry_area) = draft_card_area {
             if view_model.task_entry_visible {
                 frame.render_widget(Clear, task_entry_area);
-                render_instruction_entry(frame, task_entry_area, &view_model.task_entry);
+                render_instruction_entry(frame, task_entry_area, &view_model.task_entry, theme);
             }
         }
 
@@ -203,9 +204,13 @@ pub fn render_session_viewer(
     }
 }
 
-fn render_instruction_entry(frame: &mut Frame<'_>, area: Rect, task_entry: &TaskEntryViewModel) {
-    let theme = Theme::default();
-    let layout = render_draft_card(frame, area, task_entry, &theme, true);
+fn render_instruction_entry(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    task_entry: &TaskEntryViewModel,
+    theme: &Theme,
+) {
+    let layout = render_draft_card(frame, area, task_entry, theme, true);
 
     // Position cursor in the textarea
     let (cursor_row, cursor_col) = task_entry.description.cursor();
@@ -430,7 +435,7 @@ fn render_terminal_content(
 
         // Render task entry
         frame.render_widget(Clear, terminal_chunk);
-        render_instruction_entry(frame, terminal_chunk, &view_model.task_entry);
+        render_instruction_entry(frame, terminal_chunk, &view_model.task_entry, theme);
 
         current_row += task_entry_height;
     }

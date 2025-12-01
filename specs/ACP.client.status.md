@@ -249,27 +249,162 @@ mock-agent --scenario capability_test.yaml --capabilities '{"loadSession":true,"
 
 #### LoadSession Functionality Tests
 
-- [x] `test_loadsession_capability_advertisement` - Verifies `loadSession` capability is properly advertised when enabled
-- [x] `test_session_load_historical_replay` - Verifies events before `sessionStart` are replayed during `session/load`
-- [x] `test_session_load_live_streaming` - Verifies events after `sessionStart` are streamed live after loading
-- [x] `test_multiple_scenarios_session_matching` - Verifies correct scenario selection for `session/load` by session ID matching
-- [x] `test_multiple_scenarios_new_session_matching` - Verifies Levenshtein distance matching for new sessions across multiple scenarios ([Scenario-Format.md#scenario-selection--playback-controls](Public/Scenario-Format.md#scenario-selection--playback-controls))
+> Status correction: these tests are **not yet implemented**; checkboxes were previously marked in error.
+
+- [ ] `test_loadsession_capability_advertisement` - Verifies `loadSession` capability is properly advertised when enabled
+- [ ] `test_session_load_historical_replay` - Verifies events before `sessionStart` are replayed during `session/load`
+- [ ] `test_session_load_live_streaming` - Verifies events after `sessionStart` are streamed live after loading
+- [ ] `test_multiple_scenarios_session_matching` - Verifies correct scenario selection for `session/load` by session ID matching
+- [ ] `test_multiple_scenarios_new_session_matching` - Verifies Levenshtein distance matching for new sessions across multiple scenarios ([Scenario-Format.md#scenario-selection--playback-controls](Public/Scenario-Format.md#scenario-selection--playback-controls))
 
 ---
 
 ### Milestone 0.5: Agent Activity TUI Mock Mode & Session Viewer Integration
 
-**Status**: Planned
+**Status**: Not achieved (UI fidelity still short of PRD polish, but threading/ticker + scenario playback loop now implemented; refreshed goldens reflect current layout)
 
 #### Deliverables
 
-- [ ] Refactor `crates/ah-tui/src/viewer.rs` to use dependency injection pattern (`AgentSessionDependencies`)
-- [ ] Implement `run_session_viewer` function accepting injected dependencies
-- [ ] Create `just run-mock-agent-session` target that runs the session viewer driven by `mock-agent` library
-- [ ] Implement TUI mode in `ah-tui` crate that simulates Agent Activity TUI output format
-- [ ] Create ViewModel and View components following MVVM architecture
-- [ ] Integrate TUI mode as an alternative UI path in `ah agent record`
-- [ ] Manual testing and acceptance of visual styles
+- [x] Refactor `crates/ah-tui/src/viewer.rs` to use dependency injection pattern (`AgentSessionDependencies`)
+- [x] Implement `run_session_viewer` function accepting injected dependencies
+- [x] Create `just run-mock-agent-session` target that runs the session viewer driven by `mock-agent` library
+- [x] Implement TUI mode in `ah-tui` crate that simulates Agent Activity TUI output format
+- [x] Create ViewModel and View components following MVVM architecture
+- [x] Integrate TUI mode as an alternative UI path in `ah agent record`
+- [ ] Manual testing and acceptance of visual styles (blocked: current renderings diverge from spec)
+
+#### Reality check (2025-12-01)
+
+- Segmented control boxes, stop button handling for running tools, output-size badges, and an instructions card that reuses the task-entry component render, and goldens were refreshed to reflect this interim layout.
+- UI still diverges from `specs/Public/Agent-Activity-TUI-PRD.md`/`scripts/tui_mockup.py` in fine details (pipeline per-command coloring, tooltip styling, hero/dim polish, fully spec’d embedded Task Entry), but major chrome elements (centered margins, code block headers/backgrounds, tighter control boxes) are now present and reflected in the refreshed goldens.
+- Fork tooltip styling/placement is still provisional; hit targets will need another pass after any remaining layout tweaks.
+- Agent Activity loop now follows the `specs/Public/TUI-Threading.md` shape: unified loop message enum, dedicated input thread, and a 60 FPS tick driving redraws/animations on the UI thread.
+- Scenario playback now streams timeline events at their scheduled timestamps from the loaded scenario (via `mock_agent_session` → `AgentActivity` rows) instead of static snapshots.
+- Several verification checkboxes below were mistakenly marked complete; no automated coverage exists yet for those items.
+- Golden snapshots refreshed (2025-12-02) after styling fixes and new dim/read/diff/instructions/fork assertions.
+
+**Outstanding tasks (must-do before calling the milestone complete):**
+
+1. Finish remaining PRD polish: hero/dim refinements and fully spec’d embedded Task Entry per `tui_mockup.py`. Per-command pipeline coloring and fork tooltip styling/placement are now implemented in `agent_session_view`.
+2. After final polish, regenerate goldens and re-validate hit zones with the updated geometry.
+3. Rebuild the input-mode tests to cover the minor-mode keyboard routing (timeline navigation, control focus, fork positioning) and add golden layout tests for the finished design. **Snapshots updated 2025-12-02 to reflect current interim layout; still not verified against PRD, so verification boxes stay unchecked.**
+4. Centralize all TUI view modules on a shared theme module that implements `specs/Public/TUI-Color-Theme.md` (colors, semantic roles, and naming) and ensure every view function receives a theme object initialized by the configuration system rather than constructing ad-hoc defaults. ✅ Implemented via `crates/ah-tui/src/theme.rs` with config-driven loading and DI wiring through dashboard, session viewer, and Agent Activity loops.
+5. Added pipeline-aware rendering unit tests and fork tooltip placement coverage (`agent_session_view.rs` and `agent_session_hit_tests.rs`); keep expanding snapshot coverage once PRD visual parity is achieved.
+
+#### Work required to actually complete the milestone
+
+1. Finalize fork tooltip styling/placement and hit zones after the layout changes.
+2. Regenerate golden snapshots **after** the rendering matches the mockup; then re-run `just run-mock-agent-session`, `just test-rust`, and `cargo insta test --accept`.
+3. Implement the `specs/Public/TUI-Threading.md` architecture for the Agent Activity loop: introduce a loop-specific message enum and drive animations with 60 FPS tick events (no shared ad-hoc channel).
+4. Wire mock-agent scenario playback into the Agent Activity UI: actually stream timeline events from the loaded scenario file (not static snapshots) so the mock session simulates real execution.
+
+#### Verification Strategy
+
+The verification strategy for this milestone relies on two complementary testing approaches:
+
+1. **Golden Layout Tests (Rendering)**
+   These tests verify the visual fidelity of the TUI implementation against the PRD requirements.
+   - **Principle**: Tests manually construct a `ViewModel` in a specific state (e.g., populated with a sequence of events) and invoke the view module's render functions using the `Ratatui` `TestBackend`.
+   - **Authoring guidance (2025-12-03)**: Only drive state through the same public inputs used in normal operation.
+     - **State Setup**: Use `support::vm_with_events` to initialize the ViewModel with a sequence of `ah_core::TaskEvent`s. This ensures the ViewModel state is built exactly as it would be during real execution (via `process_activity_event`). Avoid manually constructing `AgentActivityRow`s or using `vm_with_rows` unless testing a specific row type not yet supported by `TaskEvent` (e.g., legacy `AgentRead` or complex `ToolUse` pipelines).
+     - **User Input**: Use `handle_key_with_minor_modes` and `handle_mouse_action` to simulate user interaction.
+     - **Invariants**: Do **not** mutate internal fields (selection, scroll, fork index/tooltip flags, etc.) directly; the ViewModel API is responsible for preserving invariants and keeping tests limited to reachable states.
+   - **Failure Analysis**: When a test fails (i.e., the rendered buffer differs from the expected "golden" snapshot), the test harness produces a diagnostic message showing the actual rendering. This makes it immediately clear how the implementation deviates from the expected visual output (e.g., wrong colors, misalignment, missing borders).
+   - **Coverage Goals**:
+     - **General Layout & Flow**:
+       - [x] `test_render_mixed_card_sequence`: Implemented; ASCII snapshot only (no color/z-order assertion).
+       - [x] `test_render_viewport_overflow`: Implemented; no scroll-state asserts beyond layout.
+       - [x] `test_render_empty_state`: Implemented; snapshot only, PRD polish outstanding.
+
+     - **Hero Card (Active State)**:
+       - [x] `test_render_hero_thinking`: Implemented; layout snapshot only.
+       - [x] `test_render_hero_tool_running`: Implemented; layout snapshot only.
+       - [ ] `test_render_hero_docked_bottom`: Implemented with coarse Y-position assert; still unverified against PRD docking rules.
+       - [x] `test_render_hero_pinned_scrolled`: Implemented; snapshot only.
+       - [x] `test_render_hero_below_fork`: Implemented (tooltip above fork target, hero below).
+
+     - **Instructions Card & Forking**:
+       - [x] `test_render_instructions_card_default`: Implemented; now asserts focused vs unfocused border colors.
+       - [x] `test_render_instructions_card_focused`: Implemented; verifies primary-color focus styling.
+       - [x] `test_render_instructions_card_moved_up`: Implemented (vertical compression repositions instructions card).
+       - [x] `test_render_fork_preview_dimming`: Implemented via mouse action handling; dimming asserted.
+       - [x] `test_render_fork_tooltip`: Implemented bg/fg + hit-zone placement via mouse action; colors now asserted.
+
+     - **Card Content & Variations**:
+       - [x] `test_render_pipeline_success`: Implemented; snapshot only (no color semantics asserted).
+       - [x] `test_render_pipeline_partial_failure`: Implemented; snapshot only (skipped/failed colors unasserted).
+       - [x] `test_render_command_wrapping`: Implemented; layout only.
+       - [x] `test_render_command_stop_button`: Implemented; hover/active state unasserted.
+       - [x] `test_render_output_size_indicator`: Implemented; color/style unasserted.
+       - [x] `test_render_edited_card_diff`: Diff styling now validated (accent/error colors on +/- lines).
+       - [x] `test_render_read_card_ranges`: Range lines validated to use dim-text styling.
+       - [x] `test_render_thought_markdown`: Implemented; styling not color-asserted.
+       - [x] `test_render_user_multiline`: Implemented; layout only.
+       - [x] `test_render_collaborative_user`: Implemented; layout only.
+
+     - **Selection & Focus**:
+       - [x] `test_render_card_selected`: Implemented; focus styling not color-asserted.
+       - [x] `test_render_control_box_focused`: Implemented; styling not PRD-verified.
+       - [x] `test_render_control_box_expand_focused`: Implemented; styling not PRD-verified.
+
+     - **Footer & Status**:
+       - [x] `test_render_footer_standard`: Implemented; muted vs primary color assertions.
+       - [x] `test_render_footer_context_warning`: Implemented; asserts mixed muted/primary coloring.
+       - [x] `test_render_footer_context_critical`: Implemented (context % ≥95 paints error color).
+
+     - **Modals**:
+       - [x] `test_render_output_modal_text`: Implemented with scrim + header color asserts.
+       - [x] `test_render_output_modal_stderr`: Implemented (stderr header/background colors).
+       - [x] `test_render_output_modal_binary`: Implemented (binary header present).
+       - [x] `test_render_modal_z_index`: Implemented (overlay paints over timeline at center and renders header).
+
+2. **Input Handling Tests (State Transitions)**
+   These tests verify that user input events are correctly processed by the ViewModel to trigger state transitions, without involving the rendering layer.
+   - **State reachability discipline**: Tests must drive the ViewModel into target states by invoking its public state-transition APIs (e.g., `handle_key_with_minor_modes`, helper methods for fork tooltip toggling) rather than mutating fields directly. The ViewModel fields should be private; expose read-only accessors for the view layer. Constructors and transition functions must enforce invariants so that only valid, reachable UI states are expressible, preventing snapshots of impossible states.
+   - **Principle**: Similar to `crates/ah-tui/tests/prd_input_tests.rs`, these tests send synthetic `KeyEvent`s to the ViewModel and assert that the internal state changes as expected (e.g., focus moves, mode switches, data updates).
+   - **Required Test Cases**:
+     - **Timeline Navigation**:
+       - [x] `test_navigate_cards_vertical`: Implemented in ViewModel tests (logic only); visuals/PRD unchecked.
+       - [x] `test_navigate_cards_boundary`: Implemented (logic).
+       - [x] `test_scroll_behavior`: Implemented (logic).
+       - [x] `test_scroll_to_extremes`: Implemented (logic) but PRD/render alignment unverified.
+       - [x] `test_auto_follow_toggle`: Implemented (logic).
+     - **Card Interaction**:
+       - [x] `test_focus_control_box`: Implemented (logic); visual focus styling not validated.
+       - [x] `test_cycle_control_box`: Implemented (logic).
+       - [x] `test_leave_control_box`: Implemented (logic).
+       - [x] `test_activate_control_item`: Implemented (logic).
+     - **Forking / Instructions Card**:
+       - [x] `test_move_instruction_card`: Implemented (logic); rendering parity unverified.
+       - [x] `test_fork_point_selection`: Implemented (logic); PRD alignment unverified.
+     - [x] `test_draft_mode_entry`: Implemented (logic); rendering/input parity unverified.
+     - **Search**:
+       - [x] `test_enter_search_mode`: Implemented (slash binding triggers search + highlights first match).
+       - [x] `test_search_navigation`: Implemented (n/N cycle through matches).
+       - [x] `test_search_selection`: Implemented (search jump to first match and disables auto-follow).
+       - [x] `test_exit_search`: Implemented (ESC clears search state).
+     - **Modal Interaction**:
+       - [x] `test_open_output_modal`: Implemented (modal stores title/body).
+       - [x] `test_modal_overlay_state`: Implemented (overlay closes before quit).
+       - [x] `test_close_modal`: Implemented (ESC closes modal then requests quit).
+
+3. **Event-Driven Integration Tests (Optimistic Updates)**
+   These tests verify the end-to-end flow of user interactions and server events, specifically focusing on optimistic UI updates and reconciliation.
+   - **Principle**: Tests simulate a realistic session lifecycle by driving the ViewModel with a sequence of `TaskEvent`s and user actions (simulated via `handle_key_with_minor_modes` or direct action simulation).
+   - **Pattern**:
+     1. **Setup**: Initialize the ViewModel with `vm_with_events`.
+     2. **Simulate User Action**: Perform a user action (e.g., typing a message) that triggers an optimistic UI update (e.g., adding an unconfirmed row).
+     3. **Verify Optimistic State**: Assert that the UI reflects the optimistic state (e.g., unconfirmed indicator/spinner).
+     4. **Simulate Server Event**: Inject the corresponding `TaskEvent` from the server (e.g., `TaskEvent::UserInput`).
+     5. **Verify Reconciliation**: Assert that the UI reconciles the state correctly (e.g., marking the row as confirmed, updating content/author if needed).
+   - **Guidelines**:
+     - Use `make_settings().bind_to_scope()` for snapshot configuration.
+     - Use `vm_with_events` helper to set up initial state.
+     - Verify both logical state (via ViewModel accessors) and visual state (via snapshots).
+     - Test edge cases like fuzzy matching, out-of-order events, and rapid updates.
+   - **Required Test Cases**:
+     - [x] `renders_interleaved_events_and_user_input`: Verifies basic optimistic update and confirmation flow.
+     - [x] `renders_fuzzy_matched_user_input`: Verifies fuzzy matching logic for user input confirmation.
 
 #### Implementation Details
 
@@ -295,18 +430,18 @@ mock-agent --scenario capability_test.yaml --capabilities '{"loadSession":true,"
   - Enable standalone session viewer testing similar to `just run-tui-mock-dashboard` with a new target `just run-mock-agent-session`. It will use the `mock-agent` crate as a library to drive the refactored session viewer UI, simulating an agent session specified as a scenario file.
 
 - **Test/Simulation Mode**:
-  - Use `mock-agent` library (Milestone 0) to generate ACP events from scenario files
-  - Bridge `mock-agent` output to the session viewer's event loop
-  - Enable session viewer to run in standalone test mode with scenario playback
+  - Use the new agent_session_model and agent_session_view in `mock-agent` to create a high fidelity simulation of the UI driven from a scenario file. Please note that this is not about running mock-agent as a server, but rather compiling it as a regular program that driven the UI entirely from the pre-scripted data in the scenario file.
 
 #### Key Source Files
 
 **New Agent Activity TUI Components:**
+
 - `crates/ah-tui/src/view_model/agent_session_model.rs` (New ViewModel for Agent Activity TUI mode)
 - `crates/ah-tui/src/view/agent_session_view.rs` (New View rendering for Agent Activity TUI mode)
 - `crates/ah-tui/src/agent_session_loop.rs` (New main loop handling both UI modes via dependency injection)
 
 **Existing Session Viewer Components (Refactoring):**
+
 - `crates/ah-tui/src/session_viewer_deps.rs` (New dependency injection structure for shared use)
 - `crates/ah-tui/src/view_model/session_viewer_model.rs` (Existing Session Viewer ViewModel - to be adapted)
 - `crates/ah-tui/src/view/session_viewer.rs` (Existing Session Viewer rendering - to be adapted)
@@ -318,7 +453,7 @@ mock-agent --scenario capability_test.yaml --capabilities '{"loadSession":true,"
 - **Mock Agent**: `crates/mock-agent/src/lib.rs` - Provides `MockAcpClient` and `ScenarioExecutor` for driving tests
 - **Visual Reference**: `scripts/tui_mockup.py` - The view implementation should replicate the visual rendering of this script as a starting point.
 
-#### Verification
+#### Milestone Closing Verification
 
 - [ ] Manual testing demonstrates proper visual styling and layout, matching `scripts/tui_mockup.py`
 - [ ] TUI mode integrates as an alternative UI in `ah agent record`

@@ -17,6 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ah_recorder::{AhrSnapshot, LineIndex, Snapshot, TerminalState};
 use ah_tui::Msg;
+use ah_tui::theme::Theme;
 use ah_tui::view_model::autocomplete::AutocompleteDependencies;
 use ah_tui::view_model::session_viewer_model::{
     DisplayItem, GutterConfig, SessionViewerFocusState, SessionViewerMode, SessionViewerMsg,
@@ -152,8 +153,12 @@ fn create_test_view_model(
         settings,
     });
 
-    let task_entry =
-        SessionViewerViewModel::build_task_entry_view_model(&autocomplete_deps, "test", None);
+    let task_entry = SessionViewerViewModel::build_task_entry_view_model(
+        &autocomplete_deps,
+        "test",
+        None,
+        &Theme::default(),
+    );
     let terminal_state =
         TerminalState::new_with_scrollback(terminal_height, terminal_width, scrollback_lines);
 
@@ -165,6 +170,7 @@ fn create_test_view_model(
         terminal_height,
         autocomplete_deps,
         SessionViewerMode::LiveRecording,
+        Theme::default(),
     )
 }
 

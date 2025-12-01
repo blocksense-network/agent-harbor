@@ -822,6 +822,12 @@ pub enum TaskEvent {
         description: Option<String>,
         ts: DateTime<Utc>,
     },
+    /// User input event
+    UserInput {
+        author: String,
+        content: String,
+        ts: DateTime<Utc>,
+    },
 }
 
 /// Abstract trait for task launching functionality

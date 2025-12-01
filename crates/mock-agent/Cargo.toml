@@ -9,7 +9,7 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 ah-scenario-format = { path = "../ah-scenario-format" }
-agent-client-protocol = { path = "../../vendor/acp-rust-sdk" }
+agent-client-protocol = { workspace = true }
 agent-client-protocol-schema = "0.4.11"
 anyhow = "1.0"
 async-trait = "0.1"

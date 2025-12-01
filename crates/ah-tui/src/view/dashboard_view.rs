@@ -168,13 +168,14 @@ fn render_ascii_logo(frame: &mut Frame<'_>, area: Rect) {
 }
 
 /// Main rendering function - transforms ViewModel to Ratatui widgets
+#[allow(clippy::needless_borrow)]
 pub fn render(
     frame: &mut Frame<'_>,
     view_model: &mut ViewModel,
     cache: &mut ViewCache,
     hit_registry: &mut HitTestRegistry<MouseAction>,
+    theme: &Theme,
 ) {
-    let theme = Theme::default();
     let size = frame.area();
 
     // Clear interactive areas before rendering
@@ -746,6 +747,40 @@ fn render_active_task_card(
                             ),
                         ]));
                     }
+                }
+                AgentActivityRow::AgentRead { file_path, range } => {
+                    let desc = range
+                        .as_ref()
+                        .map(|r| format!("Read {} ({})", file_path, r))
+                        .unwrap_or_else(|| format!("Read {}", file_path));
+                    all_lines.push(Line::from(vec![
+                        Span::styled("📖", Style::default().fg(theme.accent)),
+                        Span::raw(" "),
+                        Span::styled(desc, Style::default().fg(theme.text)),
+                    ]));
+                }
+                AgentActivityRow::AgentDeleted {
+                    file_path,
+                    lines_removed,
+                } => {
+                    let desc = format!("Deleted {} (-{})", file_path, lines_removed);
+                    all_lines.push(Line::from(vec![
+                        Span::styled("🗑", Style::default().fg(theme.error)),
+                        Span::raw(" "),
+                        Span::styled(desc, Style::default().fg(theme.text)),
+                    ]));
+                }
+                AgentActivityRow::UserInput {
+                    author, content, ..
+                } => {
+                    all_lines.push(Line::from(vec![
+                        Span::styled("👤", Style::default().fg(theme.primary)),
+                        Span::raw(" "),
+                        Span::styled(
+                            format!("{}: {}", author, content),
+                            Style::default().fg(theme.text),
+                        ),
+                    ]));
                 }
             }
         }

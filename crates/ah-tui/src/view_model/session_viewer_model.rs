@@ -8,6 +8,7 @@
 //! tracking mode and post-facto session examination modes.
 
 use crate::settings::KeyboardOperation;
+use crate::theme::Theme;
 
 // Keyboard operations used in session viewer
 use crate::view_model::autocomplete::{AutocompleteDependencies, InlineAutocomplete};
@@ -20,7 +21,7 @@ use crate::view_model::{ButtonStyle, ButtonViewModel, DraftSaveState};
 use ah_recorder::{LineIndex, Snapshot, TerminalState};
 use chrono::Utc;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -200,6 +201,9 @@ pub struct SessionViewerViewModel {
     /// Current UI focus state
     pub focus_element: SessionViewerFocusState,
 
+    /// Theme for styling
+    pub theme: Theme,
+
     /// Task entry card for creating recording tasks
     pub task_entry: TaskEntryViewModel,
 
@@ -255,6 +259,7 @@ pub struct SessionViewerViewModel {
 
 impl SessionViewerViewModel {
     /// Create a new SessionViewer view model
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         task_entry: TaskEntryViewModel,
         recording_terminal_state: Rc<RefCell<TerminalState>>,
@@ -263,6 +268,7 @@ impl SessionViewerViewModel {
         terminal_rows: u16,
         autocomplete_dependencies: std::sync::Arc<AutocompleteDependencies>,
         session_mode: SessionViewerMode,
+        theme: Theme,
     ) -> Self {
         let task_entry_visible = match session_mode {
             SessionViewerMode::LiveRecording => false, // Hidden by default in live mode
@@ -271,6 +277,7 @@ impl SessionViewerViewModel {
 
         Self {
             focus_element: SessionViewerFocusState::TaskEntry,
+            theme,
             task_entry,
             status_bar: StatusBarViewModel {
                 recording_status: "Ready".to_string(),
@@ -788,12 +795,11 @@ impl SessionViewerViewModel {
     /// Update the task entry instruction text for a snapshot
     fn update_task_entry_for_snapshot(&mut self, snapshot: &ah_recorder::Snapshot) {
         let instruction_text = format!("Continue from snapshot at line {}", snapshot.line.0 + 1);
+        let bg_color = self.theme.bg;
         if let Some(task_entry) = self.task_entry_overlay_mut() {
             // Clear existing text and set new instruction
             task_entry.description = tui_textarea::TextArea::new(vec![instruction_text]);
-            task_entry.description.set_style(
-                ratatui::style::Style::default().bg(ratatui::style::Color::Rgb(17, 17, 27)),
-            );
+            task_entry.description.set_style(ratatui::style::Style::default().bg(bg_color));
         }
     }
 
@@ -950,8 +956,12 @@ impl SessionViewerViewModel {
 
     /// Start instruction overlay seeded with optional text
     pub fn start_instruction_overlay(&mut self, id_suffix: &str, text: Option<String>) {
-        let task_entry =
-            Self::build_task_entry_view_model(&self.autocomplete_dependencies, id_suffix, text);
+        let task_entry = Self::build_task_entry_view_model(
+            &self.autocomplete_dependencies,
+            id_suffix,
+            text,
+            &self.theme,
+        );
         self.set_task_entry_overlay(task_entry);
     }
 
@@ -1220,15 +1230,12 @@ impl SessionViewerViewModel {
         deps: &Arc<AutocompleteDependencies>,
         id_suffix: &str,
         existing_instruction: Option<String>,
+        theme: &Theme,
     ) -> TaskEntryViewModel {
         use tui_textarea::{CursorMove, TextArea};
 
         let mut textarea = TextArea::new(vec![existing_instruction.unwrap_or_default()]);
-        textarea.set_style(
-            Style::default()
-                .bg(Color::Rgb(17, 17, 27))
-                .remove_modifier(Modifier::UNDERLINED),
-        );
+        textarea.set_style(Style::default().bg(theme.bg).remove_modifier(Modifier::UNDERLINED));
         textarea.set_cursor_line_style(Style::default());
         textarea.disable_cursor_rendering();
         textarea.move_cursor(CursorMove::End);

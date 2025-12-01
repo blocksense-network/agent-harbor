@@ -157,6 +157,7 @@ ah-rest-client = { path = "./crates/ah-rest-client" }
 ah-client-api = { path = "./crates/ah-client-api" }
 ah-rest-server = { path = "./crates/ah-rest-server" }
 ah-scenario-format = { path = "./crates/ah-scenario-format" }
+mock-agent = { path = "./crates/mock-agent" }
 ah-test-scenarios = { path = "./crates/ah-test-scenarios" }
 ah-rest-client-mock = { path = "./crates/ah-rest-client-mock" }
 ah-rest-mock-client = { path = "./crates/ah-rest-mock-client" }

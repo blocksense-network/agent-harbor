@@ -6,6 +6,7 @@
 //! This crate provides a Ratatui-based TUI for creating, monitoring,
 //! and managing agent coding sessions with seamless multiplexer integration.
 
+pub mod agent_session_loop;
 pub mod dashboard_loop;
 pub mod error;
 pub mod event;
@@ -13,9 +14,12 @@ pub mod golden;
 pub mod msg;
 pub mod record;
 pub mod replay;
+pub mod session_viewer_deps;
 pub mod settings;
 pub mod task;
 pub mod terminal;
+pub mod theme;
+pub mod threading;
 pub mod tui_config;
 pub mod view;
 pub mod view_model;
@@ -27,6 +31,7 @@ pub use view_model::input::{InputResult, InputState};
 pub use error::*;
 pub use golden::*;
 pub use msg::*;
+pub use session_viewer_deps::{AgentSessionDependencies, AgentSessionUiMode};
 pub use settings::{
     FontStyle, KeyMatcher, KeyboardLocalization, KeyboardOperation, KeyboardShortcut, MetaKey,
     Platform, SelectionDialogStyle, Settings,

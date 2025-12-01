@@ -65,9 +65,9 @@ The Agent Activity interface moves beyond a simple log stream to a structured **
 
 2. **Hero Card (Active State)**: The active state is highlighted as a "Hero Card".
    - **Purpose**: Displays the **current, ongoing activity** of the agent (e.g. "Running tests...", "Thinking..."). It acts as a "Now Playing" indicator, ensuring the user always knows what the agent is doing right now, regardless of where they are in the history.
-   - **Position**: Docked at the bottom of the view, typically immediately above the Instructions Card.
+   - **Position**: Normally positioned chronologically in the timeline. When scrolling would hide it from view, it docks/sticks to the bottom of the view, typically immediately above the Instructions Card.
    - **Forking Behavior**: When the Instructions Card is moved up into the timeline to fork the session, the Hero Card takes the position at the **very bottom** of the view. It remains docked there even as the timeline is scrolled to track the position of the Instructions Card.
-   - **Behavior**: It remains fixed in place and does **not** move when the timeline is scrolled, ensuring the current action is always visible.
+   - **Behavior**: It remains visible by docking to the bottom only when scrolling would otherwise hide it from view, ensuring the current action is always visible while preserving the timeline's chronological order.
    - **Style**: Uses color and bold text to draw attention.
    - **Border**: `color:accent` on the border for active states.
    - **Time Indicator**: While active, the time display shows the **elapsed duration** (e.g. `00:45`) since the action started. Upon completion, it freezes to show the static **end time** (e.g. `14:22`).
@@ -118,7 +118,12 @@ The Agent Activity interface moves beyond a simple log stream to a structured **
      - **User Instructions**:
        - **Title**: "YOU WROTE" for text prompts, "YOU SAID" for audio messages.
        - **Collaborative Mode**: In collaborative sessions, "YOU" is replaced by the developer's name (e.g., "JOHN WROTE", "ALICE PARKER SAID"). The display format (full name, first name, handle) is controlled by configuration.
+       - **Collaborative Mode**: In collaborative sessions, "YOU" is replaced by the developer's name (e.g., "JOHN WROTE", "ALICE PARKER SAID"). The display format (full name, first name, handle) is controlled by configuration.
        - **Color**: `color:primary` for the current user. Third-party messages (teammates) use a distinct color (e.g., `color:teammate`) to distinguish them from the user's own actions.
+       - **Optimistic State**:
+         - When the user submits instructions, a card is immediately created in an **Unconfirmed** state.
+         - **Indicator**: A small spinner indicator appears in the lower-right corner of the card.
+         - **Confirmation**: Once the server acknowledges the input (via a `TaskEvent`), the card transitions to the **Confirmed** state, and the indicator is removed.
    - **Control Box**: The right side of the header features a tightly segmented control box that also straddles the border line:
 
    ```
@@ -203,7 +208,53 @@ When a session is forked (by moving the Instructions Card up), events below the 
 
 ### Theme Colors
 
-The Agent Activity TUI uses the shared color theme defined in [`TUI-Color-Theme.md`](TUI-Color-Theme.md). Please refer to that document for the complete palette and semantic mappings.
+The Agent Activity TUI uses the shared color theme defined in [`TUI-Color-Theme.md`](TUI-Color-Theme.md). The following mappings define how specific UI elements use these semantic roles:
+
+#### Syntax Highlighting (TUI Specific)
+
+- **Commands**: `color:primary`
+- **Arguments**: `color:text`
+- **Flags**: `color:accent`
+- **Operators**: `color:warning`
+
+#### Standard Syntax Highlighting
+
+- **Keyword**: `color:syntax:keyword`
+- **String**: `color:syntax:string`
+- **Function**: `color:syntax:function`
+- **Type**: `color:syntax:type`
+- **Variable**: `color:syntax:variable`
+- **Constant**: `color:syntax:constant`
+- **Comment**: `color:syntax:comment`
+
+#### Terminal Output
+
+- **Stdout**: `color:terminal:stdout`
+- **Stderr**: `color:terminal:stderr`
+- **Command**: `color:terminal:command`
+- **Success**: `color:terminal:success`
+- **Failure**: `color:terminal:failure`
+- **Warning**: `color:terminal:warning`
+- **Info**: `color:terminal:info`
+
+#### Specific Functional Roles
+
+- **Keyboard Shortcuts**:
+  - **Key**: `color:primary`
+  - **Action Name**: `color:muted`
+- **File Operations**:
+  - **Added/Modified**: `color:accent`
+  - **Deleted**: `color:error`
+  - **Read**: `color:accent`
+- **Command Elements**:
+  - **Flag**: `color:accent`
+  - **Operator**: `color:warning`
+  - **Confirm Action**: `color:accent`
+- **UI Elements**:
+  - **Tooltip Text**: `color:tooltip`
+  - **Tooltip Background**: `color:tooltip-bg`
+  - **Stderr Gutter Background**: `color:gutter:stderr:background`
+  - **Stderr Gutter Foreground**: `color:gutter:stderr:foreground`
 
 ## Reference Implementation
 

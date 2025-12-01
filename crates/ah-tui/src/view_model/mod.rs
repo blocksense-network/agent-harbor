@@ -55,6 +55,7 @@
 //! - **Testability**: Fully headless testing with mocked external APIs
 //!   and simulated time
 
+pub mod agent_session_model;
 pub mod agents_selector_model;
 pub mod autocomplete;
 pub mod dashboard_model;
@@ -64,6 +65,7 @@ pub mod task_entry;
 pub mod task_execution;
 
 // Re-export the main types
+pub use agent_session_model::{AgentSessionMsg, AgentSessionViewModel};
 pub use agents_selector_model::{
     AgentSelectionViewModel, DashboardFocusState, FooterAction, ModalType, ModalViewModel,
     MouseAction, Msg, SettingsFieldType, SettingsFieldViewModel, StatusBarViewModel, TaskCardInfo,

@@ -17,7 +17,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::{
     Theme, ViewCache,
@@ -41,6 +41,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
     // Initialize MVVM components with injected dependencies
     let (tx_ui, rx_ui) = chan::unbounded::<ViewModelMsg>();
 
+    let tui_config = deps.tui_config.clone();
     let mut view_model = ViewModel::new_with_background_loading_and_current_repo(
         deps.workspace_files,
         deps.workspace_workflows,
@@ -50,7 +51,7 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
         deps.branches_enumerator,
         deps.agents_enumerator,
         deps.settings,
-        deps.tui_config,
+        tui_config.clone(),
         deps.current_repository,
         tx_ui.clone(),
     );
@@ -59,7 +60,10 @@ pub async fn run_dashboard(deps: TuiDependencies) -> Result<(), Box<dyn std::err
     view_model.start_background_loading();
 
     // Initialize view cache with image rendering components
-    let theme = Theme::default();
+    let theme = Theme::from_tui_config(&tui_config).unwrap_or_else(|err| {
+        warn!("Failed to load TUI theme from config: {err}");
+        Theme::default()
+    });
     let (picker, logo_protocol) = header::initialize_logo_rendering(theme.bg);
     let mut view_cache = ViewCache::new();
     view_cache.picker = picker;
@@ -257,7 +261,7 @@ fn refresh_ui(
     if view_model.needs_redraw {
         terminal.draw(|frame| {
             let size = frame.area();
-            view::render(frame, view_model, view_cache, hit_registry);
+            view::render(frame, view_model, view_cache, hit_registry, theme);
             modals::render_modals(frame, view_model, size, theme, hit_registry);
         })?;
         view_model.needs_redraw = false;

@@ -6,10 +6,14 @@
 // Spawns a command under a PTY, captures output to .ahr file format,
 // and provides a basic viewer for monitoring the session.
 
+use crate::agent_session_loop::run_session_viewer;
+use crate::session_viewer_deps::{AgentSessionDependencies, AgentSessionUiMode};
 use crate::terminal::{self, TerminalConfig};
+use crate::theme::Theme;
 use crate::view::TuiDependencies;
 use crate::view_model::autocomplete::AutocompleteDependencies;
 use crate::view_model::session_viewer_model::{GutterConfig, GutterPosition, SessionViewerMsg};
+use crate::view_model::task_execution::AgentActivityRow;
 use crate::viewer::{
     ViewerConfig, build_session_viewer_view_model, handle_mouse_click_for_view,
     launch_task_from_instruction, render_view_frame, update_row_metadata_with_autofollow,
@@ -114,6 +118,10 @@ pub struct RecordArgs {
     /// Show line numbers in gutter
     #[arg(long, default_value_t = false)]
     pub line_numbers: bool,
+
+    /// Render the Agent Activity TUI instead of the raw terminal viewer
+    #[arg(long, default_value_t = false)]
+    pub agent_activity_ui: bool,
 
     /// Path to the task manager socket for event streaming and coordination
     #[arg(long, value_name = "PATH")]
@@ -329,6 +337,12 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         workspace_terms: deps.workspace_terms.clone(),
         settings: deps.settings.clone(),
     });
+    let mut activity_entries: Vec<(u64, AgentActivityRow)> = Vec::new();
+    let activity_started_at = std::time::Instant::now();
+    let theme = Theme::from_tui_config(&deps.tui_config).unwrap_or_else(|err| {
+        warn!("Failed to load TUI theme from config: {err}");
+        Theme::default()
+    });
 
     // Set up terminal for TUI mode (if not headless)
     let running = Arc::new(AtomicBool::new(true));
@@ -540,6 +554,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
     } else {
         None
     };
+    let mut activity_viewer_config: Option<ViewerConfig> = None;
 
     // Extract the PTY writer for direct use
     let pty_writer = recorder.take_writer();
@@ -587,11 +602,13 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
             gutter: gutter_config,
             is_replay_mode: false,
         };
+        activity_viewer_config = Some(viewer_config.clone());
 
         let view_model = build_session_viewer_view_model(
             recording_terminal_state.clone().unwrap(),
             &viewer_config,
             Some(autocomplete_dependencies.clone()),
+            &theme,
         );
 
         // Set up terminal for rendering
@@ -859,6 +876,28 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                                 _ => {}
                             }
                         }
+
+                        // Capture lightweight activity rows for the Agent Activity UI mode
+                        if args.agent_activity_ui {
+                            if let PtyEvent::Data(data) = &pty_event {
+                                if let Ok(text) = std::str::from_utf8(data) {
+                                    let snippet = text.trim();
+                                    if !snippet.is_empty() {
+                                        let elapsed = activity_started_at.elapsed().as_millis() as u64;
+                                        activity_entries.push((
+                                            elapsed,
+                                            AgentActivityRow::AgentThought {
+                                                thought: snippet.to_string(),
+                                            },
+                                        ));
+                                        if activity_entries.len() > 500 {
+                                            let drop = activity_entries.len().saturating_sub(500);
+                                            activity_entries.drain(0..drop);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     None => {
                         debug!("PTY event channel closed");
@@ -919,6 +958,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                     viewer_config,
                     exit_confirmation_armed,
                     recorded_dims,
+                    &theme,
                 );
             }) {
                 error!("Failed to render viewer: {}", e);
@@ -942,6 +982,39 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
     // Clean up terminal state
     if !args.headless {
         terminal::cleanup_terminal();
+    }
+
+    // Optional Agent Activity UI playback after recording completes
+    if args.agent_activity_ui && !args.headless {
+        let terminal_state = recording_terminal_state.unwrap_or_else(|| {
+            std::rc::Rc::new(std::cell::RefCell::new(TerminalState::new_with_scrollback(
+                display_rows,
+                display_cols,
+                1_000_000,
+            )))
+        });
+        let viewer_config = activity_viewer_config.unwrap_or(ViewerConfig {
+            terminal_cols: outer_cols,
+            terminal_rows: outer_rows,
+            scrollback: 1_000_000,
+            gutter: gutter_config,
+            is_replay_mode: true,
+        });
+        let deps = AgentSessionDependencies {
+            recording_terminal_state: terminal_state,
+            viewer_config,
+            task_manager: task_manager.clone(),
+            autocomplete: Some(autocomplete_dependencies.clone()),
+            settings: deps.settings.clone(),
+            theme: theme.clone(),
+            terminal_config: TerminalConfig::minimal(),
+            ui_mode: AgentSessionUiMode::AgentActivity,
+            activity_entries,
+        };
+        // Best-effort playback; don't fail the recording if the viewer errors.
+        if let Err(err) = run_session_viewer(deps).await {
+            warn!("Agent Activity UI failed: {}", err);
+        }
     }
 
     info!(ahr_file = ?out_file, "Recording complete");

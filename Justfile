@@ -1190,6 +1190,10 @@ clear-mock-agent-recordings:
 run-mock-agent-acp scenario="tests/tools/mock-agent-acp/scenarios/acp_echo.yaml":
     ./tests/tools/mock-agent-acp/run.sh {{scenario}}
 
+# Run Agent Activity TUI mock mode (driven by mock-agent transcript)
+run-mock-agent-session scenario="tests/tools/mock-agent-acp/scenarios/acp_realistic_session.yaml":
+    cargo run -p ah-tui --bin mock_agent_session -- --scenario {{scenario}}
+
 # Quick ACP client+agent smoke (non-interactive; feeds EOF to stdin)
 run-mock-agent-acp-smoke:
     printf '' | cargo run -p mock-agent --example acp_client -- --scenario tests/tools/mock-agent-acp/scenarios/acp_echo.yaml --prompt "smoke echo"
