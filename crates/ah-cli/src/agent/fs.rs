@@ -94,7 +94,7 @@ pub struct SnapshotsOptions {
     #[arg(value_name = "SESSION_ID")]
     session_id: Option<String>,
 
-    /// AgentFS mount point (defaults to /tmp/agentfs)
+    /// AgentFS mount point (defaults to $XDG_RUNTIME_DIR/agentfs)
     #[arg(long)]
     mount: Option<PathBuf>,
 
@@ -122,7 +122,7 @@ pub enum BranchCommands {
         #[arg(short, long)]
         name: Option<String>,
 
-        /// AgentFS mount point (defaults to /tmp/agentfs)
+        /// AgentFS mount point (defaults to $XDG_RUNTIME_DIR/agentfs)
         #[arg(long)]
         mount: Option<PathBuf>,
     },
@@ -136,7 +136,7 @@ pub enum BranchCommands {
         #[arg(long)]
         pid: Option<u32>,
 
-        /// AgentFS mount point (defaults to /tmp/agentfs)
+        /// AgentFS mount point (defaults to $XDG_RUNTIME_DIR/agentfs)
         #[arg(long)]
         mount: Option<PathBuf>,
     },
@@ -146,7 +146,7 @@ pub enum BranchCommands {
         #[arg(value_name = "BRANCH_ID")]
         branch_id: String,
 
-        /// AgentFS mount point (defaults to /tmp/agentfs)
+        /// AgentFS mount point (defaults to $XDG_RUNTIME_DIR/agentfs)
         #[arg(long)]
         mount: Option<PathBuf>,
 
@@ -250,12 +250,27 @@ impl AgentFsCommands {
         }
     }
 
-    /// Default AgentFS mount point
-    const DEFAULT_MOUNT_POINT: &'static str = "/tmp/agentfs";
+    /// Get the default AgentFS mount point.
+    ///
+    /// Uses `$XDG_RUNTIME_DIR/agentfs` if available (typically `/run/user/<uid>/agentfs`),
+    /// otherwise falls back to `/tmp/agentfs`.
+    ///
+    /// We prefer XDG_RUNTIME_DIR because:
+    /// 1. It's the XDG standard for runtime files
+    /// 2. It's per-user and secure (mode 0700)
+    /// 3. It's outside `/tmp`, so sandbox `/tmp` isolation won't hide the FUSE mount
+    fn default_mount_point() -> PathBuf {
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            PathBuf::from(runtime_dir).join("agentfs")
+        } else {
+            // Fallback for systems without XDG_RUNTIME_DIR
+            PathBuf::from("/tmp/agentfs")
+        }
+    }
 
     /// Get the mount point from an optional override or use the default
     fn get_mount_point(mount: Option<PathBuf>) -> PathBuf {
-        mount.unwrap_or_else(|| PathBuf::from(Self::DEFAULT_MOUNT_POINT))
+        mount.unwrap_or_else(Self::default_mount_point)
     }
 
     async fn status(opts: StatusOptions) -> Result<()> {

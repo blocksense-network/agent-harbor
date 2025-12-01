@@ -56,6 +56,27 @@ pub struct ProcessConfig {
     /// Only relevant when net_isolation is true.
     /// Default: false
     pub allow_internet: bool,
+    /// AgentFS overlay mount configuration.
+    /// When set, the FUSE mount will be bind-mounted to the working directory
+    /// to provide filesystem isolation through the AgentFS overlay.
+    pub agentfs_overlay: Option<AgentFsOverlayConfig>,
+}
+
+/// Configuration for AgentFS overlay bind-mount integration.
+///
+/// This enables the bind-mount approach for AgentFS isolation as described in
+/// F18 of the FUSE.status.md specification. When the working directory is
+/// outside the FUSE mount, the sandbox creates a bind mount from the FUSE mount
+/// to the working directory in a private mount namespace, providing the same
+/// isolation guarantees as ZFS/Btrfs/Git providers.
+#[derive(Debug, Clone)]
+pub struct AgentFsOverlayConfig {
+    /// Path to the AgentFS FUSE mount (e.g., "/tmp/agentfs")
+    pub fuse_mount_path: String,
+    /// Path to the branch view within the FUSE mount (usually same as mount path)
+    pub branch_view_path: String,
+    /// Branch ID for logging and troubleshooting
+    pub branch_id: Option<String>,
 }
 
 impl Default for ProcessConfig {
@@ -67,6 +88,7 @@ impl Default for ProcessConfig {
             tmpfs_size: None,      // Uses default "256m" when None
             net_isolation: true,   // Network is isolated by default for security
             allow_internet: false, // No internet access by default
+            agentfs_overlay: None, // No AgentFS overlay by default
         }
     }
 }
@@ -562,14 +584,20 @@ impl ProcessManager {
         // Mount a fresh tmpfs over /tmp to isolate temporary files from the host.
         // This ensures that files created in /tmp inside the sandbox don't leak to
         // the host's /tmp and vice versa.
-        // NOTE: We skip this if the working directory is under /tmp to preserve
-        // access to FUSE mounts like AgentFS.
-        self.mount_isolated_tmp(self.config.working_dir.as_deref())?;
+        // NOTE: AgentFS FUSE mount should be at $XDG_RUNTIME_DIR/agentfs (not /tmp)
+        // so this tmpfs mount doesn't hide it.
+        self.mount_isolated_tmp()?;
 
         // Hide sensitive directories (SSH keys, credentials, etc.) by mounting
         // empty tmpfs filesystems over them. This prevents processes inside the
         // sandbox from accessing secrets that might exist on the host.
         self.hide_sensitive_paths()?;
+
+        // Set up AgentFS overlay bind mount if configured.
+        // This bind-mounts the AgentFS FUSE mount to the working directory,
+        // providing filesystem isolation through the overlay. This is the
+        // "bind-mount approach" described in F18 of FUSE.status.md.
+        self.mount_agentfs_overlay()?;
 
         Ok(())
     }
@@ -582,12 +610,11 @@ impl ProcessManager {
     /// The tmpfs size is configurable via `ProcessConfig::tmpfs_size`. The default
     /// is "256m" (256 megabytes). Set to "0" to disable /tmp isolation entirely.
     ///
-    /// If `working_dir` is under /tmp (e.g., /tmp/agentfs for FUSE mounts), we skip
-    /// the tmpfs mount to preserve access to those mounts. The trade-off is that
-    /// /tmp won't be fully isolated in this case, but this is acceptable when the
-    /// working directory itself is a special mount like AgentFS that provides its
-    /// own isolation.
-    fn mount_isolated_tmp(&self, working_dir: Option<&str>) -> Result<()> {
+    /// Note: The AgentFS FUSE mount should be placed outside `/tmp` (e.g., at
+    /// `$XDG_RUNTIME_DIR/agentfs`) so that this tmpfs mount doesn't hide it.
+    /// The bind-mount overlay (`mount_agentfs_overlay`) is applied after this,
+    /// so it can still access the FUSE mount from its original location.
+    fn mount_isolated_tmp(&self) -> Result<()> {
         use std::path::Path;
 
         // Get the configured tmpfs size, defaulting to "256m"
@@ -606,18 +633,6 @@ impl ProcessManager {
         if !tmp_path.exists() {
             debug!("/tmp does not exist, skipping tmpfs mount");
             return Ok(());
-        }
-
-        // Check if the working directory is under /tmp
-        // If so, skip tmpfs mount to preserve access to FUSE mounts like AgentFS
-        if let Some(dir) = working_dir {
-            if dir.starts_with("/tmp/") || dir == "/tmp" {
-                debug!(
-                    "Working directory {} is under /tmp, skipping tmpfs mount to preserve FUSE mounts",
-                    dir
-                );
-                return Ok(());
-            }
         }
 
         // Build mount options with the configured size
@@ -715,6 +730,128 @@ impl ProcessManager {
             debug!("Protected {} sensitive directories", protected_count);
         }
 
+        Ok(())
+    }
+
+    /// Mount AgentFS overlay via bind mount if configured.
+    ///
+    /// This implements the "bind-mount approach" for AgentFS isolation as described
+    /// in F18 of FUSE.status.md. When the working directory is outside the FUSE mount:
+    ///
+    /// 1. The FUSE mount at `fuse_mount_path` serves the AgentFS overlay view
+    /// 2. A bind mount from `branch_view_path` (within the FUSE mount) is created
+    ///    at the working directory
+    /// 3. The sandbox sees the AgentFS overlay at the original working directory path
+    /// 4. When the sandbox's mount namespace is destroyed, the bind mount is gone
+    ///    and the host sees the original unchanged directory
+    ///
+    /// This must be called AFTER `make_root_private()` (in `mount_proc()`) to prevent
+    /// mount propagation to the host namespace.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The FUSE mount path doesn't exist
+    /// - The branch view path doesn't exist
+    /// - The bind mount fails
+    fn mount_agentfs_overlay(&self) -> Result<()> {
+        use std::path::Path;
+
+        let agentfs_config = match &self.config.agentfs_overlay {
+            Some(config) => config,
+            None => {
+                // No AgentFS overlay configured, nothing to do
+                return Ok(());
+            }
+        };
+
+        let working_dir = match &self.config.working_dir {
+            Some(dir) => dir,
+            None => {
+                debug!("AgentFS overlay configured but no working directory set, skipping");
+                return Ok(());
+            }
+        };
+
+        let fuse_mount = Path::new(&agentfs_config.fuse_mount_path);
+        let branch_view = Path::new(&agentfs_config.branch_view_path);
+        let target = Path::new(working_dir);
+
+        // Validate paths exist
+        if !fuse_mount.exists() {
+            warn!(
+                "AgentFS FUSE mount path does not exist: {}",
+                agentfs_config.fuse_mount_path
+            );
+            return Err(Error::Execution(format!(
+                "AgentFS FUSE mount path does not exist: {}",
+                agentfs_config.fuse_mount_path
+            )));
+        }
+
+        if !branch_view.exists() {
+            warn!(
+                "AgentFS branch view path does not exist: {}",
+                agentfs_config.branch_view_path
+            );
+            return Err(Error::Execution(format!(
+                "AgentFS branch view path does not exist: {}",
+                agentfs_config.branch_view_path
+            )));
+        }
+
+        // Check if working directory is already under the FUSE mount
+        // In this case, we don't need a bind mount - the process is already
+        // accessing the AgentFS overlay directly
+        if target.starts_with(fuse_mount) {
+            debug!(
+                "Working directory {} is already under AgentFS mount {}, skipping bind mount",
+                working_dir, agentfs_config.fuse_mount_path
+            );
+            return Ok(());
+        }
+
+        // Ensure target directory exists
+        if !target.exists() {
+            warn!("Working directory does not exist: {}", working_dir);
+            return Err(Error::Execution(format!(
+                "Working directory does not exist: {}",
+                working_dir
+            )));
+        }
+
+        // Perform the bind mount
+        // This makes the AgentFS overlay visible at the working directory path
+        info!(
+            "Bind-mounting AgentFS overlay: {} -> {}{}",
+            agentfs_config.branch_view_path,
+            working_dir,
+            agentfs_config
+                .branch_id
+                .as_ref()
+                .map(|id| format!(" (branch: {})", id))
+                .unwrap_or_default()
+        );
+
+        mount(
+            Some(branch_view.to_str().unwrap_or(&agentfs_config.branch_view_path)),
+            working_dir.as_str(),
+            None::<&str>,
+            MsFlags::MS_BIND,
+            None::<&str>,
+        )
+        .map_err(|e| {
+            error!(
+                "Failed to bind-mount AgentFS overlay {} -> {}: {}",
+                agentfs_config.branch_view_path, working_dir, e
+            );
+            Error::Execution(format!("Failed to bind-mount AgentFS overlay: {}", e))
+        })?;
+
+        debug!(
+            "Successfully bind-mounted AgentFS overlay at {}",
+            working_dir
+        );
         Ok(())
     }
 
@@ -925,6 +1062,7 @@ mod tests {
             tmpfs_size: Some("512m".to_string()), // Test custom tmpfs size
             net_isolation: true,                  // Test network isolation enabled
             allow_internet: false,                // Test no internet access
+            agentfs_overlay: None,                // Test no AgentFS overlay
         };
         let manager = ProcessManager::with_config(config.clone());
         assert_eq!(manager.config().command, config.command);
@@ -932,5 +1070,28 @@ mod tests {
         assert_eq!(manager.config().tmpfs_size, config.tmpfs_size);
         assert!(manager.config().net_isolation);
         assert!(!manager.config().allow_internet);
+        assert!(manager.config().agentfs_overlay.is_none());
+    }
+
+    #[test]
+    fn test_agentfs_overlay_config() {
+        let config = ProcessConfig {
+            command: vec!["echo".to_string(), "test".to_string()],
+            working_dir: Some("/home/user/repo".to_string()),
+            env: Vec::new(),
+            tmpfs_size: None,
+            net_isolation: true,
+            allow_internet: false,
+            agentfs_overlay: Some(AgentFsOverlayConfig {
+                fuse_mount_path: "/tmp/agentfs".to_string(),
+                branch_view_path: "/tmp/agentfs".to_string(),
+                branch_id: Some("test-branch-123".to_string()),
+            }),
+        };
+        let manager = ProcessManager::with_config(config);
+        let overlay = manager.config().agentfs_overlay.as_ref().unwrap();
+        assert_eq!(overlay.fuse_mount_path, "/tmp/agentfs");
+        assert_eq!(overlay.branch_view_path, "/tmp/agentfs");
+        assert_eq!(overlay.branch_id, Some("test-branch-123".to_string()));
     }
 }

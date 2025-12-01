@@ -7,7 +7,7 @@
 #
 # Prerequisites:
 #   - AgentFS daemon must be running: just start-ah-fs-snapshots-daemon
-#   - The FUSE mount should be at /tmp/agentfs (or AGENTFS_MOUNT env var)
+#   - The FUSE mount should be at $XDG_RUNTIME_DIR/agentfs (or AGENTFS_MOUNT env var)
 #
 # Usage:
 #   ./scripts/test-agentfs-sandbox.sh [test_name...]
@@ -20,8 +20,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Configuration
-AGENTFS_MOUNT="${AGENTFS_MOUNT:-/tmp/agentfs}"
+# Configuration - default mount point uses XDG_RUNTIME_DIR to avoid sandbox /tmp conflicts
+if [ -n "${AGENTFS_MOUNT:-}" ]; then
+  : # Use explicit override
+elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  AGENTFS_MOUNT="$XDG_RUNTIME_DIR/agentfs"
+else
+  AGENTFS_MOUNT="/tmp/agentfs"
+fi
 AGENTFS_CONTROL="${AGENTFS_MOUNT}/.agentfs/control"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/logs/agentfs-sandbox-$(date +%Y%m%d-%H%M%S)}"
 AH_BINARY="${AH_BINARY:-$REPO_ROOT/target/debug/ah}"
@@ -31,12 +37,14 @@ TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
 TESTS_SKIPPED=0
+TESTS_XFAIL=0 # Expected failures (known issues)
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Initialize logging
@@ -62,6 +70,10 @@ log_fail() {
 
 log_skip() {
   log "${YELLOW}[SKIP]${NC} $*"
+}
+
+log_xfail() {
+  log "${MAGENTA}[XFAIL]${NC} $*" # Expected failure
 }
 
 log_section() {
@@ -121,10 +133,15 @@ record_result() {
     TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
     log_skip "T16.$test_name: $message"
     ;;
+  xfail)
+    # Expected failure - a known issue that is tracked
+    TESTS_XFAIL=$((TESTS_XFAIL + 1))
+    log_xfail "T16.$test_name: $message"
+    ;;
   esac
 }
 
-# Helper to run sandbox command
+# Helper to run sandbox command (auto-discovers daemon from workspace path)
 run_sandbox() {
   local test_log="$1"
   shift
@@ -132,10 +149,37 @@ run_sandbox() {
   return "${PIPESTATUS[0]}"
 }
 
+# Helper to run sandbox with explicit socket path (for external workspaces outside FUSE mount)
+# This is needed for F18 bind-mount testing where the workspace is outside the FUSE mount
+# and auto-discovery would fail.
+run_sandbox_external() {
+  local test_log="$1"
+  shift
+  local socket_path="$AGENTFS_MOUNT/.agentfs/control"
+  "$AH_BINARY" agent sandbox --fs-snapshots agentfs --agentfs-socket "$socket_path" "$@" 2>&1 | tee "$test_log"
+  return "${PIPESTATUS[0]}"
+}
+
 # Create a unique test workspace within the mount
 create_test_workspace() {
   local name="${1:-test-$(date +%s)}"
   local workspace="$AGENTFS_MOUNT/$name"
+  mkdir -p "$workspace"
+  echo "$workspace"
+}
+
+# F18: Create a test workspace OUTSIDE the FUSE mount for testing bind-mount approach
+# This is used for filesystem isolation tests that require the bind-mount code path.
+# When the working directory is outside the FUSE mount, the sandbox CLI will:
+#   1. Create an AgentFS branch
+#   2. Bind-mount the FUSE view to the external directory inside a private namespace
+#   3. All file operations go through the bind mount
+#   4. When the namespace dies, the bind mount disappears
+create_external_test_workspace() {
+  local name="${1:-test-$(date +%s)}"
+  local external_root="${TEST_RUNS_DIR:-$REPO_ROOT/test-runs}"
+  mkdir -p "$external_root"
+  local workspace="$external_root/$name"
   mkdir -p "$workspace"
   echo "$workspace"
 }
@@ -178,58 +222,93 @@ test_basic_execution() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# T16.2 Filesystem Isolation
+# T16.2 Filesystem Isolation (File Write Isolation) - Bind-Mount Approach
 # ═══════════════════════════════════════════════════════════════════════════════
 test_filesystem_isolation() {
-  log_section "T16.2 Filesystem Isolation"
+  log_section "T16.2 Filesystem Isolation (File Write Isolation)"
   local start_time=$(date +%s)
   local test_log="$LOG_DIR/t16_2_isolation.log"
 
+  # F18: Use external workspace (outside FUSE mount) to test bind-mount approach.
+  # When the working directory is outside the FUSE mount, the sandbox CLI will:
+  #   1. Create an AgentFS branch
+  #   2. Bind-mount the FUSE view to the external directory inside a private namespace
+  #   3. All file operations go through the bind mount
+  #   4. When the namespace dies, the bind mount disappears
+  #   5. The branch is deleted during cleanup
+  #
+  # This provides the same isolation guarantees as ZFS/Btrfs/Git providers.
   local workspace
-  workspace=$(create_test_workspace "isolation-test")
+  workspace=$(create_external_test_workspace "isolation-test-$$-$(date +%s)")
   cd "$workspace"
 
-  # Create a marker file that should NOT appear on host
-  local marker="/tmp/agentfs_sandbox_marker_$$"
-  rm -f "$marker" 2>/dev/null || true
+  log_info "Testing filesystem isolation with external workspace: $workspace"
+  log_info "FUSE mount is at: $AGENTFS_MOUNT"
+
+  local unique_marker="isolation_marker_$$_$(date +%s)"
+  local marker_path="$workspace/$unique_marker"
+
+  # Ensure marker doesn't exist before test
+  rm -f "$marker_path" 2>/dev/null || true
 
   local output
   local exit_code=0
-  output=$(run_sandbox "$test_log" -- bash -c "echo 'test content' > newfile.txt && touch '$marker'" 2>&1) || exit_code=$?
 
-  # Check if namespace/sandbox isolation actually failed (not just logged)
-  # Look for actual error patterns, not debug messages like "unshare() is complete"
-  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|EPERM.*namespace|EINVAL.*namespace|Operation not permitted)"; then
-    # Sandbox couldn't establish proper isolation - this is expected without sudo
-    # Still check if the command at least ran through AgentFS
-    if echo "$output" | grep -qi "agentfs\|workspace"; then
-      record_result "2 Filesystem Isolation" "skip" "0" "Sandbox isolation requires privileges (AgentFS provider worked)"
-      rm -f "$marker" 2>/dev/null || true
-      return 0
-    fi
+  # Run sandbox and create a file inside
+  # With F18 bind-mount approach, this file should be written to the AgentFS branch
+  # via the bind mount, and NOT persist to the host filesystem after sandbox exit.
+  # Use run_sandbox_external because the workspace is outside the FUSE mount
+  # and we need to explicitly pass the socket path for daemon discovery.
+  output=$(run_sandbox_external "$test_log" -- bash -c "
+        echo 'test_content' > $unique_marker
+        cat $unique_marker
+        ls -la $workspace/
+    " 2>&1) || exit_code=$?
+
+  log_info "Sandbox output: $output"
+  log_info "Sandbox exit code: $exit_code"
+
+  # Check if namespace operations failed (expected in some environments)
+  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+    record_result "2 Filesystem Isolation" "skip" "0" "Namespace setup failed (requires privileges)"
+    rm -rf "$workspace" 2>/dev/null || true
+    return 0
   fi
 
-  # /tmp isolation is achieved by mounting a fresh tmpfs over /tmp inside the sandbox
-  # EXCEPTION: When working directory is under /tmp (like /tmp/agentfs), we skip
-  # tmpfs mounting to preserve access to FUSE mounts. In this case, AgentFS itself
-  # provides the isolation, not the tmpfs mount.
-  if [[ -f "$marker" ]]; then
-    # Marker exists on host - check if we're running under AgentFS
-    if [[ "$workspace" == /tmp/agentfs* ]]; then
-      # When running under AgentFS, /tmp tmpfs is skipped to preserve the FUSE mount
-      # AgentFS provides isolation through its own overlay mechanism
-      record_result "2 Filesystem Isolation" "skip" "0" "Working under /tmp/agentfs - AgentFS provides isolation instead of tmpfs"
-      rm -f "$marker"
-      return 0
-    else
-      record_result "2 Filesystem Isolation" "fail" "0" "File leaked to host /tmp - tmpfs mount may have failed"
-      rm -f "$marker"
-      return 1
-    fi
+  # Check if AgentFS bind mount was configured
+  if echo "$output" | grep -qiE "Configuring AgentFS bind-mount|Bind-mounting AgentFS overlay"; then
+    log_info "F18 bind-mount approach was activated"
+  else
+    # If bind mount wasn't configured, this might be because:
+    # 1. The workspace path was detected as inside the FUSE mount (shouldn't happen with external workspace)
+    # 2. AgentFS provider wasn't detected
+    log_info "Note: Bind-mount approach may not have been activated"
   fi
 
+  # The file should have been created and readable inside the sandbox
+  if ! echo "$output" | grep -q "test_content"; then
+    record_result "2 Filesystem Isolation" "fail" "0" "File was not created inside sandbox"
+    rm -rf "$workspace" 2>/dev/null || true
+    return 1
+  fi
+
+  # After sandbox exits, the file should NOT exist on the host (isolation)
+  if [[ -f "$marker_path" ]]; then
+    local duration=$(($(date +%s) - start_time))
+    # With F18 bind-mount approach, this should now pass.
+    # If it still fails, there may be an issue with the implementation.
+    record_result "2 Filesystem Isolation" "fail" "$duration" "File persisted to host - bind-mount isolation may not be working"
+    rm -f "$marker_path" 2>/dev/null || true # Cleanup the leaked file
+    rm -rf "$workspace" 2>/dev/null || true
+    return 1
+  fi
+
+  # Success - file was isolated!
   local duration=$(($(date +%s) - start_time))
+  log_pass "F18 filesystem isolation working - file created in sandbox did not persist to host"
+  log_info "This confirms the bind-mount approach is providing proper isolation"
   record_result "2 Filesystem Isolation" "pass" "$duration"
+  rm -rf "$workspace" 2>/dev/null || true # Cleanup external workspace
   return 0
 }
 
@@ -241,12 +320,83 @@ test_overlay_persistence() {
   local start_time=$(date +%s)
   local test_log="$LOG_DIR/t16_3_persistence.log"
 
-  # This test verifies files persist within the same branch across invocations
-  # Since each sandbox gets a new branch, we skip this test for now
-  # (The current implementation creates a fresh branch per sandbox invocation)
+  local workspace
+  workspace=$(create_test_workspace "persistence-test-$(date +%s)")
+  cd "$workspace"
 
-  record_result "3 Overlay Persistence" "skip" "0" "Each sandbox creates a new branch; persistence requires branch reuse"
-  return 0
+  # Step 1: Get an existing snapshot ID from the list
+  # The daemon always has at least one base snapshot
+  local snapshot_output
+  snapshot_output=$("$AH_BINARY" agent fs snapshots --mount "$AGENTFS_MOUNT" --json 2>&1)
+  log_info "Snapshot list output: $snapshot_output"
+
+  local snapshot_id
+  snapshot_id=$(echo "$snapshot_output" | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+  if [[ -z "$snapshot_id" ]]; then
+    log_info "No snapshots found, creating one by running initial sandbox..."
+    # Run a sandbox to create an initial snapshot
+    run_sandbox "$test_log.init" -- true 2>&1 || true
+    sleep 1
+
+    # Try again
+    snapshot_output=$("$AH_BINARY" agent fs snapshots --mount "$AGENTFS_MOUNT" --json 2>&1)
+    snapshot_id=$(echo "$snapshot_output" | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+    if [[ -z "$snapshot_id" ]]; then
+      record_result "3 Overlay Persistence" "skip" "0" "Could not obtain snapshot ID for branch creation"
+      return 0
+    fi
+  fi
+
+  log_info "Using snapshot ID: $snapshot_id"
+
+  # Step 2: Create a new branch from the snapshot
+  local branch_output
+  branch_output=$("$AH_BINARY" agent fs branch create "$snapshot_id" --mount "$AGENTFS_MOUNT" 2>&1)
+  log_info "Branch creation output: $branch_output"
+
+  # Extract branch ID from output (format: BRANCH_ID=xxx)
+  local branch_id
+  branch_id=$(echo "$branch_output" | grep -o 'BRANCH_ID=[^[:space:]]*' | sed 's/BRANCH_ID=//')
+
+  if [[ -z "$branch_id" ]]; then
+    record_result "3 Overlay Persistence" "skip" "0" "Could not create branch for persistence test"
+    return 0
+  fi
+
+  log_info "Created branch: $branch_id"
+
+  # Step 3: First sandbox invocation - create a persistent file
+  local marker_content="persistence_test_$(date +%s)"
+  local exit_code=0
+  local output
+  output=$(run_sandbox "$test_log.first" --branch "$branch_id" -- bash -c "echo '$marker_content' > persist.txt && cat persist.txt" 2>&1) || exit_code=$?
+
+  log_info "First sandbox output: $output"
+  log_info "First sandbox exit code: $exit_code"
+
+  if ! echo "$output" | grep -q "$marker_content"; then
+    record_result "3 Overlay Persistence" "fail" "0" "First sandbox invocation failed to create file"
+    return 1
+  fi
+
+  # Step 4: Second sandbox invocation - verify the file persists
+  local second_output
+  local second_exit_code=0
+  second_output=$(run_sandbox "$test_log.second" --branch "$branch_id" -- cat persist.txt 2>&1) || second_exit_code=$?
+
+  log_info "Second sandbox output: $second_output"
+  log_info "Second sandbox exit code: $second_exit_code"
+
+  if echo "$second_output" | grep -q "$marker_content"; then
+    local duration=$(($(date +%s) - start_time))
+    record_result "3 Overlay Persistence" "pass" "$duration"
+    return 0
+  else
+    record_result "3 Overlay Persistence" "fail" "0" "File did not persist across sandbox invocations (expected: $marker_content)"
+    return 1
+  fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -363,8 +513,10 @@ test_network_isolation() {
   fi
 
   # If network access succeeded (got HTML content), network isolation is NOT working
-  if echo "$output" | grep -qi "example\|html\|Example Domain"; then
-    record_result "6 Network Isolation" "fail" "0" "Network isolation NOT working - curl succeeded"
+  # Be more specific: look for actual HTML content, not just "example" (which appears in the URL in logs)
+  # The HTML response contains DOCTYPE, <html>, or <body> tags
+  if echo "$output" | grep -qiE "<!DOCTYPE|<html|<body|<head|</html>"; then
+    record_result "6 Network Isolation" "fail" "0" "Network isolation NOT working - curl succeeded (got HTML response)"
     return 1
   fi
 
@@ -420,7 +572,9 @@ test_network_egress_enabled() {
   fi
 
   # If network access succeeded (got HTML content), --allow-network is working
-  if echo "$output" | grep -qi "example\|html\|Example Domain"; then
+  # Be more specific: look for actual HTML content, not just "example" (which appears in the URL in logs)
+  # The HTML response contains DOCTYPE, <html>, or <body> tags
+  if echo "$output" | grep -qiE "<!DOCTYPE|<html|<body|<head|</html>"; then
     local duration=$(($(date +%s) - start_time))
     log_pass "Network egress verified - external network access works with --allow-network yes"
     record_result "7 Network Egress" "pass" "$duration"
@@ -490,7 +644,8 @@ test_writable_carveouts() {
 
   cd "$AGENTFS_MOUNT"
 
-  local test_cache="/tmp/agentfs-test-cache-$$"
+  # Use a location outside /tmp since sandbox mounts tmpfs over /tmp for isolation
+  local test_cache="${XDG_RUNTIME_DIR:-/var/tmp}/agentfs-test-cache-$$"
   mkdir -p "$test_cache"
 
   # With --mount-rw, the specified path should be writable
@@ -806,7 +961,10 @@ write_summary() {
     status="fail"
   fi
 
-  log_info "Total: $TESTS_RUN | Passed: $TESTS_PASSED | Failed: $TESTS_FAILED | Skipped: $TESTS_SKIPPED"
+  log_info "Total: $TESTS_RUN | Passed: $TESTS_PASSED | Failed: $TESTS_FAILED | Skipped: $TESTS_SKIPPED | XFail: $TESTS_XFAIL"
+  if [[ $TESTS_XFAIL -gt 0 ]]; then
+    log_info "Note: XFail tests are expected failures tracked in FUSE.status.md milestone F18"
+  fi
   log_info "Log directory: $LOG_DIR"
 
   # Write JSON summary
@@ -818,6 +976,7 @@ write_summary() {
   "tests_passed": $TESTS_PASSED,
   "tests_failed": $TESTS_FAILED,
   "tests_skipped": $TESTS_SKIPPED,
+  "tests_xfail": $TESTS_XFAIL,
   "log_dir": "$LOG_DIR",
   "agentfs_mount": "$AGENTFS_MOUNT",
   "platform": "$(uname -s)"

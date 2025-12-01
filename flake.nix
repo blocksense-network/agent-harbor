@@ -427,6 +427,8 @@
                   # Seccomp library for sandboxing functionality
                   pkgs.libseccomp # Required for seccomp-based sandboxing
                   pkgs.pkg-config # Required for libseccomp-sys to find libseccomp
+                  # User-mode networking for sandboxed processes
+                  pkgs.slirp4netns # Required for --allow-network in sandbox
                 ];
 
                 # macOS-specific packages

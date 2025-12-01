@@ -90,6 +90,20 @@ impl AgentFsProvider {
         repo: &Path,
         mode: WorkingCopyMode,
     ) -> Result<PreparedWorkspace> {
+        self.prepare_fuse_workspace_impl(repo, mode, None)
+    }
+
+    /// Prepare a FUSE workspace, optionally reusing an existing branch.
+    ///
+    /// If `branch_id` is provided, binds to that branch instead of creating a new one.
+    /// This allows files to persist across sandbox invocations.
+    #[cfg(all(feature = "agentfs", target_os = "linux"))]
+    fn prepare_fuse_workspace_impl(
+        &self,
+        repo: &Path,
+        mode: WorkingCopyMode,
+        branch_id: Option<&str>,
+    ) -> Result<PreparedWorkspace> {
         let requested_mode = match mode {
             WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
             other => return Self::unsupported_mode(other),
@@ -98,10 +112,22 @@ impl AgentFsProvider {
         let workspace = fuse::FuseWorkspace::discover(repo)?;
         let control = workspace.control.clone();
 
-        let snapshot = control.snapshot_create(None)?;
-        let branch_name = format!("branch-{}", generate_unique_id());
-        let branch = control.branch_create(&snapshot.id, Some(&branch_name))?;
-        control.branch_bind(&branch.id, Some(std::process::id()))?;
+        let (branch_id, current_snapshot) = if let Some(existing_branch_id) = branch_id {
+            // Reuse existing branch - just bind to it
+            tracing::info!(
+                branch_id = %existing_branch_id,
+                "Reusing existing AgentFS branch"
+            );
+            control.branch_bind(existing_branch_id, Some(std::process::id()))?;
+            (existing_branch_id.to_string(), None)
+        } else {
+            // Create new snapshot and branch
+            let snapshot = control.snapshot_create(None)?;
+            let branch_name = format!("branch-{}", generate_unique_id());
+            let branch = control.branch_create(&snapshot.id, Some(&branch_name))?;
+            control.branch_bind(&branch.id, Some(std::process::id()))?;
+            (branch.id, Some(snapshot.id))
+        };
 
         let cleanup_token = generate_unique_id();
         let session = FuseSession {
@@ -109,8 +135,8 @@ impl AgentFsProvider {
             cleanup_token: cleanup_token.clone(),
             workspace_path: workspace.workspace_path.clone(),
             mount_root: workspace.mount_root.clone(),
-            branch_id: branch.id.clone(),
-            current_snapshot: Mutex::new(Some(snapshot.id.clone())),
+            branch_id: branch_id.clone(),
+            current_snapshot: Mutex::new(current_snapshot),
             mode: requested_mode,
         };
 
@@ -126,6 +152,63 @@ impl AgentFsProvider {
             provider: SnapshotProviderKind::AgentFs,
             cleanup_token,
         })
+    }
+
+    /// Prepare a writable workspace using an existing branch.
+    ///
+    /// This allows files to persist across sandbox invocations by reusing
+    /// the same branch instead of creating a new one each time.
+    pub fn prepare_writable_workspace_with_branch(
+        &self,
+        repo: &Path,
+        mode: WorkingCopyMode,
+        branch_id: &str,
+    ) -> Result<PreparedWorkspace> {
+        tracing::debug!(
+            repo = %repo.display(),
+            mode = ?mode,
+            branch_id = %branch_id,
+            "AgentFS prepare_writable_workspace_with_branch invoked"
+        );
+
+        if !Self::experimental_flag_enabled() {
+            return Err(Error::provider(
+                "AgentFS provider is experimental; set AH_ENABLE_AGENTFS_PROVIDER=1 to enable it",
+            ));
+        }
+
+        if !repo.exists() {
+            return Err(Error::provider(format!(
+                "AgentFS repository path does not exist: {}",
+                repo.display()
+            )));
+        }
+        if !repo.is_dir() {
+            return Err(Error::provider(format!(
+                "AgentFS repository path is not a directory: {}",
+                repo.display()
+            )));
+        }
+
+        match self.platform {
+            PlatformSupport::Supported => {}
+            PlatformSupport::Unsupported(reason) => {
+                return Err(Error::provider(reason));
+            }
+        }
+
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            self.prepare_fuse_workspace_impl(repo, mode, Some(branch_id))
+        }
+
+        #[cfg(not(all(feature = "agentfs", target_os = "linux")))]
+        {
+            let _ = branch_id;
+            Err(Error::provider(
+                "Branch reuse is only supported on Linux with FUSE",
+            ))
+        }
     }
 }
 
@@ -730,12 +813,40 @@ impl FsSnapshotProvider for AgentFsProvider {
 
         #[cfg(all(feature = "agentfs", target_os = "linux"))]
         {
-            let _ = self
+            // F18: Enhanced cleanup with branch deletion for storage reclamation.
+            // When a sandbox session ends, we:
+            // 1. Remove the session from our internal state
+            // 2. Attempt to delete the branch to reclaim storage
+            //
+            // The bind mount in the sandbox's mount namespace is automatically
+            // cleaned up when the namespace is destroyed. This cleanup handles
+            // the AgentFS-side resources.
+            let session = self
                 ._state
                 .lock()
                 .expect("AgentFS provider state poisoned")
                 .sessions
                 .remove(token);
+
+            if let Some(session) = session {
+                // Attempt to delete the branch. This may fail if the branch doesn't exist
+                // (e.g., daemon restarted) or if there are still bound processes.
+                // We log but don't fail on error since the mount namespace cleanup is
+                // the primary isolation mechanism.
+                if let Err(err) = session.control.branch_delete(&session.branch_id) {
+                    tracing::debug!(
+                        branch_id = %session.branch_id,
+                        error = %err,
+                        "Failed to delete AgentFS branch during cleanup (non-fatal)"
+                    );
+                } else {
+                    tracing::debug!(
+                        branch_id = %session.branch_id,
+                        "Successfully deleted AgentFS branch during cleanup"
+                    );
+                }
+            }
+
             Ok(())
         }
 
@@ -869,7 +980,64 @@ impl AgentFsProvider {
             Ok(workspace)
         }
 
-        #[cfg(not(all(feature = "agentfs", target_os = "macos")))]
+        #[cfg(all(feature = "agentfs", target_os = "linux"))]
+        {
+            let requested_mode = match mode {
+                WorkingCopyMode::Auto | WorkingCopyMode::CowOverlay => WorkingCopyMode::CowOverlay,
+                other => return Self::unsupported_mode(other),
+            };
+
+            // Create workspace from explicit socket path (for external workspaces outside FUSE mount)
+            let workspace = fuse::FuseWorkspace::from_socket(socket_path, repo)?;
+            let control = workspace.control.clone();
+
+            // Create new snapshot and branch
+            let snapshot = control.snapshot_create(None)?;
+            let branch_name = format!("branch-{}", generate_unique_id());
+            let branch = control.branch_create(&snapshot.id, Some(&branch_name))?;
+            control.branch_bind(&branch.id, Some(std::process::id()))?;
+
+            let cleanup_token = generate_unique_id();
+            let session = FuseSession {
+                control,
+                cleanup_token: cleanup_token.clone(),
+                workspace_path: workspace.workspace_path.clone(),
+                mount_root: workspace.mount_root.clone(),
+                branch_id: branch.id.clone(),
+                current_snapshot: Mutex::new(Some(snapshot.id)),
+                mode: requested_mode,
+            };
+
+            self._state
+                .lock()
+                .expect("AgentFS provider state poisoned")
+                .sessions
+                .insert(cleanup_token.clone(), session);
+
+            tracing::info!(
+                agentfs_socket = %socket_path.display(),
+                workspace_path = %workspace.workspace_path.display(),
+                mount_root = %workspace.mount_root.display(),
+                branch_id = %branch.id,
+                "Successfully prepared AgentFS workspace with existing daemon (Linux)"
+            );
+
+            // F18: Return the FUSE mount root as exec_path, NOT the external workspace path.
+            // This signals to the sandbox CLI that workspace_path != exec_path, which triggers
+            // the bind-mount configuration for filesystem isolation.
+            // The sandbox will then bind-mount the FUSE view to the original workspace path.
+            Ok(PreparedWorkspace {
+                exec_path: workspace.mount_root,
+                working_copy: requested_mode,
+                provider: SnapshotProviderKind::AgentFs,
+                cleanup_token,
+            })
+        }
+
+        #[cfg(not(any(
+            all(feature = "agentfs", target_os = "macos"),
+            all(feature = "agentfs", target_os = "linux")
+        )))]
         {
             let _ = repo;
             let _ = mode;
@@ -1010,6 +1178,41 @@ mod fuse {
                 };
             }
         }
+
+        /// Create a FuseWorkspace from an explicit socket path and external workspace path.
+        /// This is used when the workspace is outside the FUSE mount (for bind-mount scenarios).
+        /// The socket_path should point to the control file (e.g., `$XDG_RUNTIME_DIR/agentfs/.agentfs/control`).
+        pub fn from_socket(socket_path: &Path, workspace_path: &Path) -> Result<Self> {
+            let control = ControlClient::new(socket_path.to_path_buf())?;
+
+            // Derive mount_root from socket_path: /path/to/mount/.agentfs/control -> /path/to/mount
+            let mount_root = socket_path
+                .parent() // .agentfs
+                .and_then(|p| p.parent()) // mount root
+                .ok_or_else(|| {
+                    Error::provider(format!(
+                        "Invalid socket path structure: {}",
+                        socket_path.display()
+                    ))
+                })?
+                .to_path_buf();
+
+            let absolute_workspace = if workspace_path.is_absolute() {
+                workspace_path.to_path_buf()
+            } else {
+                env::current_dir()
+                    .map_err(|err| {
+                        Error::provider(format!("failed to resolve working directory: {}", err))
+                    })?
+                    .join(workspace_path)
+            };
+
+            Ok(Self {
+                control,
+                workspace_path: absolute_workspace,
+                mount_root,
+            })
+        }
     }
 
     impl ControlClient {
@@ -1136,6 +1339,48 @@ mod fuse {
                 Response::BranchBind(_) => Ok(()),
                 other => Err(Error::provider(format!(
                     "unexpected response to branch_bind: {:?}",
+                    other
+                ))),
+            }
+        }
+
+        /// Delete a branch and reclaim its storage.
+        ///
+        /// This is used during cleanup after a sandbox session ends. The branch must
+        /// not have any bound processes (they should be unbound first or will fail
+        /// with EBUSY), unless `force` is set.
+        ///
+        /// # F18: Branch Cleanup
+        /// This is part of the bind-mount approach for AgentFS isolation. When a sandbox
+        /// exits, its mount namespace is destroyed (taking the bind mount with it).
+        /// This method is then called to delete the branch and reclaim storage.
+        pub fn branch_delete(&self, branch: &str) -> Result<()> {
+            // Don't force deletion - require processes to be unbound first
+            let request = Request::branch_delete(branch.to_string(), false);
+            match self.send_request(request)? {
+                Response::BranchDelete(_) => Ok(()),
+                other => Err(Error::provider(format!(
+                    "unexpected response to branch_delete: {:?}",
+                    other
+                ))),
+            }
+        }
+
+        /// Unbind the current process from whatever branch it's bound to.
+        ///
+        /// This is used before branch deletion to ensure no processes are bound to
+        /// the branch. Note: The current protocol only supports unbinding by PID,
+        /// not by branch ID. The caller should track which processes are bound.
+        ///
+        /// # F18: Branch Cleanup
+        /// Part of the cleanup sequence for AgentFS sandbox sessions.
+        #[allow(dead_code)] // Reserved for future use in cleanup
+        pub fn branch_unbind(&self, pid: Option<u32>) -> Result<()> {
+            let request = Request::branch_unbind(pid);
+            match self.send_request(request)? {
+                Response::BranchUnbind(_) => Ok(()),
+                other => Err(Error::provider(format!(
+                    "unexpected response to branch_unbind: {:?}",
                     other
                 ))),
             }

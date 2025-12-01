@@ -16,7 +16,11 @@ pub use messages::{
     BranchBindResponse,
     BranchCreateRequest,
     BranchCreateResponse,
+    BranchDeleteRequest,
+    BranchDeleteResponse,
     BranchInfo,
+    BranchUnbindRequest,
+    BranchUnbindResponse,
     DaemonStateBackstoreRequest,
     // Daemon state types
     DaemonStateQuery,
