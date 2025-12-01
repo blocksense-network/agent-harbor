@@ -107,7 +107,7 @@ pub fn render_settings_dialog(frame: &mut Frame, modal_area: Rect, theme: &Theme
     let mut shadow_area = area;
     shadow_area.x += 1;
     shadow_area.y += 1;
-    let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
+    let shadow = Block::default().style(Style::default().bg(theme.shadow));
     frame.render_widget(Clear, shadow_area);
     frame.render_widget(shadow, shadow_area);
 
@@ -160,7 +160,7 @@ pub fn render_fuzzy_modal(
     let mut shadow_area = modal_area;
     shadow_area.x += 1;
     shadow_area.y += 1;
-    let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
+    let shadow = Block::default().style(Style::default().bg(theme.shadow));
     frame.render_widget(Clear, shadow_area);
     frame.render_widget(shadow, shadow_area);
 
@@ -268,7 +268,7 @@ pub fn render_model_selection_modal_with_hit_regions(
     let mut shadow_area = modal_area;
     shadow_area.x += 1;
     shadow_area.y += 1;
-    let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
+    let shadow = Block::default().style(Style::default().bg(theme.shadow));
     frame.render_widget(Clear, shadow_area);
     frame.render_widget(shadow, shadow_area);
 
@@ -443,7 +443,7 @@ pub fn render_go_to_line_modal(
     let mut shadow_area = modal_area;
     shadow_area.x += 1;
     shadow_area.y += 1;
-    let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
+    let shadow = Block::default().style(Style::default().bg(theme.shadow));
     frame.render_widget(Clear, shadow_area);
     frame.render_widget(shadow, shadow_area);
 
@@ -507,7 +507,7 @@ pub fn render_find_replace_modal(
     let mut shadow_area = modal_area;
     shadow_area.x += 1;
     shadow_area.y += 1;
-    let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
+    let shadow = Block::default().style(Style::default().bg(theme.shadow));
     frame.render_widget(Clear, shadow_area);
     frame.render_widget(shadow, shadow_area);
 
@@ -594,7 +594,7 @@ pub fn render_shortcut_help_modal(
     let mut shadow_area = modal_area;
     shadow_area.x += 1;
     shadow_area.y += 1;
-    let shadow = Block::default().style(Style::default().bg(Color::Rgb(10, 10, 15)));
+    let shadow = Block::default().style(Style::default().bg(theme.shadow));
     frame.render_widget(Clear, shadow_area);
     frame.render_widget(shadow, shadow_area);
 

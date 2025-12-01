@@ -38,6 +38,11 @@ impl<A> HitTestRegistry<A> {
     pub fn register(&mut self, rect: Rect, action: A) {
         self.zones.push(HitZone { rect, action });
     }
+
+    /// Expose registered zones (primarily for tests/diagnostics).
+    pub fn zones(&self) -> &[HitZone<A>] {
+        &self.zones
+    }
 }
 
 impl<A: Clone> HitTestRegistry<A> {

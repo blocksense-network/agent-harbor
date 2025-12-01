@@ -202,6 +202,73 @@ All enhancements should be optional and backward-compatible:
 - File edit notifications should not allow unauthorized modifications
 - All features should maintain the principle of client control
 
+## 4. User Message Attribution
+
+### Problem
+
+Currently, the ACP protocol treats all incoming messages as "user messages" without distinguishing between different authors. In multi-user environments or scenarios where an agent interacts with multiple stakeholders (e.g., "You" vs. "Reviewer" vs. "Project Manager"), the client cannot easily distinguish the source of a message when replaying session history or receiving updates.
+
+### Desired Solution
+
+Add an optional `author` field to `ContentBlock` or `user_message_chunk` in `session/prompt` and `session/update`. This field would contain a structured identifier or display name for the message author.
+
+### Benefits
+
+- **Multi-User Support**: Enable collaborative sessions where multiple users interact with the same agent.
+- **Clearer UI**: Clients can visually distinguish between "My Messages" and "Other's Messages" (e.g., "YOU WROTE" vs. "ALICE WROTE").
+- **Contextual Awareness**: The agent can tailor responses based on who is asking (e.g., different permissions or context for a manager vs. a developer).
+
+### Example API
+
+```json
+// In session/prompt
+{
+  "jsonrpc": "2.0",
+  "method": "session/prompt",
+  "params": {
+    "sessionId": "sess_123",
+    "prompt": [
+      {
+        "type": "text",
+        "text": "What is the status of this task?",
+        "author": {
+          "id": "user_456",
+          "name": "Alice",
+          "role": "Project Manager"
+        }
+      }
+    ]
+  }
+}
+
+// In session/update (replaying history)
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_123",
+    "update": {
+      "sessionUpdate": "user_message_chunk",
+      "author": {
+        "id": "user_789",
+        "name": "Bob",
+        "role": "Developer"
+      },
+      "content": {
+        "type": "text",
+        "text": "I'm working on the backend API."
+      }
+    }
+  }
+}
+```
+
+### Implementation Notes
+
+- The `author` field should be optional to maintain backward compatibility.
+- If omitted, the client/agent assumes the default user.
+- The structure of the `author` object can be flexible or standardized (e.g., just a string name vs. a full object).
+
 ## Future Wishlist Items
 
 This document can be extended with additional enhancement ideas as they arise during ACP implementation and usage.

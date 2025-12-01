@@ -230,6 +230,7 @@ mod event_processing_tests {
                     last_line,
                     completed,
                     status,
+                    pipeline: _,
                 } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
@@ -282,6 +283,7 @@ mod event_processing_tests {
                     last_line,
                     completed,
                     status,
+                    pipeline: _,
                 } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");
@@ -343,6 +345,7 @@ mod event_processing_tests {
                     last_line,
                     completed,
                     status,
+                    pipeline: _,
                 } => {
                     assert_eq!(tool_name, "run_terminal_cmd");
                     assert_eq!(tool_execution_id, "tool_exec_123");

@@ -8,6 +8,7 @@
 // the original timing.
 
 use crate::record::CliGutterPosition;
+use crate::theme::Theme;
 use crate::view_model::session_viewer_model::{GutterConfig, GutterPosition};
 use crate::viewer::{ViewerConfig, ViewerEventLoop, build_session_viewer_view_model};
 use ah_core;
@@ -227,15 +228,17 @@ async fn run_viewer_mode(ahr_path: &PathBuf, gutter: &CliGutterPosition) -> Resu
     let recording_terminal_state = std::rc::Rc::new(std::cell::RefCell::new(recording_state));
 
     // Create session viewer view model with recording terminal state
-    let view_model = build_session_viewer_view_model(recording_terminal_state, &config, None);
+    let view_model =
+        build_session_viewer_view_model(recording_terminal_state, &config, None, &Theme::default());
 
     // Create local task manager for instruction-based task creation
     let task_manager =
         ah_core::create_session_viewer_task_manager().expect("Failed to create local task manager");
 
     // Create event loop for the viewer (replay doesn't receive new snapshots)
-    let mut event_loop = ViewerEventLoop::new(view_model, config.clone(), task_manager)
-        .context("Failed to create viewer event loop")?;
+    let mut event_loop =
+        ViewerEventLoop::new(view_model, config.clone(), task_manager, Theme::default())
+            .context("Failed to create viewer event loop")?;
 
     // Run the viewer event loop
     event_loop.run().await?;

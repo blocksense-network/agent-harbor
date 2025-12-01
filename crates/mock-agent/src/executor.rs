@@ -125,6 +125,13 @@ pub struct AcpTranscript {
     pub initial_follower_updates: Vec<SessionNotification>,
 }
 
+/// Session notification paired with its scheduled timestamp (milliseconds from start).
+#[derive(Debug, Clone)]
+pub struct TimedNotification {
+    pub at_ms: u64,
+    pub notification: SessionNotification,
+}
+
 /// Captured tool use for outbound client interactions (e.g., terminals).
 #[derive(Debug, Clone)]
 pub struct ToolReplay {
@@ -506,6 +513,363 @@ impl ScenarioExecutor {
         );
 
         Ok(())
+    }
+}
+
+impl ScenarioExecutor {
+    /// Return historical and live notifications with their scheduled timestamps (ms since start).
+    pub fn timed_notifications(
+        &self,
+        provided_session: Option<&str>,
+    ) -> (SessionId, Vec<TimedNotification>, Vec<TimedNotification>) {
+        let playbook = self.build_playbook();
+        let session_id = SessionId(Arc::from(
+            provided_session
+                .or_else(|| playbook.session_start.as_ref().and_then(|s| s.session_id.as_deref()))
+                .unwrap_or("mock-session"),
+        ));
+
+        let historical = timed_notifications_from_actions(&session_id, &playbook.historical);
+        let live = timed_notifications_from_actions(&session_id, &playbook.live);
+        (session_id, historical, live)
+    }
+}
+
+fn timed_notifications_from_actions(
+    session_id: &SessionId,
+    actions: &[ScheduledAcpAction],
+) -> Vec<TimedNotification> {
+    let mut out = Vec::new();
+    let mut tool_ids: HashMap<String, agent_client_protocol_schema::ToolCallId> = HashMap::new();
+    let mut tool_seq = 0usize;
+
+    let push_update = |at_ms: u64,
+                       update: SessionUpdate,
+                       meta: Option<&serde_yaml::Value>,
+                       out: &mut Vec<TimedNotification>| {
+        out.push(TimedNotification {
+            at_ms,
+            notification: SessionNotification {
+                session_id: session_id.clone(),
+                update,
+                meta: meta.map(yaml_to_json),
+            },
+        });
+    };
+
+    for action in actions {
+        let update_opt = match &action.action {
+            AcpAction::UpdateAssistant { steps } => steps.first().map(|step| {
+                let text = match &step.content {
+                    ah_scenario_format::ContentBlock::Text(t) => t.clone(),
+                    ah_scenario_format::ContentBlock::Rich(block) => {
+                        serde_yaml::to_string(block).unwrap_or_default()
+                    }
+                };
+                SessionUpdate::AgentMessageChunk {
+                    content: ContentBlock::Text(TextContent {
+                        annotations: None,
+                        text,
+                        meta: None,
+                    }),
+                }
+            }),
+            AcpAction::UpdateToolUse { tool } => {
+                let key = extract_tool_call_key(tool, tool_seq);
+                let id = if let Some(existing) = tool_ids.get(&key) {
+                    existing.clone()
+                } else {
+                    tool_seq += 1;
+                    let generated =
+                        agent_client_protocol_schema::ToolCallId(Arc::from(key.clone()));
+                    tool_ids.insert(key, generated.clone());
+                    generated
+                };
+
+                let raw_input = serde_json::to_value(&tool.args).ok();
+                let status = map_tool_status(tool.status.as_deref(), ToolCallStatus::InProgress);
+                let content = if tool.tool_name == "runCmd" {
+                    vec![ToolCallContent::Terminal {
+                        terminal_id: id.0.to_string().into(),
+                    }]
+                } else {
+                    vec![]
+                };
+
+                push_update(
+                    action.at_ms,
+                    SessionUpdate::ToolCall(agent_client_protocol_schema::ToolCall {
+                        id: id.clone(),
+                        title: tool.tool_name.clone(),
+                        kind: map_tool_kind(&tool.tool_name),
+                        status,
+                        content,
+                        locations: vec![],
+                        raw_input,
+                        raw_output: None,
+                        meta: tool.meta.as_ref().map(yaml_to_json),
+                    }),
+                    action.meta.as_ref(),
+                    &mut out,
+                );
+
+                // Immediately emit a status update so the UI renders the running tool row.
+                push_update(
+                    action.at_ms,
+                    SessionUpdate::ToolCallUpdate(agent_client_protocol_schema::ToolCallUpdate {
+                        id: id.clone(),
+                        fields: ToolCallUpdateFields {
+                            status: Some(status),
+                            ..Default::default()
+                        },
+                        meta: tool.meta.as_ref().map(yaml_to_json),
+                    }),
+                    action.meta.as_ref(),
+                    &mut out,
+                );
+
+                let mut last_at = action.at_ms;
+
+                if let Some(progress) = &tool.progress {
+                    for step in progress {
+                        let at = action.at_ms.saturating_add(step.relative_time);
+                        last_at = last_at.max(at);
+                        push_update(
+                            at,
+                            SessionUpdate::ToolCallUpdate(agent_client_protocol_schema::ToolCallUpdate {
+                                id: id.clone(),
+                                fields: ToolCallUpdateFields {
+                                    status: Some(agent_client_protocol_schema::ToolCallStatus::InProgress),
+                                    raw_output: Some(serde_json::Value::String(step.message.clone())),
+                                    content: Some(vec![ToolCallContent::Content {
+                                        content: ContentBlock::Text(TextContent {
+                                            annotations: None,
+                                            text: step.message.clone(),
+                                            meta: None,
+                                        }),
+                                    }]),
+                                    ..Default::default()
+                                },
+                                meta: tool.meta.as_ref().map(yaml_to_json),
+                            }),
+                            action.meta.as_ref(),
+                            &mut out,
+                        );
+                    }
+                }
+
+                if let Some(exec) = &tool.tool_execution {
+                    for event in &exec.events {
+                        let at = action.at_ms.saturating_add(event.time_ms.unwrap_or_default());
+                        last_at = last_at.max(at);
+                        match event.kind.as_str() {
+                            "completion" => {
+                                push_update(
+                                    at,
+                                    SessionUpdate::ToolCallUpdate(
+                                        agent_client_protocol_schema::ToolCallUpdate {
+                                            id: id.clone(),
+                                            fields: ToolCallUpdateFields {
+                                                status: Some(map_exit_status(event.exit_code)),
+                                                raw_output: event
+                                                    .content
+                                                    .as_ref()
+                                                    .map(|c| serde_json::Value::String(c.clone())),
+                                                content: event.content.as_ref().map(|c| {
+                                                    vec![ToolCallContent::Content {
+                                                        content: ContentBlock::Text(TextContent {
+                                                            annotations: None,
+                                                            text: c.clone(),
+                                                            meta: None,
+                                                        }),
+                                                    }]
+                                                }),
+                                                ..Default::default()
+                                            },
+                                            meta: tool.meta.as_ref().map(yaml_to_json),
+                                        },
+                                    ),
+                                    action.meta.as_ref(),
+                                    &mut out,
+                                );
+                            }
+                            _ => {
+                                if let Some(content) = &event.content {
+                                    push_update(
+                                        at,
+                                        SessionUpdate::ToolCallUpdate(
+                                            agent_client_protocol_schema::ToolCallUpdate {
+                                                id: id.clone(),
+                                                fields: ToolCallUpdateFields {
+                                                    status: Some(agent_client_protocol_schema::ToolCallStatus::InProgress),
+                                                    raw_output: Some(
+                                                        serde_json::Value::String(
+                                                            content.clone(),
+                                                        ),
+                                                    ),
+                                                    content: Some(vec![
+                                                        ToolCallContent::Content {
+                                                            content: ContentBlock::Text(
+                                                                TextContent {
+                                                                    annotations: None,
+                                                                    text: content.clone(),
+                                                                    meta: None,
+                                                                },
+                                                            ),
+                                                        },
+                                                    ]),
+                                                    ..Default::default()
+                                                },
+                                                meta: tool.meta.as_ref().map(yaml_to_json),
+                                            },
+                                        ),
+                                        action.meta.as_ref(),
+                                        &mut out,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(result) = &tool.result {
+                    last_at = last_at.max(action.at_ms);
+                    push_update(
+                        last_at,
+                        SessionUpdate::ToolCallUpdate(
+                            agent_client_protocol_schema::ToolCallUpdate {
+                                id,
+                                fields: ToolCallUpdateFields {
+                                    status: Some(
+                                        agent_client_protocol_schema::ToolCallStatus::Completed,
+                                    ),
+                                    raw_output: serde_json::to_value(result).ok(),
+                                    ..Default::default()
+                                },
+                                meta: tool.meta.as_ref().map(yaml_to_json),
+                            },
+                        ),
+                        action.meta.as_ref(),
+                        &mut out,
+                    );
+                } else if matches!(status, ToolCallStatus::Completed | ToolCallStatus::Failed) {
+                    push_update(
+                        last_at,
+                        SessionUpdate::ToolCallUpdate(
+                            agent_client_protocol_schema::ToolCallUpdate {
+                                id,
+                                fields: ToolCallUpdateFields {
+                                    status: Some(status),
+                                    ..Default::default()
+                                },
+                                meta: tool.meta.as_ref().map(yaml_to_json),
+                            },
+                        ),
+                        action.meta.as_ref(),
+                        &mut out,
+                    );
+                }
+
+                None
+            }
+            AcpAction::UpdateToolResult { result } => {
+                let (id, fields) = tool_call_update_from_yaml(None, 0);
+                Some(SessionUpdate::ToolCallUpdate(
+                    agent_client_protocol_schema::ToolCallUpdate {
+                        id,
+                        fields: agent_client_protocol_schema::ToolCallUpdateFields {
+                            status: Some(if result.is_error {
+                                ToolCallStatus::Failed
+                            } else {
+                                ToolCallStatus::Completed
+                            }),
+                            raw_output: Some(
+                                serde_json::to_value(&result.content)
+                                    .unwrap_or(serde_json::Value::Null),
+                            ),
+                            ..fields
+                        },
+                        meta: None,
+                    },
+                ))
+            }
+            AcpAction::UpdatePlan { plan } => {
+                let entries = plan
+                    .entries
+                    .iter()
+                    .map(|entry| agent_client_protocol_schema::PlanEntry {
+                        content: entry.content.clone(),
+                        priority: map_plan_priority(entry),
+                        status: map_plan_status(entry),
+                        meta: None,
+                    })
+                    .collect();
+                Some(SessionUpdate::Plan(agent_client_protocol_schema::Plan {
+                    entries,
+                    meta: None,
+                }))
+            }
+            AcpAction::UpdateError { error } => Some(SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: format!("Error: {} ({})", error.message, error.error_type),
+                    meta: None,
+                }),
+            }),
+            AcpAction::Status { status } => Some(SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: format!("[status] {}", status),
+                    meta: None,
+                }),
+            }),
+            AcpAction::Log { message } => Some(SessionUpdate::AgentMessageChunk {
+                content: ContentBlock::Text(TextContent {
+                    annotations: None,
+                    text: format!("[log] {}", message),
+                    meta: None,
+                }),
+            }),
+            AcpAction::ModeChange(mode) => Some(SessionUpdate::CurrentModeUpdate {
+                current_mode_id: agent_client_protocol_schema::SessionModeId(Arc::from(
+                    mode.mode_id.clone(),
+                )),
+            }),
+            _ => None,
+        };
+
+        if let Some(update) = update_opt {
+            out.push(TimedNotification {
+                at_ms: action.at_ms,
+                notification: SessionNotification {
+                    session_id: session_id.clone(),
+                    update,
+                    meta: action.meta.as_ref().map(yaml_to_json),
+                },
+            });
+        }
+    }
+    out
+}
+
+fn map_plan_priority(
+    entry: &ah_scenario_format::PlanEntry,
+) -> agent_client_protocol_schema::PlanEntryPriority {
+    match entry.priority.as_str() {
+        "high" => agent_client_protocol_schema::PlanEntryPriority::High,
+        "medium" => agent_client_protocol_schema::PlanEntryPriority::Medium,
+        "low" => agent_client_protocol_schema::PlanEntryPriority::Low,
+        _ => agent_client_protocol_schema::PlanEntryPriority::Low,
+    }
+}
+
+fn map_plan_status(
+    entry: &ah_scenario_format::PlanEntry,
+) -> agent_client_protocol_schema::PlanEntryStatus {
+    match entry.status.as_str() {
+        "in_progress" => agent_client_protocol_schema::PlanEntryStatus::InProgress,
+        "completed" => agent_client_protocol_schema::PlanEntryStatus::Completed,
+        _ => agent_client_protocol_schema::PlanEntryStatus::Pending,
     }
 }
 

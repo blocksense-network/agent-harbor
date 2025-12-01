@@ -1011,9 +1011,11 @@ dependencies = [
 name = "ah-tui"
 version = "0.1.0"
 dependencies = [
+ "agent-client-protocol-schema",
  "ah-client-api",
  "ah-core",
  "ah-domain-types",
+ "ah-logging",
  "ah-mux",
  "ah-mux-core",
  "ah-recorder",
@@ -1021,6 +1023,7 @@ dependencies = [
  "ah-rest-api-contract",
  "ah-rest-client",
  "ah-rest-mock-client",
+ "ah-scenario-format",
  "ah-test-scenarios",
  "ah-workflows",
  "anyhow",
@@ -1038,6 +1041,7 @@ dependencies = [
  "image",
  "insta",
  "interprocess",
+ "mock-agent",
  "nucleo",
  "nucleo-matcher",
  "once_cell",
@@ -1048,6 +1052,7 @@ dependencies = [
  "serde_json",
  "similar",
  "ssz_rs",
+ "strsim",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -8953,6 +8958,7 @@ checksum = "2efa149fe76073d6e8fd97ef4f4eca7b67f599660115591483572e406e165594"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "futures-util",
  "pin-project-lite",

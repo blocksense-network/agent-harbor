@@ -9,10 +9,11 @@
 //
 // See: specs/Public/ah-agent-record.md section 6 for complete specification
 
+use crate::session_viewer_deps::AgentSessionDependencies;
 use crate::settings::Settings;
 use crate::terminal::{self, TerminalConfig};
+use crate::theme::Theme;
 use crate::view::HitTestRegistry;
-use crate::view::Theme;
 use crate::view::session_viewer::render_session_viewer;
 use crate::view_model::autocomplete::AutocompleteDependencies;
 use crate::view_model::session_viewer_model::{
@@ -63,6 +64,7 @@ pub(crate) fn build_session_viewer_view_model(
     recording_terminal_state: Rc<RefCell<TerminalState>>,
     config: &ViewerConfig,
     autocomplete_dependencies: Option<Arc<AutocompleteDependencies>>,
+    theme: &Theme,
 ) -> SessionViewerViewModel {
     let deps = autocomplete_dependencies.unwrap_or_else(default_autocomplete_dependencies);
 
@@ -73,7 +75,7 @@ pub(crate) fn build_session_viewer_view_model(
     };
 
     let task_entry =
-        SessionViewerViewModel::build_task_entry_view_model(&deps, "session-viewer", None);
+        SessionViewerViewModel::build_task_entry_view_model(&deps, "session-viewer", None, theme);
 
     let mut view_model = SessionViewerViewModel::new(
         task_entry,
@@ -83,6 +85,7 @@ pub(crate) fn build_session_viewer_view_model(
         config.terminal_rows,
         deps,
         session_mode,
+        theme.clone(),
     );
 
     if session_mode == SessionViewerMode::LiveRecording {
@@ -90,6 +93,25 @@ pub(crate) fn build_session_viewer_view_model(
     }
 
     view_model
+}
+
+/// Build a ready-to-run event loop using dependency injection.
+pub fn viewer_event_loop_from_dependencies(
+    deps: AgentSessionDependencies,
+) -> io::Result<ViewerEventLoop> {
+    let vm = build_session_viewer_view_model(
+        deps.recording_terminal_state,
+        &deps.viewer_config,
+        deps.autocomplete,
+        &deps.theme,
+    );
+    ViewerEventLoop::new_with_config(
+        vm,
+        deps.viewer_config,
+        deps.task_manager,
+        deps.terminal_config,
+        deps.theme,
+    )
 }
 
 pub fn update_row_metadata_with_autofollow(
@@ -113,12 +135,12 @@ pub(crate) fn render_view_frame(
     _config: &ViewerConfig,
     _exit_confirmation_armed: bool,
     _recorded_dims: (u16, u16),
+    theme: &Theme,
 ) {
     // Create hit test registry for session viewer mouse interactions
     let mut hit_registry = HitTestRegistry::<SessionViewerMouseAction>::new();
-    let theme = Theme::default();
 
-    render_session_viewer(frame, view_model, &mut hit_registry, &theme);
+    render_session_viewer(frame, view_model, &mut hit_registry, theme);
 }
 
 pub(crate) fn handle_mouse_click_for_view(
@@ -241,6 +263,7 @@ pub struct ViewerEventLoop {
     view_model: SessionViewerViewModel,
     config: ViewerConfig,
     task_manager: std::sync::Arc<dyn TaskManager>,
+    theme: Theme,
 }
 
 impl ViewerEventLoop {
@@ -249,8 +272,15 @@ impl ViewerEventLoop {
         view_model: SessionViewerViewModel,
         config: ViewerConfig,
         task_manager: std::sync::Arc<dyn TaskManager>,
+        theme: Theme,
     ) -> io::Result<Self> {
-        Self::new_with_config(view_model, config, task_manager, TerminalConfig::minimal())
+        Self::new_with_config(
+            view_model,
+            config,
+            task_manager,
+            TerminalConfig::minimal(),
+            theme,
+        )
     }
 
     /// Create a new event loop with custom terminal config
@@ -259,6 +289,7 @@ impl ViewerEventLoop {
         config: ViewerConfig,
         task_manager: std::sync::Arc<dyn TaskManager>,
         terminal_config: TerminalConfig,
+        theme: Theme,
     ) -> io::Result<Self> {
         // Enter alternate screen and enable raw mode before building Terminal
         if let Err(e) = terminal::setup_terminal(terminal_config) {
@@ -275,6 +306,7 @@ impl ViewerEventLoop {
             view_model,
             config,
             task_manager,
+            theme,
         })
     }
 
@@ -289,6 +321,7 @@ impl ViewerEventLoop {
             let exit_confirmation = self.view_model.exit_confirmation_armed;
             let recorded_dims = self.view_model.recording_dims();
             let view_model_ptr = &mut self.view_model;
+            let theme = &self.theme;
             self.terminal.draw(|f| {
                 render_view_frame(
                     f,
@@ -296,6 +329,7 @@ impl ViewerEventLoop {
                     config_ref,
                     exit_confirmation,
                     recorded_dims,
+                    theme,
                 );
             })?;
 

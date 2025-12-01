@@ -466,6 +466,7 @@ impl ah_core::RestApiClient for MockRestClient {
                         ah_core::TaskEvent::ToolUse { ts, .. } => ts.timestamp() as u64,
                         ah_core::TaskEvent::ToolResult { ts, .. } => ts.timestamp() as u64,
                         ah_core::TaskEvent::FileEdit { ts, .. } => ts.timestamp() as u64,
+                        ah_core::TaskEvent::UserInput { ts, .. } => ts.timestamp() as u64,
                     };
 
                     let session_event = match task_event {
@@ -605,6 +606,20 @@ impl ah_core::RestApiClient for MockRestClient {
                                 lines_added,
                                 lines_removed,
                                 description: description.map(|s| s.into_bytes()),
+                                timestamp,
+                            },
+                        ),
+
+                        ah_core::TaskEvent::UserInput {
+                            author,
+                            content,
+                            ts: _, // Use the timestamp from the outer scope if needed, or ignore
+                            ..
+                        } => ah_rest_api_contract::SessionEvent::Log(
+                            ah_rest_api_contract::SessionLogEvent {
+                                message: format!("{}: {}", author, content).into_bytes(),
+                                level: ah_rest_api_contract::SessionLogLevel::Info,
+                                tool_execution_id: None,
                                 timestamp,
                             },
                         ),

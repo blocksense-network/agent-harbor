@@ -71,6 +71,17 @@ pub fn render_draft_card_content(
     is_selected: bool,
 ) -> DraftCardLayout {
     let content_height = area.height as usize;
+    const MIN_CONTENT_HEIGHT: usize = 5; // textarea(1) + padding(2) + separator(1) + buttons(1)
+    if content_height < MIN_CONTENT_HEIGHT {
+        return DraftCardLayout {
+            textarea: area,
+            repository_button: Rect::default(),
+            branch_button: Rect::default(),
+            model_button: Rect::default(),
+            go_button: Rect::default(),
+            advanced_options_button: Rect::default(),
+        };
+    }
 
     // Split the available area between textarea and buttons (exact same as main.rs)
     let button_height: usize = 1; // Single line for buttons
@@ -100,7 +111,8 @@ pub fn render_draft_card_content(
     };
 
     // Render padding areas around textarea
-    let padding_style = Style::default().bg(theme.bg);
+    // Match card surface instead of the global background to blend with card borders
+    let padding_style = Style::default().bg(theme.surface);
 
     // Top padding
     let top_padding_area = Rect {

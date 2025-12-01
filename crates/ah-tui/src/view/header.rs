@@ -99,6 +99,7 @@ pub fn render_header(
     area: Rect,
     view_model: &mut crate::view_model::ViewModel,
     view_cache: &mut crate::view::ViewCache,
+    theme: &crate::theme::Theme,
 ) {
     // Create padded content area within the header
     let content_area = if area.width >= 6 && area.height >= 4 {
@@ -141,7 +142,6 @@ pub fn render_header(
             height: 1,
         };
 
-        let theme = crate::view::Theme::default();
         let button_style = if matches!(
             view_model.focus_element,
             crate::view_model::DashboardFocusState::SettingsButton

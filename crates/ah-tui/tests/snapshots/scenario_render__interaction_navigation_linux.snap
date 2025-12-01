@@ -1,5 +1,0 @@
----
-source: crates/ah-tui/tests/scenario_render.rs
-expression: navigation_screen
----
-[m[H[J

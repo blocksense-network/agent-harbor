@@ -103,6 +103,7 @@ All such variables are in under the "[tui.keymap]" section.
 |                                 | Extend selection                              | no config variable               | Shift+movement key (CUA/PC and macOS)                                           |
 | **Application Actions**         | Draft new task                                | `draft-new-task`                 | Ctrl+N                                                                          |
 |                                 | Show Advanced Launch Options                  | `show-launch-options`            | Ctrl+Enter                                                                      |
+|                                 | Apply modal changes                           | `apply-modal-changes`            | A (in modal context)                                                            |
 |                                 | Launch and focus                              | `launch-and-focus`               | No Default Shortcut                                                             |
 |                                 | Launch in split view                          | `launch-in-split-view`           | No Default Shortcut                                                             |
 |                                 | Launch in split view and focus                | `launch-in-split-view-and-focus` | No Default Shortcut                                                             |

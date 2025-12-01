@@ -1,6 +1,0 @@
----
-source: crates/ah-mux/src/tmux.rs
-expression: snapshot
----
-[?25h[m[H[Jecho 'Left pane content'[7C│echo 'Right pane content'
-Left pane content[14C│[7;32H│
