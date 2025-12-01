@@ -203,14 +203,20 @@ The agent selection dialog provides advanced agent configuration:
 
 #### Modal Focus Restoration
 
-When modals are dismissed (via ESC, apply actions, or other completion methods), focus is restored based on the modal type to optimize the user workflow:
+When modals are dismissed (via ESC, Enter, or apply actions), focus is **always restored to the task description textarea** to optimize the user workflow. This consistent behavior ensures that after making any selection or adjustment via a modal, the user is immediately returned to the primary text editing context where they can:
 
-- **Model Selection Modal**: Returns focus to the model picker button, allowing immediate re-adjustment of model selection
-- **Repository/Branch Selection Modals**: Return focus to their respective selector buttons
-- **Launch Options Modal**: Returns focus to the task description textarea, allowing the user to immediately continue editing their prompt after reviewing or adjusting launch options. This applies whether the modal is dismissed with ESC, the A key to apply changes, or any of the split launch shortcuts (t/s/h/v/T/S/H/V).
-- **Settings Modal**: Returns focus to the previously focused element
+- Continue editing the task description
+- Quickly launch the task with keyboard shortcuts
+- Make further adjustments without additional navigation
 
-This context-aware focus restoration ensures a smooth editing workflow where dismissing a modal returns the user to the most logical next action point.
+This unified focus restoration applies to all modal types:
+
+- **Model Selection Modal**: After selecting models, returns to task description
+- **Repository/Branch Selection Modals**: After choosing repo/branch, returns to task description
+- **Launch Options Modal**: After reviewing or adjusting launch options, returns to task description
+- **Settings Modal**: After configuring settings, returns to task description
+
+This consistent focus restoration ensures a smooth editing workflow where dismissing a modal always returns the user to the primary interaction point for task creation.
 
 ### Multi-Agent Task Launching
 
