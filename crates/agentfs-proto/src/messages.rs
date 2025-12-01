@@ -19,6 +19,8 @@ pub enum Request {
     SnapshotExportRelease((Vec<u8>, SnapshotExportReleaseRequest)), // (version, request)
     BranchCreate((Vec<u8>, BranchCreateRequest)),     // (version, request)
     BranchBind((Vec<u8>, BranchBindRequest)),         // (version, request)
+    BranchUnbind((Vec<u8>, BranchUnbindRequest)),     // (version, request)
+    BranchDelete((Vec<u8>, BranchDeleteRequest)),     // (version, request)
     FdOpen((Vec<u8>, FdOpenRequest)),                 // (version, request)
     FdDup((Vec<u8>, FdDupRequest)),                   // (version, request)
     DirOpen((Vec<u8>, DirOpenRequest)),               // (version, request)
@@ -118,6 +120,8 @@ pub enum Response {
     SnapshotExportRelease(SnapshotExportReleaseResponse),
     BranchCreate(BranchCreateResponse),
     BranchBind(BranchBindResponse),
+    BranchUnbind(BranchUnbindResponse),
+    BranchDelete(BranchDeleteResponse),
     FdOpen(FdOpenResponse),
     FdDup(FdDupResponse),
     DirOpen(DirOpenResponse),
@@ -299,6 +303,40 @@ pub struct BranchBindRequest {
 pub struct BranchBindResponse {
     pub branch: Vec<u8>,
     pub pid: u32,
+}
+
+/// Branch unbind request payload - unbind a process from its current branch
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct BranchUnbindRequest {
+    /// Process ID to unbind (None = current process)
+    pub pid: Option<u32>,
+}
+
+/// Branch unbind response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct BranchUnbindResponse {
+    /// PID that was unbound
+    pub pid: u32,
+    /// Branch ID the process was previously bound to (empty if wasn't bound)
+    pub previous_branch: Vec<u8>,
+}
+
+/// Branch delete request payload - delete a branch and reclaim its storage
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct BranchDeleteRequest {
+    /// Branch ID to delete
+    pub branch: Vec<u8>,
+    /// Force deletion even if processes are still bound to it
+    pub force: bool,
+}
+
+/// Branch delete response payload
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
+pub struct BranchDeleteResponse {
+    /// Branch ID that was deleted
+    pub branch: Vec<u8>,
+    /// Number of bytes reclaimed
+    pub bytes_reclaimed: u64,
 }
 
 /// FdOpen request payload for interpose forwarding
@@ -1511,6 +1549,20 @@ impl Request {
         ))
     }
 
+    pub fn branch_unbind(pid: Option<u32>) -> Self {
+        Self::BranchUnbind((b"1".to_vec(), BranchUnbindRequest { pid }))
+    }
+
+    pub fn branch_delete(branch: String, force: bool) -> Self {
+        Self::BranchDelete((
+            b"1".to_vec(),
+            BranchDeleteRequest {
+                branch: branch.into_bytes(),
+                force,
+            },
+        ))
+    }
+
     pub fn fd_open(path: String, flags: u32, mode: u32) -> Self {
         Self::FdOpen((
             b"1".to_vec(),
@@ -2068,6 +2120,20 @@ impl Response {
 
     pub fn branch_bind(branch: Vec<u8>, pid: u32) -> Self {
         Self::BranchBind(BranchBindResponse { branch, pid })
+    }
+
+    pub fn branch_unbind(pid: u32, previous_branch: Vec<u8>) -> Self {
+        Self::BranchUnbind(BranchUnbindResponse {
+            pid,
+            previous_branch,
+        })
+    }
+
+    pub fn branch_delete(branch: Vec<u8>, bytes_reclaimed: u64) -> Self {
+        Self::BranchDelete(BranchDeleteResponse {
+            branch,
+            bytes_reclaimed,
+        })
     }
 
     pub fn fd_open(fd: u32) -> Self {

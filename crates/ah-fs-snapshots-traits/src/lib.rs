@@ -126,6 +126,39 @@ pub trait FsSnapshotProvider: Send + Sync {
         mode: WorkingCopyMode,
     ) -> Result<PreparedWorkspace>;
 
+    /// Prepare a writable workspace by reusing an existing branch/clone/worktree.
+    ///
+    /// This method allows files to persist across sandbox invocations by binding
+    /// to an existing branch instead of creating a new one each time.
+    ///
+    /// The `branch_id` format is provider-specific:
+    /// - **ZFS**: Clone name (e.g., `dataset-ah_clone_xxx`) or path
+    /// - **Btrfs**: Subvolume path (e.g., `/path/to/ah_branch_xxx`)
+    /// - **Git**: Worktree path or identifier
+    /// - **AgentFS**: Branch ID string
+    ///
+    /// # Arguments
+    /// * `repo` - The repository path
+    /// * `mode` - The working copy mode to use
+    /// * `branch_id` - The provider-specific branch/clone/worktree identifier to reuse
+    ///
+    /// # Returns
+    /// A `PreparedWorkspace` bound to the existing branch, or an error if the
+    /// branch doesn't exist or cannot be reused.
+    fn prepare_writable_workspace_with_branch(
+        &self,
+        repo: &Path,
+        mode: WorkingCopyMode,
+        branch_id: &str,
+    ) -> Result<PreparedWorkspace> {
+        // Default implementation: providers that don't support branch reuse return an error
+        let _ = (repo, mode, branch_id);
+        Err(Error::provider(format!(
+            "{:?} provider does not support branch reuse",
+            self.kind()
+        )))
+    }
+
     /// Snapshot current workspace state; label is optional UI hint.
     fn snapshot_now(&self, ws: &PreparedWorkspace, label: Option<&str>) -> Result<SnapshotRef>;
 

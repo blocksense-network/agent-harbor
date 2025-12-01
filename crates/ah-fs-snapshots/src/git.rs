@@ -465,6 +465,65 @@ impl FsSnapshotProvider for GitProvider {
         SnapshotProviderKind::Git
     }
 
+    fn prepare_writable_workspace_with_branch(
+        &self,
+        _repo: &Path,
+        mode: WorkingCopyMode,
+        branch_id: &str,
+    ) -> Result<PreparedWorkspace> {
+        match mode {
+            WorkingCopyMode::Worktree | WorkingCopyMode::CowOverlay | WorkingCopyMode::Auto => {
+                // For Git, the branch_id is the path to an existing worktree
+                let path = PathBuf::from(branch_id);
+
+                if !path.exists() {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "Git worktree path '{}' does not exist",
+                        branch_id
+                    )));
+                }
+
+                if !path.is_dir() {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "Git worktree path '{}' is not a directory",
+                        branch_id
+                    )));
+                }
+
+                // Verify it's actually a git worktree or repository
+                let is_git = Command::new("git")
+                    .args(["-C", &path.to_string_lossy(), "rev-parse", "--git-dir"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+
+                if !is_git {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "Path '{}' is not a Git repository or worktree",
+                        branch_id
+                    )));
+                }
+
+                tracing::info!(
+                    branch_id = %branch_id,
+                    "Reusing existing Git worktree"
+                );
+
+                Ok(PreparedWorkspace {
+                    exec_path: path,
+                    working_copy: WorkingCopyMode::Worktree,
+                    provider: self.kind(),
+                    cleanup_token: format!("git:reuse:{}", branch_id),
+                })
+            }
+            WorkingCopyMode::InPlace => Err(ah_fs_snapshots_traits::Error::provider(
+                "Git branch reuse does not support InPlace mode",
+            )),
+        }
+    }
+
     fn detect_capabilities(&self, repo: &Path) -> ProviderCapabilities {
         if !Self::git_available() {
             return ProviderCapabilities {
@@ -728,6 +787,14 @@ impl FsSnapshotProvider for GitProvider {
                 // Remove worktree directory if it still exists
                 let _ = std::fs::remove_dir_all(&worktree_path);
             }
+            self.cleanup_readonly_mounts()
+        } else if token.starts_with("git:reuse:") {
+            // Format: git:reuse:worktree_path
+            // For reused worktrees, we don't destroy them - they are meant to persist
+            tracing::debug!(
+                token = %token,
+                "Skipping cleanup for reused Git worktree (persistence intended)"
+            );
             self.cleanup_readonly_mounts()
         } else {
             Err(ah_fs_snapshots_traits::Error::provider(format!(

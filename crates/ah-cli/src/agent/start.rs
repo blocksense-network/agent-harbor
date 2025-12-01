@@ -299,6 +299,7 @@ impl AgentStartArgs {
                     tmpfs_size: None,    // Use default tmpfs size for /tmp isolation
                     net_isolation: true, // Network isolation enabled by default
                     allow_internet: allow_network, // Internet access via slirp4netns if requested
+                    agentfs_overlay: None, // AgentFS bind-mount not configured for agent start
                 };
 
                 sandbox = sandbox.with_process_config(process_config);

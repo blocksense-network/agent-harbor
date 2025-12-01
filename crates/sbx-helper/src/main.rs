@@ -140,6 +140,7 @@ async fn main() -> anyhow::Result<()> {
         tmpfs_size: None,    // Use default tmpfs size for /tmp isolation
         net_isolation: true, // Network isolation enabled by default
         allow_internet: args.allow_network, // Internet access via slirp4netns if --allow-network
+        agentfs_overlay: None, // No AgentFS overlay for sbx-helper (not using fs-snapshots)
     };
 
     // Create filesystem configuration

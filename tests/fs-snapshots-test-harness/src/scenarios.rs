@@ -78,6 +78,27 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
                     GitProvider::new,
                 )?;
                 run_error_handling_test("Git", WorkingCopyMode::Worktree, GitProvider::new)?;
+                // Git branch reuse test needs its own repository since the matrix test
+                // cleans up its temp directory. Create a fresh one for this test.
+                {
+                    let reuse_temp = tempfile::tempdir()
+                        .context("failed to create Git branch reuse test directory")?;
+                    populate_test_repo(reuse_temp.path())?;
+                    initialize_git_repo(reuse_temp.path())
+                        .map_err(|err| anyhow!("failed to init git repo for reuse test: {err}"))?;
+                    run_branch_reuse_test(
+                        "Git",
+                        reuse_temp.path(),
+                        WorkingCopyMode::Worktree,
+                        GitProvider::new,
+                    )?;
+                    run_branch_reuse_error_test(
+                        "Git",
+                        reuse_temp.path(),
+                        WorkingCopyMode::Worktree,
+                        GitProvider::new,
+                    )?;
+                }
                 Ok(())
             }
             #[cfg(not(feature = "git"))]
@@ -136,6 +157,18 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
             )?;
             run_btrfs_quota_test(outcome.repo_path.as_path(), WorkingCopyMode::CowOverlay)?;
             run_error_handling_test("Btrfs", WorkingCopyMode::CowOverlay, BtrfsProvider::new)?;
+            run_branch_reuse_test(
+                "Btrfs",
+                outcome.repo_path.as_path(),
+                WorkingCopyMode::CowOverlay,
+                BtrfsProvider::new,
+            )?;
+            run_branch_reuse_error_test(
+                "Btrfs",
+                outcome.repo_path.as_path(),
+                WorkingCopyMode::CowOverlay,
+                BtrfsProvider::new,
+            )?;
             Ok(())
         }
         #[cfg(not(feature = "btrfs"))]
@@ -197,6 +230,18 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
             )?;
             run_zfs_quota_test(outcome.repo_path.as_path(), WorkingCopyMode::Worktree)?;
             run_error_handling_test("ZFS", WorkingCopyMode::Worktree, ZfsProvider::new)?;
+            run_branch_reuse_test(
+                "ZFS",
+                outcome.repo_path.as_path(),
+                WorkingCopyMode::CowOverlay,
+                ZfsProvider::new,
+            )?;
+            run_branch_reuse_error_test(
+                "ZFS",
+                outcome.repo_path.as_path(),
+                WorkingCopyMode::CowOverlay,
+                ZfsProvider::new,
+            )?;
             Ok(())
         }
         #[cfg(not(feature = "zfs"))]
@@ -238,6 +283,9 @@ pub fn provider_matrix(provider: &str) -> Result<()> {
                     WorkingCopyMode::CowOverlay,
                     AgentFsProvider::new,
                 )?;
+                // Note: Branch reuse test for AgentFS on macOS would require
+                // the interpose shim infrastructure. For now, we skip it here
+                // and test it via the FUSE path on Linux.
                 Ok(())
             }
 
@@ -329,6 +377,14 @@ fn agentfs_provider_matrix_linux() -> Result<()> {
         AgentFsProvider::new,
     )?;
     run_error_handling_test("AgentFS", WorkingCopyMode::CowOverlay, AgentFsProvider::new)?;
+    // AgentFS branch reuse is tested via the CLI in test-agentfs-sandbox.sh (T16.3)
+    // The AgentFsProvider.prepare_writable_workspace_with_branch is called there
+    run_branch_reuse_error_test(
+        "AgentFS",
+        outcome.repo_path.as_path(),
+        WorkingCopyMode::CowOverlay,
+        AgentFsProvider::new,
+    )?;
     Ok(())
 }
 
@@ -1180,5 +1236,141 @@ fn populate_test_repo(root: &Path) -> Result<()> {
     fs::write(subdir.join("nested_file.txt"), "Nested content")
         .context("failed to write nested file")?;
 
+    Ok(())
+}
+
+/// Test branch reuse functionality for a provider.
+///
+/// This test verifies that `prepare_writable_workspace_with_branch` correctly
+/// reuses an existing branch/worktree/clone, allowing files to persist across
+/// sandbox invocations.
+pub fn run_branch_reuse_test<P, F>(
+    provider_name: &str,
+    repo_path: &Path,
+    mode: WorkingCopyMode,
+    factory: F,
+) -> Result<()>
+where
+    P: FsSnapshotProvider,
+    F: Fn() -> P,
+{
+    tracing::info!(
+        "{} branch reuse test: verifying persistence across invocations",
+        provider_name
+    );
+
+    let provider = factory();
+
+    // Step 1: Create an initial workspace (this creates a new branch)
+    let workspace = provider
+        .prepare_writable_workspace(repo_path, mode)
+        .with_context(|| format!("{} failed to prepare initial workspace", provider_name))?;
+
+    let branch_id = workspace.exec_path.to_string_lossy().to_string();
+    tracing::info!(
+        "{} branch reuse test: created initial workspace at {}",
+        provider_name,
+        branch_id
+    );
+
+    // Step 2: Write a persistence marker file
+    let marker_content = format!("persistence_marker_{}", std::process::id());
+    let marker_path = workspace.exec_path.join("persistence_marker.txt");
+    fs::write(&marker_path, &marker_content)
+        .with_context(|| format!("{} failed to write persistence marker", provider_name))?;
+
+    ensure!(
+        marker_path.exists(),
+        "{} marker file should exist after write",
+        provider_name
+    );
+
+    // Step 3: Cleanup the workspace (simulating sandbox exit)
+    // Note: For reusable workspaces, we don't actually clean up
+    // We just drop the reference and will re-bind later
+
+    // Step 4: Reuse the same branch with prepare_writable_workspace_with_branch
+    let reused_provider = factory();
+    let reused_workspace = reused_provider
+        .prepare_writable_workspace_with_branch(repo_path, mode, &branch_id)
+        .with_context(|| format!("{} failed to reuse existing branch", provider_name))?;
+
+    tracing::info!(
+        "{} branch reuse test: reused workspace at {}",
+        provider_name,
+        reused_workspace.exec_path.display()
+    );
+
+    // Step 5: Verify the marker file persists
+    let reused_marker_path = reused_workspace.exec_path.join("persistence_marker.txt");
+    ensure!(
+        reused_marker_path.exists(),
+        "{} marker file should persist after branch reuse",
+        provider_name
+    );
+
+    let reused_content = fs::read_to_string(&reused_marker_path).with_context(|| {
+        format!(
+            "{} failed to read marker from reused workspace",
+            provider_name
+        )
+    })?;
+    ensure!(
+        reused_content == marker_content,
+        "{} marker content mismatch: expected '{}', got '{}'",
+        provider_name,
+        marker_content,
+        reused_content
+    );
+
+    tracing::info!(
+        "{} branch reuse test: successfully verified file persistence",
+        provider_name
+    );
+
+    // Cleanup
+    // Note: reused workspaces with "reuse" tokens don't get destroyed
+    provider.cleanup(&workspace.cleanup_token).ok();
+    reused_provider.cleanup(&reused_workspace.cleanup_token).ok();
+
+    tracing::info!("{} branch reuse test completed successfully", provider_name);
+    Ok(())
+}
+
+/// Test that branch reuse correctly rejects invalid branch IDs.
+pub fn run_branch_reuse_error_test<P, F>(
+    provider_name: &str,
+    repo_path: &Path,
+    mode: WorkingCopyMode,
+    factory: F,
+) -> Result<()>
+where
+    P: FsSnapshotProvider,
+    F: Fn() -> P,
+{
+    tracing::info!(
+        "{} branch reuse error test: verifying invalid branch ID is rejected",
+        provider_name
+    );
+
+    let provider = factory();
+
+    // Try to reuse a non-existent branch
+    let result = provider.prepare_writable_workspace_with_branch(
+        repo_path,
+        mode,
+        "/nonexistent/branch/path/that/should/not/exist",
+    );
+
+    ensure!(
+        result.is_err(),
+        "{} should reject invalid branch ID",
+        provider_name
+    );
+
+    tracing::info!(
+        "{} branch reuse error test: correctly rejected invalid branch ID",
+        provider_name
+    );
     Ok(())
 }

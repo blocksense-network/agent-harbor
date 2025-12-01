@@ -52,7 +52,15 @@ else
   AUTOMOUNT="${AGENTFS_FUSE_AUTOMOUNT:-0}"
 fi
 
-MOUNT_POINT="${AGENTFS_FUSE_MOUNT_POINT:-/tmp/agentfs}"
+# Default mount point uses XDG_RUNTIME_DIR (typically /run/user/<uid>) to avoid
+# conflicts with sandbox /tmp isolation. Falls back to /tmp/agentfs if not set.
+if [ -n "${AGENTFS_FUSE_MOUNT_POINT:-}" ]; then
+  MOUNT_POINT="$AGENTFS_FUSE_MOUNT_POINT"
+elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  MOUNT_POINT="$XDG_RUNTIME_DIR/agentfs"
+else
+  MOUNT_POINT="/tmp/agentfs"
+fi
 ALLOW_OTHER="${AGENTFS_FUSE_ALLOW_OTHER:-1}"
 ALLOW_ROOT="${AGENTFS_FUSE_ALLOW_ROOT:-0}"
 AUTO_UNMOUNT="${AGENTFS_FUSE_AUTO_UNMOUNT:-1}"

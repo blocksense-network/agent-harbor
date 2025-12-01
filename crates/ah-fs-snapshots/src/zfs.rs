@@ -229,6 +229,82 @@ impl FsSnapshotProvider for ZfsProvider {
         SnapshotProviderKind::Zfs
     }
 
+    fn prepare_writable_workspace_with_branch(
+        &self,
+        _repo: &Path,
+        mode: WorkingCopyMode,
+        branch_id: &str,
+    ) -> Result<PreparedWorkspace> {
+        match mode {
+            WorkingCopyMode::CowOverlay => {
+                // For ZFS, the branch_id can be:
+                // 1. A dataset/clone name (e.g., "pool/dataset-ah_clone_xxx")
+                // 2. A mount path of an existing clone
+                //
+                // First, try to interpret branch_id as a path directly
+                let path = PathBuf::from(branch_id);
+                if path.is_absolute() && path.exists() && path.is_dir() {
+                    tracing::info!(
+                        branch_id = %branch_id,
+                        "Reusing existing ZFS clone by path"
+                    );
+                    return Ok(PreparedWorkspace {
+                        exec_path: path,
+                        working_copy: mode,
+                        provider: self.kind(),
+                        cleanup_token: format!("zfs:reuse:{}", branch_id),
+                    });
+                }
+
+                // Try to interpret branch_id as a dataset name and get its mountpoint
+                let output = std::process::Command::new("zfs")
+                    .args(["get", "-H", "-o", "value", "mountpoint", branch_id])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .output()?;
+
+                if !output.status.success() {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "ZFS clone '{}' not found",
+                        branch_id
+                    )));
+                }
+
+                let mountpoint = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if mountpoint.is_empty() || mountpoint == "none" || mountpoint == "legacy" {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "ZFS clone '{}' is not mounted",
+                        branch_id
+                    )));
+                }
+
+                let exec_path = PathBuf::from(&mountpoint);
+                if !exec_path.exists() {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "ZFS clone mountpoint '{}' does not exist",
+                        mountpoint
+                    )));
+                }
+
+                tracing::info!(
+                    branch_id = %branch_id,
+                    exec_path = %exec_path.display(),
+                    "Reusing existing ZFS clone"
+                );
+
+                Ok(PreparedWorkspace {
+                    exec_path,
+                    working_copy: mode,
+                    provider: self.kind(),
+                    cleanup_token: format!("zfs:reuse:{}", branch_id),
+                })
+            }
+            _ => Err(ah_fs_snapshots_traits::Error::provider(
+                "ZFS branch reuse only supports CowOverlay mode",
+            )),
+        }
+    }
+
     fn detect_capabilities(&self, repo: &Path) -> ProviderCapabilities {
         if !Self::zfs_available() {
             return ProviderCapabilities {
@@ -492,6 +568,14 @@ impl FsSnapshotProvider for ZfsProvider {
             // Format: zfs:branch:clone_name
             let clone = token.strip_prefix("zfs:branch:").unwrap_or(token);
             let _ = self.daemon_client.delete_zfs(clone);
+            Ok(())
+        } else if token.starts_with("zfs:reuse:") {
+            // Format: zfs:reuse:branch_id
+            // For reused branches, we don't destroy them - they are meant to persist
+            tracing::debug!(
+                token = %token,
+                "Skipping cleanup for reused ZFS clone (persistence intended)"
+            );
             Ok(())
         } else {
             Err(ah_fs_snapshots_traits::Error::provider(format!(

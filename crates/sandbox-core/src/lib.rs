@@ -13,7 +13,7 @@ pub mod process;
 mod tests;
 
 pub use namespaces::{NamespaceConfig, NamespaceManager};
-pub use process::{ProcessConfig, ProcessManager};
+pub use process::{AgentFsOverlayConfig, ProcessConfig, ProcessManager};
 
 #[cfg(feature = "cgroups")]
 pub use sandbox_cgroups::{

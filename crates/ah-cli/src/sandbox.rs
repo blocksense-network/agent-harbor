@@ -22,7 +22,7 @@ use ah_sandbox_macos::SbplBuilder;
 use anyhow::{Context, Result};
 use clap::Args;
 #[cfg(target_os = "linux")]
-use sandbox_core::ProcessConfig;
+use sandbox_core::{AgentFsOverlayConfig, ProcessConfig};
 use std::path::{Path, PathBuf};
 
 /// Filesystem provider argument for internal use
@@ -158,6 +158,13 @@ pub struct SandboxRunArgs {
     #[serde(skip)]
     #[allow(unused)]
     pub agentfs_socket: Option<PathBuf>,
+
+    /// Reuse an existing AgentFS branch instead of creating a new one.
+    /// This allows files to persist across sandbox invocations.
+    /// The branch ID can be obtained from `ah agent fs branch create`.
+    #[arg(long = "branch", value_name = "BRANCH_ID")]
+    #[serde(skip)]
+    pub branch_id: Option<String>,
 
     /// Command and arguments to run in the sandbox
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -395,6 +402,7 @@ impl SandboxRunArgs {
         let SandboxRunArgs {
             sandbox_type,
             agentfs_socket,
+            branch_id,
             command,
             ..
         } = self;
@@ -458,6 +466,7 @@ impl SandboxRunArgs {
             &workspace_path,
             fs_snapshots.clone(),
             agentfs_socket.as_deref(),
+            branch_id.as_deref(),
         )
         .await
         .context("Failed to prepare writable workspace with any provider")?;
@@ -500,8 +509,44 @@ impl SandboxRunArgs {
         let result: Result<()> = {
             let exec_dir = prepared_workspace.exec_path.clone();
 
+            // F18: Bind-mount approach for AgentFS isolation.
+            // When using AgentFS, the FUSE mount (exec_dir) is bind-mounted to the
+            // original working directory (workspace_path) inside the sandbox's private
+            // mount namespace. This provides the same isolation guarantees as ZFS/Btrfs/Git.
+            //
+            // The key insight: if workspace_path != exec_dir, the working directory is
+            // outside the FUSE mount, and we need to bind-mount the overlay view.
+            let (sandbox_working_dir, agentfs_overlay_config) =
+                if provider_kind == SnapshotProviderKind::AgentFs && workspace_path != exec_dir {
+                    tracing::info!(
+                        target: "ah::sandbox::agentfs",
+                        fuse_mount = %exec_dir.display(),
+                        working_dir = %workspace_path.display(),
+                        "Configuring AgentFS bind-mount: {} -> {}",
+                        exec_dir.display(),
+                        workspace_path.display()
+                    );
+
+                    // Find the FUSE mount root by looking for .agentfs/control
+                    let fuse_mount_root =
+                        find_agentfs_mount_root(&exec_dir).unwrap_or_else(|| exec_dir.clone());
+
+                    let config = Some(AgentFsOverlayConfig {
+                        fuse_mount_path: fuse_mount_root.to_string_lossy().to_string(),
+                        branch_view_path: exec_dir.to_string_lossy().to_string(),
+                        branch_id: None, // Could extract from cleanup_token if needed
+                    });
+
+                    // Use original workspace path as working directory
+                    (workspace_path.clone(), config)
+                } else {
+                    // Either not AgentFS, or workspace is already inside the FUSE mount
+                    // (no bind mount needed - access the FUSE mount directly)
+                    (exec_dir.clone(), None)
+                };
+
             tracing::info!(
-                workspace_path = %exec_dir.display(),
+                workspace_path = %sandbox_working_dir.display(),
                 command = ?command,
                 allow_network = allow_network,
                 allow_containers = allow_containers,
@@ -510,6 +555,7 @@ impl SandboxRunArgs {
                 debug_enabled = debug_enabled,
                 mount_rw = ?mount_rw,
                 overlay = ?overlay,
+                agentfs_bind_mount = agentfs_overlay_config.is_some(),
                 "Running command inside sandbox workspace"
             );
 
@@ -522,18 +568,20 @@ impl SandboxRunArgs {
                 seccomp_debug: debug_enabled,
                 mount_rw: &mount_rw,
                 overlay: &overlay,
-                working_dir: Some(exec_dir.as_path()),
+                working_dir: Some(sandbox_working_dir.as_path()),
                 tmpfs_size: Some(&tmpfs_size),
             })?
             .with_process_config(ProcessConfig {
                 command,
-                working_dir: Some(exec_dir.to_string_lossy().to_string()),
+                working_dir: Some(sandbox_working_dir.to_string_lossy().to_string()),
                 env: env_vars,
                 tmpfs_size: Some(tmpfs_size.clone()),
                 // Network isolation is enabled by default (net_ns = true)
                 // When allow_network is true, slirp4netns provides internet access
                 net_isolation: true,           // Always isolate for security
                 allow_internet: allow_network, // Internet access via slirp4netns if requested
+                // F18: Configure AgentFS overlay bind-mount for filesystem isolation
+                agentfs_overlay: agentfs_overlay_config,
             });
 
             let exec_result = sandbox.exec_process().await;
@@ -609,13 +657,20 @@ fn convert_fs_snapshots_type(fs_snapshots: FsSnapshotsType) -> FsProviderArg {
 }
 
 /// Prepare a writable workspace using FS snapshots with fallback logic
+///
+/// # Arguments
+/// * `workspace_path` - The path to the workspace directory
+/// * `fs_snapshots` - The filesystem snapshot provider type to use
+/// * `agentfs_socket` - Optional path to an existing AgentFS daemon socket
+/// * `branch_id` - Optional branch ID to reuse instead of creating a new branch
 pub async fn prepare_workspace_with_fallback(
     workspace_path: &std::path::Path,
     fs_snapshots: FsSnapshotsType,
     agentfs_socket: Option<&std::path::Path>,
+    branch_id: Option<&str>,
 ) -> Result<PreparedWorkspace> {
     #[cfg(not(feature = "agentfs"))]
-    let _ = agentfs_socket;
+    let _ = (agentfs_socket, branch_id);
 
     let fs_provider = convert_fs_snapshots_type(fs_snapshots);
     // Handle explicit provider selection or auto-detection
@@ -706,9 +761,27 @@ pub async fn prepare_workspace_with_fallback(
                             tracing::debug!(
                                 target: "ah::sandbox::agentfs",
                                 mode = ?mode,
+                                branch_id = ?branch_id,
                                 "Trying AgentFS workspace preparation mode"
                             );
-                            match provider.prepare_writable_workspace(workspace_path, mode) {
+
+                            // Use branch reuse if a branch_id was provided
+                            let result = if let Some(existing_branch) = branch_id {
+                                tracing::info!(
+                                    target: "ah::sandbox::agentfs",
+                                    branch_id = %existing_branch,
+                                    "Reusing existing AgentFS branch for persistence"
+                                );
+                                provider.prepare_writable_workspace_with_branch(
+                                    workspace_path,
+                                    mode,
+                                    existing_branch,
+                                )
+                            } else {
+                                provider.prepare_writable_workspace(workspace_path, mode)
+                            };
+
+                            match result {
                                 Ok(workspace) => {
                                     tracing::info!(
                                         target: "ah::sandbox::agentfs",
@@ -717,6 +790,7 @@ pub async fn prepare_workspace_with_fallback(
                                         exec_path = %workspace.exec_path.display(),
                                         cleanup_token = %workspace.cleanup_token,
                                         transport = if cfg!(target_os = "linux") { "fuse" } else { "interpose" },
+                                        branch_reused = branch_id.is_some(),
                                         "Successfully prepared AgentFS sandbox workspace"
                                     );
                                     return Ok(workspace);
@@ -764,12 +838,33 @@ pub async fn prepare_workspace_with_fallback(
                     };
 
                     for mode in modes_to_try {
-                        tracing::debug!(mode = ?mode, "Trying ZFS workspace preparation mode");
-                        match provider.prepare_writable_workspace(workspace_path, mode) {
+                        tracing::debug!(
+                            mode = ?mode,
+                            branch_id = ?branch_id,
+                            "Trying ZFS workspace preparation mode"
+                        );
+
+                        // Use branch reuse if a branch_id was provided
+                        let result = if let Some(existing_branch) = branch_id {
+                            tracing::info!(
+                                branch_id = %existing_branch,
+                                "Reusing existing ZFS clone for persistence"
+                            );
+                            provider.prepare_writable_workspace_with_branch(
+                                workspace_path,
+                                mode,
+                                existing_branch,
+                            )
+                        } else {
+                            provider.prepare_writable_workspace(workspace_path, mode)
+                        };
+
+                        match result {
                             Ok(workspace) => {
                                 tracing::info!(
                                     provider = "ZFS",
                                     mode = ?mode,
+                                    branch_reused = branch_id.is_some(),
                                     "Successfully prepared ZFS workspace"
                                 );
                                 return Ok(workspace);
@@ -807,12 +902,33 @@ pub async fn prepare_workspace_with_fallback(
                     };
 
                     for mode in modes_to_try {
-                        tracing::debug!(mode = ?mode, "Trying Btrfs workspace preparation mode");
-                        match provider.prepare_writable_workspace(workspace_path, mode) {
+                        tracing::debug!(
+                            mode = ?mode,
+                            branch_id = ?branch_id,
+                            "Trying Btrfs workspace preparation mode"
+                        );
+
+                        // Use branch reuse if a branch_id was provided
+                        let result = if let Some(existing_branch) = branch_id {
+                            tracing::info!(
+                                branch_id = %existing_branch,
+                                "Reusing existing Btrfs subvolume for persistence"
+                            );
+                            provider.prepare_writable_workspace_with_branch(
+                                workspace_path,
+                                mode,
+                                existing_branch,
+                            )
+                        } else {
+                            provider.prepare_writable_workspace(workspace_path, mode)
+                        };
+
+                        match result {
                             Ok(workspace) => {
                                 tracing::info!(
                                     provider = "Btrfs",
                                     mode = ?mode,
+                                    branch_reused = branch_id.is_some(),
                                     "Successfully prepared Btrfs workspace"
                                 );
                                 return Ok(workspace);
@@ -850,12 +966,33 @@ pub async fn prepare_workspace_with_fallback(
                     let modes_to_try = vec![WorkingCopyMode::CowOverlay, WorkingCopyMode::InPlace];
 
                     for mode in modes_to_try {
-                        tracing::debug!(mode = ?mode, "Trying Git workspace preparation mode");
-                        match provider.prepare_writable_workspace(workspace_path, mode) {
+                        tracing::debug!(
+                            mode = ?mode,
+                            branch_id = ?branch_id,
+                            "Trying Git workspace preparation mode"
+                        );
+
+                        // Use branch reuse if a branch_id was provided
+                        let result = if let Some(existing_branch) = branch_id {
+                            tracing::info!(
+                                branch_id = %existing_branch,
+                                "Reusing existing Git worktree for persistence"
+                            );
+                            provider.prepare_writable_workspace_with_branch(
+                                workspace_path,
+                                mode,
+                                existing_branch,
+                            )
+                        } else {
+                            provider.prepare_writable_workspace(workspace_path, mode)
+                        };
+
+                        match result {
                             Ok(workspace) => {
                                 tracing::info!(
                                     provider = "Git",
                                     mode = ?mode,
+                                    branch_reused = branch_id.is_some(),
                                     "Successfully prepared Git workspace"
                                 );
                                 return Ok(workspace);
@@ -1377,6 +1514,28 @@ pub fn parse_bool_flag(s: &str) -> Result<bool> {
             "Invalid boolean value: '{}'. Expected yes/no, true/false, or 1/0",
             s
         )),
+    }
+}
+
+/// Find the AgentFS FUSE mount root by walking up from a path looking for `.agentfs/control`.
+///
+/// This is used for the bind-mount approach (F18) to determine the mount root when
+/// configuring the AgentFS overlay. The mount root is needed to validate that the
+/// FUSE mount is accessible and to set up the bind mount correctly.
+///
+/// Returns `None` if no AgentFS control file is found.
+#[cfg(target_os = "linux")]
+fn find_agentfs_mount_root(start_path: &Path) -> Option<PathBuf> {
+    let mut cursor = start_path;
+    loop {
+        let control_path = cursor.join(".agentfs").join("control");
+        if control_path.exists() {
+            return Some(cursor.to_path_buf());
+        }
+        match cursor.parent() {
+            Some(parent) => cursor = parent,
+            None => return None,
+        }
     }
 }
 
