@@ -763,10 +763,10 @@ mod viewmodel_tests {
         assert_eq!(vm.modal_state, ModalState::None);
         assert!(vm.active_modal.is_none());
 
-        // Focus should return to the model selector button
+        // Focus should return to the task description
         assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
         if let Some(card) = vm.draft_cards.first() {
-            assert_eq!(card.focus_element, CardFocusElement::ModelSelector);
+            assert_eq!(card.focus_element, CardFocusElement::TaskDescription);
         }
 
         // Verify that the selected model was applied to the card
@@ -889,11 +889,11 @@ mod viewmodel_tests {
                 "Modal should be dismissed"
             );
 
-            // Focus should return to the repository selector
+            // Focus should return to task description
             assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
             assert_eq!(
                 vm.draft_cards[0].focus_element,
-                CardFocusElement::RepositorySelector
+                CardFocusElement::TaskDescription
             );
         }
 
@@ -931,11 +931,11 @@ mod viewmodel_tests {
                 "Modal should be dismissed"
             );
 
-            // Focus should return to the branch selector
+            // Focus should return to task description
             assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
             assert_eq!(
                 vm.draft_cards[0].focus_element,
-                CardFocusElement::BranchSelector
+                CardFocusElement::TaskDescription
             );
         }
 
@@ -973,11 +973,11 @@ mod viewmodel_tests {
                 "Modal should be dismissed"
             );
 
-            // Focus should return to the model selector
+            // Focus should return to task description
             assert_eq!(vm.focus_element, DashboardFocusState::DraftTask(0));
             assert_eq!(
                 vm.draft_cards[0].focus_element,
-                CardFocusElement::ModelSelector
+                CardFocusElement::TaskDescription
             );
         }
 

@@ -227,6 +227,45 @@ The TUI implementation provides these core capabilities:
   - MVVM architecture ready for real-time updates and session monitoring
   - REST client integration tested and ready for production use
 
+**T2.6. Unified Modal Focus Restoration** ✅ **COMPLETED** (January 2026)
+
+- **Deliverables**:
+  - ✅ Consistent focus restoration to task description textarea for all modal types
+  - ✅ Unified behavior across repository, branch, model, and settings selector modals
+  - ✅ Focus restoration on both ESC (cancel) and Enter (apply) key presses
+  - ✅ Alignment with Launch Options modal focus restoration behavior
+
+- **Test Coverage**:
+  - ✅ Repository modal returns focus to task description (test: `repository_modal_returns_focus_to_repository_selector`)
+  - ✅ Branch modal returns focus to task description (test: `branch_modal_returns_focus_to_branch_selector`)
+  - ✅ Model modal returns focus to task description (test: `model_modal_returns_focus_to_model_selector`)
+  - ✅ Multiple modal dismissals maintain correct focus (test: `multiple_modal_dismissals_maintain_correct_focus`)
+  - ✅ Enter key selection returns focus to task description (test: `viewmodel_enter_selects_from_modal_and_returns_focus`)
+  - ✅ Draft button navigation maintains focus consistency (test: `test_draft_button_navigation_focus`)
+
+- **Implementation Details**:
+  - **Unified Behavior**: All modal types now use consistent focus restoration logic
+  - **ESC Key Handling**: Updated `handle_dismiss_overlay` to restore focus to `CardFocusElement::TaskDescription` for all modal types (Search, AgentSelection, LaunchOptions, Settings)
+  - **Enter Key Handling**: Removed explicit focus override in `handle_modal_operation` for AgentSelection that was setting focus to ModelSelector after Enter
+  - **Workflow Optimization**: After making any selection via a modal, users are immediately returned to the primary text editing context where they can continue editing or quickly launch tasks
+
+- **Architecture**:
+  - **Before**: Different modal types had inconsistent focus restoration behavior
+    - Launch Options modal: returned focus to task description
+    - Repository/Branch/Model selectors: returned focus to their respective selector buttons
+  - **After**: All modals consistently restore focus to task description textarea
+  - **Benefits**: Streamlined workflow with predictable focus behavior; users can make selections and immediately continue editing without additional navigation
+
+- **Key Source Files**:
+  - `crates/ah-tui/src/view_model/agents_selector_model.rs` - Modal dismiss and selection handling with unified focus restoration
+  - `crates/ah-tui/tests/modal_focus_restoration_tests.rs` - Comprehensive test suite for all modal types
+  - `crates/ah-tui/tests/model_viewmodel_tests.rs` - Integration tests for modal focus behavior
+
+- **Integration Points**:
+  - Consistent with Launch Options modal behavior documented in T2.5
+  - Aligns with TUI-PRD.md "Modal Focus Restoration" specification
+  - Provides predictable keyboard navigation workflow across all modal interactions
+
 **Testing Framework Implementation** ✅ **COMPLETED** (September 26, 2025)
 
 - **Deliverables**:
@@ -352,7 +391,7 @@ The TUI implementation provides these core capabilities:
   - **Error Handling**: Invalid sessions, panes, and edge cases
   - **State Verification**: Direct tmux command verification of window/pane states
   - **Integration Testing**: End-to-end workflows with proper cleanup
-  - **Strategic Golden Snapshot Testing**: Real tmux screen snapshots integrated into existing tests using expectrl + vt100 + insta:
+  - **Strategic Golden Snapshot Testing**: Real tmux screen snapshots integrated into existing tests using expectrl + vt100:
     - **Continuous Session Approach**: Single attached tmux session per test with vt100 parser continuously capturing output
     - **Thread-Local Sessions**: Each test thread gets its own tmux session to avoid interference
     - **API Drives Existing Sessions**: Tests start tmux attached, API drives existing session without creating detached sessions

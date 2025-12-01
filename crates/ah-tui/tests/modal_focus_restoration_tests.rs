@@ -54,7 +54,7 @@ fn repository_modal_returns_focus_to_repository_selector() {
     // Press ESC to dismiss
     press_esc_and_verify_closed(&mut vm, &mut log);
 
-    // Verify focus returned to repository selector
+    // Verify focus returned to task description
     assert_eq!(
         vm.focus_element,
         DashboardFocusState::DraftTask(0),
@@ -62,8 +62,8 @@ fn repository_modal_returns_focus_to_repository_selector() {
     );
     assert_eq!(
         vm.draft_cards[0].focus_element,
-        CardFocusElement::RepositorySelector,
-        "Card focus should return to repository selector (log: {log_hint})"
+        CardFocusElement::TaskDescription,
+        "Card focus should return to task description (log: {log_hint})"
     );
 }
 
@@ -89,7 +89,7 @@ fn branch_modal_returns_focus_to_branch_selector() {
     // Press ESC to dismiss
     press_esc_and_verify_closed(&mut vm, &mut log);
 
-    // Verify focus returned to branch selector
+    // Verify focus returned to task description
     assert_eq!(
         vm.focus_element,
         DashboardFocusState::DraftTask(0),
@@ -97,8 +97,8 @@ fn branch_modal_returns_focus_to_branch_selector() {
     );
     assert_eq!(
         vm.draft_cards[0].focus_element,
-        CardFocusElement::BranchSelector,
-        "Card focus should return to branch selector (log: {log_hint})"
+        CardFocusElement::TaskDescription,
+        "Card focus should return to task description (log: {log_hint})"
     );
 }
 
@@ -129,7 +129,7 @@ fn model_modal_returns_focus_to_model_selector() {
     // Press ESC to dismiss
     press_esc_and_verify_closed(&mut vm, &mut log);
 
-    // Verify focus returned to model selector
+    // Verify focus returned to task description
     assert_eq!(
         vm.focus_element,
         DashboardFocusState::DraftTask(0),
@@ -137,8 +137,8 @@ fn model_modal_returns_focus_to_model_selector() {
     );
     assert_eq!(
         vm.draft_cards[0].focus_element,
-        CardFocusElement::ModelSelector,
-        "Card focus should return to model selector (log: {log_hint})"
+        CardFocusElement::TaskDescription,
+        "Card focus should return to task description (log: {log_hint})"
     );
 }
 
@@ -244,8 +244,8 @@ fn multiple_modal_dismissals_maintain_correct_focus() {
     press_esc_and_verify_closed(&mut vm, &mut log);
     assert_eq!(
         vm.draft_cards[0].focus_element,
-        CardFocusElement::ModelSelector,
-        "Focus should return to model selector (log: {log_hint})"
+        CardFocusElement::TaskDescription,
+        "Focus should return to task description (log: {log_hint})"
     );
 
     // 2. Open launch options modal
@@ -269,8 +269,8 @@ fn multiple_modal_dismissals_maintain_correct_focus() {
     press_esc_and_verify_closed(&mut vm, &mut log);
     assert_eq!(
         vm.draft_cards[0].focus_element,
-        CardFocusElement::ModelSelector,
-        "Focus should return to model selector again (log: {log_hint})"
+        CardFocusElement::TaskDescription,
+        "Focus should return to task description (log: {log_hint})"
     );
 }
 

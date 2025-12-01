@@ -341,8 +341,10 @@ impl ViewModel {
             // Determine which focus element to restore based on modal type
             let focus_element_to_restore = if let Some(modal) = &self.active_modal {
                 match modal.modal_type {
-                    ModalType::AgentSelection { .. } => Some(CardFocusElement::ModelSelector),
+                    ModalType::Search { .. } => Some(CardFocusElement::TaskDescription),
+                    ModalType::AgentSelection { .. } => Some(CardFocusElement::TaskDescription),
                     ModalType::LaunchOptions { .. } => Some(CardFocusElement::TaskDescription),
+                    ModalType::Settings { .. } => Some(CardFocusElement::TaskDescription),
                     _ => None,
                 }
             } else {
@@ -3262,11 +3264,7 @@ impl ViewModel {
                             // Apply all current selections and close modal
                             let modal_type = modal.modal_type.clone();
                             self.apply_modal_selection(modal_type, String::new());
-                            // Focus should return to the model picker button
-                            self.change_focus(DashboardFocusState::DraftTask(0));
-                            if let Some(card) = self.draft_cards.get_mut(0) {
-                                card.focus_element = CardFocusElement::ModelSelector;
-                            }
+                            // Focus returns to task description (handled by apply_modal_selection)
                             true
                         }
                         #[allow(unreachable_patterns)]
