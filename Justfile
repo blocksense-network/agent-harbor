@@ -1254,3 +1254,11 @@ inspect-ahr *args:
       | jq -c 'select(.reason=="compiler-message" and .message.level=="error")' \
       # The above shows only build errors from cargo
     @./target/debug/inspect_ahr {{args}}
+
+# Run Proof-of-Concept usage limits verification scripts
+# Shows current usage limits for AI coding assistants (Claude, Codex, Cursor, Replit)
+poc-show-usage-limits:
+    @python PoC/agent-limits/claude_usage_verifier.py
+    @python PoC/agent-limits/codex_usage_verifier.py
+    @CURSOR_AUTH_TOKEN="$(cat PoC/agent-limits/cursor_token.txt 2>/dev/null || echo '')" python PoC/agent-limits/cursor_usage_verifier.py
+    @python PoC/agent-limits/replit_usage_verifier.py

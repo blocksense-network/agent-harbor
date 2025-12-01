@@ -81,6 +81,10 @@ exclude = [
   "https://man.archlinux.org/.*",
   # Apple developer docs often fail TLS/redirect checks in CI
   "https://developer.apple.com/.*",
+  # API endpoints that require authentication
+  "https://api.cursor.com/.*",
+  "https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan.*",
+  "https://replit.com/graphql",
 ]
 max_concurrency = 8
 timeout = 20
