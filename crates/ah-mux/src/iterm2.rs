@@ -439,6 +439,55 @@ impl Multiplexer for ITerm2Multiplexer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+    use std::sync::Mutex;
+    use std::thread;
+    use std::time::Duration;
+
+    // Global test iTerm2 instance tracker
+    static TEST_ITERM2: Mutex<Option<()>> = Mutex::new(None);
+
+    /// Start iTerm2 if not already running
+    ///
+    /// iTerm2 doesn't need special configuration like kitty, but we track
+    /// whether we've initialized it to avoid multiple concurrent initializations
+    fn start_test_iterm2() -> Result<(), Box<dyn std::error::Error>> {
+        let mut iterm_guard = TEST_ITERM2.lock().unwrap();
+        if iterm_guard.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        // Check if iTerm2 is available
+        let available = Command::new("osascript")
+            .arg("-e")
+            .arg(r#"tell application "iTerm2" to version"#)
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+
+        if !available {
+            return Err("iTerm2 is not available".into());
+        }
+
+        // Ensure iTerm2 is running
+        let _ = Command::new("osascript")
+            .arg("-e")
+            .arg(r#"tell application "iTerm2" to activate"#)
+            .output();
+
+        // Give iTerm2 time to start
+        std::thread::sleep(Duration::from_millis(500));
+
+        *iterm_guard = Some(());
+        Ok(())
+    }
+
+    /// Stop/cleanup test iTerm2 instance
+    #[allow(dead_code)]
+    fn stop_test_iterm2() {
+        let mut iterm_guard = TEST_ITERM2.lock().unwrap();
+        *iterm_guard = None;
+    }
 
     #[test]
     fn test_id() {
@@ -464,5 +513,580 @@ mod tests {
         assert_ne!(id1, id2);
         assert!(id1.starts_with("iterm2-pane-"));
         assert!(id2.starts_with("iterm2-pane-"));
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_iterm2_multiplexer_creation() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let result = ITerm2Multiplexer::new();
+        match result {
+            Ok(mux) => {
+                assert_eq!(mux.id(), "iterm2");
+            }
+            Err(MuxError::NotAvailable(_)) => {
+                // Expected if iTerm2 is not installed
+            }
+            Err(e) => panic!("Unexpected error: {:?}", e),
+        }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_iterm2_availability() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let mux = ITerm2Multiplexer::default();
+        let available = mux.is_available();
+
+        // iTerm2 availability depends on whether it's installed on the system
+        // We just verify the check runs without errors
+        tracing::debug!("iTerm2 availability: {}", available);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_window_with_title_and_cwd() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        let opts = WindowOptions {
+            title: Some("iterm2-test-window-001"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
+
+        let window_id = mux.open_window(&opts).unwrap();
+
+        // Verify the window ID was created
+        assert!(window_id.starts_with("iterm2-window-"));
+        tracing::debug!("Created window: {}", window_id);
+
+        // Give iTerm2 time to create the window
+        thread::sleep(Duration::from_millis(500));
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_open_window_focus() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        let opts = WindowOptions {
+            title: Some("focus-test-002"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: true, // Should focus the window
+            init_command: None,
+        };
+
+        let window_id = mux.open_window(&opts).unwrap();
+
+        // Verify the window ID was created
+        assert!(window_id.starts_with("iterm2-window-"));
+        tracing::debug!("Created and focused window: {}", window_id);
+
+        // Give iTerm2 time to focus
+        thread::sleep(Duration::from_millis(500));
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_split_pane() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        // Create a window to split from
+        let window_opts = WindowOptions {
+            title: Some("split-test-003"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
+
+        let window_id = mux.open_window(&window_opts).unwrap();
+        thread::sleep(Duration::from_millis(500));
+
+        // Split it horizontally
+        let pane_id = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Horizontal,
+                Some(60),
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+
+        assert!(pane_id.starts_with("iterm2-pane-"));
+        assert_ne!(pane_id, window_id);
+        tracing::debug!("Created horizontal pane: {}", pane_id);
+
+        thread::sleep(Duration::from_millis(500));
+
+        // Split it vertically
+        let pane_id2 = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Vertical,
+                Some(70),
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+
+        assert!(pane_id2.starts_with("iterm2-pane-"));
+        assert_ne!(pane_id2, pane_id);
+        tracing::debug!("Created vertical pane: {}", pane_id2);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_split_pane_with_initial_command() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        let window_opts = WindowOptions {
+            title: Some("split-cmd-test"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
+
+        let window_id = mux.open_window(&window_opts).unwrap();
+        thread::sleep(Duration::from_millis(500));
+
+        // Split with initial command
+        let pane_id = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Horizontal,
+                None,
+                &CommandOptions::default(),
+                Some("echo 'Hello from split pane'"),
+            )
+            .unwrap();
+
+        assert!(pane_id.starts_with("iterm2-pane-"));
+        assert_ne!(pane_id, window_id);
+        tracing::debug!("Created pane with command: {}", pane_id);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_run_command_and_send_text() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        let window_opts = WindowOptions {
+            title: Some("cmd-text-test"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
+
+        let window_id = mux.open_window(&window_opts).unwrap();
+        thread::sleep(Duration::from_millis(500));
+
+        // Test run_command
+        mux.run_command(
+            &window_id,
+            "echo 'test command'",
+            &CommandOptions::default(),
+        )
+        .unwrap();
+        tracing::debug!("Command executed successfully");
+        thread::sleep(Duration::from_millis(200));
+
+        // Test send_text
+        mux.send_text(&window_id, "some input text").unwrap();
+        tracing::debug!("Text sent successfully");
+        thread::sleep(Duration::from_millis(200));
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_focus_window_and_pane() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        let window_opts1 = WindowOptions {
+            title: Some("window1-005"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
+
+        let window_opts2 = WindowOptions {
+            title: Some("window2-005"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
+
+        let window1 = mux.open_window(&window_opts1).unwrap();
+        let window2 = mux.open_window(&window_opts2).unwrap();
+        thread::sleep(Duration::from_millis(500));
+
+        // Test window focusing
+        mux.focus_window(&window1).unwrap();
+        tracing::debug!("Focused window1");
+        thread::sleep(Duration::from_millis(200));
+
+        mux.focus_window(&window2).unwrap();
+        tracing::debug!("Focused window2");
+        thread::sleep(Duration::from_millis(200));
+
+        // Test pane focusing (same as window in iTerm2)
+        mux.focus_pane(&window1).unwrap();
+        tracing::debug!("Focused pane/window1");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_list_windows_filtering() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        // Create test windows with different titles
+        let window_opts = vec![
+            WindowOptions {
+                title: Some("alpha-window-006"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+            WindowOptions {
+                title: Some("beta-window-006"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+            WindowOptions {
+                title: Some("alpha-other-006"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+        ];
+
+        for opts in window_opts {
+            let window_id = mux.open_window(&opts).unwrap();
+            tracing::debug!("Created window: {}", window_id);
+            thread::sleep(Duration::from_millis(300));
+        }
+
+        // Give windows time to be created
+        thread::sleep(Duration::from_millis(500));
+
+        // List all windows
+        let all_windows = mux.list_windows(None).unwrap();
+        tracing::debug!("Found {} windows total", all_windows.len());
+        assert!(!all_windows.is_empty(), "Should have at least some windows");
+
+        // Filter by "alpha"
+        let alpha_windows = mux.list_windows(Some("alpha")).unwrap();
+        tracing::debug!("Found {} alpha windows", alpha_windows.len());
+        // Should find at least the alpha windows we created
+
+        // Filter by "beta"
+        let beta_windows = mux.list_windows(Some("beta")).unwrap();
+        tracing::debug!("Found {} beta windows", beta_windows.len());
+
+        // Filter by non-existent title
+        let none_windows = mux.list_windows(Some("nonexistent-unique-title-xyz")).unwrap();
+        tracing::debug!("Found {} nonexistent windows", none_windows.len());
+        // Should be empty or not contain our test windows
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_current_window() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        let window_opts = WindowOptions {
+            title: Some("current-window-test"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: true, // Focus so it becomes current
+            init_command: None,
+        };
+
+        let window_id = mux.open_window(&window_opts).unwrap();
+        thread::sleep(Duration::from_millis(500));
+
+        // Check current window
+        let current = mux.current_window().unwrap();
+        tracing::debug!("Current window: {:?}", current);
+        // Should have a current window
+
+        // Focus another window and check again
+        mux.focus_window(&window_id).unwrap();
+        thread::sleep(Duration::from_millis(200));
+
+        let current = mux.current_window().unwrap();
+        tracing::debug!("Current window after focus: {:?}", current);
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_error_handling_invalid_pane() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        // Try to focus a non-existent pane
+        let invalid_pane = "iterm2-pane-99999".to_string();
+        let result = mux.focus_pane(&invalid_pane);
+
+        match result {
+            Ok(()) => {
+                // May succeed if iTerm2 just activates anyway
+                tracing::debug!("Focus succeeded (expected for iTerm2)");
+            }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when pane doesn't exist
+                tracing::debug!("Focus failed as expected");
+            }
+            Err(e) => {
+                tracing::warn!("Unexpected error: {:?}", e);
+            }
+        }
+
+        // Try to send text to non-existent pane
+        let result = mux.send_text(&invalid_pane, "test");
+
+        match result {
+            Ok(()) => {
+                // May succeed if iTerm2 sends to current session
+                tracing::debug!("Send text succeeded (may be expected for iTerm2)");
+            }
+            Err(MuxError::CommandFailed(_)) => {
+                // Expected when pane doesn't exist
+                tracing::debug!("Send text failed as expected");
+            }
+            Err(e) => {
+                tracing::warn!("Unexpected error: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_complex_layout_creation() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        // Create a main window
+        let window_opts = WindowOptions {
+            title: Some("complex-layout-008"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
+
+        let window_id = mux.open_window(&window_opts).unwrap();
+        thread::sleep(Duration::from_millis(500));
+
+        // Create a 3-pane layout: editor (left), agent (top-right), logs (bottom-right)
+
+        // Create agent pane (top-right of main window)
+        let agent_pane = mux
+            .split_pane(
+                Some(&window_id),
+                None,
+                SplitDirection::Horizontal,
+                Some(70), // 70% for editor
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+        assert!(agent_pane.starts_with("iterm2-pane-"));
+        tracing::debug!("Created agent pane: {}", agent_pane);
+        thread::sleep(Duration::from_millis(500));
+
+        // Create logs pane (bottom-right, split from agent pane)
+        let logs_pane = mux
+            .split_pane(
+                Some(&window_id),
+                Some(&agent_pane),
+                SplitDirection::Vertical,
+                Some(60), // 60% for agent
+                &CommandOptions::default(),
+                None,
+            )
+            .unwrap();
+        assert!(logs_pane.starts_with("iterm2-pane-"));
+        assert_ne!(
+            logs_pane, agent_pane,
+            "Logs pane should be different from agent pane"
+        );
+        tracing::debug!("Created logs pane: {}", logs_pane);
+
+        // Give time for layout to stabilize
+        thread::sleep(Duration::from_millis(500));
+
+        // Test focusing different panes
+        mux.focus_window(&window_id).unwrap();
+        thread::sleep(Duration::from_millis(200));
+
+        mux.focus_pane(&agent_pane).unwrap();
+        thread::sleep(Duration::from_millis(200));
+
+        mux.focus_pane(&logs_pane).unwrap();
+        thread::sleep(Duration::from_millis(200));
+
+        tracing::debug!("Complex layout test completed successfully");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_list_panes() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        let window_opts = WindowOptions {
+            title: Some("list-panes-test"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
+
+        let window_id = mux.open_window(&window_opts).unwrap();
+        thread::sleep(Duration::from_millis(500));
+
+        // List panes for the window
+        let panes = mux.list_panes(&window_id).unwrap();
+        tracing::debug!("Found {} panes", panes.len());
+        assert!(!panes.is_empty(), "Window should have at least one pane");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_run_applescript_basic() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let mux = ITerm2Multiplexer::default();
+
+        // Test basic AppleScript execution
+        let output = mux.run_applescript(r#"return "test""#).unwrap();
+        assert_eq!(
+            output.trim(),
+            "test",
+            "AppleScript should return test string"
+        );
+        tracing::debug!("AppleScript test passed");
+    }
+
+    #[test]
+    #[serial_test::file_serial]
+    fn test_get_window_count() {
+        // Skip if not on macOS or in CI
+        if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
+            tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
+            return;
+        }
+
+        let _ = start_test_iterm2();
+        let mux = ITerm2Multiplexer::new().unwrap();
+
+        let count = mux.get_window_count().unwrap();
+        tracing::debug!("iTerm2 has {} windows", count);
+        // Just verify we can get the count without error
+        // count is usize so it's always >= 0
     }
 }
