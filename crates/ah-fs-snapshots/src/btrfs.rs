@@ -130,6 +130,64 @@ impl FsSnapshotProvider for BtrfsProvider {
         SnapshotProviderKind::Btrfs
     }
 
+    fn prepare_writable_workspace_with_branch(
+        &self,
+        _repo: &Path,
+        mode: WorkingCopyMode,
+        branch_id: &str,
+    ) -> Result<PreparedWorkspace> {
+        match mode {
+            WorkingCopyMode::CowOverlay => {
+                // For Btrfs, the branch_id is the path to an existing subvolume
+                let path = PathBuf::from(branch_id);
+
+                if !path.exists() {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "Btrfs subvolume path '{}' does not exist",
+                        branch_id
+                    )));
+                }
+
+                if !path.is_dir() {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "Btrfs subvolume path '{}' is not a directory",
+                        branch_id
+                    )));
+                }
+
+                // Verify it's actually a btrfs subvolume
+                let output = std::process::Command::new("btrfs")
+                    .args(["subvolume", "show"])
+                    .arg(&path)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .output()?;
+
+                if !output.status.success() {
+                    return Err(ah_fs_snapshots_traits::Error::provider(format!(
+                        "Path '{}' is not a Btrfs subvolume",
+                        branch_id
+                    )));
+                }
+
+                tracing::info!(
+                    branch_id = %branch_id,
+                    "Reusing existing Btrfs subvolume"
+                );
+
+                Ok(PreparedWorkspace {
+                    exec_path: path,
+                    working_copy: mode,
+                    provider: self.kind(),
+                    cleanup_token: format!("btrfs:reuse:{}", branch_id),
+                })
+            }
+            _ => Err(ah_fs_snapshots_traits::Error::provider(
+                "Btrfs branch reuse only supports CowOverlay mode",
+            )),
+        }
+    }
+
     fn detect_capabilities(&self, repo: &Path) -> ProviderCapabilities {
         if !Self::btrfs_available() {
             return ProviderCapabilities {
@@ -378,6 +436,14 @@ impl FsSnapshotProvider for BtrfsProvider {
                 // Delete the subvolume
                 let _ = self.execute_btrfs_command(&["subvolume", "delete", branch_path]);
             }
+            Ok(())
+        } else if token.starts_with("btrfs:reuse:") {
+            // Format: btrfs:reuse:branch_id
+            // For reused branches, we don't destroy them - they are meant to persist
+            tracing::debug!(
+                token = %token,
+                "Skipping cleanup for reused Btrfs subvolume (persistence intended)"
+            );
             Ok(())
         } else {
             Err(ah_fs_snapshots_traits::Error::provider(format!(
