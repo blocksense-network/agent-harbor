@@ -263,59 +263,70 @@ mock-agent --scenario capability_test.yaml --capabilities '{"loadSession":true,"
 
 #### Deliverables
 
+- [ ] Refactor `crates/ah-tui/src/viewer.rs` to use dependency injection pattern (`AgentSessionDependencies`)
+- [ ] Implement `run_session_viewer` function accepting injected dependencies
+- [ ] Create `just run-mock-agent-session` target that runs the session viewer driven by `mock-agent` library
 - [ ] Implement TUI mode in `ah-tui` crate that simulates Agent Activity TUI output format
 - [ ] Create ViewModel and View components following MVVM architecture
-- [ ] Integrate TUI mode with existing Agent Activity TUI infrastructure
+- [ ] Integrate TUI mode as an alternative UI path in `ah agent record`
 - [ ] Manual testing and acceptance of visual styles
 
 #### Implementation Details
 
 - **Location**: Implementation resides in `crates/ah-tui` crate following strong ViewModel/View separation
-- **Architecture**: Follows existing MVVM pattern with separate ViewModel and View modules
+- **Architecture**: Follows existing MVVM pattern (see `crates/ah-tui/src/view_model/mod.rs` for architecture details) with separate ViewModel and View modules
 - **TUI mode**: Simulates the output format expected by the Agent Activity TUI (thoughts, tool calls, file edits, logs, etc.)
-- **Integration**: Works with existing Agent Activity TUI components and SessionViewer UI
+- **Integration**: Works as a full alternative to the standard SessionViewer UI, sharing core dependencies
 
 #### Session Viewer Refactoring for mock-agent integration
 
 **Existing Session Viewer Components:**
 
-- `crates/ah-tui/src/view/session_viewer.rs` - Already implemented Ratatui rendering functions (603+ lines)
-- `crates/ah-tui/src/view_model/session_viewer_model.rs` - Already implemented ViewModel with state management (1242+ lines)
-- `crates/ah-tui/src/viewer.rs` - Already implemented main viewer event loop (425+ lines)
+- `crates/ah-tui/src/view/session_viewer.rs` - Already implemented Ratatui rendering functions
+- `crates/ah-tui/src/view_model/session_viewer_model.rs` - Already implemented ViewModel with state management
+- `crates/ah-tui/src/viewer.rs` - Currently implements `ViewerEventLoop` without full dependency injection
 
 **Required Refactoring:**
 
 - **Dependency Injection Pattern**: Refactor `viewer.rs` following the `dashboard_loop.rs` pattern:
-  - Extract hard-coded dependencies into `SessionViewerDependencies` struct
-  - Support both production (real dependencies) and test (mock dependencies) modes through a new executable a
-  - Enable standalone session viewer testing similar to `just run-tui-mock-dashboard` with a new target `just run-mock-agent-session`. It will use the mock-agent crate as a library and the refactored session viewer UI to simulate an agent session specified as a scenario file.
+  - Extract dependencies into `AgentSessionDependencies` struct (sharing common dependencies with `TuiDependencies` where possible)
+  - Implement `run_session_viewer(deps: AgentSessionDependencies)` function in `crates/ah-tui/src/agent_session_loop.rs` (new file)
+  - Support both production (real dependencies) and test (mock dependencies) modes through a new executable entry point
+  - Enable standalone session viewer testing similar to `just run-tui-mock-dashboard` with a new target `just run-mock-agent-session`. It will use the `mock-agent` crate as a library to drive the refactored session viewer UI, simulating an agent session specified as a scenario file.
 
 - **Test/Simulation Mode**:
-  - Create mock ACP client implementation for scenario-driven testing
+  - Use `mock-agent` library (Milestone 0) to generate ACP events from scenario files
+  - Bridge `mock-agent` output to the session viewer's event loop
   - Enable session viewer to run in standalone test mode with scenario playback
 
 #### Key Source Files
 
-- `crates/ah-tui/src/view_model/agent_activity_model.rs` (ViewModel for TUI mode)
-- `crates/ah-tui/src/view/agent_activity_view.rs` (View rendering for TUI mode)
-- `crates/ah-tui/src/viewer.rs` (Main session viewer loop with dependency injection)
-- `crates/ah-tui/src/session_viewer_deps.rs` (Dependency injection structure)
-- `crates/ah-tui/src/view_model/session_viewer_model.rs` (Session viewer ViewModel)
-- `crates/ah-tui/src/view/session_viewer.rs` (Session viewer rendering)
+**New Agent Activity TUI Components:**
+- `crates/ah-tui/src/view_model/agent_session_model.rs` (New ViewModel for Agent Activity TUI mode)
+- `crates/ah-tui/src/view/agent_session_view.rs` (New View rendering for Agent Activity TUI mode)
+- `crates/ah-tui/src/agent_session_loop.rs` (New main loop handling both UI modes via dependency injection)
+
+**Existing Session Viewer Components (Refactoring):**
+- `crates/ah-tui/src/session_viewer_deps.rs` (New dependency injection structure for shared use)
+- `crates/ah-tui/src/view_model/session_viewer_model.rs` (Existing Session Viewer ViewModel - to be adapted)
+- `crates/ah-tui/src/view/session_viewer.rs` (Existing Session Viewer rendering - to be adapted)
+- `crates/ah-tui/src/viewer.rs` (Existing viewer entry point - to be deprecated/refactored into `agent_session_loop.rs`)
 
 #### Reference Implementations
 
 - **Dashboard Loop Pattern**: `crates/ah-tui/src/dashboard_loop.rs` - Shows dependency injection pattern with `TuiDependencies`
-
-- **Mock Dashboard Command**: Study `just run-tui-mock-dashboard` implementation for how test modes are structured
+- **Mock Agent**: `crates/mock-agent/src/lib.rs` - Provides `MockAcpClient` and `ScenarioExecutor` for driving tests
+- **Visual Reference**: `scripts/tui_mockup.py` - The view implementation should replicate the visual rendering of this script as a starting point.
 
 #### Verification
 
-- [x] Manual testing demonstrates proper visual styling and layout
-- [x] TUI mode integrates seamlessly with existing Agent Activity TUI
-- [x] Session viewer supports both production and test modes through dependency injection (refactored from existing viewer.rs)
-- [x] Visual styles accepted by design review
-- [x] Session viewer can be run in standalone test mode similar to mock dashboard
+- [ ] Manual testing demonstrates proper visual styling and layout, matching `scripts/tui_mockup.py`
+- [ ] TUI mode integrates as an alternative UI in `ah agent record`
+- [ ] Session viewer supports both production and test modes through dependency injection (refactored from existing viewer.rs)
+- [ ] Visual styles accepted by design review
+- [ ] The Agent Activity TUI can be run in standalone test mode (`just run-mock-agent-session`) driven by `mock-agent`
+- [ ] **Strict Compliance**: Implementation must precisely follow the spec, including all input minor modes.
+- [ ] **Unit Tests**: Implement unit tests for `view_model` using mocks of shared dependencies where possible (e.g., mocking `TaskManager`, `WorkspaceFilesEnumerator`, etc to test state transitions without full UI).
 
 ---
 
