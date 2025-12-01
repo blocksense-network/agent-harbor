@@ -988,9 +988,10 @@ impl TaskCreateArgs {
         repo_root: &Path,
         fs_snapshots: crate::tui::FsSnapshotsType,
     ) -> Result<PreparedWorkspace> {
-        let prepared_workspace = prepare_workspace_with_fallback(repo_root, fs_snapshots, None)
-            .await
-            .context("Failed to prepare writable workspace with any provider")?;
+        let prepared_workspace =
+            prepare_workspace_with_fallback(repo_root, fs_snapshots, None, None)
+                .await
+                .context("Failed to prepare writable workspace with any provider")?;
 
         tracing::info!(
             provider = ?prepared_workspace.provider,
@@ -4389,9 +4390,14 @@ async fn validate_and_prepare_sandbox(args: &TaskCreateArgs) -> Result<PreparedW
         std::env::current_dir().context("Failed to get current working directory")?;
 
     // Prepare writable workspace using FS snapshots
-    prepare_workspace_with_fallback(&workspace_path, crate::tui::FsSnapshotsType::Auto, None)
-        .await
-        .context("Failed to prepare sandbox workspace")
+    prepare_workspace_with_fallback(
+        &workspace_path,
+        crate::tui::FsSnapshotsType::Auto,
+        None,
+        None,
+    )
+    .await
+    .context("Failed to prepare sandbox workspace")
 }
 
 /// Load golden snapshot for comparison

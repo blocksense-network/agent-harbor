@@ -33,6 +33,7 @@ async fn test_sandbox_integration() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     // Create filesystem configuration
@@ -186,6 +187,7 @@ async fn test_cgroups_integration() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let mut sandbox = Sandbox::with_namespace_config(namespace_config)
@@ -516,6 +518,7 @@ async fn test_filesystem_isolation_overlay() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let fs_config = FilesystemConfig {
@@ -658,6 +661,7 @@ async fn test_filesystem_isolation_readonly_mount() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let fs_config = FilesystemConfig {

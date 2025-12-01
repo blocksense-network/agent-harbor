@@ -2182,6 +2182,86 @@ impl FsCore {
             .collect()
     }
 
+    /// Delete a branch and reclaim its storage.
+    ///
+    /// # Arguments
+    /// * `branch_id` - The branch to delete
+    /// * `force` - If true, delete even if processes are bound to this branch
+    ///
+    /// # Returns
+    /// * `Ok(bytes_reclaimed)` - Number of bytes of storage reclaimed (placeholder for now)
+    /// * `Err(FsError::Busy)` - Processes are still bound to this branch (and force=false)
+    /// * `Err(FsError::NotFound)` - Branch does not exist
+    ///
+    /// # Note
+    /// Deleting a branch that processes are bound to (with force=true) will leave those
+    /// processes in an undefined state. They should be unbound first or will be
+    /// automatically unbound.
+    pub fn branch_delete(&self, branch_id: BranchId, force: bool) -> FsResult<u64> {
+        // Check if the branch exists
+        {
+            let branches = self.branches.lock().unwrap();
+            if !branches.contains_key(&branch_id) {
+                return Err(FsError::NotFound);
+            }
+        }
+
+        // Check if any processes are bound to this branch
+        let bound_pids: Vec<u32> = {
+            let process_branches = self.process_branches.lock().unwrap();
+            process_branches
+                .iter()
+                .filter(|(_, &bid)| bid == branch_id)
+                .map(|(&pid, _)| pid)
+                .collect()
+        };
+
+        if !bound_pids.is_empty() && !force {
+            warn!(
+                "Cannot delete branch {:?}: {} processes still bound",
+                branch_id,
+                bound_pids.len()
+            );
+            return Err(FsError::Busy);
+        }
+
+        // Force unbind all processes from this branch
+        if !bound_pids.is_empty() {
+            let mut process_branches = self.process_branches.lock().unwrap();
+            for pid in &bound_pids {
+                process_branches.remove(pid);
+            }
+            debug!(
+                "Force-unbound {} processes from branch {:?}",
+                bound_pids.len(),
+                branch_id
+            );
+        }
+
+        // Remove the branch
+        let mut branches = self.branches.lock().unwrap();
+        branches.remove(&branch_id);
+
+        // TODO: Actually reclaim storage by walking the branch's nodes and
+        // freeing storage that isn't shared with other branches/snapshots.
+        // For now, we just return 0 bytes reclaimed.
+        let bytes_reclaimed = 0u64;
+
+        debug!(
+            "Deleted branch {:?}, reclaimed {} bytes",
+            branch_id, bytes_reclaimed
+        );
+        Ok(bytes_reclaimed)
+    }
+
+    /// Get the branch ID a process is currently bound to, if any.
+    ///
+    /// Returns `None` if the process is not bound to any branch (uses default branch).
+    pub fn get_process_branch_binding(&self, pid: u32) -> Option<BranchId> {
+        let process_branches = self.process_branches.lock().unwrap();
+        process_branches.get(&pid).copied()
+    }
+
     /// Apply materialization strategy based on the configured mode.
     ///
     /// Returns `(files_materialized, used_reflink)`:

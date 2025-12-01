@@ -22,8 +22,8 @@ use fuser::{
     fuse_forget_one,
 };
 use libc::{
-    EACCES, EBADF, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS, ENOTDIR,
-    ENOTEMPTY, ENOTSUP, EPERM, ESTALE, O_ACCMODE, c_int,
+    EACCES, EBADF, EBUSY, EEXIST, EINVAL, EIO, EISDIR, ELOOP, ENAMETOOLONG, ENOENT, ENOSYS,
+    ENOTDIR, ENOTEMPTY, ENOTSUP, EPERM, ESTALE, O_ACCMODE, c_int,
 };
 use ssz::{Decode, Encode};
 use std::collections::{HashMap, HashSet};
@@ -1698,6 +1698,71 @@ impl AgentFsFuse {
                             FsError::AlreadyExists => EEXIST,
                             FsError::AccessDenied => EACCES,
 
+                            FsError::OperationNotPermitted => EPERM,
+                            FsError::InvalidArgument => EINVAL,
+                            _ => EIO,
+                        };
+                        let response = Response::error(format!("{:?}", e), Some(errno as u32));
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
+                    }
+                }
+            }
+            // F18: BranchDelete - Delete a branch and reclaim its storage.
+            // This is used during sandbox cleanup to explicitly free AgentFS resources.
+            Request::BranchDelete((_, req)) => {
+                let branch_str = String::from_utf8_lossy(&req.branch).to_string();
+                let branch_id = branch_str.parse().map_err(|_| EINVAL)?;
+
+                // Use the force flag from the request (default: don't force)
+                let force = req.force;
+                match self.core.branch_delete(branch_id, force) {
+                    Ok(bytes_reclaimed) => {
+                        let response = Response::branch_delete(req.branch.clone(), bytes_reclaimed);
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
+                    }
+                    Err(e) => {
+                        let errno = match e {
+                            FsError::NotFound => ENOENT,
+                            FsError::Busy => EBUSY, // Branch has bound processes
+                            FsError::AccessDenied => EACCES,
+                            FsError::OperationNotPermitted => EPERM,
+                            FsError::InvalidArgument => EINVAL,
+                            _ => EIO,
+                        };
+                        let response = Response::error(format!("{:?}", e), Some(errno as u32));
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
+                    }
+                }
+            }
+            // F18: BranchUnbind - Unbind a process from its current branch.
+            // Note: The protocol unbinds by PID, returning the previous branch binding.
+            Request::BranchUnbind((_, req)) => {
+                let pid = req.pid.unwrap_or_else(std::process::id);
+
+                // Get the current branch binding for this PID before unbinding
+                let previous_branch = self
+                    .core
+                    .get_process_branch_binding(pid)
+                    .map(|id| id.to_string().into_bytes())
+                    .unwrap_or_default();
+
+                match self.core.unbind_process_with_pid(pid) {
+                    Ok(()) => {
+                        let response = Response::branch_unbind(pid, previous_branch);
+                        Ok(Self::frame_response_bytes(
+                            <Response as Encode>::as_ssz_bytes(&response),
+                        ))
+                    }
+                    Err(e) => {
+                        let errno = match e {
+                            FsError::NotFound => ENOENT, // Process not bound
+                            FsError::AccessDenied => EACCES,
                             FsError::OperationNotPermitted => EPERM,
                             FsError::InvalidArgument => EINVAL,
                             _ => EIO,

@@ -46,6 +46,7 @@ fn test_sandbox_process_is_pid_1() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -108,6 +109,7 @@ fn test_sandbox_proc_shows_only_sandbox_pids() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -162,6 +164,7 @@ fn test_sandbox_user_is_root_in_namespace() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -214,6 +217,7 @@ fn test_sandbox_basic_command_execution() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -252,6 +256,7 @@ fn test_sandbox_environment_variables() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -308,6 +313,7 @@ fn test_sandbox_tmp_isolation() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let namespace_config = NamespaceConfig {
@@ -363,6 +369,7 @@ fn test_sandbox_secrets_protection() {
         tmpfs_size: None,
         net_isolation: true,
         allow_internet: false,
+        agentfs_overlay: None,
     };
 
     let namespace_config = NamespaceConfig {
