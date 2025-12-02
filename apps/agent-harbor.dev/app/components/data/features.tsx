@@ -7,6 +7,7 @@ import { ReactElement } from 'react';
 import SandboxDemo from '../demos/SandboxDemo';
 import AgentDashboard from '../demos/AgentDashboard';
 import TaskManager from '../demos/TaskManager';
+import MultiOSValidation from '../demos/MultiOSValidation';
 import { IconSandbox, IconFilter, IconAntiHalting } from '../icons/Icon';
 
 export interface Feature {
@@ -44,6 +45,6 @@ export const features: Feature[] = [
       'Let agents run test suites and validate patches on all operating systems in parallel with advanced leader/follower orchestration',
       'Every task, command, and transcript can be recorded for later review, debugging, and compliance',
     ],
-    demo: <AgentDashboard />,
+    demo: <MultiOSValidation />,
   },
 ];
