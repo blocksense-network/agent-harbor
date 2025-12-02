@@ -28,16 +28,6 @@ export const features: Feature[] = [
     demo: <SandboxDemo />,
   },
   {
-    icon: <IconFilter />,
-    title: 'Combine any model with any agent',
-    features: [
-      'Spin up multiple instances of Claude, Codex or your favorite agent, hooked up to your models of choice',
-      'Select the best result automatically from a council of agents, or manually',
-    ],
-    demo: <AgentDashboard />,
-    reverse: true,
-  },
-  {
     icon: <IconAntiHalting />,
     title: 'Anti-halting features for long-horizon tasks',
     features: [
@@ -45,5 +35,15 @@ export const features: Feature[] = [
       'Supervisor agent conducts targeted web research to overcome challenges and re-prompt for higher quality responses',
     ],
     demo: <TaskManager />,
+    reverse: true,
+  },
+  {
+    icon: <IconFilter />,
+    title: 'Combine any model with any agent',
+    features: [
+      'Spin up multiple instances of Claude, Codex or your favorite agent, hooked up to your models of choice',
+      'Select the best result automatically from a council of agents, or manually',
+    ],
+    demo: <AgentDashboard />,
   },
 ];
