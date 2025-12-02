@@ -31,7 +31,7 @@ export const features: Feature[] = [
     icon: <IconAntiHalting />,
     title: 'Anti-halting features for long-horizon tasks',
     features: [
-      'Automated diagnosis of stuck processes to overcome deadlocks, infinite loops and connection failures in test suites.',
+      'Automated diagnosis of stuck processes to overcome deadlocks, infinite loops and connection failures in test suites',
       'Supervisor agent conducts targeted web research to overcome challenges and re-prompt for higher quality responses',
     ],
     demo: <TaskManager />,
@@ -39,10 +39,10 @@ export const features: Feature[] = [
   },
   {
     icon: <IconFilter />,
-    title: 'Combine any model with any agent',
+    title: 'Designed for professional development',
     features: [
-      'Spin up multiple instances of Claude, Codex or your favorite agent, hooked up to your models of choice',
-      'Select the best result automatically from a council of agents, or manually',
+      'Let agents run test suites and validate patches on all operating systems in parallel with advanced leader/follower orchestration',
+      'Every task, command, and transcript can be recorded for later review, debugging, and compliance',
     ],
     demo: <AgentDashboard />,
   },
