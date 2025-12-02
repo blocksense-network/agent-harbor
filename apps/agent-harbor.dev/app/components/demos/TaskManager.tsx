@@ -44,7 +44,7 @@ const tasks: Task[] = [
 
 export default function TaskManager() {
   return (
-    <div className="bg-gray-975 rounded-xl shadow-2xl overflow-hidden border border-gray-800 aspect-square sm:aspect-video lg:aspect-square transform -rotate-1 hover:rotate-0 transition-transform duration-500 font-mono text-[10px] hover:border-brand/30 flex flex-col leading-relaxed">
+    <div className="bg-gray-975 rounded-xl shadow-2xl overflow-hidden border border-gray-800 aspect-auto sm:aspect-square lg:aspect-square transform -rotate-1 hover:rotate-0 transition-transform duration-500 font-mono text-[10px] hover:border-brand/30 flex flex-col leading-relaxed">
       <div className="flex justify-between items-center p-4 border-b border-gray-800/50">
         <div className="flex items-center gap-2 opacity-70">
           <span className="font-bold tracking-tighter text-gray-300 text-xs">agent-harbor</span>

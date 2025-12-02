@@ -26,10 +26,7 @@ const tasks: Task[] = [
     agent: 'test-runner-mac',
     timeAgo: 'Running',
     status: 'active',
-    steps: [
-      'Running integration tests...',
-      'Verifying FS snapshots',
-    ],
+    steps: ['Running integration tests...', 'Verifying FS snapshots'],
     os: 'macos',
   },
   {
@@ -40,17 +37,14 @@ const tasks: Task[] = [
     agent: 'test-runner-linux',
     timeAgo: 'Running',
     status: 'active',
-    steps: [
-      'Building Docker container...',
-      'Installing dependencies',
-    ],
+    steps: ['Building Docker container...', 'Installing dependencies'],
     os: 'linux',
   },
 ];
 
 export default function MultiOSValidation() {
   return (
-    <div className="bg-gray-975 rounded-xl shadow-2xl overflow-hidden border border-gray-800 aspect-square sm:aspect-video lg:aspect-square transform rotate-1 hover:rotate-0 transition-transform duration-500 font-mono text-[10px] hover:border-brand/30 flex flex-col leading-relaxed">
+    <div className="bg-gray-975 rounded-xl shadow-2xl overflow-hidden border border-gray-800 aspect-auto sm:aspect-square lg:aspect-square transform rotate-1 hover:rotate-0 transition-transform duration-500 font-mono text-[12px] hover:border-brand/30 flex flex-col leading-relaxed">
       <div className="flex justify-between items-center p-4 border-b border-gray-800/50">
         <div className="flex items-center gap-2 opacity-70">
           <span className="font-bold tracking-tighter text-gray-300 text-xs">validation-suite</span>
@@ -150,9 +144,7 @@ function TaskCard({ task }: { task: Task }) {
           <span className="text-gray-600">•</span>
           <span className="text-gray-400">{task.agent}</span>
         </div>
-        <div className="text-[9px] text-brand animate-pulse">
-          {task.timeAgo}
-        </div>
+        <div className="text-[9px] text-brand animate-pulse">{task.timeAgo}</div>
       </div>
       <div className="space-y-1.5 pl-1">
         {task.steps.map((step, index) => (
