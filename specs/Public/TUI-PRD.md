@@ -664,10 +664,11 @@ The right column provides launch action selection with keyboard shortcuts:
 **Launch Menu Navigation**: Arrow keys navigate between launch options. Enter selects the highlighted option. Single letters (t/s/h/v) or capitals (T/S/H/V) can be typed directly to select when modal is visible.
 
 - **Modal dismissal and changes**:
-  - **'A' key**: Applies changes and closes the modal, preserving any modifications made to the launch options
+  - **'Space' key**: Toggles boolean values and opens enum selection popups for editing option values
+  - **'Enter' key**: Applies changes and closes the modal, preserving any modifications made to the launch options (when inside an enum popup, Enter selects the value instead)
   - **'Esc' key**: Discards all changes and restores the original configuration from before the modal was opened
   - **Split launch shortcuts** (t/s/h/v/T/S/H/V): Apply changes, launch the task with the selected split mode, and close the modal
-  - **Mouse interactions**: Clickable hint text at the bottom of the modal ("**A** Apply • **Esc** Cancel") provides visual cues and mouse click support for both actions
+  - **Mouse interactions**: Clickable hint text at the bottom of the modal ("**ENTER** Apply • **Esc** Cancel" on first line, "**SPACE** Edit Value" on second line) provides visual cues and mouse click support for actions
   - **Focus restoration**: After applying changes, canceling, or using split launch shortcuts, focus returns to the task description textarea, allowing the user to immediately continue editing their prompt
 - **Default focus**: Left column options when modal opens
 - **Visual feedback**: Highlighted selection in both columns, clear keyboard shortcuts displayed, and interactive hint text at bottom with bold key indicators
@@ -733,12 +734,13 @@ The advanced launch options modal uses a two-column navigation system:
 - **Left/Right Arrows**: Move between left column (options) and right column (launch menu)
 - **Up/Down Arrows**: Navigate within the current column
 - **Tab**: Cycle through all controls in left-to-right, top-to-bottom order
-- **Enter**: Activate selected option or launch with selected method
-- **'A' key**: Apply changes and close modal, preserving any modifications made to launch options
+- **Space key**: Toggle boolean values and open enum selection popups in the options column
+- **Enter key**: Apply changes and close modal (or select value when inside enum popup), preserving any modifications made to launch options
 - **'Esc' key**: Discard changes and restore original configuration, then close modal
-- **Mouse clicks**: Clickable hint text at bottom of modal ("**A** Apply • **Esc** Cancel") provides visual feedback and mouse interaction support
+- **Mouse clicks**: Clickable hint text at bottom of modal provides visual feedback and mouse interaction support for Apply and Cancel actions
 - **Shortcut Keys**: Single letters (t/s/h/v) or capitals (T/S/H/V) directly select launch options and immediately launch the task
 - **Focus Behavior**: Modal opens with focus in left column; maintains focus position when switching columns; returns focus to task description textarea after closing
+- **Visual Hints**: Single-line hint display at bottom: "ENTER Apply • Esc Cancel • SPACE Edit Value" with semantic color coding (success/error/primary colors for keys, bold styling for emphasis)
 
 ### Real-Time Behavior
 

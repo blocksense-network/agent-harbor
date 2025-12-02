@@ -97,7 +97,6 @@ static MODAL_NAVIGATION_MODE: InputMinorMode = InputMinorMode::new(&[
     KeyboardOperation::MoveToNextField,
     KeyboardOperation::MoveToPreviousField,
     KeyboardOperation::ActivateCurrentItem,
-    KeyboardOperation::ApplyModalChanges,
     KeyboardOperation::DismissOverlay,
     // Text editing operations for modal input fields
     KeyboardOperation::MoveToBeginningOfLine,
@@ -3326,26 +3325,6 @@ impl ViewModel {
                     false
                 }
             }
-            KeyboardOperation::ApplyModalChanges => {
-                // Apply changes and close the modal (A key behavior)
-                if let Some(modal) = &self.active_modal {
-                    if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
-                        // Save the config changes
-                        if let Some(card) =
-                            self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
-                        {
-                            card.advanced_options = Some(view_model.config.clone());
-                        }
-                        self.close_modal(true); // Apply changes - save current config
-                        self.change_focus(DashboardFocusState::DraftTask(0));
-                        if let Some(card) = self.draft_cards.get_mut(0) {
-                            card.focus_element = CardFocusElement::TaskDescription;
-                        }
-                        return true;
-                    }
-                }
-                false
-            }
             KeyboardOperation::DismissOverlay => self.handle_dismiss_overlay(),
             KeyboardOperation::IncrementValue => self.handle_increment_decrement_value(true),
             KeyboardOperation::DecrementValue => self.handle_increment_decrement_value(false),
@@ -3460,6 +3439,66 @@ impl ViewModel {
             if let Some(idx) = self.focused_textarea_index() {
                 if self.handle_autocomplete_accept(idx, AutocompleteAcceptance::FullCompletion) {
                     return true;
+                }
+            }
+        }
+
+        // Special handling for LaunchOptions modal key mappings
+        // In LaunchOptions modal, we override the default key behavior:
+        // - Space → ActivateCurrentItem (toggle/activate options)
+        // - Enter → Save and close modal (or select enum value if in popup)
+        if self.modal_state == ModalState::LaunchOptions {
+            if let Some(modal) = self.active_modal.as_ref() {
+                if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                    // Handle Space key - always activates/toggles current item
+                    if key.code == KeyCode::Char(' ') && key.modifiers.is_empty() {
+                        trace!("handle_key_event: Space in LaunchOptions → ActivateCurrentItem");
+                        let handled = self
+                            .handle_modal_operation(KeyboardOperation::ActivateCurrentItem, &key);
+                        if handled {
+                            self.clear_exit_confirmation();
+                        }
+                        return handled;
+                    }
+
+                    // Handle Enter key - behavior depends on context
+                    if key.code == KeyCode::Enter && key.modifiers.is_empty() {
+                        if view_model.inline_enum_popup.is_some() {
+                            // Inside enum popup: Enter selects the enum value
+                            trace!("handle_key_event: Enter in enum popup → ActivateCurrentItem");
+                            let handled = self.handle_modal_operation(
+                                KeyboardOperation::ActivateCurrentItem,
+                                &key,
+                            );
+                            if handled {
+                                self.clear_exit_confirmation();
+                            }
+                            return handled;
+                        } else {
+                            // Outside popup: Enter saves and closes the modal
+                            trace!("handle_key_event: Enter in LaunchOptions → Save and close");
+
+                            // Save the config changes to the draft card
+                            let draft_id = view_model.draft_id.clone();
+                            let config = view_model.config.clone();
+
+                            if let Some(card) =
+                                self.draft_cards.iter_mut().find(|c| c.id == draft_id)
+                            {
+                                card.advanced_options = Some(config);
+                            }
+
+                            // Close modal and restore focus
+                            self.close_modal(true);
+                            self.change_focus(DashboardFocusState::DraftTask(0));
+                            if let Some(card) = self.draft_cards.get_mut(0) {
+                                card.focus_element = CardFocusElement::TaskDescription;
+                            }
+
+                            self.clear_exit_confirmation();
+                            return true;
+                        }
+                    }
                 }
             }
         }

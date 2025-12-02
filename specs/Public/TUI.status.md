@@ -178,10 +178,10 @@ The TUI implementation provides these core capabilities:
   - ✅ Advanced options preserved across task launches within TUI lifetime
   - ✅ Comprehensive keyboard shortcuts (t/s/h/v/T/S/H/V) from modal
   - ✅ Consistent behavior across all launch methods (keyboard, modal, Go button)
-  - ✅ Modal keyboard shortcuts: 'A' key to apply changes, 'Esc' key to discard changes
+  - ✅ Modal keyboard shortcuts: 'Space' key to toggle/edit values, 'Enter' key to apply changes, 'Esc' key to discard changes
   - ✅ Mouse interaction support: Clickable hint text for Apply and Cancel actions
-  - ✅ Visual feedback: Bold key indicators in hint text ("**A** Apply • **Esc** Cancel")
-  - ✅ Focus restoration: Focus returns to task description textarea after modal closes via any method (ESC, A key, or split launch shortcuts t/s/h/v/T/S/H/V)
+  - ✅ Visual feedback: Single-line hint display with semantic color coding: "ENTER Apply • Esc Cancel • SPACE Edit Value" (success/error/primary colors for keys, bold styling)
+  - ✅ Focus restoration: Focus returns to task description textarea after modal closes via any method (ESC, Enter key, or split launch shortcuts t/s/h/v/T/S/H/V)
 
 - **Test Coverage**:
   - ✅ Advanced options stored in draft card when modal closed
@@ -190,12 +190,14 @@ The TUI implementation provides these core capabilities:
   - ✅ Split mode preference remembered and applied as default
   - ✅ Keyboard shortcuts work from both modal and textarea
   - ✅ All launch methods use consistent advanced options flow
-  - ✅ 'A' key saves changes and closes modal (test: `test_a_key_saves_changes_and_closes_modal`)
+  - ✅ 'Space' key toggles boolean values (test: `test_space_key_toggles_boolean_options`)
+  - ✅ 'Enter' key saves changes and closes modal (test: `test_enter_key_saves_and_closes_like_a_key`)
+  - ✅ 'Enter' key in enum popup selects value without closing modal (test: `test_enter_in_enum_popup_selects_value`)
   - ✅ 'Esc' key discards changes and restores original config (test: `test_esc_key_discards_changes_and_restores_original`)
   - ✅ Mouse clicks on hint text work for both Apply and Cancel (tests: `test_mouse_click_apply_saves_changes`, `test_mouse_click_cancel_discards_changes`)
   - ✅ Keyboard and mouse interactions are interchangeable (test: `test_mouse_click_and_keyboard_interchangeable`)
   - ✅ Edge cases: Multiple ESC presses don't corrupt state, no prior config restoration works correctly
-  - ✅ Focus restoration verified after applying changes (test: `test_focus_restoration_after_a_key`)
+  - ✅ Focus restoration verified after applying changes (test: `test_focus_restoration_after_enter_key`)
   - ✅ Focus restoration verified when using split launch shortcuts (test: `test_split_launch_shortcut_restores_focus_to_task_description`)
   - ✅ Character shortcuts (t/s/h/v/T/S/H/V) save advanced options WITH task input (test: `advanced_options_saved_via_character_shortcuts_with_task_input`)
   - ✅ Character shortcuts (t/s/h/v/T/S/H/V) save advanced options WITHOUT task input (test: `advanced_options_saved_via_character_shortcuts_without_task_input`)
@@ -210,7 +212,10 @@ The TUI implementation provides these core capabilities:
   - **Modal State Management**: `LaunchOptionsViewModel` now includes `original_config` field to support change discarding
   - **Change Control**: `close_modal(save_changes: bool)` function provides explicit control over applying or discarding changes
   - **Mouse Interactions**: Registered clickable areas for hint text with `MouseAction::ModalApplyChanges` and `MouseAction::ModalCancelChanges`
-  - **Keyboard Shortcuts**: Added `ApplyModalChanges` keyboard operation bound to 'A' key in modal context
+  - **Keyboard Shortcuts**:
+    - Space key bound to `ActivateCurrentItem` operation for toggling/editing values in modal
+    - Enter key applies changes and closes modal (special handling in LaunchOptions context)
+    - Removed `ApplyModalChanges` operation (previously bound to 'A' key)
 
 - **Architecture**:
   - **Before**: Advanced options extracted from modal at launch time → inconsistent behavior based on launch method
@@ -218,12 +223,12 @@ The TUI implementation provides these core capabilities:
   - **Benefits**: TUI lifetime-only storage prevents config pollution while maintaining convenience; configure once, launch multiple times
 
 - **Key Source Files**:
-  - `crates/ah-tui/src/view_model/agents_selector_model.rs` - Launch flow, advanced options handling, modal interaction logic, and mouse action handlers
+  - `crates/ah-tui/src/view_model/agents_selector_model.rs` - Launch flow, advanced options handling, modal interaction logic with special Space/Enter key handling, and mouse action handlers
   - `crates/ah-tui/src/view_model/dashboard_model.rs` - Dashboard launch implementation
   - `crates/ah-tui/src/view_model/task_entry.rs` - TaskEntryViewModel with advanced_options field
-  - `crates/ah-tui/src/settings.rs` - Settings with TUI-lifetime-only default_split_mode and ApplyModalChanges keyboard operation
-  - `crates/ah-tui/src/view/launch_options_modal.rs` - Modal rendering with clickable hint text and visual feedback
-  - `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs` - Comprehensive test suite for keyboard and mouse interactions
+  - `crates/ah-tui/src/settings.rs` - Settings with TUI-lifetime-only default_split_mode and keyboard operation definitions
+  - `crates/ah-tui/src/view/launch_options_modal.rs` - Modal rendering with two-line hint display ("ENTER Apply • Esc Cancel" and "SPACE Edit Value") and clickable areas
+  - `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs` - Comprehensive test suite for Space/Enter keyboard interactions and mouse interactions
   - `crates/ah-tui/tests/lifetime_persistence_tests.rs` - TUI lifetime persistence tests for advanced options across character shortcuts and modal openings
 
 - **Integration Points**:
