@@ -5,6 +5,7 @@
 
 import Image from 'next/image';
 import { IconTwitter } from '../icons/Icon';
+import { xUrl } from '../../lib/constants';
 
 export default function Footer() {
   return (
@@ -34,7 +35,9 @@ export default function Footer() {
             <IconDiscord />
           </a> */}
           <a
-            href="https://x.com/agent_harbor"
+            href={xUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-gray-500 hover:text-brand transition-colors"
             aria-label="X (Twitter)"
           >
