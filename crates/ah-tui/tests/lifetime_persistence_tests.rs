@@ -499,3 +499,289 @@ fn launch_methods_use_consistent_advanced_options() {
     // but this test verifies that the options are properly stored in the draft card,
     // which is the key requirement for consistent behavior across launch methods.
 }
+
+// ============================================================================
+// Tests for advanced options saved via keyboard shortcuts
+// ============================================================================
+
+#[test]
+fn advanced_options_saved_via_character_shortcuts_with_task_input() {
+    let (mut log, log_path) = create_test_log("advanced_options_char_shortcuts_with_input");
+    let log_hint = log_path.display().to_string();
+
+    // Test all character shortcuts: t, s, h, v, T, S, H, V
+    let shortcuts = vec![
+        ('t', "Launch in new tab"),
+        ('s', "Launch in split view"),
+        ('h', "Launch in horizontal split"),
+        ('v', "Launch in vertical split"),
+        ('T', "Launch in new tab and focus"),
+        ('S', "Launch in split view and focus"),
+        ('H', "Launch in horizontal split and focus"),
+        ('V', "Launch in vertical split and focus"),
+    ];
+
+    for (shortcut_char, description) in shortcuts {
+        writeln!(
+            log,
+            "\n=== Testing shortcut: '{}' ({}) ===",
+            shortcut_char, description
+        )
+        .expect("write log");
+
+        let mut vm = common::build_view_model_with_repos();
+
+        // Setup: Add task description
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.description.insert_str("Test task");
+            card.focus_element = CardFocusElement::TaskDescription;
+        }
+
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+
+        // Open advanced options modal
+        let draft_id = vm.draft_cards[0].id.clone();
+        vm.open_launch_options_modal(draft_id);
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+
+        // Modify advanced options
+        if let Some(modal) = &mut vm.active_modal {
+            if let ModalType::LaunchOptions { view_model } = &mut modal.modal_type {
+                view_model.config.allow_vms = true;
+                view_model.config.timeout = "600s".to_string();
+            }
+        }
+
+        // Press the character shortcut
+        let key_event = KeyEvent::new(KeyCode::Char(shortcut_char), KeyModifiers::empty());
+        let handled = vm.handle_key_event(key_event);
+
+        writeln!(
+            log,
+            "'{}' handled: {}, modal_state: {:?}",
+            shortcut_char, handled, vm.modal_state
+        )
+        .expect("write log");
+
+        // Modal should be closed
+        assert_eq!(
+            vm.modal_state,
+            ModalState::None,
+            "Modal should be closed after '{}' (log: {log_hint})",
+            shortcut_char
+        );
+
+        // Verify advanced options were saved
+        let saved_config = vm.draft_cards[0]
+            .advanced_options
+            .as_ref()
+            .expect("Advanced options should be saved");
+
+        assert!(
+            saved_config.allow_vms,
+            "allow_vms should be saved for '{}' (log: {log_hint})",
+            shortcut_char
+        );
+        assert_eq!(
+            saved_config.timeout, "600s",
+            "timeout should be saved for '{}' (log: {log_hint})",
+            shortcut_char
+        );
+
+        writeln!(log, "✓ Shortcut '{}' passed", shortcut_char).expect("write log");
+    }
+
+    writeln!(
+        log,
+        "\n✓ Test passed: All character shortcuts save advanced options with task input"
+    )
+    .expect("write log");
+}
+
+#[test]
+fn advanced_options_saved_via_character_shortcuts_without_task_input() {
+    let (mut log, log_path) = create_test_log("advanced_options_char_shortcuts_no_input");
+    let log_hint = log_path.display().to_string();
+
+    // Test all character shortcuts without task input
+    let shortcuts = vec![
+        ('t', "Launch in new tab"),
+        ('s', "Launch in split view"),
+        ('h', "Launch in horizontal split"),
+        ('v', "Launch in vertical split"),
+        ('T', "Launch in new tab and focus"),
+        ('S', "Launch in split view and focus"),
+        ('H', "Launch in horizontal split and focus"),
+        ('V', "Launch in vertical split and focus"),
+    ];
+
+    for (shortcut_char, description) in shortcuts {
+        writeln!(
+            log,
+            "\n=== Testing shortcut: '{}' ({}) ===",
+            shortcut_char, description
+        )
+        .expect("write log");
+
+        let mut vm = common::build_view_model_with_repos();
+
+        // Setup: No task description
+        vm.focus_element = DashboardFocusState::DraftTask(0);
+        if let Some(card) = vm.draft_cards.get_mut(0) {
+            card.focus_element = CardFocusElement::TaskDescription;
+            // Empty description
+        }
+
+        writeln!(log, "No task description").expect("write log");
+
+        // Open advanced options modal
+        let draft_id = vm.draft_cards[0].id.clone();
+        vm.open_launch_options_modal(draft_id);
+        assert_eq!(vm.modal_state, ModalState::LaunchOptions);
+
+        // Modify advanced options
+        if let Some(modal) = &mut vm.active_modal {
+            if let ModalType::LaunchOptions { view_model } = &mut modal.modal_type {
+                view_model.config.record_output = true;
+                view_model.config.create_metadata_commits = false;
+            }
+        }
+
+        // Press the character shortcut
+        let key_event = KeyEvent::new(KeyCode::Char(shortcut_char), KeyModifiers::empty());
+        let handled = vm.handle_key_event(key_event);
+
+        writeln!(
+            log,
+            "'{}' handled: {}, modal_state: {:?}",
+            shortcut_char, handled, vm.modal_state
+        )
+        .expect("write log");
+
+        // Modal should be closed
+        assert_eq!(
+            vm.modal_state,
+            ModalState::None,
+            "Modal should be closed after '{}' (log: {log_hint})",
+            shortcut_char
+        );
+
+        // Verify advanced options were saved
+        let saved_config = vm.draft_cards[0]
+            .advanced_options
+            .as_ref()
+            .expect("Advanced options should be saved");
+
+        assert!(
+            saved_config.record_output,
+            "record_output should be saved for '{}' (log: {log_hint})",
+            shortcut_char
+        );
+        assert!(
+            !saved_config.create_metadata_commits,
+            "create_metadata_commits should be false for '{}' (log: {log_hint})",
+            shortcut_char
+        );
+
+        writeln!(log, "✓ Shortcut '{}' passed", shortcut_char).expect("write log");
+    }
+
+    writeln!(
+        log,
+        "\n✓ Test passed: All character shortcuts save advanced options without task input"
+    )
+    .expect("write log");
+}
+
+#[test]
+fn advanced_options_persist_across_multiple_modal_openings() {
+    let (mut log, log_path) = create_test_log("advanced_options_persist_multiple_openings");
+    let log_hint = log_path.display().to_string();
+
+    let mut vm = common::build_view_model_with_repos();
+
+    // Setup: Add task description
+    if let Some(card) = vm.draft_cards.get_mut(0) {
+        card.description.insert_str("Test task");
+        card.focus_element = CardFocusElement::TaskDescription;
+    }
+
+    vm.focus_element = DashboardFocusState::DraftTask(0);
+
+    writeln!(log, "=== First modal opening ===").expect("write log");
+
+    // Open modal first time
+    let draft_id = vm.draft_cards[0].id.clone();
+    vm.open_launch_options_modal(draft_id.clone());
+
+    // Modify options
+    if let Some(modal) = &mut vm.active_modal {
+        if let ModalType::LaunchOptions { view_model } = &mut modal.modal_type {
+            view_model.config.allow_egress = true;
+            view_model.config.timeout = "999s".to_string();
+        }
+    }
+
+    // Close via 't' shortcut
+    let t_key = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::empty());
+    vm.handle_key_event(t_key);
+
+    assert_eq!(vm.modal_state, ModalState::None);
+
+    writeln!(log, "Closed modal via 't' shortcut").expect("write log");
+
+    // Verify options were saved
+    let saved_config_1 =
+        vm.draft_cards[0].advanced_options.as_ref().expect("Options should be saved");
+
+    assert!(saved_config_1.allow_egress);
+    assert_eq!(saved_config_1.timeout, "999s");
+
+    writeln!(log, "✓ First opening: options saved").expect("write log");
+
+    writeln!(log, "\n=== Second modal opening ===").expect("write log");
+
+    // Open modal second time
+    vm.open_launch_options_modal(draft_id);
+
+    // Verify the previously saved options are loaded
+    if let Some(modal) = &vm.active_modal {
+        if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+            assert!(
+                view_model.config.allow_egress,
+                "allow_egress should be preserved (log: {log_hint})"
+            );
+            assert_eq!(
+                view_model.config.timeout, "999s",
+                "timeout should be preserved (log: {log_hint})"
+            );
+
+            writeln!(
+                log,
+                "✓ Previously saved options loaded: allow_egress=true, timeout=999s"
+            )
+            .expect("write log");
+        }
+    }
+
+    // Close via Esc to verify save on dismiss
+    let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::empty());
+    vm.handle_key_event(esc_key);
+
+    assert_eq!(vm.modal_state, ModalState::None);
+
+    // Options should still be there
+    let saved_config_2 = vm.draft_cards[0]
+        .advanced_options
+        .as_ref()
+        .expect("Options should still be saved");
+
+    assert!(saved_config_2.allow_egress);
+    assert_eq!(saved_config_2.timeout, "999s");
+
+    writeln!(
+        log,
+        "\n✓ Test passed: Advanced options persist across multiple modal openings"
+    )
+    .expect("write log");
+}

@@ -5,8 +5,8 @@ This document tracks the implementation status of the [TUI-PRD.md](TUI-PRD.md) f
 Goal: deliver a production-ready terminal-based dashboard for creating, monitoring, and managing agent coding sessions with seamless multiplexer integration, keyboard-driven workflows, and REST service connectivity.
 
 **Current Status**: All 11 multiplexer backends implemented and tested. Next: T3.4 Static Dashboard Rendering (Style Development)
-**Test Results**: 70 tests passing (18 tmux + 20 kitty + 18 zellij + 7 screen + 7 wezterm + 2 tilix + 2 windows-terminal + 2 ghostty + 2 vim + 2 neovim + 2 emacs multiplexer tests + 15 TUI tests + 2 comprehensive integration tests)
-**Last Updated**: October 18, 2025
+**Test Results**: 67 tests passing (18 tmux + 20 kitty + 18 zellij + 7 screen + 7 wezterm + 2 tilix + 2 windows-terminal + 2 ghostty + 2 vim + 2 neovim + 2 emacs multiplexer tests + 11 TUI tests)
+**Last Updated**: January 2026
 
 Total estimated timeline: 12-16 weeks (broken into major phases with parallel development tracks)
 
@@ -197,6 +197,9 @@ The TUI implementation provides these core capabilities:
   - ✅ Edge cases: Multiple ESC presses don't corrupt state, no prior config restoration works correctly
   - ✅ Focus restoration verified after applying changes (test: `test_focus_restoration_after_a_key`)
   - ✅ Focus restoration verified when using split launch shortcuts (test: `test_split_launch_shortcut_restores_focus_to_task_description`)
+  - ✅ Character shortcuts (t/s/h/v/T/S/H/V) save advanced options WITH task input (test: `advanced_options_saved_via_character_shortcuts_with_task_input`)
+  - ✅ Character shortcuts (t/s/h/v/T/S/H/V) save advanced options WITHOUT task input (test: `advanced_options_saved_via_character_shortcuts_without_task_input`)
+  - ✅ Advanced options persist across multiple modal openings (test: `advanced_options_persist_across_multiple_modal_openings`)
 
 - **Implementation Details**:
   - **Advanced Options Storage**: Stored in `TaskEntryViewModel.advanced_options` field, persisting for the TUI lifetime
@@ -221,6 +224,7 @@ The TUI implementation provides these core capabilities:
   - `crates/ah-tui/src/settings.rs` - Settings with TUI-lifetime-only default_split_mode and ApplyModalChanges keyboard operation
   - `crates/ah-tui/src/view/launch_options_modal.rs` - Modal rendering with clickable hint text and visual feedback
   - `crates/ah-tui/tests/launch_options_modal_interaction_tests.rs` - Comprehensive test suite for keyboard and mouse interactions
+  - `crates/ah-tui/tests/lifetime_persistence_tests.rs` - TUI lifetime persistence tests for advanced options across character shortcuts and modal openings
 
 - **Integration Points**:
   - Testing framework can be extended for all future TUI features
