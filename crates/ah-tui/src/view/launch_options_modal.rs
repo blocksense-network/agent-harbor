@@ -7,6 +7,7 @@ use ratatui::prelude::Stylize;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
+use unicode_width::UnicodeWidthStr;
 
 use super::Theme;
 use crate::view::HitTestRegistry;
@@ -66,12 +67,14 @@ pub fn render_advanced_launch_options_modal(
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(0),    // Content area
-            Constraint::Length(1), // Hint line at the bottom
+            Constraint::Length(1), // Empty line for spacing
+            Constraint::Length(1), // Hint line: SPACE Edit Value • ENTER Apply • Esc Cancel
         ])
         .split(inner_area);
 
     let content_area = main_chunks[0];
-    let hint_area = main_chunks[1];
+    let _spacing_area = main_chunks[1]; // Empty line for visual spacing
+    let hint_area = main_chunks[2];
 
     // Split content into two columns
     let chunks = Layout::default()
@@ -109,22 +112,54 @@ pub fn render_advanced_launch_options_modal(
 
     render_actions_column(frame, model, right_area, theme);
 
-    // Render hint at the bottom with clickable areas
-    // Calculate the widths of each part
-    let apply_key = "A";
-    let apply_label = " Apply";
+    // Render all hints in a single line at the bottom with clickable areas
+    // Format: ENTER Apply • Esc Cancel • SPACE Edit Value
+    let mut spans: Vec<Span> = Vec::new();
     let separator = " • ";
+
+    // ENTER Apply button (with emoji icon)
+    let apply_key = "ENTER";
+    let apply_label = " Apply";
+    let apply_text_width = apply_key.width() + apply_label.width();
+
+    spans.push(Span::styled(
+        apply_key,
+        Style::default().fg(theme.success).bg(theme.bg).add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::styled(apply_label, Style::default().fg(theme.text)));
+
+    // Separator
+    spans.push(Span::styled(separator, Style::default().fg(theme.muted)));
+
+    // Esc Cancel button
     let cancel_key = "Esc";
     let cancel_label = " Cancel";
+    let cancel_text_width = cancel_key.width() + cancel_label.width();
 
-    let apply_text_width = apply_key.len() + apply_label.len();
-    let cancel_text_width = cancel_key.len() + cancel_label.len();
-    let total_width = apply_text_width + separator.len() + cancel_text_width;
+    spans.push(Span::styled(
+        cancel_key,
+        Style::default().fg(theme.error).bg(theme.bg).add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::styled(cancel_label, Style::default().fg(theme.text)));
 
-    // Calculate starting position for centered text
-    let start_x = hint_area.x + (hint_area.width.saturating_sub(total_width as u16)) / 2;
+    // Separator
+    spans.push(Span::styled(separator, Style::default().fg(theme.muted)));
 
-    // Register clickable areas
+    // SPACE Edit Value button
+    let space_key = "SPACE";
+    let space_label = " Edit Value";
+    let _space_text_width = space_key.width() + space_label.width();
+
+    spans.push(Span::styled(
+        space_key,
+        Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::styled(space_label, Style::default().fg(theme.text)));
+
+    // Register clickable areas for ENTER Apply and Esc Cancel
+    // Since we're using left alignment, start from hint_area.x
+    let start_x = hint_area.x;
+
     let apply_area = Rect {
         x: start_x,
         y: hint_area.y,
@@ -133,7 +168,7 @@ pub fn render_advanced_launch_options_modal(
     };
 
     let cancel_area = Rect {
-        x: start_x + apply_text_width as u16 + separator.len() as u16,
+        x: start_x + apply_text_width as u16 + separator.width() as u16,
         y: hint_area.y,
         width: cancel_text_width as u16,
         height: 1,
@@ -142,21 +177,9 @@ pub fn render_advanced_launch_options_modal(
     hit_registry.register(apply_area, MouseAction::ModalApplyChanges);
     hit_registry.register(cancel_area, MouseAction::ModalCancelChanges);
 
-    let hint_text = Line::from(vec![
-        Span::styled(
-            apply_key,
-            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(apply_label, Style::default().fg(theme.muted)),
-        Span::styled(separator, Style::default().fg(theme.muted)),
-        Span::styled(
-            cancel_key,
-            Style::default().fg(theme.primary).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(cancel_label, Style::default().fg(theme.muted)),
-    ]);
+    let hint_text = Line::from(spans);
     frame.render_widget(
-        Paragraph::new(hint_text).alignment(Alignment::Center),
+        Paragraph::new(hint_text).alignment(Alignment::Left),
         hint_area,
     );
 }
@@ -587,8 +610,8 @@ fn render_actions_column(
         0
     };
 
-    // Calculate how many actions we can show, leaving room for "ENTER Edit Value" at bottom
-    let available_height = height.saturating_sub(2); // Reserve 2 lines for spacing and ENTER Edit Value
+    // Calculate how many actions we can show
+    let available_height = height;
     let visible_actions = actions.iter().enumerate().skip(scroll_offset).take(available_height);
 
     for (i, (_, option)) in visible_actions.enumerate() {
@@ -645,21 +668,5 @@ fn render_actions_column(
                 }
             }
         }
-    }
-
-    // Add "ENTER Edit Value" at the bottom
-    if height >= 2 {
-        let edit_value_area = Rect {
-            x: content_area.x + 1,                   // One column padding
-            y: content_area.y + (height - 1) as u16, // Last line
-            width: content_area.width - 1,
-            height: 1,
-        };
-
-        let edit_value_style = Style::default().fg(theme.muted);
-        frame.render_widget(
-            Paragraph::new("ENTER Edit Value").style(edit_value_style),
-            edit_value_area,
-        );
     }
 }
