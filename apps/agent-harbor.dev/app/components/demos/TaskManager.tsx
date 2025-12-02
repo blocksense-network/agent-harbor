@@ -130,7 +130,7 @@ function TaskList({ tasks }: { tasks: Task[] }) {
         <span className="hover:text-gray-300 cursor-pointer">Creator [All]</span>
       </div>
 
-      <div className="space-y-3 flex-1 overflow-hidden relative">
+      <div className="space-y-3 flex-1 overflow-hidden relative pt-2">
         {tasks.map(task => (
           <TaskCard key={task.id} task={task} />
         ))}
