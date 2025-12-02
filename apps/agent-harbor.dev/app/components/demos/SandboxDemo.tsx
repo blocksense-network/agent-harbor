@@ -5,7 +5,7 @@
 
 export default function SandboxDemo() {
   return (
-    <div className="bg-gray-975 rounded-xl shadow-2xl overflow-hidden border border-gray-800 aspect-square sm:aspect-video lg:aspect-square transform rotate-1 hover:rotate-0 transition-transform duration-500 font-mono text-[15px] hover:border-brand/30 flex flex-col leading-relaxed">
+    <div className="bg-gray-975 rounded-xl shadow-2xl overflow-hidden border border-gray-800 aspect-auto sm:aspect-square lg:aspect-square transform rotate-1 hover:rotate-0 transition-transform duration-500 font-mono text-[15px] hover:border-brand/30 flex flex-col leading-relaxed">
       <div className="bg-gray-950 px-4 py-3 flex items-center gap-2 border-b border-gray-800">
         <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
         <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
@@ -25,11 +25,12 @@ export default function SandboxDemo() {
           <p className="text-brand animate-pulse">Ready for autonomous execution.</p>
           <p className="flex gap-2 pt-1">
             <span className="text-purple-400">➜</span>
-            <span className="text-gray-300">ah task --agent claude --prompt "Create a new file 'hello.py' that prints 'Hello, Agent Harbor!'"</span>
+            <span className="text-gray-300">
+              ah task --agent claude --prompt "Create a new file 'hello.py' that prints 'Hello,
+              Agent Harbor!'"
+            </span>
           </p>
-          <div className="text-gray-400 pl-4 border-l border-gray-800 ml-1">
-            
-          </div>
+          <div className="text-gray-400 pl-4 border-l border-gray-800 ml-1"></div>
         </div>
       </div>
 

@@ -5,7 +5,6 @@
 
 import { ReactElement } from 'react';
 import SandboxDemo from '../demos/SandboxDemo';
-import AgentDashboard from '../demos/AgentDashboard';
 import TaskManager from '../demos/TaskManager';
 import MultiOSValidation from '../demos/MultiOSValidation';
 import { IconSandbox, IconFilter, IconAntiHalting } from '../icons/Icon';
