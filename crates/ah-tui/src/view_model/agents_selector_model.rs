@@ -1106,10 +1106,22 @@ impl ViewModel {
                     if let Some(option_text) = option {
                         // Extract values before dropping the borrow
                         let draft_id = view_model.draft_id.clone();
+                        let config = view_model.config.clone();
+
+                        // Save the advanced options to the draft card BEFORE launching
+                        // This ensures they are available when launch_task_with_option reads them
+                        if let Some(card) = self.draft_cards.iter_mut().find(|c| c.id == draft_id) {
+                            card.advanced_options = Some(config);
+                            tracing::debug!(
+                                "✅ Saved advanced options to draft card before launching via shortcut: {}",
+                                draft_id
+                            );
+                        }
+
                         // Release borrow explicitly
                         let _ = modal;
                         self.launch_task_with_option(draft_id, option_text);
-                        self.close_modal(false);
+                        self.close_modal(true); // Close modal (config already saved above)
 
                         // Restore focus to TaskDescription after launching with shortcut
                         self.change_focus(DashboardFocusState::DraftTask(0));
@@ -6025,17 +6037,22 @@ impl ViewModel {
 
     /// Close the current modal
     pub fn close_modal(&mut self, save_changes: bool) {
-        // For Launch Options modal, optionally restore the original config
-        // If save_changes is false, discard changes and restore original config (Esc behavior)
-        // If save_changes is true, keep the current config (Apply behavior)
-        if !save_changes {
-            if let Some(modal) = &self.active_modal {
-                if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
-                    // Find the draft card and restore the original config
-                    if let Some(card) =
-                        self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
-                    {
-                        // Restore original config - don't save the modified config
+        // For Launch Options modal, save or restore the config based on save_changes flag
+        if let Some(modal) = &self.active_modal {
+            if let ModalType::LaunchOptions { view_model } = &modal.modal_type {
+                // Find the draft card
+                if let Some(card) =
+                    self.draft_cards.iter_mut().find(|card| card.id == view_model.draft_id)
+                {
+                    if save_changes {
+                        // Save the modified config to the draft card
+                        card.advanced_options = Some(view_model.config.clone());
+                        tracing::debug!(
+                            "✅ Saved advanced options for draft card: {}",
+                            view_model.draft_id
+                        );
+                    } else {
+                        // Discard changes and restore original config (Esc behavior)
                         card.advanced_options = Some(view_model.original_config.clone());
                         tracing::debug!(
                             "🔄 Restored original advanced options for draft card: {} (changes discarded)",
