@@ -348,6 +348,8 @@ export default function EarlyAccess() {
                     setFieldErrors({ ...fieldErrors, name: undefined });
                   }
                 }}
+                name="name"
+                autoComplete="name"
                 required
                 className={`w-full bg-gray-950 border rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:ring-1 outline-none transition-colors font-mono ${
                   fieldErrors.name
@@ -389,6 +391,8 @@ export default function EarlyAccess() {
                     setFieldErrors({ ...fieldErrors, email: undefined });
                   }
                 }}
+                name="email"
+                autoComplete="email"
                 required
                 className={`w-full bg-gray-950 border rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:ring-1 outline-none transition-colors font-mono ${
                   fieldErrors.email
@@ -619,6 +623,8 @@ export default function EarlyAccess() {
                         setFieldErrors({ ...fieldErrors, organizationName: undefined });
                       }
                     }}
+                    name="organization"
+                    autoComplete="organization"
                     className={`w-full bg-gray-950 border rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:ring-1 outline-none transition-colors font-mono ${
                       fieldErrors.organizationName
                         ? 'border-red-600 focus:border-red-500 focus:ring-red-500'
