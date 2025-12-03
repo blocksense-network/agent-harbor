@@ -766,6 +766,34 @@ repomix-agent-questions *args:
         --header-text "Third-Party Agent Integration Questions and Research" \
         {{args}}
 
+# Create repomix bundle of Multi-OS fleet specs and related status/plans
+REPOMIX_MULTI_OS_FLEET_PATTERNS := replace("""
+specs/Public/Multi-OS-Testing.md
+specs/Public/Multi-OS-Testing.status.md
+specs/Public/FS-Snapshots/FS-Snapshots-Overview.md
+specs/Public/Agent-Time-Travel.md
+specs/Public/Lima-VM-Images.md
+specs/Public/Lima-VM-Images.status.md
+specs/Public/Executor-Enrollment.md
+specs/Public/CLI.md
+specs/Public/Repository-Layout.md
+specs/Public/Logging-Guidelines.md
+specs/Public/Configuration.md
+specs/Research/How-to-persistent-SSH-connections.md
+specs/Research/Intro-to-Mutagen-Projects.md
+specs/Research/Can-SSH-work-over-HTTPS.md
+""", "\n", ",")
+
+repomix-multi-os-fleets *args:
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-Multi-OS-Fleets.md \
+        --style markdown \
+        --header-text "Multi-OS Fleets Specifications and Plans" \
+        --include "{{REPOMIX_MULTI_OS_FLEET_PATTERNS}}" \
+        {{args}}
+
 # Install Playwright browsers for E2E tests
 webui-install-browsers:
     yarn workspace ah-webui-e2e-tests run install-browsers

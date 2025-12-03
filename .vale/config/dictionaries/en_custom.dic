@@ -1,4 +1,4 @@
-1380
+1383
 "Fran\xE7ois"
 "fa\xE7ade"
 ACCES
@@ -634,6 +634,7 @@ fileno
 fileset
 findstr
 firejail
+fleetctl
 flexbox
 flistxattr
 flox
@@ -641,6 +642,7 @@ fmorroni
 fname
 fnid
 fobjc
+followerd
 fopen
 forkpty
 fpath
@@ -982,6 +984,7 @@ pjdfstests
 pkgs
 plists
 pluginkit
+pointd
 pointsize
 popd
 popen
