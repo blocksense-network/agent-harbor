@@ -41,6 +41,7 @@ fn create_agent_choice(display_name: &str, count: usize) -> AgentChoice {
         count,
         settings: std::collections::HashMap::new(),
         display_name: Some(display_name.to_string()),
+        acp_stdio_launch_command: None,
     }
 }
 
@@ -662,6 +663,7 @@ impl ah_core::RestApiClient for MockRestClient {
                     count: 1,
                     settings: std::collections::HashMap::new(),
                     display_name: Some("Claude Code".to_string()),
+                    acp_stdio_launch_command: None,
                 }),
                 runtime: ah_rest_api_contract::RuntimeConfig {
                     runtime_type: ah_rest_api_contract::RuntimeType::Local,
@@ -1326,6 +1328,7 @@ mod tests {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }])
             .split_mode(SplitMode::None)
             .focus(false)
@@ -1356,6 +1359,7 @@ mod tests {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }])
             .split_mode(SplitMode::None)
             .focus(false)
@@ -1402,6 +1406,7 @@ mod tests {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }])
             .split_mode(SplitMode::None)
             .focus(false)

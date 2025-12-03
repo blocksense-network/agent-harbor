@@ -84,8 +84,8 @@
 //! - `Goose`: Block's Goose agent
 
 use ah_domain_types::{
-    AgentCapabilities, AgentCapability, AgentCatalog, AgentMetadata, AgentSoftware,
-    AgentSoftwareBuild, ExperimentalFeature,
+    AcpLaunchCommand, AgentCapabilities, AgentCapability, AgentCatalog, AgentMetadata,
+    AgentSoftware, AgentSoftwareBuild, ExperimentalFeature,
 };
 use async_trait::async_trait;
 use std::time::{Duration, Instant};
@@ -306,6 +306,7 @@ impl RemoteAgentCatalog {
             default_count: 1,
             default_settings: std::collections::HashMap::new(),
             settings_schema_ref: capability.settings_schema_ref,
+            acp_stdio_launch_command: None,
         })
     }
 
@@ -336,6 +337,7 @@ impl RemoteAgentCatalog {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: None,
+                acp_stdio_launch_command: None,
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
@@ -358,6 +360,7 @@ impl RemoteAgentCatalog {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: None,
+                acp_stdio_launch_command: None,
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
@@ -380,6 +383,7 @@ impl RemoteAgentCatalog {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: None,
+                acp_stdio_launch_command: None,
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
@@ -403,6 +407,35 @@ impl RemoteAgentCatalog {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: Some("/api/v1/schemas/agents/gemini.json".to_string()),
+                acp_stdio_launch_command: None,
+            },
+            ah_domain_types::AgentMetadata {
+                agent: ah_domain_types::AgentSoftwareBuild {
+                    software: AgentSoftware::Opencode,
+                    version: "latest".to_string(),
+                },
+                display_name: "OpenCode (ACP)".to_string(),
+                description: "OpenCode agent acting as an ACP server (launches as `opencode acp`)."
+                    .to_string(),
+                experimental: true,
+                capabilities: ah_domain_types::AgentCapabilities {
+                    supported_models: vec!["default".to_string()],
+                    supports_multi_instance: false,
+                    supports_custom_settings: true,
+                    capabilities: vec![
+                        ah_domain_types::AgentCapability::CodeGeneration,
+                        ah_domain_types::AgentCapability::FileEditing,
+                        ah_domain_types::AgentCapability::TerminalAccess,
+                    ],
+                },
+                default_model: "default".to_string(),
+                default_count: 1,
+                default_settings: std::collections::HashMap::new(),
+                settings_schema_ref: Some("/api/v1/schemas/agents/opencode.json".to_string()),
+                acp_stdio_launch_command: Some(AcpLaunchCommand {
+                    binary: "opencode".into(),
+                    args: vec!["acp".to_string()],
+                }),
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
@@ -425,14 +458,16 @@ impl RemoteAgentCatalog {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: None,
+                acp_stdio_launch_command: None,
             },
             ah_domain_types::AgentMetadata {
                 agent: ah_domain_types::AgentSoftwareBuild {
                     software: AgentSoftware::Goose,
                     version: "latest".to_string(),
                 },
-                display_name: "Goose".to_string(),
-                description: "Block's Goose agent for autonomous software development".to_string(),
+                display_name: "Goose (ACP)".to_string(),
+                description: "Goose agent acting as an ACP server (launches as `goose acp`)."
+                    .to_string(),
                 experimental: true,
                 capabilities: ah_domain_types::AgentCapabilities {
                     supported_models: vec!["default".to_string()],
@@ -449,6 +484,10 @@ impl RemoteAgentCatalog {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: Some("/api/v1/schemas/agents/goose.json".to_string()),
+                acp_stdio_launch_command: Some(AcpLaunchCommand {
+                    binary: "goose".into(),
+                    args: vec!["acp".to_string()],
+                }),
             },
         ];
 
@@ -546,6 +585,7 @@ fn _default_catalog() -> AgentCatalog {
             default_count: 1,
             default_settings: std::collections::HashMap::new(),
             settings_schema_ref: Some("/api/v1/schemas/agents/claude-code.json".to_string()),
+            acp_stdio_launch_command: None,
         });
     }
 
@@ -583,6 +623,7 @@ fn _default_catalog() -> AgentCatalog {
             default_count: 1,
             default_settings: std::collections::HashMap::new(),
             settings_schema_ref: Some("/api/v1/schemas/agents/codex.json".to_string()),
+            acp_stdio_launch_command: None,
         });
     }
 
@@ -608,6 +649,7 @@ fn _default_catalog() -> AgentCatalog {
         default_count: 1,
         default_settings: std::collections::HashMap::new(),
         settings_schema_ref: None,
+        acp_stdio_launch_command: None,
     });
 
     // Experimental agents
@@ -634,6 +676,7 @@ fn _default_catalog() -> AgentCatalog {
             default_count: 1,
             default_settings: std::collections::HashMap::new(),
             settings_schema_ref: Some("/api/v1/schemas/agents/gemini.json".to_string()),
+            acp_stdio_launch_command: None,
         });
     }
 
@@ -658,6 +701,35 @@ fn _default_catalog() -> AgentCatalog {
         default_count: 1,
         default_settings: std::collections::HashMap::new(),
         settings_schema_ref: None,
+        acp_stdio_launch_command: None,
+    });
+
+    agents.push(AgentMetadata {
+        agent: AgentSoftwareBuild {
+            software: AgentSoftware::Opencode,
+            version: "latest".to_string(),
+        },
+        display_name: "OpenCode (ACP)".to_string(),
+        description: "OpenCode agent acting as an ACP server".to_string(),
+        experimental: true,
+        capabilities: AgentCapabilities {
+            supported_models: vec!["default".to_string()],
+            supports_multi_instance: false,
+            supports_custom_settings: true,
+            capabilities: vec![
+                AgentCapability::CodeGeneration,
+                AgentCapability::FileEditing,
+                AgentCapability::TerminalAccess,
+            ],
+        },
+        default_model: "default".to_string(),
+        default_count: 1,
+        default_settings: std::collections::HashMap::new(),
+        settings_schema_ref: Some("/api/v1/schemas/agents/opencode.json".to_string()),
+        acp_stdio_launch_command: Some(AcpLaunchCommand {
+            binary: "opencode".into(),
+            args: vec!["acp".to_string()],
+        }),
     });
 
     agents.push(AgentMetadata {
@@ -665,9 +737,9 @@ fn _default_catalog() -> AgentCatalog {
             software: AgentSoftware::Goose,
             version: "latest".to_string(),
         },
-        display_name: "Goose".to_string(),
-        description: "Block's Goose agent for autonomous software development".to_string(),
-        experimental: true,
+        display_name: "Goose (ACP)".to_string(),
+        description: "Goose agent acting as an ACP server".to_string(),
+        experimental: false,
         capabilities: AgentCapabilities {
             supported_models: vec!["default".to_string()],
             supports_multi_instance: false,
@@ -683,6 +755,10 @@ fn _default_catalog() -> AgentCatalog {
         default_count: 1,
         default_settings: std::collections::HashMap::new(),
         settings_schema_ref: Some("/api/v1/schemas/agents/goose.json".to_string()),
+        acp_stdio_launch_command: Some(AcpLaunchCommand {
+            binary: "goose".into(),
+            args: vec!["acp".to_string()],
+        }),
     });
 
     AgentCatalog {
@@ -969,6 +1045,7 @@ impl LocalAgentCatalog {
             default_count: 1,
             default_settings: std::collections::HashMap::new(),
             settings_schema_ref: None,
+            acp_stdio_launch_command: None,
         }
     }
 }

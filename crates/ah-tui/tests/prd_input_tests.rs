@@ -1235,6 +1235,7 @@ mod mouse {
                     count: 1,
                     settings: std::collections::HashMap::new(),
                     display_name: Some("Claude Sonnet".to_string()),
+                    acp_stdio_launch_command: None,
                 });
             }
         }
@@ -1291,6 +1292,7 @@ mod mouse {
                     count: 1,
                     settings: std::collections::HashMap::new(),
                     display_name: Some("Claude Sonnet".to_string()),
+                    acp_stdio_launch_command: None,
                 });
             }
         }
@@ -1344,6 +1346,7 @@ mod mouse {
                     count: 1,
                     settings: std::collections::HashMap::new(),
                     display_name: Some("Claude Sonnet".to_string()),
+                    acp_stdio_launch_command: None,
                 });
             }
         }
@@ -1397,6 +1400,7 @@ mod mouse {
                     count: 1,
                     settings: std::collections::HashMap::new(),
                     display_name: Some("Claude Sonnet".to_string()),
+                    acp_stdio_launch_command: None,
                 });
             }
         }
@@ -1543,6 +1547,7 @@ mod mouse {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }],
             state: TaskState::Completed,
             timestamp: "2025-01-01".to_string(),
@@ -1908,6 +1913,7 @@ mod mouse {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }],
             state: TaskState::Completed,
             timestamp: "2025-01-01".to_string(),
@@ -3061,6 +3067,7 @@ mod mouse {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }],
             state: TaskState::Completed,
             timestamp: "2025-01-01".to_string(),

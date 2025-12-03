@@ -1088,6 +1088,7 @@ mod viewmodel_tests {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("Claude Latest".to_string()),
+                acp_stdio_launch_command: None,
             }],
             CardFocusElement::TaskDescription,
         );
@@ -1105,8 +1106,8 @@ mod viewmodel_tests {
         if let Some(modal) = &vm.active_modal {
             match &modal.modal_type {
                 ModalType::AgentSelection { options } => {
-                    // Should have all available models (6 default models)
-                    assert_eq!(options.len(), 6);
+                    // Should have all available models (7 default models including ACP agents)
+                    assert_eq!(options.len(), 7);
                     // Find the "Claude Code" that was selected
                     let test_model = options.iter().find(|opt| opt.name == "Claude Code").unwrap();
                     assert_eq!(test_model.count, 1);

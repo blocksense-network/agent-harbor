@@ -330,6 +330,7 @@ dependencies = [
 name = "ah-agents"
 version = "0.1.0"
 dependencies = [
+ "agent-client-protocol",
  "ah-core",
  "ah-domain-types",
  "ah-repo",
@@ -351,6 +352,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-util",
  "tracing",
  "ureq",
  "which 6.0.3",
@@ -381,6 +383,7 @@ dependencies = [
  "ah-rest-client",
  "ah-rest-mock-client",
  "ah-sandbox-macos",
+ "ah-scenario-format",
  "ah-tui",
  "ah-workflows",
  "anyhow",
@@ -599,6 +602,7 @@ dependencies = [
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "shell-words",
  "strum",
  "tracing",
  "utoipa",
@@ -1011,6 +1015,7 @@ dependencies = [
 name = "ah-tui"
 version = "0.1.0"
 dependencies = [
+ "agent-client-protocol",
  "agent-client-protocol-schema",
  "ah-client-api",
  "ah-core",
@@ -1041,6 +1046,7 @@ dependencies = [
  "image",
  "insta",
  "interprocess",
+ "libc",
  "mock-agent",
  "nucleo",
  "nucleo-matcher",

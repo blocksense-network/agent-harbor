@@ -38,6 +38,7 @@ async fn test_catalog_merging() {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: None,
+                acp_stdio_launch_command: None,
             },
             AgentMetadata {
                 agent: AgentSoftwareBuild {
@@ -57,6 +58,7 @@ async fn test_catalog_merging() {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: None,
+                acp_stdio_launch_command: None,
             },
         ],
         last_updated: Some(1000),
@@ -86,6 +88,7 @@ async fn test_catalog_merging() {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: None,
+                acp_stdio_launch_command: None,
             },
             AgentMetadata {
                 agent: AgentSoftwareBuild {
@@ -105,6 +108,7 @@ async fn test_catalog_merging() {
                 default_count: 1,
                 default_settings: std::collections::HashMap::new(),
                 settings_schema_ref: None,
+                acp_stdio_launch_command: None,
             },
         ],
         last_updated: Some(2000),
@@ -176,6 +180,7 @@ async fn test_catalog_deduplication() {
         default_count: 1,
         default_settings: std::collections::HashMap::new(),
         settings_schema_ref: None,
+        acp_stdio_launch_command: None,
     });
 
     catalog2.agents.push(AgentMetadata {
@@ -199,6 +204,7 @@ async fn test_catalog_deduplication() {
         default_count: 1,
         default_settings: std::collections::HashMap::new(),
         settings_schema_ref: None,
+        acp_stdio_launch_command: None,
     });
 
     let merged = catalog1.merge(catalog2);
@@ -291,6 +297,7 @@ async fn test_mock_agents_enumerator() {
             default_count: 1,
             default_settings: std::collections::HashMap::new(),
             settings_schema_ref: None,
+            acp_stdio_launch_command: None,
         }],
         last_updated: Some(12345),
         source: Some("test".to_string()),

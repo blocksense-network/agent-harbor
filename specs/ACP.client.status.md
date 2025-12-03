@@ -2,7 +2,15 @@
 
 ## Overview
 
-Goal: implement an ACP-compliant client that can connect to external ACP agents, enabling Agent Harbor to act as a universal ACP client that bridges any ACP agent with Harbor's filesystem snapshotting, terminal management, and session recording capabilities. The ACP reference docs in `resources/acp-specs/docs` (notably `protocol/overview.mdx`, `protocol/file-system.mdx`, and `protocol/terminals.mdx`) define the JSON-RPC methods we must implement as a client. The client will be integrated into `ah agent start` as a new agent type `acp` with an `--acp-binary` option, allowing users to launch external ACP agents while benefiting from Harbor's execution environment and tooling.
+Goal: implement an ACP-compliant client that can connect to external ACP agents, enabling Agent Harbor to act as a universal ACP client that bridges any ACP agent with Harbor's filesystem snapshotting, terminal management, and session recording capabilities. The ACP reference docs in `resources/acp-specs/docs` (notably `protocol/overview.mdx`, `protocol/file-system.mdx`, and `protocol/terminals.mdx`) define the JSON-RPC methods we must implement as a client. The client will be integrated into `ah agent start` as a new agent type `acp` with an `--acp-agent-cmd` option (full command string), allowing users to launch external ACP agents while benefiting from Harbor's execution environment and tooling.
+
+### Components and their roles
+
+- **SessionViewer UI**: Displays the native output of third-party agents (Claude Code, Codex CLI, etc.) with minimal augmentation (e.g., snapshot markers). It is driven by captured stdout/stderr plus shim-extracted data from directly running the non-ACP agent; it is not fed ACP events.
+- **Agent Activity TUI**: Structured UI that renders our native event types (from `ah-domain-types`), which are shared between ACP and non-ACP flows. ACP `session/update` messages are mapped into these event types; non-ACP agents reach the same types via output parsing and shims.
+- **Json-normalized mode**: Emits those same native event types to stdout for automation; the ACP server mode also consumes this native stream. For non-ACP agents, the stream is produced directly by parsers/shims (no intermediate ACP translation).
+- **Interpose shims**: Injected when possible to capture detailed tool/terminal telemetry and pass it to recorder/TUIs; in ACP client mode, partial passthrough is wired for terminal/create.
+- **Recorder (`ah agent record`)**: Wraps executions (including ACP client runs) and captures UI output plus shim streams; recording is orthogonal to UI choice (SessionViewer, Agent Activity TUI, json-normalized). UIs only notify the recorder about snapshots and forward shim data; the recorder captures whichever UI/output is in use.
 
 Target crate: `crates/ah-agents`. We will add an `acp` module that implements the `AgentExecutor` trait and uses the vendored `vendor/acp-rust-sdk` for:
 
@@ -14,7 +22,7 @@ Target crate: `crates/ah-agents`. We will add an `acp` module that implements th
 ## Execution Strategy
 
 1. Extend `ah-agents` with an ACP client implementation that wraps external ACP agent binaries
-2. Add `acp` as a new agent type to `ah agent start` with `--acp-binary` option for specifying the external agent executable
+2. Add `acp` as a new agent type to `ah agent start` with `--acp-agent-cmd` option for specifying the external agent executable (including subcommands/flags)
 3. Implement client-side ACP methods (file system, terminal, permission requests) using Harbor's existing infrastructure
 4. Provide both text-normalized UI output (for interactive use) and json-normalized output (for automation)
 5. Integrate automatic filesystem snapshots during agent execution when configured
@@ -25,7 +33,7 @@ Target crate: `crates/ah-agents`. We will add an `acp` module that implements th
 The ACP client will be invoked through the existing `ah agent start` command with a new agent type:
 
 ```bash
-ah agent start --agent acp --acp-binary /path/to/agent-binary --prompt "Fix the bug"
+ah agent start --agent acp --acp-agent-cmd "mock-agent --scenario /path/to/scenario.yaml" --prompt "Fix the bug"
 ```
 
 This allows the ACP client to inherit all of Harbor's execution environment features:
@@ -467,88 +475,116 @@ The verification strategy for this milestone relies on two complementary testing
 
 ### Milestone 1: ACP Client Architecture & Agent Integration
 
-**Status**: Planned
+**Status**: Mostly complete (CLI + stdio scaffold; UI limited to Agent Activity TUI, SessionViewer not yet wired)
 
 #### Deliverables
 
 - [x] Create `acp` module in `crates/ah-agents/src/acp.rs` implementing the `AgentExecutor` trait
 - [x] Add `acp` to the available agents list and `agent_by_name()` function
-- [x] Add `--acp-binary` option to `AgentLaunchConfig` and CLI parsing
+- [x] Add `--acp-agent-cmd` option to `AgentLaunchConfig` and CLI parsing (full command string)
 - [x] Implement basic ACP client scaffolding with SDK integration
 - [x] Add ACP client feature flag and dependency on `vendor/acp-rust-sdk`
 - [x] Create unit tests for client initialization and basic method dispatch
+- **Clarified requirement (2025-12-03):** `ah agent start --agent acp` **must not** `exec` the external ACP binary directly. The sandbox entrypoint must be a Harbor-owned program (`ah tui acp-client`) that:
+  - Spawns the ACP server/binary as a child,
+  - Uses `vendor/acp-rust-sdk` to maintain bidirectional JSON-RPC over stdio,
+  - Collects ACP events and feeds them into `crates/ah-tui/src/agent_session_loop.rs` (Agent Activity UI) / SessionViewer UI with real dependencies,
+  - Emits UI events/output back to the ACP agent as per the ACP protocol.
+    This entrypoint is what gets `exec`’d inside the sandbox; outside the sandbox the same program can be launched directly.
+  - Current implementation: `ah tui acp-client` wraps an ACP binary, speaks the SDK over stdio, feeds `session/update` into the Agent Activity TUI (text-normalized path) via `agent_session_loop`, and forwards task-entry prompts to `session/prompt`. SessionViewer remains unchanged and continues to render native output for non-ACP agents; it is not fed by ACP events today. Terminal/fs/permission calls are handled inside the TUI stub; command-trace passthrough wraps `terminal/create` when recorder sockets are present. Json-normalized mode emits the same event stream to stdout (and to ACP server mode). AHR recording is driven by `ah agent record`, but playback parity for ACP runs (including shim-derived data and terminal traces) still needs to be validated.
 
 #### Implementation Details
 
 - The ACP client will implement `AgentExecutor` and handle the protocol translation between Harbor's agent abstraction and ACP
-- Client will support stdio transport (for `--acp-binary`)
+- Client will support stdio transport (for the configured ACP launch command)
 - Initial implementation will provide stub responses for all client methods, to be filled in subsequent milestones
 - Integration with existing credential and environment setup from `AgentLaunchConfig`
+
+**Implementation status (current)**
+
+- `crates/ah-agents/src/acp.rs` implements `AgentExecutor`, version detection, archive import/export, `parse_output` stub, and a helper to attach the ACP SDK over stdio.
+- CLI wiring (`--acp-agent-cmd`) and typed `AcpLaunchCommand` live in `crates/ah-cli/src/agent/start.rs` and `crates/ah-agents/src/traits.rs`; the Harbor entrypoint dispatches to `ah tui acp-client`.
+- Agent catalogs expose the ACP entry and launch metadata; tests cover constructor, version parsing (including subcommand-style binaries), and CLI flag parsing.
+- `ah tui acp-client` (in `crates/ah-tui/src/acp_client.rs`) provides the only UI/IO bridge today, targeting the Agent Activity TUI; SessionViewer remains the minimal native-output view and will only be augmented with snapshot markers and any later shim-derived summaries when specified.
 
 #### Key Source Files
 
 - `crates/ah-agents/src/acp.rs`
 - `crates/ah-agents/src/lib.rs` (add ACP to agent lists)
 - `crates/ah-agents/src/traits.rs` (extend `AgentLaunchConfig` if needed)
-- `crates/ah-cli/src/commands/agent/start.rs` (add `--acp-binary` option)
+- `crates/ah-cli/src/commands/agent/start.rs` (ACP launch command parsing)
 
 #### Verification
 
-- [x] `cargo test -p ah-agents acp_client_initialization` verifies client can be constructed with binary path
-- [x] `cargo test -p ah-agents acp_agent_by_name` ensures `acp` agent type is discoverable
-- [x] CLI parsing test validates `--acp-binary` option is accepted
-- [x] `just lint-rust` passes on new ACP client code
+- [x] `acp_client` — version detection for direct/subcommand binaries and SDK attach/dispatch smoke.
+- [x] `parse_acp_agent_cmd_flag` — CLI parses `--acp-agent-cmd` and wires into config.
+- [x] Harbor smoke — `ah agent start --agent acp ...` recorded `.ahr` includes traced terminal/file/permission events (validated via `crates/ah-cli/tests/acp_record_smoke.rs`, which parses the scenario with `ah-scenario-format`, replays the recorded PTY for terminal bytes, and checks the json-normalized TaskEvent stream for the scenario’s user input, tool use, and assistant text).
+- [x] End-to-end ACP client ⇄ mock-agent (json-normalized) — launch `mock-agent --scenario tests/tools/mock-agent-acp/scenarios/acp_round_trip.yaml` (ACP server mode), connect via `ah tui acp-client --acp-agent-cmd "mock-agent --scenario ..." --prompt "ping" --output json-normalized`, and assert stdout emits the scenario-defined native events (thought, tool_call, diff, terminal, plan) with correct order/fields; verify `.ahr` records terminal/file/permission traces.
+- [x] End-to-end ACP client ⇄ mock-agent (text-normalized/TUI) — same setup without `--output json-normalized`; assert Agent Activity TUI renders the scenario-defined events and `.ahr` contains matching terminal/file/permission traces.
+
+#### Outstanding Tasks (Milestone 1 scope)
+
+- [x] Extend `parse_output` to emit native TaskEvent types (from `ah-domain-types`) instead of line-based heuristics. Implemented in `crates/ah-agents/src/acp.rs`; TaskEvent JSON is now preferred and mapped to AgentEvents.
+- [x] Thread TaskEvent forwarding into the ACP client: `ah agent record` now injects `AH_TASK_MANAGER_SOCKET`/`AH_SESSION_ID`, and `ah tui acp-client` streams ACP-derived TaskEvents to the task-manager socket for AHR parity (see `crates/ah-tui/src/record.rs`, `crates/ah-tui/src/acp_client.rs`).
+- [x] Ensure AHR playback parity for ACP runs executed under `ah agent record`: recorded `.ahr` should faithfully capture UI output plus shim-derived terminal/file/permission traces when using Agent Activity TUI or json-normalized modes. Smoke covered via `acp_record_smoke` replay assertion.
+- [x] Add a Harbor-level smoke (`ah agent start --agent acp ...`) that records an `.ahr` and verifies traced terminal bytes/tool/file/permission events.
+- [x] Document/env-check the command-trace passthrough behaviour end-to-end (shim + recorder) — `CmdtraceEnv::detect` now refuses missing sockets and warns instead of silently misconfiguration of passthrough; docs updated here.
+- [x] Harbor smoke still timing out under recorder: `acp_record_smoke::acp_recording_captures_terminal_output` produces the `.ahr` but the child does not exit before timeout. Needs recorder↔ACP client lifecycle fix and deterministic exit handling.
+- [x] End-to-end ACP client ⇄ mock-agent (json-normalized) validation (scenario `acp_round_trip.yaml`).
+- [x] End-to-end ACP client ⇄ mock-agent (text-normalized/TUI) validation.
+- [x] Smoke test stability: `acp_terminal` scenario fixed (invalid `sessionStart` removed) and tests re-enabled; json-normalized + recorder smokes now pass deterministically in CI/local runs.
+- [x] Removed the ad-hoc `--scenario` flag from `ah tui acp-client`; scenario paths are forwarded via the unified `--acp-agent-cmd` string (or ACP agent defaults).
+- [x] Revisited ACP launch UX: consolidated on `--acp-agent-cmd` (full command string) and dropped `--acp-arg`; CLI/TUI parsing and tests updated.
+- [x] Recorder lifecycle hardened: ACP client now cancels after first completed tool, waits briefly for terminal exits, mirrors PTY bytes to stdout in headless runs, and ships a test-only watchdog env (`AH_ACP_CLIENT_TEST_WATCHDOG_MS`) to avoid recorder hangs (`acp_record_smoke` now stable).
 
 ---
 
 ### Milestone 2: Transport Layer & Connection Management
 
-**Status**: Planned
+**Status**: Partially implemented (stdio wiring exists; no reconnection/health checks or capability negotiation)
 
 #### Deliverables
 
-- [x] Implement stdio transport using the ACP SDK's stdio connection
-- [x] Add connection lifecycle management (connect, disconnect, error handling)
-- [x] Implement basic capability negotiation during `initialize`
-- [x] Add connection health monitoring and automatic reconnection
-- [x] Create integration tests for stdio transport
+- [x] Implement stdio transport using the ACP SDK's stdio connection (in `crates/ah-tui/src/acp_client.rs::run_acp_client`).
+- [ ] Add connection lifecycle management (explicit disconnect, error surfacing) beyond child exit.
+- [ ] Implement capability negotiation during `initialize` (currently uses SDK defaults, no advertised fs/terminal capabilities).
+- [ ] Add connection health monitoring and automatic reconnection.
+- [ ] Create integration tests for stdio transport.
 
 #### Implementation Details
 
-- Stdio transport: spawn the `--acp-binary` process and connect via stdin/stdout
+- Stdio transport: spawn the configured ACP command and connect via stdin/stdout
 - Connection management: handle process lifecycle and connection establishment/teardown
 - Capability negotiation: advertise client capabilities (filesystem, terminal) during initialization
 - Error handling: translate transport errors into appropriate ACP error responses
 
 #### Key Source Files
 
-- `crates/ah-agents/src/acp/transport.rs`
-- `crates/ah-agents/src/acp/connection.rs`
-- `crates/ah-agents/tests/acp_transport.rs`
+- `crates/ah-tui/src/acp_client.rs` (client-side SDK wiring).
+- `crates/ah-agents/src/acp.rs` (`attach_stdio_client` helper only).
 
 #### Verification
 
-- [x] `cargo test -p ah-agents --test acp_stdio_transport` verifies stdio connection to mock-acp-agent
-- [x] `cargo test -p ah-agents acp_capability_negotiation` ensures proper initialization handshake
-- [x] Integration test spawns mock-acp-agent binary and verifies basic communication
-- [x] `cargo test -p ah-agents acp_prompt_execution` ensures prompts are sent and responses received
-- [x] `cargo test -p ah-agents acp_event_streaming` verifies session update notifications are processed
-- [x] Integration test with SDK example agent validates end-to-end prompt flow
+- [x] `acp_client` — duplex SDK wiring smoke; basic RPC dispatch.
+- [ ] `acp_stdio_transport` — connects to mock agent over stdio and exchanges initialize/new_session/prompt (TODO).
+- [ ] `acp_capability_negotiation` — asserts advertised client capabilities are sent and respected (TODO).
+- [ ] `acp_reconnect_recovers_stream` — reconnect after child crash resumes updates without duplication (TODO).
+- [ ] `acp_prompt_execution` — prompt request/response round-trip over stdio (TODO).
 
 ---
 
 ### Milestone 3: Filesystem Method Implementation
 
-**Status**: Planned
+**Status**: Partially implemented (local fs read/write in TUI client; no workspace mapping or snapshots)
 
 #### Deliverables
 
-- [x] Implement `fs/read_text_file` and `fs/write_text_file` client methods
-- [x] Add filesystem capability advertisement during initialization
-- [x] Implement path resolution between ACP absolute paths and Harbor workspace paths
-- [x] Add automatic snapshot creation on file writes when configured
-- [x] Handle file access permissions and error cases
-- [x] Create filesystem operation tests with mock scenarios
+- [x] Implement `fs/read_text_file` and `fs/write_text_file` client methods (TUI stub, direct local paths).
+- [ ] Add filesystem capability advertisement during initialization.
+- [ ] Implement path resolution between ACP absolute paths and Harbor workspace paths.
+- [ ] Add automatic snapshot creation on file writes when configured.
+- [ ] Handle file access permissions and error cases.
+- [ ] Create filesystem operation tests with mock scenarios (only a simple unit test exists in `ah-tui`).
 
 #### Implementation Details
 
@@ -560,30 +596,28 @@ The verification strategy for this milestone relies on two complementary testing
 
 #### Key Source Files
 
-- `crates/ah-agents/src/acp/filesystem.rs`
-- `crates/ah-agents/tests/acp_filesystem.rs`
+- `crates/ah-tui/src/acp_client.rs` (`read_text_file` / `write_text_file`).
 
 #### Verification
 
-- [x] `cargo test -p ah-agents acp_file_read` verifies file content serving via ACP
-- [x] `cargo test -p ah-agents acp_file_write` ensures file writes trigger snapshots when enabled
-- [x] `cargo test -p ah-agents acp_path_resolution` validates path conversion logic
-- [x] Integration test verifies snapshots are created after ACP file operations
+- [x] `acp_client::read_write_roundtrip` — basic fs read/write via TUI stub.
+- [ ] `acp_file_read` / `acp_file_write` / `acp_path_resolution` — path mapping, error handling, snapshot hook (TODO).
+- [ ] Scenario-driven fs ops (mock-agent) — absolute/relative path mapping, permission failures, snapshot trigger (TODO).
 
 ---
 
 ### Milestone 4: Terminal Method Implementation
 
-**Status**: Planned
+**Status**: Partially implemented (basic spawn/buffer; no streamed notifications to agent; limited process control)
 
 #### Deliverables
 
-- [x] Implement terminal capability advertisement and all terminal methods (`create`, `output`, `wait_for_exit`, `kill`, `release`)
-- [x] Add terminal creation and process management
-- [x] Implement output streaming and real-time updates
-- [x] Handle process lifecycle, signals, and exit codes
-- [x] Add resource limits and sandboxing integration
-- [x] Create terminal operation tests with process mocking
+- [x] Implement terminal methods `create`, `output`, `wait_for_exit`, `kill`, `release` (TUI stub).
+- [ ] Advertise terminal capability during initialization.
+- [ ] Implement output streaming back to the agent (only pull-based `terminal/output` reads buffered data).
+- [ ] Add resource limits and sandboxing integration beyond optional command-trace passthrough.
+- [ ] Comprehensive process lifecycle/signal handling (only kill/exit recorded).
+- [ ] Create terminal operation tests with process mocking in `ah-agents` (currently only a smoke in `ah-tui`).
 
 #### Implementation Details
 
@@ -595,30 +629,29 @@ The verification strategy for this milestone relies on two complementary testing
 
 #### Key Source Files
 
-- `crates/ah-agents/src/acp/terminal.rs`
-- `crates/ah-agents/tests/acp_terminal.rs`
+- `crates/ah-tui/src/acp_client.rs` (terminal implementations, command-trace passthrough helper).
 
 #### Verification
 
-- [x] `cargo test -p ah-agents acp_terminal_lifecycle` verifies complete terminal creation/execution/cleanup flow
-- [x] `cargo test -p ah-agents acp_output_streaming` ensures real-time output delivery
-- [x] `cargo test -p ah-agents acp_process_signals` validates signal handling and process control
-- [x] Integration test spawns actual processes and verifies ACP terminal operations
+- [x] `acp_client::terminal_output_is_exposed` — spawn shell, capture buffered output, verify exit recorded.
+- [ ] `acp_terminal_lifecycle` / `acp_output_streaming` / `acp_process_signals` — full lifecycle, streaming push, signal handling (TODO).
+- [ ] Command-trace passthrough — `terminal/create` wraps `ah agent record --passthrough` when recorder sockets set (TODO).
+- [ ] Streaming notifications — mock-agent scenario pushes terminal output via `session/update` and client renders it (TODO).
 
 ---
 
 ### Milestone 5: Permission Request Handling & UI Integration
 
-**Status**: Planned
+**Status**: Minimal stub (auto-allow only; no policy/UI, no text/json output modes)
 
 #### Deliverables
 
-- [x] Implement `request_permission` client method for handling agent permission requests
-- [x] Add permission policy configuration and automatic approval rules
-- [x] Implement text-normalized and json-normalized output modes
-- [x] Create interactive permission prompts for terminal use
-- [x] Add programmatic permission handling for automation
-- [x] Create UI integration tests for both output modes
+- [x] Implement `request_permission` client method (auto-selects “allow”).
+- [ ] Add permission policy configuration and automatic approval rules (must cover both ACP `request_permission` flows and sandbox FS approval per `Public/Sandboxing/Agent-Harbor-Sandboxing-Strategies.md`).
+- [ ] Implement text-normalized and json-normalized output modes.
+- [ ] Create interactive permission prompts for terminal use.
+- [ ] Add programmatic permission handling for automation.
+- [ ] Create UI integration tests for both output modes (Agent Activity TUI when text-normalized; stdout JSON events when json-normalized; SessionViewer minimal augmentation).
 
 #### Implementation Details
 
@@ -630,16 +663,14 @@ The verification strategy for this milestone relies on two complementary testing
 
 #### Key Source Files
 
-- `crates/ah-agents/src/acp/permissions.rs`
-- `crates/ah-agents/src/acp/ui.rs`
-- `crates/ah-agents/tests/acp_ui.rs`
+- `crates/ah-tui/src/acp_client.rs` (`request_permission` auto-allow).
 
 #### Verification
 
-- [x] `cargo test -p ah-agents acp_permission_handling` verifies permission request/response flow
-- [x] `cargo test -p ah-agents acp_text_output` ensures proper text-normalized formatting
-- [x] `cargo test -p ah-agents acp_json_output` validates json-normalized output structure
-- [x] Integration test exercises permission prompts in interactive mode
+- [x] `acp_client::permission_requests_auto_allow` — permission flow auto-selects allow.
+- [ ] `acp_permission_handling` — policy-driven allow/deny/cancel with options (TODO).
+- [ ] UI prompts — TUI integration renders permission dialog, enforces sandbox FS policy (TODO).
+- [ ] Json/text modes — snapshot outputs for normalized text and json showing permission outcomes (TODO).
 
 ---
 
@@ -672,10 +703,10 @@ The verification strategy for this milestone relies on two complementary testing
 
 #### Verification
 
-- [x] `cargo test -p ah-agents acp_extensions` verifies custom method handling
-- [x] `cargo test -p ah-agents acp_multimodal` tests file/image attachment handling
-- [x] `cargo test -p ah-agents acp_session_control` validates pause/resume functionality
-- [x] Integration test with extension-supporting agent validates advanced features
+- [ ] `acp_extensions` — custom `_ah/*` methods exercised end-to-end (TODO).
+- [ ] `acp_multimodal` — image/audio/resource handling mapped to native events (TODO).
+- [ ] `acp_session_control` — pause/resume/mode switching via ACP mapped to native events (TODO).
+- [ ] Integration with extension-supporting agent — validates mixed extensions + core flows (TODO).
 
 ---
 
@@ -707,14 +738,39 @@ The verification strategy for this milestone relies on two complementary testing
 
 #### Verification
 
-- [x] Performance benchmarks validate throughput and latency targets
-- [x] `cargo test -p ah-agents acp_error_recovery` ensures robust error handling
-- [x] `cargo test -p ah-agents acp_resource_limits` verifies memory and connection limits
-- [x] Stress tests validate performance under load
+- [ ] Performance benchmarks — throughput/latency targets under load (TODO).
+- [ ] `acp_error_recovery` — classify and recover from transient/fatal errors (TODO).
+- [ ] `acp_resource_limits` — memory/connection limits enforced (TODO).
+- [ ] Stress tests — sustained concurrency without dropped events (TODO).
 
 ---
 
-### Milestone 8: Documentation & Packaging
+### Milestone 8: Third-Party ACP Agents via LLM API Proxy
+
+**Status**: Planned
+
+#### Deliverables
+
+- Drive a real ACP-capable third-party agent (e.g., Goose, OpenCode) that uses `llm-api-proxy` as its LLM API provider, seeded by scenario files (`specs/Public/Scenario-Format.md`).
+- Ensure proxy compatibility (prompt/content/tool/terminal flows) and stabilize transport/error handling for the provider role.
+- Connect `ah tui acp-client` in json-normalized and text-normalized modes to the third-party agent and map emitted ACP events into native event types.
+- Record `.ahr` with terminal/file/permission traces matching the scenario.
+
+#### Implementation Details
+
+- Extend `llm-api-proxy` to supply LLM responses per scenario to the third-party agent (as an API provider), honoring timelines and content types.
+- Handle incompatibilities/quirks per agent (capabilities, prompt formats, tool schema).
+- Validate both stdio and network transports if supported by the agent.
+
+#### Verification
+
+- [ ] Third-party ACP E2E (json-normalized) — run proxy + agent with scenario; assert emitted native events match scenario; `.ahr` captures terminal/file/permission traces (TODO).
+- [ ] Third-party ACP E2E (text-normalized/TUI) — same setup; assert Agent Activity TUI renders scenario events and `.ahr` traces match (TODO).
+- [ ] Proxy robustness — fault-injection/timeout tests to ensure retries and clear error propagation (TODO).
+
+---
+
+### Milestone 9: Documentation & Packaging
 
 **Status**: Planned
 
@@ -743,20 +799,29 @@ The verification strategy for this milestone relies on two complementary testing
 
 #### Verification
 
-- [x] Documentation builds and links are valid
-- [x] `just lint-specs` passes on all documentation
-- [x] CLI help text is comprehensive and accurate
-- [x] End-to-end integration tests pass with real ACP agents
+- [ ] Documentation builds and links are valid (TODO).
+- [ ] `lint-specs` passes on all documentation (TODO).
+- [ ] CLI help text is comprehensive and accurate (TODO).
+- [ ] End-to-end integration tests with real ACP agents covering prompt, terminal, fs, permissions (TODO).
+- [ ] Third-party ACP E2E via LLM API Proxy — drive a real ACP-capable agent (e.g., Goose or OpenCode) through `llm-api-proxy` using a scenario (see `specs/Public/Scenario-Format.md`), connect with `ah tui acp-client` in json-normalized mode, and assert native events match the scenario and `.ahr` captures terminal/file/permission traces; repeat in text-normalized/TUI mode (TODO).
 
 ## Outstanding Tasks After Milestones
 
-- Define interoperability matrix with popular ACP agents (Claude Code, Continue, etc.)
-- Add support for ACP over HTTP streaming transport when standardized
-- Implement ACP federation for multi-agent coordination
-- Add support for ACP session forking and branching
-- Create ACP client plugins/extensions system
-- Add telemetry and usage analytics
-- Implement ACP client marketplace/registry integration
+- **Capability negotiation and alignment**
+  - Advertise fs/terminal/permission capabilities during `initialize`; align path resolution and snapshot hooks with Harbor workspace semantics.
+  - Integrate permission policy UI/modes (text/json) with configurable auto-approval and sandbox alignment.
+- **Transport resilience**
+  - Add reconnection/health checks and explicit error surfacing for stdio transport; include targeted tests.
+- **Terminal streaming**
+  - Implement push-style terminal output notifications back to agents, enforce resource limits, and honor sandbox policies.
+- **UI/recorder integration**
+  - Integrate SessionViewer and AHR playback for ACP runs to achieve parity with Agent Activity TUI.
+- **Scenario/test coverage**
+  - Add scenario-driven tests for permissions, fs, terminal flows (mock-agent) and ensure follower-vs-direct runCmd modes are covered.
+- **Interoperability & extensions**
+  - Define interoperability matrix with popular ACP agents (Claude Code, Continue, etc.) and extend coverage once HTTP streaming transport is standardized.
+- **Longer-range items**
+  - ACP federation, session forking/branching, plugin/extension system, telemetry/analytics, and marketplace/registry integration remain planned.
 
 Once all milestones are implemented and verified, update this status document with:
 

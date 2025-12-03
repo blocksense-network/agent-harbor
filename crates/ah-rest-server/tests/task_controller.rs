@@ -36,6 +36,7 @@ fn make_request() -> CreateTaskRequest {
             count: 1,
             settings: std::collections::HashMap::new(),
             display_name: Some("sonnet".into()),
+            acp_stdio_launch_command: None,
         }],
         delivery: None,
         labels: std::collections::HashMap::new(),

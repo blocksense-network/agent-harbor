@@ -1789,6 +1789,9 @@ impl ViewModel {
                                     count: 1,
                                     settings: model.settings.clone(),
                                     display_name: model.display_name.clone(),
+                                    acp_stdio_launch_command: model
+                                        .acp_stdio_launch_command
+                                        .clone(),
                                 };
                                 card.selected_agents = vec![selected_agent];
                                 card.focus_element = CardFocusElement::TaskDescription;
@@ -1816,6 +1819,9 @@ impl ViewModel {
                                         count: opt.count,
                                         settings: model.settings.clone(),
                                         display_name: model.display_name.clone(),
+                                        acp_stdio_launch_command: model
+                                            .acp_stdio_launch_command
+                                            .clone(),
                                     })
                             })
                             .collect();
@@ -2471,6 +2477,7 @@ impl ViewModel {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("Claude Sonnet".to_string()),
+                acp_stdio_launch_command: None,
             }]
         });
         let draft_cards = vec![Self::create_draft_task_internal(
@@ -6162,6 +6169,7 @@ impl ViewModel {
                                 count: 1,
                                 settings: model.settings.clone(),
                                 display_name: model.display_name.clone(),
+                                acp_stdio_launch_command: model.acp_stdio_launch_command.clone(),
                             })
                     })
                     .collect();
@@ -6301,6 +6309,7 @@ impl ViewModel {
                             count: 1,
                             settings: std::collections::HashMap::new(),
                             display_name: Some("Claude Sonnet".to_string()),
+                            acp_stdio_launch_command: None,
                         }] // Default model if none saved
                     } else {
                         draft_info.models.clone()
@@ -6490,6 +6499,7 @@ impl ViewModel {
                             count: 1,
                             settings: model.settings.clone(),
                             display_name: model.display_name.clone(),
+                            acp_stdio_launch_command: model.acp_stdio_launch_command.clone(),
                         })
                 })
                 .collect();
@@ -6570,6 +6580,7 @@ impl ViewModel {
                     count: 1,
                     settings: std::collections::HashMap::new(),
                     display_name: Some(display_name),
+                    acp_stdio_launch_command: None,
                 }
             })
             .collect();

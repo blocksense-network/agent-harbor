@@ -115,6 +115,7 @@ async fn remote_task_manager_launches_task_against_mock_server() {
         count: 1,
         settings: std::collections::HashMap::new(),
         display_name: Some("Claude 3.5 Sonnet".to_string()),
+        acp_stdio_launch_command: None,
     };
 
     let params = TaskLaunchParams::builder()
@@ -256,6 +257,7 @@ fn sample_agent_choice() -> AgentChoice {
         count: 1,
         settings: HashMap::new(),
         display_name: Some("Claude 3.5 Sonnet".to_string()),
+        acp_stdio_launch_command: None,
     }
 }
 

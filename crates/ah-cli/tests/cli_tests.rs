@@ -21,11 +21,13 @@ fn test_cli_parsing_init_session() {
     let cli = Cli::try_parse_from(args).unwrap();
     assert!(matches!(
         cli.command,
-        Commands::Agent {
-            subcommand: AgentCommands::Fs {
-                subcommand: AgentFsCommands::InitSession(_)
-            }
-        }
+        Commands::Agent { subcommand }
+            if matches!(
+                subcommand.as_ref(),
+                AgentCommands::Fs {
+                    subcommand: AgentFsCommands::InitSession(_)
+                }
+            )
     ));
 }
 
@@ -36,11 +38,13 @@ fn test_cli_parsing_snapshots() {
     let cli = Cli::try_parse_from(args).unwrap();
     assert!(matches!(
         cli.command,
-        Commands::Agent {
-            subcommand: AgentCommands::Fs {
-                subcommand: AgentFsCommands::Snapshots(_)
-            }
-        }
+        Commands::Agent { subcommand }
+            if matches!(
+                subcommand.as_ref(),
+                AgentCommands::Fs {
+                    subcommand: AgentFsCommands::Snapshots(_)
+                }
+            )
     ));
 }
 
@@ -60,11 +64,13 @@ fn test_cli_parsing_branch_create() {
     let cli = Cli::try_parse_from(args).unwrap();
     assert!(matches!(
         cli.command,
-        Commands::Agent {
-            subcommand: AgentCommands::Fs {
-                subcommand: AgentFsCommands::Branch { .. }
-            }
-        }
+        Commands::Agent { subcommand }
+            if matches!(
+                subcommand.as_ref(),
+                AgentCommands::Fs {
+                    subcommand: AgentFsCommands::Branch { .. }
+                }
+            )
     ));
 }
 
@@ -82,11 +88,13 @@ fn test_cli_parsing_branch_bind() {
     let cli = Cli::try_parse_from(args).unwrap();
     assert!(matches!(
         cli.command,
-        Commands::Agent {
-            subcommand: AgentCommands::Fs {
-                subcommand: AgentFsCommands::Branch { .. }
-            }
-        }
+        Commands::Agent { subcommand }
+            if matches!(
+                subcommand.as_ref(),
+                AgentCommands::Fs {
+                    subcommand: AgentFsCommands::Branch { .. }
+                }
+            )
     ));
 }
 
@@ -107,11 +115,13 @@ fn test_cli_parsing_branch_exec() {
     let cli = Cli::try_parse_from(args).unwrap();
     assert!(matches!(
         cli.command,
-        Commands::Agent {
-            subcommand: AgentCommands::Fs {
-                subcommand: AgentFsCommands::Branch { .. }
-            }
-        }
+        Commands::Agent { subcommand }
+            if matches!(
+                subcommand.as_ref(),
+                AgentCommands::Fs {
+                    subcommand: AgentFsCommands::Branch { .. }
+                }
+            )
     ));
 }
 

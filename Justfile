@@ -104,6 +104,10 @@ test-rust-single *args: build-rust-test-binaries
 test-rust-verbose *args: build-rust-test-binaries
     cargo nextest run --workspace --verbose {{args}}
 
+# Run ACP client-focused tests (Milestone 1 scaffold)
+test-acp-client:
+    cargo nextest run -p ah-agents -E 'test(acp_client)'
+
 # Build mock TUI dashboard binary
 build-mock-tui-dashboard:
     cd tests/tools/mock-tui-dashboard && cargo build --bin mock-tui-dashboard

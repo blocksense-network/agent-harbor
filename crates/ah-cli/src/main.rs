@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
 
     // Load configuration from all sources (system, user, repo, repo-user, env, CLI)
     // Convert CLI arguments to JSON overrides following TOML naming conventions
-    let cli_overrides = ::serde_json::to_value(&cli)?;
+    let cli_overrides = cli.to_json_overrides();
     let config_result = config::load_config(
         cli.repo.as_deref(),
         cli.config.as_deref(),
@@ -23,16 +23,17 @@ async fn main() -> Result<()> {
     )?;
 
     // Determine if this is a TUI command that should log to file
-    let is_tui_command = matches!(
-        &cli.command,
-        Commands::Tui(_)
-            | Commands::Agent {
-                subcommand: AgentCommands::Record(_)
-                    | AgentCommands::Start(_)
-                    | AgentCommands::Replay(_)
-                    | AgentCommands::BranchPoints(_)
-            }
-    );
+    let is_tui_command = match &cli.command {
+        Commands::Tui(_) => true,
+        Commands::Agent { subcommand } => matches!(
+            subcommand.as_ref(),
+            AgentCommands::Record(_)
+                | AgentCommands::Start(_)
+                | AgentCommands::Replay(_)
+                | AgentCommands::BranchPoints(_)
+        ),
+        _ => false,
+    };
 
     // Set up centralized logging using the merged configuration
     let default_level = if cfg!(debug_assertions) {
@@ -72,14 +73,14 @@ async fn main() -> Result<()> {
             let fs_snapshots = cli.fs_snapshots.clone().unwrap_or_default();
             subcommand.run(cli.config.as_deref(), cli.repo.clone(), fs_snapshots).await
         }
-        Commands::Agent { ref subcommand } => match subcommand {
+        Commands::Agent { ref subcommand } => match subcommand.as_ref() {
             AgentCommands::Fs {
                 subcommand: ref cmd,
-            } => (*cmd).clone().run().await,
+            } => cmd.clone().run().await,
             AgentCommands::Sandbox(ref args) => {
-                (*args).clone().run(cli.fs_snapshots, config_result.config.sandbox()).await
+                args.clone().run(cli.fs_snapshots, config_result.config.sandbox()).await
             }
-            AgentCommands::Start(ref args) => (*args).clone().run().await,
+            AgentCommands::Start(ref args) => args.clone().run().await,
             AgentCommands::Record(args) => {
                 let deps = get_record_tui_dependencies(&cli, &config_result.config)?;
                 ah_tui::record::execute(deps, args.clone()).await

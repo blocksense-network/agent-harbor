@@ -51,7 +51,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 - For every tool invocation emitted by the third-party agent, Harbor immediately records the run inside its sandbox (via `ah agent record`) and then asks the IDE—acting as the ACP client—to **launch a follower terminal** that replays that exact command in real time.
 - The replay command we send down is `ah show-sandbox-execution "<original command>" --id <execution_id>` (a thin wrapper around `ah agent replay --session <id> --tool <tool_id> --follow`). The follower behaves exactly like attaching to a tmux pane: it maintains a live connection to the recorder-owned TTY, streams fresh output as soon as it is produced, and forwards any keystrokes back to the running process. It also carries the full shell pipeline so users see precisely what ran, and the execution ID lets Harbor-aware IDEs correlate status/logs; IDEs may strip the `ah show-sandbox-execution` prefix when rendering.
 - Live recorder SSE events are mapped onto ACP `session/update` payloads (thought/log/tool sections) while the IDE-owned follower terminal runs the replay command to stream the same PTY bytes with millisecond accuracy. SessionViewer mirrors those followers locally: active executions appear in the status bar, a shortcut opens the follower TTY in a modal, and input typed there is injected back into the third-party agent via the recorder’s `inject_message` TTY (enabling users to respond to prompts such as sudo passwords).
-- This design keeps tool execution entirely inside Harbor, reuses the Command-Execution-Tracing + Recorder stack, requires no IDE-specific sandbox knowledge, and still honors ACP’s client-owned terminal semantics.
+- This design keeps tool execution entirely inside Harbor, reuses the Command-Execution-Tracing + Recorder stack, requires no IDE-specific sandbox knowledge, and still honors ACP’s client-owned terminal semantics. When the new hybrid relay (Milestone 5) is active, launching `ah acp` lets Harbor consume upstream ACP commands from a third-party agent and relay them downstream over ACP/WebSocket/UDS while Harbor executes the commands, applies the edits, and takes snapshots itself.
 
 ---
 
@@ -167,7 +167,7 @@ Target crate: `crates/ah-rest-server`. We will add an `acp` module and reuse `ag
 | ------------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `initialize.capabilities.transports` | Derived from `AcpConfig.transport` (`websocket` always, `stdio` when configured) | Persisted per-connection inside `AcpSessionContext` and required before session RPCs |
 | `initialize.capabilities.filesystem` | Default `false/false` until in-place mode (Milestone 12)                         | Guardrails enforced in translator; unknown flags ignored                             |
-| `initialize.capabilities.terminal`   | Always `true` (Harbor owns recorder + follower channel)                          | Terminal replay hooks arrive in Milestones 5–7                                       |
+| `initialize.capabilities.terminal`   | Always `true` (Harbor owns recorder + follower channel)                          | Terminal replay hooks arrive in Milestones 6–8                                       |
 | Auth forwarding                      | Uses REST `AuthConfig` (API key/JWT)                                             | Shared problem+JSON errors with REST                                                 |
 
 #### Session Context Snapshot
@@ -261,7 +261,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - `session/cancel` best-effort calls `TaskController::stop_task` when available to mirror REST cancellation.
 - Backpressure coverage added via `acp_prompt_backpressure` which blasts prompts while delaying reads to ensure the gateway keeps streaming and does not deadlock.
 - Scenario fixture `tests/acp_bridge/scenarios/prompt_turn_basic.yaml` added to mirror the prompt turn timeline; harness assertions now execute via the mock playback store’s legacy `events`/`assertions` support.
-- Prompt injection now targets the live PTY via the task-manager socket: the socket protocol is a bidirectional SSZ envelope, `ah agent record` listens for `InjectInput` frames and writes them to the PTY, and the REST `TaskExecutor::inject_message` forwards ACP prompts over that channel (with newline termination) in addition to logging. The socket now also carries `PtyData`/`PtyResize` envelopes from the recorder to seed the follower/backlog channel for Milestone 5.3. Recorder-side PTY bytes are now buffered inside `TaskSocketHub` (backlog + broadcast) but no consumer is wired yet; follower hookup remains outstanding.
+- Prompt injection now targets the live PTY via the task-manager socket: the socket protocol is a bidirectional SSZ envelope, `ah agent record` listens for `InjectInput` frames and writes them to the PTY, and the REST `TaskExecutor::inject_message` forwards ACP prompts over that channel (with newline termination) in addition to logging. The socket now also carries `PtyData`/`PtyResize` envelopes from the recorder to seed the follower/backlog channel for Milestone 6.3. Recorder-side PTY bytes are now buffered inside `TaskSocketHub` (backlog + broadcast) but no consumer is wired yet; follower hookup remains outstanding.
 - Task executor now exposes PTY backlog/live subscription through `TaskController::subscribe_pty`, backed by `TaskSocketHub`; recorder PTY bytes and resizes flow into the hub and tests cover backlog + live delivery. ACP gateway now subscribes to the PTY stream per session, seeds backlog immediately, and emits `session/update` notifications with `terminal`/`terminal_resize` events (base64 payloads) so IDEs can begin rendering live output. IDE follower attachment/command channel remains TODO.
 - Added `_ah/terminal/write` ACP extension to inject raw PTY bytes (base64) through the task manager socket without newline. `_ah/terminal/follow` returns the canonical follower command (`ah show-sandbox-execution ...`) so IDEs can spawn a follower terminal with the right execution/session ids. Full IDE follower lifecycle (attach/detach surfacing in UI) is still pending.
 - `_ah/terminal/follow` now derives its follower command from recorded tool events when available (tool args/name matching `executionId`), only falling back to the client-supplied command when no history exists. This reduces spoofing risk while preserving compatibility with legacy clients that omit recorder metadata.
@@ -290,7 +290,55 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 ---
 
-### Milestone 5: Command Execution Tracing & Passthrough Recorder
+### Milestone 5: Access Point & Hybrid Relay (ACP client ⇄ ACP/REST server)
+
+**Status**: Planned (next up)
+
+#### Deliverables
+
+- Ship an `ah agent access-point` mode that exposes both transports simultaneously:
+  - WebSocket endpoint on `/acp/v1/connect` (unchanged), and
+  - A Unix-domain socket whose framing is byte-for-byte identical to the existing stdio framing (ACP JSON-RPC lines). This socket lives in a platform-appropriate default path (XDG runtime dir on Linux, `~/Library/Caches/io.agentharbor/acp.sock` on macOS, `%LOCALAPPDATA%\AgentHarbor\acp.sock` on Windows), with a flag to override.
+- Add a new `ah acp` CLI that can:
+  - Auto-discover the local access-point socket in the standard location and forward bytes bidirectionally with zero translation, or
+  - Connect to a remote access point (WebSocket or Unix socket over ssh -L) and perform the same byte forwarding, or
+  - When pointed at a REST-only Harbor (`ah-rest-server`), translate REST/SSE TaskEvents into ACP `session/update` notifications and forward ACP RPCs to the REST API. Connection options cover ws/http/uds and auth.
+- Centralize ACP↔TaskEvent translation in a single shared module used by both the access-point bridge and the REST translator so we do not duplicate mapping logic (reuse the existing client/server mapping helpers; factor them if needed).
+- Add `acp.daemonize` behavior to `ah acp`:
+  - Modes: `auto` (default) — if the access point is not running, spawn it as a background daemon and keep it alive with an idle timeout (default 24h) before self-termination; `never` — never launch a daemon, instead run the hybrid client/server inline in the invoking `ah acp` process (same code path as the daemon); `disabled` — refuse to start a daemon and fail fast with diagnostics if no access point is present.
+  - Daemonization must use platform-appropriate mechanisms (double-fork + `setsid` + stdio redirection + pid/lockfile on Unix; background process/service model on Windows) and clean shutdown hooks. The installer will provision user/system services where supported; `auto` should prefer starting those when present and only fall back to ad-hoc double-fork/LaunchAgent/Scheduled-Task/DETACHED_PROCESS when no managed service is running.
+  - Motivation: allow the same access-point session to be observed and driven by multiple ACP clients concurrently.
+  - See `specs/Research/General/How-to-daemonize-a-process.md` for platform-specific approaches (systemd --user / LaunchAgents / Task Scheduler; POSIX double-fork and Windows detached process fallbacks).
+  - Session sharing relies on standard ACP: multiple clients can `session/load` the same session and receive identical `session/update` streams (including echoes of their own actions). No Harbor-specific roles/policies are required.
+- Existing mapping touchpoints to unify (factor into the shared module):
+  - `crates/ah-tui/src/acp_client.rs`: maps ACP `SessionUpdate` → `TaskEvent` (see `emit_task_event`, `emit_tool_use_event`, `emit_file_edit_event`) and `TaskEvent` → `SessionEvent` for recorder sockets via `task_event_to_session_event`.
+  - `crates/ah-rest-server/src/acp/transport.rs::session_update_from_json`: maps TaskManager/SessionEvent-like JSON to ACP `SessionUpdate` for WebSocket/stdio transports (includes terminal follow/detach helpers).
+  - `crates/ah-agents/src/acp.rs::task_event_to_agent_events`: converts `TaskEvent` streams back into `AgentEvent` for CLI output parsing.
+    The milestone should extract these into a shared ACP translation module (bidirectional ACP ↔ TaskEvent ↔ SessionEvent) and have both the access-point bridge and REST bridge call it.
+- Ensure `ah agent access-point` can multiplex both transports at once without double-dispatch: stdin/stdout (legacy), Unix socket, and WebSocket share the same dispatcher/runtime.
+- Document the access-point discovery rules, new CLI flags, and how IDEs/agents should connect in hybrid mode.
+
+#### Verification
+
+- Integration test that launches `ah agent access-point` with WebSocket + UDS enabled, dials with `ah acp` (default discovery), runs `initialize → session/new → session/prompt`, and asserts identical transcripts over stdio vs UDS vs WS.
+- Integration test that points `ah acp` at a REST-only Harbor; confirms REST SSE events are translated to ACP `session/update` and prompts/cancel map back to REST.
+- CLI doc/help snapshot tests covering default socket discovery and remote connection flags.
+- Daemonization tests:
+- `acp.daemonize=auto` spins up the daemon when absent, reuses it across two concurrent `ah acp` clients, and tears down after idle timeout elapses.
+- `acp.daemonize=never` runs the bridge inline; verify multi-client reuse is not available and the process exits when the caller exits.
+- `acp.daemonize=disabled` fails with a clear diagnostic when no daemon is present.
+
+#### Outstanding Tasks
+
+- Define and implement the shared ACP↔TaskEvent translation module and wire both the ACP gateway and the REST→ACP bridge to it (no duplication).
+- Add platform-specific default socket paths and discovery fallbacks; ensure permissions (0600) and cleanup on exit.
+- Add `ah acp` connectivity matrix tests (local autodiscovery, explicit `--uds`, `--ws`, ssh port forward, REST bridge).
+- Ensure mixed transport access-point runs do not double-consume stdin framing; add guard rails/tests.
+- Remove/retire legacy access-point flags that start ACP over stdio; align on `ah acp --daemonize=never` for inline usage and update code/flags accordingly. Confirm remaining ACP transport flags are implemented (WS/UDS) and drop unused ones from spec and code.
+
+---
+
+### Milestone 6: Command Execution Tracing & Passthrough Recorder
 
 **Status**: In progress (2025-11-26)
 
@@ -342,11 +390,11 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 ##### Sub-milestones
 
-1. **5.1 Shim injection & fail-open** — Cross-platform build, env propagation, safety tests.
-2. **5.2 Passthrough recorder core** — PTY mirroring, parent/session sockets, observer mock.
-3. **5.3 Follower channel** — Session socket plumbing to `ah show-sandbox-execution`, ACP hooks, multi-follower support.
-4. **5.4 Auto snapshot & diff emission** — Snapshot-after-tool/write automation plus SSE/ACP diff events (with truncation).
-5. **5.5 Session-file mapping** — Detect session-file writes, store metadata, integrate with time-travel.
+1. **6.1 Shim injection & fail-open** — Cross-platform build, env propagation, safety tests.
+2. **6.2 Passthrough recorder core** — PTY mirroring, parent/session sockets, observer mock.
+3. **6.3 Follower channel** — Session socket plumbing to `ah show-sandbox-execution`, ACP hooks, multi-follower support.
+4. **6.4 Auto snapshot & diff emission** — Snapshot-after-tool/write automation plus SSE/ACP diff events (with truncation).
+5. **6.5 Session-file mapping** — Detect session-file writes, store metadata, integrate with time-travel.
 
 - #### Verification
 
@@ -609,6 +657,7 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 ## Outstanding Tasks After Milestones
 
 - Define a compatibility matrix for third-party ACP clients (VS Code, Cursor, Zed) once the server reaches beta.
+- Track the hybrid relay mode (Harbor as ACP client upstream + ACP server downstream) under the new Milestone 5; keep the expectations: upstream commands execute inside Harbor’s sandbox, Harbor performs the edits itself, snapshots after each command/edit, and forwards terminals/diffs/snapshots downstream. Ensure the plan is discoverable now that Milestone 5 exists.
 - Extend Scenario fixtures with negative-path coverage (malformed JSON-RPC, outdated schema versions).
 - Determine whether to expose ACP over QUIC once the spec finalizes HTTP streaming transport.
 - Promote Scenario Format support for ACP RPC timelines (client/server frames) so fixtures like `terminal_follow_detach.yaml` can be executed directly without bespoke harness code; currently the ACP follow/detach scenario is driven via a bespoke test harness rather than the scenario store.
@@ -624,5 +673,5 @@ Once all milestones are implemented and verified, update this status document wi
 - The ACP gateway now runs through the SDK dispatcher for **both WebSocket and stdio transports** (`acp/transport.rs`), so frames flow `JSON → ValueDispatcher → RpcDispatcher` with responses/notifications serialized via `outgoing_to_value`. Stdio framing reuses the same dispatcher on stdin/stdout.
 - Still needed: an `Agent` trait implementation that maps SDK request types to the existing session/prompt/cancel/pause/resume logic and emits updates via `notify` instead of the ad‑hoc router helpers.
 - `session/list` pagination (offset/limit) is implemented; project/tenant parity and ACP↔REST session ID cross-ref remain outstanding. Paused-session load semantics (read-only mounts) are also pending.
-- Follower safety: `_ah/terminal/follow` now prefers recorder/tool event history for follower commands and only falls back to client-supplied strings when no execution history exists; long term we still need recorder-derived commands to be the single source of truth (Milestones 5–7).
+- Follower safety: `_ah/terminal/follow` now prefers recorder/tool event history for follower commands and only falls back to client-supplied strings when no execution history exists; long term we still need recorder-derived commands to be the single source of truth (Milestones 6–8).
 - Warn lints: the vendored SDK still emits benign warnings (shadowed `Result`, unused dispatcher/broadcast helpers); clean these up or allow in CI.

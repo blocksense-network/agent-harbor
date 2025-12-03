@@ -11,7 +11,7 @@ pub mod error;
 pub mod types;
 pub mod validation;
 
-pub use ah_domain_types::{AgentChoice, LogLevel};
+pub use ah_domain_types::{AcpLaunchCommand, AgentCatalog, AgentChoice, AgentMetadata, LogLevel};
 pub use error::*;
 pub use types::*;
 
@@ -53,7 +53,9 @@ pub fn openapi_schema() -> utoipa::openapi::OpenApi {
             LogEntry,
             SessionLogsResponse,
             AgentCapability,
+            AgentCatalog,
             RuntimeCapability,
+            AcpLaunchCommand,
             Executor,
             OverlayInfo,
             Project,

@@ -79,6 +79,8 @@ pub async fn run_session_viewer(deps: AgentSessionDependencies) -> anyhow::Resul
                 deps.settings.clone(),
                 deps.autocomplete.clone(),
                 deps.theme.clone(),
+                deps.live_activity_rx,
+                deps.prompt_tx,
             )
             .await
         }
@@ -103,6 +105,7 @@ pub fn build_agent_activity_view_model(
 }
 
 /// Simplified loop for the Agent Activity mock UI.
+#[allow(clippy::too_many_arguments)]
 async fn run_agent_activity_loop(
     viewer_config: ViewerConfig,
     _task_manager: Arc<dyn TaskManager>,
@@ -111,6 +114,10 @@ async fn run_agent_activity_loop(
     settings: crate::settings::Settings,
     autocomplete: Option<Arc<crate::view_model::autocomplete::AutocompleteDependencies>>,
     theme: Theme,
+    mut live_activity_rx: Option<
+        tokio::sync::mpsc::UnboundedReceiver<crate::view_model::task_execution::AgentActivityRow>,
+    >,
+    prompt_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 ) -> anyhow::Result<()> {
     crate::terminal::setup_terminal(terminal_config)
         .map_err(|e| anyhow::anyhow!("failed to setup terminal: {e}"))?;
@@ -149,6 +156,18 @@ async fn run_agent_activity_loop(
     let tx_activity = tx.clone();
     spawn_activity_scheduler(activity, tx_activity);
 
+    // Optional live activity stream: forward rows into the loop.
+    if let Some(mut rx_live) = live_activity_rx.take() {
+        let tx_live = tx.clone();
+        tokio::spawn(async move {
+            while let Some(row) = rx_live.recv().await {
+                if tx_live.send(LoopMsg::Activity(row)).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+
     let mut needs_redraw = true;
 
     while let Some(msg) = rx.recv().await {
@@ -167,7 +186,17 @@ async fn run_agent_activity_loop(
                         match msg {
                             AgentSessionMsg::QuitRequested => break,
                             AgentSessionMsg::RedrawRequested => needs_redraw = true,
-                            AgentSessionMsg::TaskEntry(_) => needs_redraw = true,
+                            AgentSessionMsg::TaskEntry(_) => {
+                                if let Some(tx) = prompt_tx.as_ref() {
+                                    let text =
+                                        view_model.task_entry().description.lines().join("\n");
+                                    let text = text.trim();
+                                    if !text.is_empty() {
+                                        let _ = tx.send(text.to_string());
+                                    }
+                                }
+                                needs_redraw = true
+                            }
                             AgentSessionMsg::ActivateControl { .. } => needs_redraw = true,
                             AgentSessionMsg::ForkAt(_) => needs_redraw = true,
                         }

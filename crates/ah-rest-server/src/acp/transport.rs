@@ -2733,6 +2733,7 @@ fn translate_create_request(params: Value) -> ServerResult<CreateTaskRequest> {
         count: 1,
         settings: std::collections::HashMap::new(),
         display_name: Some(agent_model),
+        acp_stdio_launch_command: None,
     };
 
     let runtime = RuntimeConfig {

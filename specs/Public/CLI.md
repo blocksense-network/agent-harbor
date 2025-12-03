@@ -1049,6 +1049,9 @@ OPTIONS:
   --port <P>                  Port to listen on
   --db <URL|PATH>             Database URL or path
   --max-concurrent-tasks <N>  Maximum concurrent tasks (default: 0)
+  --idle-timeout <DURATION>   Stop the daemon after this idle period (default: 24h; used by acp-daemonize=auto)
+  --acp-uds <PATH>            Enable ACP over Unix socket at PATH (default platform path)
+  --acp-ws <yes|no>           Enable ACP over WebSocket (/acp/v1/connect) (default: no; experimental)
 ```
 
 BEHAVIOR:
@@ -1111,64 +1114,120 @@ BEHAVIOR:
 - `--ssh-dst` specifies the exact destination enforced by the agent for `OpenTcp` (default `127.0.0.1:22`).
 
 When `--rest-api yes` and `--bind/--port` are set, the daemon also serves the REST API documented in [REST-Service/API.md](REST-Service/API.md). This is the same code path used by `ah agent access-point`, so enabling it effectively turns the enrolling executor into a valid `remote-server` for `ah task` clients.
+
+ACP TRANSPORT OPTIONS (access-point path):
+- `--acp-uds <PATH>`: Enable ACP over Unix domain socket at PATH (defaults to platform-specific standard location).
+- `--acp-stdio <yes|no>`: Enable ACP over stdio framing (default: yes).
+- `--acp-ws <yes|no>`: Enable ACP over WebSocket at `/acp/v1/connect` (default: yes).
+- All ACP transports share identical JSON-RPC framing; enabling multiple transports is supported concurrently.
+
+```
+
+ah acp [OPTIONS]
+
+DESCRIPTION: Connect to an ACP access point. For ACP endpoints, acts as a thin
+byte-forwarding bridge over WS/UDS/stdio. For Harbor REST servers,
+translates REST/SSE TaskEvents into ACP `session/update` and forwards
+ACP RPCs upstream.
+
+OPTIONS:
+--endpoint <URL|PATH> Access point WS URL or UDS path (defaults to platform ACP socket path)
+--ws Force WebSocket transport (overrides endpoint type)
+--uds Force Unix socket transport (overrides endpoint type)
+--stdio Force stdio transport (for stdio-enabled access points)
+--remote-server <NAME|URL> Target Harbor REST server for REST→ACP bridging
+--session <SESSION_ID> Load and attach to an existing ACP session on startup
+--daemonize <auto|never|disabled>
+Behavior when no access point is running (config key: `acp.daemonize`; default: auto)
+--idle-timeout <DURATION> Idle shutdown when daemonized (default: 24h; only with daemonize=auto)
+
+BEHAVIOR:
+
+- Endpoint resolution order: explicit transport flags → `--endpoint` → config keys (`acp.socket-path` / `acp.ws-url`) → platform default UDS path.
+- `daemonize=auto`: if no access point is running, start it in the background (prefer installer-provisioned service; otherwise double-fork/LaunchAgent/Scheduled Task/DETACHED_PROCESS), then connect; enforces idle shutdown (default 24h).
+- `daemonize=never`: run the hybrid access-point bridge inline in the `ah acp` process; no multi-client reuse—session dies with the process.
+- `daemonize=disabled`: refuse to start a daemon; error if none is running.
+- REST bridge mode (`--remote-server`): streams REST SSE TaskEvents as ACP `session/update`; ACP RPCs become REST calls.
+- Session sharing: ACP permits multiple drivers; `--session` uses standard `session/load` to join an existing session and receives the same `session/update` stream (including echoes of its own actions). All connected clients see the same updates; no Harbor-specific policy or roles are required.
+- Motivation: a shared access point allows multiple `ah acp` invocations/clients to observe and drive the same ACP session concurrently while Harbor owns execution, edits, and snapshots.
+
+EXAMPLES:
+
+```bash
+# Use local default UDS; auto-start daemon if missing
+ah acp
+
+# Connect to remote WS access point
+ah acp --endpoint wss://ah.example.com/acp/v1/connect
+
+# Bridge to REST server without daemon auto-start
+ah acp --remote-server staging --daemonize=disabled
 ```
 
 ```
+
+```
+
 ah agent get-task [OPTIONS]
 
 DESCRIPTION: Prints the current task prompt for agents. When --autopush is specified,
-             automatically configures VCS hooks to push changes on each commit.
-             Auto-discovers repository root and supports multi-repo scenarios.
+automatically configures VCS hooks to push changes on each commit.
+Auto-discovers repository root and supports multi-repo scenarios.
 
 OPTIONS:
-  --autopush                  Configure VCS hooks for automatic pushing
-  --agent <TYPE>              Agent kind (for prompt inspection context)
-  --model <MODEL>             Model kind (for prompt inspection context)
-  --repo <PATH>               Repository path
+--autopush Configure VCS hooks for automatic pushing
+--agent <TYPE> Agent kind (for prompt inspection context)
+--model <MODEL> Model kind (for prompt inspection context)
+--repo <PATH> Repository path
+
 ```
 
 ```
+
 ah agent get-setup-env [OPTIONS]
 
 DESCRIPTION: Extracts and prints environment variables from @agents-setup directives
-             in the current task file(s). Processes all tasks (initial task + follow-up tasks)
-             on the current agent branch, parsing @agents-setup directives to extract
-             environment variables. Supports both VAR=value and VAR+=value syntax for
-             setting and appending values. Merges environment variables from multiple tasks,
-             with append operations combining values. Outputs in KEY=VALUE format, one per line.
-             In multi-repo scenarios, auto-discovers all repositories in subdirectories and
-             prefixes each repository's output with "In directory dirname:" followed by the
-             environment variables. Requires being on an agent branch with a valid task file.
+in the current task file(s). Processes all tasks (initial task + follow-up tasks)
+on the current agent branch, parsing @agents-setup directives to extract
+environment variables. Supports both VAR=value and VAR+=value syntax for
+setting and appending values. Merges environment variables from multiple tasks,
+with append operations combining values. Outputs in KEY=VALUE format, one per line.
+In multi-repo scenarios, auto-discovers all repositories in subdirectories and
+prefixes each repository's output with "In directory dirname:" followed by the
+environment variables. Requires being on an agent branch with a valid task file.
 
 OPTIONS:
-  --repo <PATH>               Repository path
+--repo <PATH> Repository path
+
 ```
 
 ```
+
 ah agent sandbox [OPTIONS] -- <CMD> [ARGS...]
 
 DESCRIPTION: Launches a process inside the configured sandbox profile. Supported on Linux (namespaces/seccomp) and macOS (Seatbelt profiles). Useful for testing.
 
 OPTIONS:
-  --type <local|devcontainer|vm>  Sandbox profile (default: local).
-  --allow-egress <yes|no>        Override default egress policy (default: no).
-  --allow-ingress <PORT[/PROTO]> Allow inbound tunnels on specific ports (repeatable).
-  --allow-containers <yes|no>    Permit launching nested containers (default: no).
-  --allow-vms <yes|no>           Permit nested virtualization inside the sandbox.
-  --allow-kvm <yes|no>           Expose /dev/kvm (implies --allow-vms).
-  --mount-rw <PATH>...           Additional host paths to mount writable (policy checked).
-  --mount-ro <PATH>...           Extra read-only mounts.
-  --overlay <PATH>...            Promote read-only paths to copy-on-write overlays.
-  --env <KEY=VALUE>...           Inject environment variables (filtered against policy).
-  --timeout <DURATION>           Auto-terminate sandbox after wall clock timeout.
-  --fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
-                                   Filesystem snapshot provider (default: auto).
-  --overlay-materialization <lazy|eager|clone-eager>
-                                   Control when files are copied from the base layer
-                                   to the AgentFS overlay (default: lazy). Use lazy in
-                                   controlled environments; eager/clone-eager on user
-                                   machines where user or background activity may modify files.
-  --agentfs-socket <PATH>         Path to existing AgentFS daemon socket (reuses existing daemon).
+--type <local|devcontainer|vm> Sandbox profile (default: local).
+--allow-egress <yes|no> Override default egress policy (default: no).
+--allow-ingress <PORT[/PROTO]> Allow inbound tunnels on specific ports (repeatable).
+--allow-containers <yes|no> Permit launching nested containers (default: no).
+--allow-vms <yes|no> Permit nested virtualization inside the sandbox.
+--allow-kvm <yes|no> Expose /dev/kvm (implies --allow-vms).
+--mount-rw <PATH>... Additional host paths to mount writable (policy checked).
+--mount-ro <PATH>... Extra read-only mounts.
+--overlay <PATH>... Promote read-only paths to copy-on-write overlays.
+--env <KEY=VALUE>... Inject environment variables (filtered against policy).
+--timeout <DURATION> Auto-terminate sandbox after wall clock timeout.
+--fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
+Filesystem snapshot provider (default: auto).
+--overlay-materialization <lazy|eager|clone-eager>
+Control when files are copied from the base layer
+to the AgentFS overlay (default: lazy). Use lazy in
+controlled environments; eager/clone-eager on user
+machines where user or background activity may modify files.
+--agentfs-socket <PATH> Path to existing AgentFS daemon socket (reuses existing daemon).
+
 ```
 
 BEHAVIOR:
@@ -1211,44 +1270,47 @@ TODO: Verify that these align with everything described in [Sandbox-Profiles.md]
 See also: Local-Sandboxing-on-Linux.md for detailed semantics.
 
 ```
+
 ah agent start [OPTIONS]
 
 DESCRIPTION: Starts an agent by setting up an isolated working copy, configuring the
-             chosen sandbox environment (Linux: namespaces/seccomp, macOS: Seatbelt profiles),
-             and launching the coding agent software with the provided prompt. This command
-             is used internally by the TUI to execute agents in the agent pane and by the REST
-             server for task execution.
+chosen sandbox environment (Linux: namespaces/seccomp, macOS: Seatbelt profiles),
+and launching the coding agent software with the provided prompt. This command
+is used internally by the TUI to execute agents in the agent pane and by the REST
+server for task execution.
 
 OPTIONS:
-  --agent <TYPE>[@VERSION]           Agent type and optional version to use
-  --prompt <TEXT>                    Prompt text to pass to the agent (optional, required when --non-interactive is specified)
-  --from-snapshot <SNAPSHOT_ID>      The initial file system snapshot from where the agent execution will start
-  --non-interactive                  Enable non-interactive mode (e.g., codex exec)
-  --output <text|text-normalized|json|json-normalized>
-                                     Output format: text (default), text-normalized, json, or json-normalized
-  --llm-api <URI>                    Custom LLM API URI for agent backend
-  --llm-api-key <KEY>                API key for custom LLM API
-  --llm-api-proxy-url <URL>          LLM API proxy URL to use for routing requests
-  --repo <PATH>                      Repository path (auto-detected if not provided)
-  --working-copy <auto|cow-overlay|worktree|in-place>
-                                     Working copy mode for isolation (default: auto)
-  --fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
-                                     Filesystem snapshot provider (default: auto)
-  --sandbox <local|devcontainer|vm|disabled>
-                                     Sandbox profile to use (default: local)
-  --devcontainer <PATH|TAG>          Devcontainer path or image/tag
-  --allow-egress <yes|no>            Allow network egress from sandbox (default: no)
-  --allow-containers <yes|no>        Permit nested containers (default: no)
-  --allow-vms <yes|no>               Permit nested virtualization (default: no)
-  --allow-web-search                 Allow web search capabilities for agents that support it
-  --model <MODEL>                    Model to use for the agent (can be overridden by agent-specific flags)
-  --codex-model <MODEL>              Model to use specifically for Codex agent (default: gpt-5-codex)
-  --claude-model <MODEL>             Model to use specifically for Claude agent (default: sonnet)
-  --env <KEY=VALUE>...               Additional environment variables for agent
-  --timeout <DURATION>               Maximum execution time before auto-termination
-  --output-dir <PATH>                Directory for recordings and artifacts
-  --follow                           Monitor execution and emit notifications on completion
-```
+--agent <TYPE>[@VERSION] Agent type and optional version to use
+--prompt <TEXT> Prompt text to pass to the agent (optional, required when --non-interactive is specified)
+--from-snapshot <SNAPSHOT_ID> The initial file system snapshot from where the agent execution will start
+--non-interactive Enable non-interactive mode (e.g., codex exec)
+--output <text|text-normalized|json|json-normalized>
+Output format: text (default), text-normalized, json, or json-normalized
+--llm-api <URI> Custom LLM API URI for agent backend
+--llm-api-key <KEY> API key for custom LLM API
+--llm-api-proxy-url <URL> LLM API proxy URL to use for routing requests
+--acp-agent-cmd <CMD> When --agent acp: full command to launch an ACP agent (env: AH_ACP_AGENT_CMD)
+--repo <PATH> Repository path (auto-detected if not provided)
+--working-copy <auto|cow-overlay|worktree|in-place>
+Working copy mode for isolation (default: auto)
+--fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
+Filesystem snapshot provider (default: auto)
+--sandbox <local|devcontainer|vm|disabled>
+Sandbox profile to use (default: local)
+--devcontainer <PATH|TAG> Devcontainer path or image/tag
+--allow-egress <yes|no> Allow network egress from sandbox (default: no)
+--allow-containers <yes|no> Permit nested containers (default: no)
+--allow-vms <yes|no> Permit nested virtualization (default: no)
+--allow-web-search Allow web search capabilities for agents that support it
+--model <MODEL> Model to use for the agent (can be overridden by agent-specific flags)
+--codex-model <MODEL> Model to use specifically for Codex agent (default: gpt-5-codex)
+--claude-model <MODEL> Model to use specifically for Claude agent (default: sonnet)
+--env <KEY=VALUE>... Additional environment variables for agent
+--timeout <DURATION> Maximum execution time before auto-termination
+--output-dir <PATH> Directory for recordings and artifacts
+--follow Monitor execution and emit notifications on completion
+
+````
 
 BEHAVIOR:
 
@@ -1287,6 +1349,7 @@ The `ah agent start` command orchestrates the complete agent execution workflow,
 **Agent Execution:**
 
 6. **Agent Launch**: Executes the specified agent type with the provided prompt:
+   - **ACP client**: When `--agent acp` is selected, Agent Harbor wraps an external ACP-compliant binary. Launch command resolution: `--acp-agent-cmd` → `AH_ACP_AGENT_CMD` → PATH search for `acp-agent`/`mock-agent` (fallback `acp-agent`). Provide subcommand-style invocations directly, e.g., `--acp-agent-cmd "opencode acp"` or `--acp-agent-cmd "mock-agent --scenario foo.yaml"`. Environment forwarded: `ACP_LLM_API`, `ACP_LLM_API_KEY`, `ACP_INITIAL_PROMPT`, `ACP_OUTPUT=json` (when `--output json*`), `ACP_SNAPSHOT_CMD`.
    - **Interactive Mode**: When `--non-interactive` is not specified, launches agent in interactive mode. The `--prompt` parameter is optional and allows pre-seeding the agent's initial context.
    - **Non-Interactive Mode**: When `--non-interactive` is specified, launches agent in non-interactive mode (e.g., `codex exec`). The `--prompt` parameter is required in this mode.
    - **Output Formatting**: Controls output format via `--output`:
@@ -1352,7 +1415,7 @@ ah agent start --agent codex --llm-api-proxy-url http://localhost:18081 --prompt
 
 # Use LLM API proxy with explicit API key
 ah agent start --agent claude --llm-api-proxy-url http://localhost:18081 --llm-api-key sk-custom-key-123 --prompt "Review the code changes"
-```
+````
 
 ```
 ah agent instructions [OPTIONS] [SOURCE-FILE]

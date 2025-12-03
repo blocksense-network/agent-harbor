@@ -812,7 +812,7 @@ fn format_activity_row(row: &AgentActivityRow, theme: &Theme, _dimmed: bool) -> 
             author,
             content,
             confirmed,
-            timestamp,
+            timestamp: _timestamp,
         } => {
             let label = if author.eq_ignore_ascii_case("you") {
                 "YOU WROTE".to_string()
@@ -820,20 +820,19 @@ fn format_activity_row(row: &AgentActivityRow, theme: &Theme, _dimmed: bool) -> 
                 format!("{} WROTE", author.to_ascii_uppercase())
             };
 
-            let mut segments: Vec<ControlSegment> = vec!["❐".into(), "▼".into(), "14:22".into()];
-            if !confirmed {
-                // Render spinner for unconfirmed state
+            let segments: Vec<ControlSegment> = vec!["❐".into(), "▼".into(), "14:22".into()];
+
+            // Place spinner inside the card body (lower-right) instead of control box.
+            let display_content = if !confirmed {
                 if let Some(spinner) = theme.spinners.get("awaiting_confirmation") {
-                    let frame = spinner.current_frame(timestamp.elapsed());
-                    segments.push(ControlSegment {
-                        content: frame.text.clone(),
-                        style: Style::default().fg(spinner.color),
-                        width: spinner.max_width(),
-                    });
+                    let frame = spinner.current_frame(std::time::Duration::ZERO);
+                    format!("{content}  {}", frame.text)
                 } else {
-                    segments.push("...".into());
+                    format!("{content} ...")
                 }
-            }
+            } else {
+                content.clone()
+            };
 
             Card {
                 title_box: Some(TitleBox { label }),
@@ -842,7 +841,7 @@ fn format_activity_row(row: &AgentActivityRow, theme: &Theme, _dimmed: bool) -> 
                     focused_segment: None,
                 },
                 content_area: ContentArea {
-                    lines: vec![ContentLine::plain(content.clone())],
+                    lines: vec![ContentLine::plain(display_content)],
                 },
             }
         }

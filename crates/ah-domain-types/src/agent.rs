@@ -6,6 +6,7 @@
 //! Types related to AI agents, models, and their configurations.
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::experimental_features::ExperimentalFeature;
 
@@ -29,6 +30,8 @@ pub enum AgentSoftware {
     CursorCli,
     /// Goose agent
     Goose,
+    /// ACP client (bridges to external ACP agents)
+    Acp,
 }
 
 impl std::fmt::Display for AgentSoftware {
@@ -49,6 +52,7 @@ impl AgentSoftware {
             AgentSoftware::Qwen => "qwen",
             AgentSoftware::CursorCli => "cursor-cli",
             AgentSoftware::Goose => "goose",
+            AgentSoftware::Acp => "acp",
         }
     }
 }
@@ -82,6 +86,9 @@ pub struct AgentChoice {
     /// Display name for UI purposes (optional, will be derived if not provided)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Optional typed ACP stdio launch command when this entry represents an ACP server
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acp_stdio_launch_command: Option<AcpLaunchCommand>,
 }
 
 fn default_version() -> String {
@@ -176,6 +183,9 @@ pub struct AgentMetadata {
     /// Settings schema reference (JSON Schema URL)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings_schema_ref: Option<String>,
+    /// Optional ACP stdio launch command for agents that act as ACP servers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acp_stdio_launch_command: Option<AcpLaunchCommand>,
 }
 
 /// Agent catalog containing available agents with metadata
@@ -201,6 +211,7 @@ impl AgentMetadata {
             count: self.default_count,
             settings: self.default_settings.clone(),
             display_name: Some(self.display_name.clone()),
+            acp_stdio_launch_command: self.acp_stdio_launch_command.clone(),
         }
     }
 
@@ -229,6 +240,49 @@ impl AgentMetadata {
         };
 
         required_feature.is_some_and(|feature| enabled_features.contains(&feature))
+    }
+}
+
+/// Typed representation of an ACP stdio launch command (binary plus args)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct AcpLaunchCommand {
+    /// Executable to launch (e.g., `opencode` or `/usr/bin/goose`)
+    pub binary: PathBuf,
+    /// Arguments passed to the executable (e.g., `["acp"]`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+}
+
+impl AcpLaunchCommand {
+    /// Parse a shell-style command string into an `AcpLaunchCommand`.
+    ///
+    /// This uses `shell-words` for basic tokenization so callers can pass
+    /// full commands such as `mock-agent --scenario foo.yaml` or
+    /// `opencode acp`.
+    pub fn from_command_string(cmd: &str) -> Result<Self, String> {
+        let mut parts = shell_words::split(cmd)
+            .map_err(|e| format!("failed to parse ACP command \"{cmd}\": {e}"))?;
+        let binary = parts
+            .first()
+            .cloned()
+            .ok_or_else(|| "ACP command must not be empty".to_string())?;
+
+        // Remove the binary from the args list
+        parts.remove(0);
+
+        Ok(Self {
+            binary: PathBuf::from(binary),
+            args: parts,
+        })
+    }
+
+    /// Render the launch command as a whitespace-joined string (best-effort).
+    pub fn to_command_string(&self) -> String {
+        std::iter::once(self.binary.to_string_lossy().to_string())
+            .chain(self.args.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 

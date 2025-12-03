@@ -32,6 +32,7 @@ use tokio::time::{Duration, sleep};
 pub struct ScenarioExecutor {
     scenario: Arc<Scenario>,
     elapsed_ms: u64,
+    use_show_sandbox_follower: bool,
 }
 
 /// ACP-oriented action derived from a scenario timeline.
@@ -146,16 +147,27 @@ pub struct ScenarioAgent {
     cancel_flag: Mutex<bool>,
     client_conn: Mutex<Option<Arc<AgentSideConnection>>>,
     load_replayed: Mutex<bool>,
+    use_show_sandbox_follower: bool,
 }
 
 impl ScenarioAgent {
+    /// Construct with default follower behavior (enabled, matching prior semantics).
     pub fn new(transcript: AcpTranscript) -> Arc<Self> {
+        Self::new_with_follower(transcript, true)
+    }
+
+    /// Construct with explicit follower toggle.
+    pub fn new_with_follower(
+        transcript: AcpTranscript,
+        use_show_sandbox_follower: bool,
+    ) -> Arc<Self> {
         Arc::new(Self {
             transcript,
             notifier: Mutex::new(None),
             cancel_flag: Mutex::new(false),
             client_conn: Mutex::new(None),
             load_replayed: Mutex::new(false),
+            use_show_sandbox_follower,
         })
     }
 
@@ -297,7 +309,13 @@ impl ScenarioExecutor {
         Self {
             scenario,
             elapsed_ms: 0,
+            use_show_sandbox_follower: true,
         }
+    }
+
+    /// Enable/disable wrapping runCmd tool runs with `ah show-sandbox-execution`.
+    pub fn set_use_follower(&mut self, enabled: bool) {
+        self.use_show_sandbox_follower = enabled;
     }
 
     /// Build an ACP playbook partitioned by sessionStart for loadSession flows.
@@ -1894,12 +1912,29 @@ impl ScenarioAgent {
             if run.tool.tool_name != "runCmd" {
                 continue;
             }
-            let cmd = run.tool.args.get("cmd").and_then(|v| v.as_str()).unwrap_or_default();
-            let follower = format!("ah show-sandbox-execution \"{}\" --id {}", cmd, run.id);
+            let cmd = run
+                .tool
+                .args
+                .get("cmd")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+
+            let (command, args, raw_output) = if self.use_show_sandbox_follower {
+                let follower = format!("ah show-sandbox-execution \"{}\" --id {}", cmd, run.id);
+                (
+                    follower.clone(),
+                    Vec::new(),
+                    Some(serde_json::json!({ "follower": follower })),
+                )
+            } else {
+                ("sh".to_string(), vec!["-c".to_string(), cmd.clone()], None)
+            };
+
             let terminal_id = conn
                 .create_terminal(CreateTerminalRequest {
-                    command: follower.clone(),
-                    args: Vec::new(),
+                    command: command.clone(),
+                    args: args.clone(),
                     cwd: run
                         .tool
                         .args
@@ -1921,27 +1956,29 @@ impl ScenarioAgent {
 
             // Spawn a background poller to stream terminal output into tool updates.
             if let Some(term_id) = terminal_id {
-                // Emit initial in-progress update with parsed command for observability.
-                let _ = conn.notify(
-                    CLIENT_METHOD_NAMES.session_update,
-                    Some(agent_client_protocol_schema::AgentNotification::SessionNotification(
-                        SessionNotification {
-                            session_id: self.transcript.session_id.clone(),
-                            update: SessionUpdate::ToolCallUpdate(
-                                agent_client_protocol_schema::ToolCallUpdate {
-                                    id: agent_client_protocol_schema::ToolCallId(Arc::from(run.id.clone())),
-                                    fields: agent_client_protocol_schema::ToolCallUpdateFields {
-                                        status: Some(agent_client_protocol_schema::ToolCallStatus::InProgress),
-                                        raw_output: Some(serde_json::json!({ "follower": follower })),
-                                        ..Default::default()
+                // Emit initial in-progress update with observability of wrapped follower when used.
+                if let Some(raw) = raw_output.clone() {
+                    let _ = conn.notify(
+                        CLIENT_METHOD_NAMES.session_update,
+                        Some(agent_client_protocol_schema::AgentNotification::SessionNotification(
+                            SessionNotification {
+                                session_id: self.transcript.session_id.clone(),
+                                update: SessionUpdate::ToolCallUpdate(
+                                    agent_client_protocol_schema::ToolCallUpdate {
+                                        id: agent_client_protocol_schema::ToolCallId(Arc::from(run.id.clone())),
+                                        fields: agent_client_protocol_schema::ToolCallUpdateFields {
+                                            status: Some(agent_client_protocol_schema::ToolCallStatus::InProgress),
+                                            raw_output: Some(raw),
+                                            ..Default::default()
+                                        },
+                                        meta: None,
                                     },
-                                    meta: None,
-                                },
-                            ),
-                            meta: None,
-                        },
-                    )),
-                );
+                                ),
+                                meta: None,
+                            },
+                        )),
+                    );
+                }
 
                 let conn = conn.clone();
                 let session_id = self.transcript.session_id.clone();

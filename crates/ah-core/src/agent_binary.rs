@@ -30,6 +30,7 @@ impl AgentBinary {
             AgentSoftware::Qwen => "qwen",
             AgentSoftware::CursorCli => "cursor",
             AgentSoftware::Goose => "goose",
+            AgentSoftware::Acp => "acp-agent",
         };
 
         // Check if binary exists in PATH
@@ -80,6 +81,7 @@ impl AgentBinary {
             AgentSoftware::CursorCli => "cursor-cli",
             AgentSoftware::Copilot => "copilot",
             AgentSoftware::Goose => "goose",
+            AgentSoftware::Acp => "acp",
         }
     }
 }

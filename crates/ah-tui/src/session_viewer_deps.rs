@@ -32,7 +32,6 @@ pub enum AgentSessionUiMode {
 }
 
 /// Bundles all dependencies required to run an agent session loop.
-#[derive(Clone)]
 pub struct AgentSessionDependencies {
     pub recording_terminal_state: Rc<RefCell<TerminalState>>,
     pub viewer_config: ViewerConfig,
@@ -44,6 +43,28 @@ pub struct AgentSessionDependencies {
     pub ui_mode: AgentSessionUiMode,
     /// Optional pre-seeded activity entries for Agent Activity UI mode (time, row).
     pub activity_entries: Vec<(u64, AgentActivityRow)>,
+    /// Optional live activity stream; when provided, rows are consumed in real time.
+    pub live_activity_rx: Option<tokio::sync::mpsc::UnboundedReceiver<AgentActivityRow>>,
+    /// Optional channel to send prompts originating from the UI (task entry) to the runner.
+    pub prompt_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
+}
+
+impl Clone for AgentSessionDependencies {
+    fn clone(&self) -> Self {
+        Self {
+            recording_terminal_state: self.recording_terminal_state.clone(),
+            viewer_config: self.viewer_config.clone(),
+            task_manager: self.task_manager.clone(),
+            autocomplete: self.autocomplete.clone(),
+            settings: self.settings.clone(),
+            theme: self.theme.clone(),
+            terminal_config: self.terminal_config.clone(),
+            ui_mode: self.ui_mode,
+            activity_entries: self.activity_entries.clone(),
+            live_activity_rx: None, // Receivers cannot be cloned, so we set to None
+            prompt_tx: None,
+        }
+    }
 }
 
 impl AgentSessionDependencies {
@@ -64,6 +85,8 @@ impl AgentSessionDependencies {
             terminal_config: TerminalConfig::minimal(),
             ui_mode: AgentSessionUiMode::SessionViewer,
             activity_entries: Vec::new(),
+            live_activity_rx: None,
+            prompt_tx: None,
         }
     }
 
@@ -87,6 +110,8 @@ impl AgentSessionDependencies {
             terminal_config,
             ui_mode: AgentSessionUiMode::AgentActivity,
             activity_entries,
+            live_activity_rx: None,
+            prompt_tx: None,
         }
     }
 }
