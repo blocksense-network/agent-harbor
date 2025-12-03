@@ -615,9 +615,27 @@ test_orphan_cleanup_on_restart() {
     return 1
     ;;
   2)
-    record_result "6 Orphan Cleanup on Restart" "skip" "0" "Daemon restart not permitted (AGENTFS_ALLOW_RESTART_TESTS!=1 or sudo unavailable)" "T18"
-    rm -rf "$workspace"
-    return 0
+    log_info "Running user-mode restart fallback (F19) because sudo restart is unavailable"
+    local fallback_log="$LOG_DIR/t19_user_mode_restart.log"
+    local fallback_dir="$LOG_DIR/user-mode-restart"
+    local fallback_status=0
+    AGENTFS_USER_SESSION_DIR="$fallback_dir" "$SCRIPT_DIR/test-agentfs-user-restart.py" \
+      >"$fallback_log" 2>&1 || fallback_status=$?
+
+    if [[ $fallback_status -eq 0 ]]; then
+      local duration=$(($(date +%s) - start_time))
+      record_result "6 Orphan Cleanup on Restart" "pass" "$duration" "User-mode restart fallback passed (sudo unavailable)" "T19"
+      rm -rf "$workspace"
+      return 0
+    elif [[ $fallback_status -eq 2 ]]; then
+      record_result "6 Orphan Cleanup on Restart" "skip" "0" "User-mode restart fallback skipped (see $fallback_log)" "T19"
+      rm -rf "$workspace"
+      return 0
+    else
+      record_result "6 Orphan Cleanup on Restart" "fail" "0" "User-mode restart fallback failed (see $fallback_log)" "T19"
+      rm -rf "$workspace"
+      return 1
+    fi
     ;;
   esac
 

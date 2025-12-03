@@ -1,4 +1,4 @@
-1378
+1380
 "Fran\xE7ois"
 "fa\xE7ade"
 ACCES
@@ -757,6 +757,7 @@ joshka
 journaling
 json
 juhaku
+jziw
 karabiner
 kata
 keepalive
@@ -1127,6 +1128,7 @@ setattrlist
 setcontrol
 setfattr
 setgid
+setgroups
 setopt
 setpgid
 setrlimit

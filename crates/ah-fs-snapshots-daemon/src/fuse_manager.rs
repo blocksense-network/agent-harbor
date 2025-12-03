@@ -730,38 +730,47 @@ async fn spawn_agentfs_host(
     cmd.stdout(Stdio::from(stdout_file));
     cmd.stderr(Stdio::from(stderr_file));
 
-    // Drop privileges to the requesting user before spawning.
-    // This ensures the FUSE mount is owned by the user, making the control file
-    // at .agentfs/control accessible without --allow-other. The fuser crate will
-    // use fusermount3 (setuid helper) to perform the actual mount.
+    // Drop privileges to the requesting user before spawning when the daemon
+    // itself is running as root. In user-mode (non-root) we must NOT attempt to
+    // manipulate supplemental groups because that requires CAP_SETGID and
+    // results in EPERM, preventing the host process from spawning.
     #[cfg(unix)]
-    if request.uid != 0 {
-        // Only drop privileges if the request is from a non-root user.
-        // The unsafe block is required by CommandExt but the operation itself
-        // is safe - we're just setting the uid/gid for the child process.
-        unsafe {
-            let uid = request.uid;
-            let gid = request.gid;
-            cmd.pre_exec(move || {
-                // Set supplementary groups first (must be done before setuid)
-                if libc::setgroups(0, std::ptr::null()) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                // Set GID before UID (setuid drops privilege to change gid)
-                if libc::setgid(gid) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                if libc::setuid(uid) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
+    {
+        let current_euid = unsafe { libc::geteuid() };
+        if current_euid == 0 && request.uid != 0 {
+            // The unsafe block is required by CommandExt but the operations are
+            // limited to setting the uid/gid of the child process.
+            unsafe {
+                let uid = request.uid;
+                let gid = request.gid;
+                cmd.pre_exec(move || {
+                    // Set supplementary groups first (must be done before setuid)
+                    if libc::setgroups(0, std::ptr::null()) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    // Set GID before UID (setuid drops privilege to change gid)
+                    if libc::setgid(gid) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    if libc::setuid(uid) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+            debug!(
+                uid = request.uid,
+                gid = request.gid,
+                "dropping privileges for FUSE host process"
+            );
+        } else {
+            debug!(
+                uid = request.uid,
+                gid = request.gid,
+                current_euid,
+                "running as non-root; skipping privilege drop for FUSE host process"
+            );
         }
-        debug!(
-            uid = request.uid,
-            gid = request.gid,
-            "dropping privileges for FUSE host process"
-        );
     }
 
     info!(
