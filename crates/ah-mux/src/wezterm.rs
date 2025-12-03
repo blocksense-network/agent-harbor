@@ -1069,38 +1069,29 @@ mod tests {
     #[serial_test::file_serial]
     fn test_start_wezterm_instance() {
         tracing::debug!("Testing start_test_wezterm function");
-        match start_test_wezterm() {
-            Ok(()) => tracing::debug!("start_test_wezterm succeeded"),
-            Err(e) => tracing::error!(error=%e, "start_test_wezterm failed"),
-        }
+        start_test_wezterm().expect("start_test_wezterm should succeed");
+        tracing::debug!("start_test_wezterm succeeded");
         stop_test_wezterm();
     }
 
     #[test]
     #[serial_test::file_serial]
     fn test_open_tab_with_title_and_cwd() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            let opts = WindowOptions {
-                title: Some("wezterm-test-001"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        let opts = WindowOptions {
+            title: Some("wezterm-test-001"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match mux.open_window(&opts) {
-                Ok(window_id) => {
-                    // Verify the window ID is numeric
-                    assert!(window_id.parse::<u32>().is_ok());
-                    tracing::debug!(window_id, "Window created successfully");
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create window (expected if WezTerm not running)");
-                }
-            }
-        }
+        let window_id = mux.open_window(&opts).expect("Should create window");
+        // Verify the window ID is numeric
+        assert!(window_id.parse::<u32>().is_ok());
+        tracing::debug!(window_id, "Window created successfully");
 
         stop_test_wezterm();
     }
@@ -1108,39 +1099,32 @@ mod tests {
     #[test]
     #[serial_test::file_serial]
     fn test_open_tab_with_focus() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            let opts = WindowOptions {
-                title: Some("wezterm-focus-test-002"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: true,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        let opts = WindowOptions {
+            title: Some("wezterm-focus-test-002"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: true,
+            init_command: None,
+        };
 
-            match mux.open_window(&opts) {
-                Ok(window_id) => {
-                    assert!(window_id.parse::<u32>().is_ok());
+        let window_id = mux.open_window(&opts).expect("Should create focused window");
+        assert!(window_id.parse::<u32>().is_ok());
 
-                    // Give focus operation time to complete
-                    thread::sleep(Duration::from_millis(200));
+        // Give focus operation time to complete
+        thread::sleep(Duration::from_millis(200));
 
-                    // Verify the window was created and can be focused
-                    // Check that WEZTERM_PANE env var was set correctly
-                    if let Ok(pane_env) = std::env::var("WEZTERM_PANE") {
-                        assert_eq!(
-                            pane_env, window_id,
-                            "WEZTERM_PANE should match focused window"
-                        );
-                    }
-                    tracing::debug!(window_id, "Focused window created successfully");
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create focused window");
-                }
-            }
+        // Verify the window was created and can be focused
+        // Check that WEZTERM_PANE env var was set correctly
+        if let Ok(pane_env) = std::env::var("WEZTERM_PANE") {
+            assert_eq!(
+                pane_env, window_id,
+                "WEZTERM_PANE should match focused window"
+            );
         }
+        tracing::debug!(window_id, "Focused window created successfully");
 
         stop_test_wezterm();
     }
@@ -1148,62 +1132,51 @@ mod tests {
     #[test]
     #[serial_test::file_serial]
     fn test_split_pane_horizontal_vertical() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            // Create a window first
-            let window_opts = WindowOptions {
-                title: Some("split-test-003"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        // Create a window first
+        let window_opts = WindowOptions {
+            title: Some("split-test-003"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match mux.open_window(&window_opts) {
-                Ok(window_id) => {
-                    // Test horizontal split
-                    let h_split_result = mux.split_pane(
-                        Some(&window_id),
-                        Some(&window_id),
-                        SplitDirection::Horizontal,
-                        Some(60),
-                        &CommandOptions::default(),
-                        None,
-                    );
+        let window_id = mux.open_window(&window_opts).expect("Should create window");
 
-                    match h_split_result {
-                        Ok(h_pane_id) => {
-                            assert!(h_pane_id.parse::<u32>().is_ok());
-                            assert_ne!(h_pane_id, window_id);
-                            tracing::debug!(h_pane_id, "Horizontal split created");
+        // Test horizontal split
+        let h_pane_id = mux
+            .split_pane(
+                Some(&window_id),
+                Some(&window_id),
+                SplitDirection::Horizontal,
+                Some(60),
+                &CommandOptions::default(),
+                None,
+            )
+            .expect("Should create horizontal split");
 
-                            // Test vertical split
-                            let v_split_result = mux.split_pane(
-                                Some(&window_id),
-                                Some(&h_pane_id),
-                                SplitDirection::Vertical,
-                                Some(50),
-                                &CommandOptions::default(),
-                                None,
-                            );
+        assert!(h_pane_id.parse::<u32>().is_ok());
+        assert_ne!(h_pane_id, window_id);
+        tracing::debug!(h_pane_id, "Horizontal split created");
 
-                            if let Ok(v_pane_id) = v_split_result {
-                                assert!(v_pane_id.parse::<u32>().is_ok());
-                                assert_ne!(v_pane_id, h_pane_id);
-                                tracing::debug!(v_pane_id, "Vertical split created");
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(error=%e, "Failed to create horizontal split");
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create window for split test");
-                }
-            }
-        }
+        // Test vertical split
+        let v_pane_id = mux
+            .split_pane(
+                Some(&window_id),
+                Some(&h_pane_id),
+                SplitDirection::Vertical,
+                Some(50),
+                &CommandOptions::default(),
+                None,
+            )
+            .expect("Should create vertical split");
+
+        assert!(v_pane_id.parse::<u32>().is_ok());
+        assert_ne!(v_pane_id, h_pane_id);
+        tracing::debug!(v_pane_id, "Vertical split created");
 
         stop_test_wezterm();
     }
@@ -1211,49 +1184,38 @@ mod tests {
     #[test]
     #[serial_test::file_serial]
     fn test_split_pane_with_initial_command() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            let window_opts = WindowOptions {
-                title: Some("split-cmd-test-004"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        let window_opts = WindowOptions {
+            title: Some("split-cmd-test-004"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match mux.open_window(&window_opts) {
-                Ok(window_id) => {
-                    // Split with initial command
-                    let split_result = mux.split_pane(
-                        Some(&window_id),
-                        Some(&window_id),
-                        SplitDirection::Horizontal,
-                        None,
-                        &CommandOptions::default(),
-                        Some("echo 'test command' && sleep 1"),
-                    );
+        let window_id = mux.open_window(&window_opts).expect("Should create window");
 
-                    match split_result {
-                        Ok(pane_id) => {
-                            assert!(pane_id.parse::<u32>().is_ok(), "Pane ID should be numeric");
-                            assert_ne!(pane_id, window_id, "Split pane should have different ID");
-                            // Wait for command to complete
-                            thread::sleep(Duration::from_millis(1200));
-                            // Command executed successfully if pane was created - we can't directly
-                            // capture output, but the split_pane call would have failed if command failed immediately
-                            tracing::debug!(pane_id, "Split with command created and executed");
-                        }
-                        Err(e) => {
-                            tracing::warn!(error=%e, "Failed to create split with command");
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create window");
-                }
-            }
-        }
+        // Split with initial command
+        let pane_id = mux
+            .split_pane(
+                Some(&window_id),
+                Some(&window_id),
+                SplitDirection::Horizontal,
+                None,
+                &CommandOptions::default(),
+                Some("echo 'test command' && sleep 1"),
+            )
+            .expect("Should create split with command");
+
+        assert!(pane_id.parse::<u32>().is_ok(), "Pane ID should be numeric");
+        assert_ne!(pane_id, window_id, "Split pane should have different ID");
+        // Wait for command to complete
+        thread::sleep(Duration::from_millis(1200));
+        // Command executed successfully if pane was created - we can't directly
+        // capture output, but the split_pane call would have failed if command failed immediately
+        tracing::debug!(pane_id, "Split with command created and executed");
 
         stop_test_wezterm();
     }
@@ -1261,41 +1223,33 @@ mod tests {
     #[test]
     #[serial_test::file_serial]
     fn test_run_command_and_send_text() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            let window_opts = WindowOptions {
-                title: Some("cmd-text-test-005"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        let window_opts = WindowOptions {
+            title: Some("cmd-text-test-005"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match mux.open_window(&window_opts) {
-                Ok(window_id) => {
-                    // Test run_command
-                    let cmd_result = mux.run_command(
-                        &window_id,
-                        "echo 'hello from wezterm'",
-                        &CommandOptions::default(),
-                    );
+        let window_id = mux.open_window(&window_opts).expect("Should create window");
 
-                    assert!(cmd_result.is_ok(), "run_command should succeed");
-                    thread::sleep(Duration::from_millis(100));
-                    tracing::debug!("Command executed successfully");
+        // Test run_command
+        mux.run_command(
+            &window_id,
+            "echo 'hello from wezterm'",
+            &CommandOptions::default(),
+        )
+        .expect("run_command should succeed");
+        thread::sleep(Duration::from_millis(100));
+        tracing::debug!("Command executed successfully");
 
-                    // Test send_text
-                    let text_result = mux.send_text(&window_id, "test input");
-                    assert!(text_result.is_ok(), "send_text should succeed");
-                    thread::sleep(Duration::from_millis(100));
-                    tracing::debug!("Text sent successfully");
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create window for command test");
-                }
-            }
-        }
+        // Test send_text
+        mux.send_text(&window_id, "test input").expect("send_text should succeed");
+        thread::sleep(Duration::from_millis(100));
+        tracing::debug!("Text sent successfully");
 
         stop_test_wezterm();
     }
@@ -1303,125 +1257,102 @@ mod tests {
     #[test]
     #[serial_test::file_serial]
     fn test_focus_window_and_pane() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            // Create two windows
-            let window1_opts = WindowOptions {
-                title: Some("focus-window1-006"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        // Create two windows
+        let window1_opts = WindowOptions {
+            title: Some("focus-window1-006"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            let window2_opts = WindowOptions {
-                title: Some("focus-window2-006"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let window2_opts = WindowOptions {
+            title: Some("focus-window2-006"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match (
-                mux.open_window(&window1_opts),
-                mux.open_window(&window2_opts),
-            ) {
-                (Ok(window1), Ok(window2)) => {
-                    // Test focusing window1
-                    if mux.focus_window(&window1).is_ok() {
-                        thread::sleep(Duration::from_millis(100));
-                        tracing::debug!(window1, "Window 1 focused");
-                    }
+        let (window1, window2) = (
+            mux.open_window(&window1_opts).expect("Should create window1"),
+            mux.open_window(&window2_opts).expect("Should create window2"),
+        );
 
-                    // Test focusing window2
-                    if mux.focus_window(&window2).is_ok() {
-                        thread::sleep(Duration::from_millis(100));
-                        tracing::debug!(window2, "Window 2 focused");
-                    }
+        // Test focusing window1
+        mux.focus_window(&window1).expect("Should focus window1");
+        thread::sleep(Duration::from_millis(100));
+        tracing::debug!(window1, "Window 1 focused");
 
-                    // Test focusing pane
-                    if mux.focus_pane(&window1).is_ok() {
-                        thread::sleep(Duration::from_millis(100));
-                        tracing::debug!(window1, "Pane focused");
-                    }
-                }
-                _ => {
-                    tracing::warn!("Failed to create windows for focus test");
-                }
-            }
-        }
+        // Test focusing window2
+        mux.focus_window(&window2).expect("Should focus window2");
+        thread::sleep(Duration::from_millis(100));
+        tracing::debug!(window2, "Window 2 focused");
 
+        // Test focusing pane
+        mux.focus_pane(&window1).expect("Should focus pane");
+        thread::sleep(Duration::from_millis(100));
+        tracing::debug!(window1, "Pane focused");
         stop_test_wezterm();
     }
 
     #[test]
     #[serial_test::file_serial]
     fn test_list_windows_and_filtering() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            // Create test windows with different titles
-            let window_opts = vec![
-                WindowOptions {
-                    title: Some("alpha-wezterm-007"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                    init_command: None,
-                },
-                WindowOptions {
-                    title: Some("beta-wezterm-007"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                    init_command: None,
-                },
-                WindowOptions {
-                    title: Some("alpha-other-007"),
-                    cwd: Some(Path::new("/tmp")),
-                    profile: None,
-                    focus: false,
-                    init_command: None,
-                },
-            ];
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        // Create test windows with different titles
+        let window_opts = vec![
+            WindowOptions {
+                title: Some("alpha-wezterm-007"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+            WindowOptions {
+                title: Some("beta-wezterm-007"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+            WindowOptions {
+                title: Some("alpha-other-007"),
+                cwd: Some(Path::new("/tmp")),
+                profile: None,
+                focus: false,
+                init_command: None,
+            },
+        ];
 
-            let mut created_panes = Vec::new();
-            for opts in window_opts {
-                if let Ok(pane_id) = mux.open_window(&opts) {
-                    created_panes.push(pane_id);
-                }
-            }
-
-            // If we couldn't create any windows, WezTerm might not be running properly
-            if created_panes.is_empty() {
-                tracing::warn!("Could not create any windows - WezTerm may not be available");
-                return;
-            }
-
-            thread::sleep(Duration::from_millis(500));
-
-            // Test listing all windows - should have at least one window
-            if let Ok(all_windows) = mux.list_windows(None) {
-                assert!(!all_windows.is_empty(), "Should list at least one window");
-                tracing::debug!(count = all_windows.len(), "Listed all windows");
-
-                // Test filtering by title substring
-                // Note: list_windows returns window IDs, not pane IDs
-                // So we test the filtering mechanism by verifying it returns results
-                if let Ok(alpha_windows) = mux.list_windows(Some("alpha")) {
-                    tracing::debug!(count = alpha_windows.len(), "Listed alpha windows");
-                }
-
-                if let Ok(beta_windows) = mux.list_windows(Some("beta")) {
-                    tracing::debug!(count = beta_windows.len(), "Listed beta windows");
-                }
-
-                tracing::debug!("Successfully created {} panes", created_panes.len());
-            } else {
-                tracing::warn!("Failed to list windows");
-            }
+        let mut created_panes = Vec::new();
+        for opts in window_opts {
+            let pane_id = mux.open_window(&opts).expect("Should create window");
+            created_panes.push(pane_id);
         }
+
+        thread::sleep(Duration::from_millis(500));
+
+        // Test listing all windows - should have at least one window
+        let all_windows = mux.list_windows(None).expect("Should list windows");
+        assert!(!all_windows.is_empty(), "Should list at least one window");
+        tracing::debug!(count = all_windows.len(), "Listed all windows");
+
+        // Test filtering by title substring
+        // Note: list_windows returns window IDs, not pane IDs
+        // So we test the filtering mechanism by verifying it returns results
+        let alpha_windows = mux.list_windows(Some("alpha")).expect("Should list alpha windows");
+        tracing::debug!(count = alpha_windows.len(), "Listed alpha windows");
+
+        let beta_windows = mux.list_windows(Some("beta")).expect("Should list beta windows");
+        tracing::debug!(count = beta_windows.len(), "Listed beta windows");
+
+        tracing::debug!("Successfully created {} panes", created_panes.len());
 
         stop_test_wezterm();
     }
@@ -1430,44 +1361,38 @@ mod tests {
     #[serial_test::file_serial]
     #[ignore = "This test hit known bug that will be fixed soon"]
     fn test_list_panes() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            let window_opts = WindowOptions {
-                title: Some("panes-test-008"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        let window_opts = WindowOptions {
+            title: Some("panes-test-008"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match mux.open_window(&window_opts) {
-                Ok(window_id) => {
-                    // Create a split to have multiple panes
-                    let _ = mux.split_pane(
-                        Some(&window_id),
-                        Some(&window_id),
-                        SplitDirection::Horizontal,
-                        None,
-                        &CommandOptions::default(),
-                        None,
-                    );
+        let window_id = mux.open_window(&window_opts).expect("Should create window");
 
-                    thread::sleep(Duration::from_millis(200));
+        // Create a split to have multiple panes
+        mux.split_pane(
+            Some(&window_id),
+            Some(&window_id),
+            SplitDirection::Horizontal,
+            None,
+            &CommandOptions::default(),
+            None,
+        )
+        .expect("Should create split pane");
 
-                    // List panes in the window
-                    if let Ok(panes) = mux.list_panes(&window_id) {
-                        assert!(!panes.is_empty(), "Should have at least one pane");
-                        // We created one split, so should have at least 2 panes
-                        assert!(panes.len() >= 2, "Should have at least 2 panes after split");
-                        tracing::debug!(count = panes.len(), "Listed panes");
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create window for panes test");
-                }
-            }
-        }
+        thread::sleep(Duration::from_millis(200));
+
+        // List panes in the window
+        let panes = mux.list_panes(&window_id).expect("Should list panes");
+        assert!(!panes.is_empty(), "Should have at least one pane");
+        // We created one split, so should have at least 2 panes
+        assert!(panes.len() >= 2, "Should have at least 2 panes after split");
+        tracing::debug!(count = panes.len(), "Listed panes");
 
         stop_test_wezterm();
     }
@@ -1476,111 +1401,97 @@ mod tests {
     #[serial_test::file_serial]
     #[ignore = "This test hit known bug that will be fixed soon"]
     fn test_complex_layout_creation() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            // Create a main window
-            let window_opts = WindowOptions {
-                title: Some("complex-layout-009"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        // Create a main window
+        let window_opts = WindowOptions {
+            title: Some("complex-layout-009"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match mux.open_window(&window_opts) {
-                Ok(main_window) => {
-                    // Create a complex 3-pane layout
-                    // Pane 1: editor (left, 70%)
-                    // Pane 2: agent (top-right, 60% of right side)
-                    // Pane 3: logs (bottom-right, 40% of right side)
+        let main_window = mux.open_window(&window_opts).expect("Should create main window");
 
-                    // Create agent pane (right side)
-                    let agent_result = mux.split_pane(
-                        Some(&main_window),
-                        Some(&main_window),
-                        SplitDirection::Vertical,
-                        Some(70),
-                        &CommandOptions::default(),
-                        None,
-                    );
+        // Create a complex 3-pane layout
+        // Pane 1: editor (left, 70%)
+        // Pane 2: agent (top-right, 60% of right side)
+        // Pane 3: logs (bottom-right, 40% of right side)
 
-                    match agent_result {
-                        Ok(agent_pane) => {
-                            tracing::debug!(agent_pane, "Agent pane created");
+        // Create agent pane (right side)
+        let agent_pane = mux
+            .split_pane(
+                Some(&main_window),
+                Some(&main_window),
+                SplitDirection::Vertical,
+                Some(70),
+                &CommandOptions::default(),
+                None,
+            )
+            .expect("Should create agent pane");
 
-                            // Create logs pane (bottom of agent pane)
-                            let logs_result = mux.split_pane(
-                                Some(&main_window),
-                                Some(&agent_pane),
-                                SplitDirection::Horizontal,
-                                Some(60),
-                                &CommandOptions::default(),
-                                None,
-                            );
+        tracing::debug!(agent_pane, "Agent pane created");
 
-                            if let Ok(logs_pane) = logs_result {
-                                tracing::debug!(logs_pane, "Logs pane created");
+        // Create logs pane (bottom of agent pane)
+        let logs_pane = mux
+            .split_pane(
+                Some(&main_window),
+                Some(&agent_pane),
+                SplitDirection::Horizontal,
+                Some(60),
+                &CommandOptions::default(),
+                None,
+            )
+            .expect("Should create logs pane");
 
-                                thread::sleep(Duration::from_millis(200));
+        tracing::debug!(logs_pane, "Logs pane created");
 
-                                // Verify all panes exist
-                                if let Ok(panes) = mux.list_panes(&main_window) {
-                                    assert!(panes.len() >= 3);
-                                    assert!(panes.contains(&main_window));
-                                    assert!(panes.contains(&agent_pane));
-                                    assert!(panes.contains(&logs_pane));
-                                    tracing::debug!(count = panes.len(), "Complex layout verified");
-                                }
+        thread::sleep(Duration::from_millis(200));
 
-                                // Test focusing different panes
-                                let _ = mux.focus_pane(&main_window);
-                                thread::sleep(Duration::from_millis(50));
-                                let _ = mux.focus_pane(&agent_pane);
-                                thread::sleep(Duration::from_millis(50));
-                                let _ = mux.focus_pane(&logs_pane);
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(error=%e, "Failed to create agent pane");
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create main window");
-                }
-            }
-        }
+        // Verify all panes exist
+        let panes = mux.list_panes(&main_window).expect("Should list panes");
+        assert!(panes.len() >= 3);
+        assert!(panes.contains(&main_window));
+        assert!(panes.contains(&agent_pane));
+        assert!(panes.contains(&logs_pane));
+        tracing::debug!(count = panes.len(), "Complex layout verified");
 
+        // Test focusing different panes
+        mux.focus_pane(&main_window).expect("Should focus main window");
+        thread::sleep(Duration::from_millis(50));
+        mux.focus_pane(&agent_pane).expect("Should focus agent pane");
+        thread::sleep(Duration::from_millis(50));
+        mux.focus_pane(&logs_pane).expect("Should focus logs pane");
         stop_test_wezterm();
     }
 
     #[test]
     #[serial_test::file_serial]
     fn test_error_handling_invalid_pane() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            // Try to focus a non-existent pane
-            let invalid_pane = "99999".to_string();
-            let result = mux.focus_pane(&invalid_pane);
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        // Try to focus a non-existent pane
+        let invalid_pane = "99999".to_string();
+        let result = mux.focus_pane(&invalid_pane);
 
-            match result {
-                Ok(()) => {
-                    tracing::debug!("Pane might exist or command accepted");
-                }
-                Err(MuxError::CommandFailed(_)) => {
-                    tracing::debug!("Expected error for invalid pane");
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Unexpected error type");
-                }
+        match result {
+            Ok(()) => {
+                tracing::debug!("Pane might exist or command accepted");
             }
-
-            // Try to send text to non-existent pane
-            let result = mux.send_text(&invalid_pane, "test");
-            assert!(result.is_ok() || matches!(result, Err(MuxError::CommandFailed(_))));
+            Err(MuxError::CommandFailed(_)) => {
+                tracing::debug!("Expected error for invalid pane");
+            }
+            Err(e) => {
+                panic!("Unexpected error type: {:?}", e);
+            }
         }
+
+        // Try to send text to non-existent pane
+        let result = mux.send_text(&invalid_pane, "test");
+        assert!(result.is_ok() || matches!(result, Err(MuxError::CommandFailed(_))));
 
         stop_test_wezterm();
     }
@@ -1589,39 +1500,30 @@ mod tests {
     #[serial_test::file_serial]
     #[ignore = "This test hit known bug that will be fixed soon"]
     fn test_set_tab_title() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            let window_opts = WindowOptions {
-                title: Some("original-title-010"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        let window_opts = WindowOptions {
+            title: Some("original-title-010"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match mux.open_window(&window_opts) {
-                Ok(window_id) => {
-                    thread::sleep(Duration::from_millis(100));
+        let window_id = mux.open_window(&window_opts).expect("Should create window");
+        thread::sleep(Duration::from_millis(100));
 
-                    // Change the tab title
-                    let result = mux.set_tab_title(&window_id, "new-title-010");
+        // Change the tab title
+        mux.set_tab_title(&window_id, "new-title-010")
+            .expect("set_tab_title should succeed");
+        thread::sleep(Duration::from_millis(100));
+        tracing::debug!("Tab title updated successfully");
 
-                    assert!(result.is_ok(), "set_tab_title should succeed");
-                    thread::sleep(Duration::from_millis(100));
-                    tracing::debug!("Tab title updated successfully");
-
-                    // Verify the title change by listing windows
-                    // Note: We can't directly read the title back, but we can verify the operation didn't fail
-                    if let Ok(windows) = mux.list_windows(Some("new-title-010")) {
-                        assert!(!windows.is_empty(), "Should find window with new title");
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create window for title test");
-                }
-            }
-        }
+        // Verify the title change by listing windows
+        // Note: We can't directly read the title back, but we can verify the operation didn't fail
+        let windows = mux.list_windows(Some("new-title-010")).expect("Should list windows");
+        assert!(!windows.is_empty(), "Should find window with new title");
 
         stop_test_wezterm();
     }
@@ -1630,68 +1532,54 @@ mod tests {
     #[serial_test::file_serial]
     #[ignore = "This test hit known bug that will be fixed soon"]
     fn test_kill_pane() {
-        let _ = start_test_wezterm();
+        start_test_wezterm().expect("Should start test wezterm");
 
-        if let Ok(mux) = WezTermMultiplexer::new() {
-            let window_opts = WindowOptions {
-                title: Some("kill-pane-test-011"),
-                cwd: Some(Path::new("/tmp")),
-                profile: None,
-                focus: false,
-                init_command: None,
-            };
+        let mux = WezTermMultiplexer::new().expect("Should create WezTermMultiplexer");
+        let window_opts = WindowOptions {
+            title: Some("kill-pane-test-011"),
+            cwd: Some(Path::new("/tmp")),
+            profile: None,
+            focus: false,
+            init_command: None,
+        };
 
-            match mux.open_window(&window_opts) {
-                Ok(window_id) => {
-                    // Create a split pane
-                    match mux.split_pane(
-                        Some(&window_id),
-                        Some(&window_id),
-                        SplitDirection::Horizontal,
-                        None,
-                        &CommandOptions::default(),
-                        None,
-                    ) {
-                        Ok(pane_id) => {
-                            assert!(pane_id.parse::<u32>().is_ok(), "Pane ID should be numeric");
-                            thread::sleep(Duration::from_millis(100));
+        let window_id = mux.open_window(&window_opts).expect("Should create window");
 
-                            // Count panes before kill
-                            let panes_before = mux.list_panes(&window_id).ok();
-                            let count_before = panes_before.as_ref().map(|p| p.len());
+        // Create a split pane
+        let pane_id = mux
+            .split_pane(
+                Some(&window_id),
+                Some(&window_id),
+                SplitDirection::Horizontal,
+                None,
+                &CommandOptions::default(),
+                None,
+            )
+            .expect("Should create split pane");
 
-                            // Kill the pane
-                            let result = mux.kill_pane(&pane_id);
+        assert!(pane_id.parse::<u32>().is_ok(), "Pane ID should be numeric");
+        thread::sleep(Duration::from_millis(100));
 
-                            assert!(result.is_ok(), "kill_pane should succeed");
-                            thread::sleep(Duration::from_millis(100));
-                            tracing::debug!(pane_id, "Pane killed successfully");
+        // Count panes before kill
+        let panes_before = mux.list_panes(&window_id).expect("Should list panes before kill");
+        let count_before = panes_before.len();
 
-                            // Verify pane count decreased by one
-                            if let (Some(before), Ok(panes_after)) =
-                                (count_before, mux.list_panes(&window_id))
-                            {
-                                assert!(
-                                    !panes_after.contains(&pane_id),
-                                    "Killed pane should not be in list"
-                                );
-                                assert_eq!(
-                                    panes_after.len(),
-                                    before - 1,
-                                    "Pane count should decrease by one after kill"
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(error=%e, "Failed to create pane to kill");
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(error=%e, "Failed to create window for kill test");
-                }
-            }
-        }
+        // Kill the pane
+        mux.kill_pane(&pane_id).expect("kill_pane should succeed");
+        thread::sleep(Duration::from_millis(100));
+        tracing::debug!(pane_id, "Pane killed successfully");
+
+        // Verify pane count decreased by one
+        let panes_after = mux.list_panes(&window_id).expect("Should list panes after kill");
+        assert!(
+            !panes_after.contains(&pane_id),
+            "Killed pane should not be in list"
+        );
+        assert_eq!(
+            panes_after.len(),
+            count_before - 1,
+            "Pane count should decrease by one after kill"
+        );
 
         stop_test_wezterm();
     }
