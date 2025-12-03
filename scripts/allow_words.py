@@ -72,12 +72,15 @@ SortKey = Tuple[str, int, str]
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments for the script."""
     parser = argparse.ArgumentParser(
-        description="Add one or more words to the cspell dictionary allow-list while preserving ordering.",
+        description=(
+            "Add one or more words to the cspell/vale allow-lists, or --sync to rewrite both"
+            " lists in sorted order without adding new entries."
+        ),
     )
     parser.add_argument(
         "words",
-        nargs="+",
-        help="Words to add to the allow-list.",
+        nargs="*",
+        help="Words to add to the allow-list (optional when using --sync).",
     )
     parser.add_argument(
         "--cspell",
@@ -97,6 +100,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Show the words that would be added without modifying the configuration.",
+    )
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Rewrite cspell and vale dictionaries from their current union without adding new words.",
     )
     return parser.parse_args(argv)
 
@@ -219,6 +227,67 @@ def write_vale_hunspell_dict(vale_dict_dir: Path, words: list[str]) -> None:
             f.write("SET UTF-8\n\n# Basic affix file for custom dictionary\n")
 
 
+def load_vale_words(vale_dict_dir: Path) -> list[str]:
+    """Load all words from the vale Hunspell dictionary (ignoring count header)."""
+    dict_file = vale_dict_dir / "en_custom.dic"
+    if not dict_file.exists():
+        return []
+    with dict_file.open("r", encoding="utf-8") as f:
+        lines = f.readlines()
+    if not lines:
+        return []
+    return [ln.strip() for ln in lines[1:] if ln.strip()]
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+
+    if not args.sync and not args.words:
+        print("No words supplied and --sync not set; nothing to do.", file=sys.stderr)
+        return 1
+
+    new_words: list[str] = []
+    if args.words:
+        try:
+            new_words = normalize_words(args.words)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+
+    cspell_data, cspell_words = load_cspell_words(args.cspell_path)
+    vale_words = load_vale_words(args.vale_dict_dir)
+
+    existing_union = set(cspell_words) | set(vale_words)
+    target_words_set = existing_union | set(new_words)
+
+    target_words = sorted(target_words_set, key=sort_key)
+
+    added = list(sorted(target_words_set - set(cspell_words), key=sort_key)) if new_words else []
+
+    if args.dry_run:
+        action = "sync" if args.sync else "add"
+        print(f"[dry-run] Would {action} {len(target_words_set)} words; newly added: {added}")
+        return 0
+
+    cspell_data["words"] = target_words
+    write_cspell_words(args.cspell_path, cspell_data)
+    write_vale_hunspell_dict(args.vale_dict_dir, target_words)
+
+    if args.sync and not new_words:
+        print(f"Synced spell dictionaries: {len(target_words)} entries.")
+    else:
+        print(
+            f"Added {len(added)} word(s) to cspell and vale Hunspell dictionary: "
+            f"{', '.join(added) if added else '(none)'}"
+        )
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Program entry point."""
     try:
@@ -277,4 +346,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
