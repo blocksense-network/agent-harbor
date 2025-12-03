@@ -498,6 +498,10 @@ test-agentfs-sandbox:
     cargo build -p ah-cli --features agentfs
     ./scripts/test-agentfs-sandbox.sh
 
+# F19 user-mode restart/orphan cleanup harness (no sudo required)
+test-agentfs-user-restart:
+    ./scripts/test-agentfs-user-restart.py
+
 # Run all F16 sandbox tests
 test-agentfs-sandbox-all: test-agentfs-sandbox
 

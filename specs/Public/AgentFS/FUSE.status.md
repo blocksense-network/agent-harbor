@@ -1141,16 +1141,20 @@ This milestone implements the overlay materialization policies described in [Age
 - [x] T18.9 Isolation Git – **PASS** – git provider sandbox isolation verified after disabling per-repo GPG signing; log `logs/agentfs-sandbox-20251203-114200/`
 - [x] T18.10 Harness Single Test – harness now supports `--test` flag and `AGENTFS_TESTS` env var; self-test re-invokes harness and passed in `logs/agentfs-sandbox-20251202-004221/`
 
-**F19. User-Mode Restart/Orphan Cleanup Harness (no-sudo path)** 🆕 PROPOSED
+**F19. User-Mode Restart/Orphan Cleanup Harness (no-sudo path)** ✅ IMPLEMENTED
 
 - **Goal:** Provide a restart/orphan-cleanup verification path that runs entirely in user space (no passwordless sudo), so crash-recovery can be validated in CI and developer machines without privileged mounts.
 - **Hypothesis:** AgentFS FUSE mounts can run unprivileged (without `allow_other`/`allow_root`), enabling a user-owned daemon + FUSE host + mount + restart cycle. ZFS/Btrfs backends still need root, but the in-memory/hostfs backstores should suffice for this test’s purpose.
 - **Experiment:** Launch `agentfs-fuse-host` and daemon in user mode, mount to a temp dir, run a sandbox to create a marker, kill the daemon, restart it, remount, and confirm the marker does not reappear (orphan cleaned). If confirmed, formalize in the harness.
 - **Deliverables:**
-  - Python-based integration test that starts/stops a user-mode AgentFS daemon + FUSE host, simulates crash/restart, and asserts orphan branches are purged.
-  - Helper script to start/stop the user-mode daemon for tests (no sudo).
-  - CI fallback: when sudo is unavailable, run this user-mode restart test; keep T18.6 for privileged coverage.
+  - Python-based integration test (`scripts/test-agentfs-user-restart.py`, `just test-agentfs-user-restart`) that starts/stops a user-mode AgentFS daemon + FUSE host, simulates crash/restart, and asserts orphan branches are purged.
+  - Helper scripts `scripts/start-agentfs-user-daemon.sh` / `scripts/stop-agentfs-user-daemon.sh` to bring up the user-owned daemon + mount without sudo.
+  - CI/CLI fallback: `scripts/test-agentfs-sandbox.sh` now runs the F19 harness automatically when privileged restart (T18.6) is unavailable, so unprivileged hosts still exercise orphan-cleanup coverage.
 - **Success criteria:** User-mode restart test passes without sudo; T18.6 continues to pass on sudo-capable hosts; documentation clearly distinguishes privileged vs user-mode restart coverage.
+
+- **Verification Results (Dec 2025):**
+  - [x] T19.1 User-mode restart harness added – `scripts/test-agentfs-user-restart.py` builds the user-mode stack (daemon + fuse host), drives pre/post sandbox runs, and writes a machine-readable `summary.json`. Latest run (2025-12-03) on this host is **PASS** after guarding privilege-dropping to root-only (fixing an EPERM on `setgroups`) and rebuilding `ah-cli` with the `agentfs` feature; see `logs/agentfs-user-restart-e6jziw3j/`.
+  - [x] T19.2 Sandbox fallback wiring – when `AGENTFS_ALLOW_RESTART_TESTS!=1` or passwordless sudo is unavailable, `test_orphan_cleanup_on_restart` now invokes the F19 harness and records a pass/skip instead of silently skipping restart coverage.
 
 ### Test strategy & tooling
 
