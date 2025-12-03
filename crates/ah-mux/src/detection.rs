@@ -492,6 +492,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::file_serial]
     fn test_detect_vim() {
         // Save original values
         let original_vimruntime = std::env::var("VIMRUNTIME").ok();
@@ -513,6 +514,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::file_serial]
     fn test_wrapping_order() {
         // Save original values
         let original_kitty_pid = std::env::var("KITTY_PID").ok();
