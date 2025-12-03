@@ -13,6 +13,7 @@ license = "MIT OR Apache-2.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["process", "io-util", "fs", "sync"] }
+tokio-util = { version = "0.7", features = ["compat"] }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
@@ -47,13 +48,15 @@ ah-repo = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
 llm-api-proxy = { workspace = true }
 serial_test = "3"
+tokio-util = { version = "0.7", features = ["compat"] }
 
 [features]
-default = ["claude", "codex", "cursor-cli", "copilot-cli", "gemini"]
+default = ["claude", "codex", "cursor-cli", "copilot-cli", "gemini", "acp"]
 # Feature gates for each agent backend
 claude = []
 codex = []
 gemini = []
+acp = ["agent-client-protocol"]
 opencode = []
 qwen = []
 cursor-cli = []
@@ -68,3 +71,7 @@ rust-proxy-tests = []
 
 [dependencies.ah-core]
 path = "../ah-core"
+
+[dependencies.agent-client-protocol]
+workspace = true
+optional = true

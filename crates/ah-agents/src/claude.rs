@@ -1007,6 +1007,8 @@ mod tests {
             env_vars: vec![],
             snapshot_cmd: None,
             mcp_servers: vec![],
+            acp_binary: None,
+            acp_stdio_command: None,
         };
 
         // This should fail because no credentials are available

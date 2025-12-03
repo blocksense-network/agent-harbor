@@ -431,6 +431,7 @@ impl DatabaseSessionStore {
                         count: 1,
                         settings: HashMap::new(),
                         display_name: None,
+                        acp_stdio_launch_command: None,
                     }),
                 runtime: record
                     .runtime_config

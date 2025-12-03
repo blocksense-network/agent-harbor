@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /// Core traits and types for agent abstraction layer
+use ah_domain_types::AcpLaunchCommand;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -61,6 +62,12 @@ pub struct AgentLaunchConfig {
 
     /// Model to use for the agent (optional, agent-specific defaults apply)
     pub model: Option<String>,
+
+    /// Optional path to an external ACP agent binary (stdio transport)
+    pub acp_binary: Option<PathBuf>,
+
+    /// Optional stdio launch command (binary + args) when bridging to external ACP servers
+    pub acp_stdio_command: Option<AcpLaunchCommand>,
 }
 
 /// Agent version information
@@ -274,6 +281,8 @@ impl AgentLaunchConfig {
             web_search: false,
             snapshot_cmd: None,
             model: None,
+            acp_binary: None,
+            acp_stdio_command: None,
         }
     }
 
@@ -351,6 +360,39 @@ impl AgentLaunchConfig {
 
     pub fn copy_credentials(mut self, copy: bool) -> Self {
         self.copy_credentials = copy;
+        self
+    }
+
+    pub fn acp_binary(mut self, path: impl Into<PathBuf>) -> Self {
+        let binary = path.into();
+        self.acp_stdio_command = Some(AcpLaunchCommand {
+            binary: binary.clone(),
+            args: Vec::new(),
+        });
+        self.acp_binary = Some(binary);
+        self
+    }
+
+    /// Set an explicit ACP stdio launch command (binary + args)
+    pub fn acp_stdio_command(mut self, command: AcpLaunchCommand) -> Self {
+        self.acp_binary = Some(command.binary.clone());
+        self.acp_stdio_command = Some(command);
+        self
+    }
+
+    /// Convenience helper to set stdio binary plus arguments
+    pub fn acp_stdio_command_with_args(
+        mut self,
+        binary: impl Into<PathBuf>,
+        args: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        let binary_path = binary.into();
+        let args_vec = args.into_iter().map(|a| a.into()).collect();
+        self.acp_stdio_command = Some(AcpLaunchCommand {
+            binary: binary_path.clone(),
+            args: args_vec,
+        });
+        self.acp_binary = Some(binary_path);
         self
     }
 }

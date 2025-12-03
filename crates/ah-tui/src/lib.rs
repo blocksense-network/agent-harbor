@@ -6,6 +6,7 @@
 //! This crate provides a Ratatui-based TUI for creating, monitoring,
 //! and managing agent coding sessions with seamless multiplexer integration.
 
+pub mod acp_client;
 pub mod agent_session_loop;
 pub mod dashboard_loop;
 pub mod error;

@@ -64,6 +64,10 @@ struct Args {
     /// Override capability: MCP SSE transport support
     #[arg(long)]
     mcp_sse: Option<bool>,
+    /// Disable wrapping runCmd tool calls in `ah show-sandbox-execution` follower commands.
+    /// When set, runCmd will execute the raw command under `sh -c`, closer to a standard ACP agent.
+    #[arg(long)]
+    disable_follower: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -102,14 +106,15 @@ async fn main() -> anyhow::Result<()> {
     let scenario = select_scenario(&loader, &args)?;
     enforce_loadsession_capability(&scenario)?;
     let cap_override = build_capability_override(&args);
-    let executor = ScenarioExecutor::new(scenario.clone());
+    let mut executor = ScenarioExecutor::new(scenario.clone());
+    executor.set_use_follower(!args.disable_follower);
     let transcript = executor.to_acp_transcript(
         args.session_id.as_deref(),
         cap_override,
         args.cwd.clone(),
         parsed_mcp_servers,
     );
-    let agent = ScenarioAgent::new(transcript);
+    let agent = ScenarioAgent::new_with_follower(transcript, !args.disable_follower);
 
     let local = tokio::task::LocalSet::new();
     local

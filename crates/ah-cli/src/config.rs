@@ -198,7 +198,6 @@ mod tests {
     /// These tests aim to verify the correctness of our implementation
     /// against the specification in `specs/Public/Configuration.md`.
     use super::*;
-    use crate::ToJsonOverrides;
     use ah_logging::CliLogLevel;
     use serial_test::serial;
 

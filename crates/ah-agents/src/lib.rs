@@ -63,6 +63,9 @@ pub mod traits;
 pub mod snapshot;
 
 // Agent implementations (feature-gated)
+#[cfg(feature = "acp")]
+pub mod acp;
+
 #[cfg(feature = "claude")]
 pub mod claude;
 
@@ -106,6 +109,11 @@ pub fn claude() -> claude::ClaudeAgent {
     claude::ClaudeAgent::new()
 }
 
+#[cfg(feature = "acp")]
+pub fn acp() -> acp::AcpAgent {
+    acp::AcpAgent::new()
+}
+
 #[cfg(feature = "codex")]
 pub fn codex() -> codex::CodexAgent {
     codex::CodexAgent::new()
@@ -141,6 +149,9 @@ pub fn gemini() -> gemini::GeminiAgent {
 /// ```
 pub fn agent_by_name(name: &str) -> Option<Box<dyn AgentExecutor>> {
     match name {
+        #[cfg(feature = "acp")]
+        "acp" => Some(Box::new(acp::AcpAgent::new())),
+
         #[cfg(feature = "claude")]
         "claude" => Some(Box::new(claude::ClaudeAgent::new())),
 
@@ -165,6 +176,9 @@ pub fn available_agents() -> Vec<&'static str> {
     #[allow(clippy::vec_init_then_push)]
     {
         let mut agents = Vec::new();
+
+        #[cfg(feature = "acp")]
+        agents.push("acp");
 
         #[cfg(feature = "claude")]
         agents.push("claude");
@@ -215,6 +229,9 @@ mod tests {
         let agents = available_agents();
         assert!(!agents.is_empty());
 
+        #[cfg(feature = "acp")]
+        assert!(agents.contains(&"acp"));
+
         #[cfg(feature = "claude")]
         assert!(agents.contains(&"claude"));
 
@@ -230,6 +247,13 @@ mod tests {
     fn test_claude_constructor() {
         let agent = claude();
         assert_eq!(agent.name(), "claude");
+    }
+
+    #[cfg(feature = "acp")]
+    #[test]
+    fn test_acp_constructor() {
+        let agent = acp();
+        assert_eq!(agent.name(), "acp");
     }
 
     #[cfg(feature = "codex")]
@@ -290,6 +314,14 @@ mod tests {
         let agent = agent_by_name("gemini");
         assert!(agent.is_some());
         assert_eq!(agent.unwrap().name(), "gemini");
+    }
+
+    #[cfg(feature = "acp")]
+    #[test]
+    fn test_agent_by_name_acp() {
+        let agent = agent_by_name("acp");
+        assert!(agent.is_some());
+        assert_eq!(agent.unwrap().name(), "acp");
     }
 
     #[test]

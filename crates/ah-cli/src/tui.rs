@@ -18,7 +18,7 @@ use ah_tui::settings::Settings;
 use ah_tui::tui_config::TuiConfig;
 use ah_tui::view::TuiDependencies;
 use ah_workflows::{WorkflowConfig, WorkflowProcessor, WorkspaceWorkflowsEnumerator};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Args, Subcommand, ValueEnum};
 use std::sync::Arc;
 
@@ -195,6 +195,15 @@ pub enum TuiSubcommands {
         )]
         bearer_token: Option<String>,
     },
+    /// Run the ACP client TUI that wraps an external ACP binary
+    AcpClient {
+        /// Full command used to launch the ACP-compliant agent
+        #[arg(long = "acp-agent-cmd", env = "AH_ACP_AGENT_CMD")]
+        acp_agent_cmd: String,
+        /// Optional initial prompt to send
+        #[arg(long)]
+        prompt: Option<String>,
+    },
 }
 
 impl SubcommandOverrides for TuiArgs {
@@ -275,6 +284,9 @@ impl SubcommandOverrides for TuiArgs {
                         );
                     }
                 }
+                TuiSubcommands::AcpClient { .. } => {
+                    // ACP client doesn't override any config
+                }
             }
         }
 
@@ -312,6 +324,20 @@ impl TuiArgs {
                     tui_config,
                 )?;
                 run_dashboard(deps).await.map_err(|e| anyhow::anyhow!("TUI error: {}", e))
+            }
+            Some(TuiSubcommands::AcpClient {
+                acp_agent_cmd,
+                prompt,
+            }) => {
+                let acp_command =
+                    ah_domain_types::AcpLaunchCommand::from_command_string(&acp_agent_cmd)
+                        .map_err(anyhow::Error::msg)
+                        .context("invalid --acp-agent-cmd")?;
+                let cfg = ah_tui::acp_client::AcpClientConfig {
+                    acp_command,
+                    prompt,
+                };
+                ah_tui::acp_client::run_acp_client(cfg).await
             }
             None => {
                 // Main TUI command - handle multiplexer session management

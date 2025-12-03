@@ -1,0 +1,82 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: acp_round_trip
+tags: [acp, e2e]
+acp:
+  capabilities:
+    loadSession: true
+    promptCapabilities:
+      image: false
+      audio: false
+      files: true
+      richText: true
+timeline:
+  - userInputs:
+      - relativeTime: 0
+        input: 'ping the system'
+
+  - sessionStart:
+      sessionId: 'acp-round-trip'
+
+  - agentPlan:
+      entries:
+        - content: 'Inspect workspace and run a quick check'
+          priority: high
+          status: in_progress
+        - content: 'Edit a file with the findings'
+          priority: medium
+          status: pending
+        - content: 'Report back with summary'
+          priority: low
+          status: pending
+
+  - agentToolUse:
+      toolName: runCmd
+      toolCallId: run-check
+      rawInput:
+        cmd: "printf 'round trip start\\n'; sleep 0.05; printf 'round trip done\\n'"
+      args:
+        cmd: "printf 'round trip start\\n'; sleep 0.05; printf 'round trip done\\n'"
+      progress:
+        - relativeTime: 0
+          message: 'spawning check'
+        - relativeTime: 50
+          message: 'collecting output'
+      toolExecution:
+        startTimeMs: 0
+        events:
+          - type: stdout
+            timeMs: 10
+            content: 'round trip start\n'
+          - type: stdout
+            timeMs: 80
+            content: 'round trip done\n'
+          - type: completion
+            timeMs: 100
+            exitCode: 0
+      status: in_progress
+
+  - agentEdits:
+      path: '/tmp/acp_round_trip.txt'
+      oldText: |
+        fn foo() {}
+      newText: |
+        fn foo() {}
+        fn bar() { println!("hi"); }
+      description: 'Add helper'
+      linesAdded: 2
+      linesRemoved: 0
+
+  - agentPermissionRequest:
+      sessionId: 'acp-round-trip'
+      options:
+        - id: allow_once
+          label: Allow once
+          kind: allow_once
+      granted: true
+
+  - llmResponse:
+      - assistant:
+          - relativeTime: 150
+            content: 'Check completed, edited src/lib.rs, ready to proceed.'

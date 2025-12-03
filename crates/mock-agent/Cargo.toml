@@ -10,7 +10,7 @@ license = "AGPL-3.0-only"
 [dependencies]
 ah-scenario-format = { path = "../ah-scenario-format" }
 agent-client-protocol = { workspace = true }
-agent-client-protocol-schema = "0.4.11"
+agent-client-protocol-schema = { workspace = true }
 anyhow = "1.0"
 async-trait = "0.1"
 clap = { version = "4.5", features = ["derive"] }

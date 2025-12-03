@@ -153,6 +153,8 @@ async fn main() -> anyhow::Result<()> {
         terminal_config: ah_tui::terminal::TerminalConfig::minimal(),
         ui_mode: AgentSessionUiMode::AgentActivity,
         activity_entries: activity,
+        live_activity_rx: None,
+        prompt_tx: None,
     };
 
     run_session_viewer(deps).await

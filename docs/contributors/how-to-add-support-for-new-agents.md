@@ -118,6 +118,17 @@ Action items:
 - Find how args are **validated** and **defaulted**.
 - Identify where args are handed to the adapter in `ah-agents`.
 
+### ACP client quickstart (bridging external binaries)
+
+- Use `--agent acp` when invoking `ah agent start` to wrap an external ACP-compliant binary.
+- Flag: `--acp-agent-cmd "<binary and args>"` (env override `AH_ACP_AGENT_CMD`)
+- Resolution order: CLI flag → env var → PATH search for `acp-agent`/`mock-agent` → fallback
+  `acp-agent`. Version detection runs `<binary> <args> --version` and accepts noisy strings like
+  `mock-agent version v0.2.3`.
+- Environment forwarded to the external binary includes `ACP_LLM_API`, `ACP_LLM_API_KEY`,
+  `ACP_INITIAL_PROMPT`, `ACP_OUTPUT=json` (when `--output json*`), and `ACP_SNAPSHOT_CMD`.
+- Quick verification: `just test-acp-client` runs the ACP unit tests (version detection + RPC stub).
+
 ---
 
 ## 5) Implement the agent in `ah-agents` (summary)

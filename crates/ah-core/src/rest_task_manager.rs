@@ -518,6 +518,7 @@ mod tests {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }])
             .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())
@@ -551,6 +552,7 @@ mod tests {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }])
             .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())
@@ -572,6 +574,7 @@ mod tests {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }])
             .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())
@@ -596,6 +599,7 @@ mod tests {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: None,
+                acp_stdio_launch_command: None,
             }])
             .agent_type(AgentSoftware::Claude)
             .task_id("test-task-id".to_string())

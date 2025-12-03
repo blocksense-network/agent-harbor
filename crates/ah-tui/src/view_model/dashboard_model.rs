@@ -1224,7 +1224,11 @@ impl ViewModel {
 
             // Determine agent type and model name
             let selected_agent = card.selected_agents.first().unwrap(); // We validated it's not empty
-            let agent_type = selected_agent.agent.software.clone();
+            let agent_type = if selected_agent.acp_stdio_launch_command.is_some() {
+                AgentSoftware::Acp
+            } else {
+                selected_agent.agent.software.clone()
+            };
             let _ = selected_agent.model.clone();
 
             // Extract card data before removing it
@@ -1493,6 +1497,9 @@ impl ViewModel {
                                     count: 1,
                                     settings: model.settings.clone(),
                                     display_name: model.display_name.clone(),
+                                    acp_stdio_launch_command: model
+                                        .acp_stdio_launch_command
+                                        .clone(),
                                 };
                                 card.selected_agents = vec![selected_agent];
                                 card.focus_element = CardFocusElement::TaskDescription;
@@ -1520,6 +1527,9 @@ impl ViewModel {
                                         count: opt.count,
                                         settings: model.settings.clone(),
                                         display_name: model.display_name.clone(),
+                                        acp_stdio_launch_command: model
+                                            .acp_stdio_launch_command
+                                            .clone(),
                                     })
                             })
                             .collect();
@@ -2022,6 +2032,7 @@ impl ViewModel {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("Claude Sonnet 4.5".to_string()),
+                acp_stdio_launch_command: None,
             },
             AgentChoice {
                 agent: AgentSoftwareBuild {
@@ -2032,6 +2043,7 @@ impl ViewModel {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("Claude Opus 4.1".to_string()),
+                acp_stdio_launch_command: None,
             },
             AgentChoice {
                 agent: AgentSoftwareBuild {
@@ -2042,6 +2054,7 @@ impl ViewModel {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("GPT-5-Codex".to_string()),
+                acp_stdio_launch_command: None,
             },
             AgentChoice {
                 agent: AgentSoftwareBuild {
@@ -2052,6 +2065,7 @@ impl ViewModel {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("GPT-5 pro".to_string()),
+                acp_stdio_launch_command: None,
             },
             AgentChoice {
                 agent: AgentSoftwareBuild {
@@ -2062,6 +2076,7 @@ impl ViewModel {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("GPT-5".to_string()),
+                acp_stdio_launch_command: None,
             },
             AgentChoice {
                 agent: AgentSoftwareBuild {
@@ -2072,6 +2087,7 @@ impl ViewModel {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("GPT-5 mini".to_string()),
+                acp_stdio_launch_command: None,
             },
         ];
 
@@ -2127,6 +2143,7 @@ impl ViewModel {
                 count: 1,
                 settings: std::collections::HashMap::new(),
                 display_name: Some("Claude Sonnet".to_string()),
+                acp_stdio_launch_command: None,
             }]
         });
         let draft_cards = vec![Self::create_draft_task_internal(
@@ -5205,6 +5222,7 @@ impl ViewModel {
                                 count: 1,
                                 settings: model.settings.clone(),
                                 display_name: model.display_name.clone(),
+                                acp_stdio_launch_command: model.acp_stdio_launch_command.clone(),
                             })
                     })
                     .collect();
@@ -5343,6 +5361,7 @@ impl ViewModel {
                             count: 1,
                             settings: std::collections::HashMap::new(),
                             display_name: Some("Claude Sonnet".to_string()),
+                            acp_stdio_launch_command: None,
                         }] // Default model if none saved
                     } else {
                         draft_info.models.clone()
@@ -5532,6 +5551,7 @@ impl ViewModel {
                             count: 1,
                             settings: model.settings.clone(),
                             display_name: model.display_name.clone(),
+                            acp_stdio_launch_command: model.acp_stdio_launch_command.clone(),
                         })
                 })
                 .collect();
@@ -5612,6 +5632,7 @@ impl ViewModel {
                     count: 1,
                     settings: std::collections::HashMap::new(),
                     display_name: Some(display_name),
+                    acp_stdio_launch_command: None,
                 }
             })
             .collect();

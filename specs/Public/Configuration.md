@@ -74,6 +74,9 @@ Examples:
 - `remote-server`: string — either a known server `name` (from `[[server]]`) or a raw URL. If set, AH uses REST; otherwise it uses local SQLite state.
 - `tui-font-style`: string — TUI symbol style (values: `"nerdfont"` | `"unicode"` | `"ascii"`). Auto-detected based on terminal capabilities.
 - `tui-font`: string — TUI font name for advanced terminal font customization.
+- `acp.daemonize`: string — controls `ah acp` behavior when no access point is running (`auto` = start daemon with idle timeout, default; `never` = run inline; `disabled` = fail if absent).
+- `acp.socket-path`: string — preferred Unix-domain socket path for ACP access point discovery (overrides platform default).
+- `acp.ws-url`: string — preferred WebSocket URL for ACP access point discovery.
 
 ### Behavior
 

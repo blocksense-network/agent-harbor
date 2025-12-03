@@ -14,7 +14,7 @@
 
 ## 1. Overview
 
-`ah agent record` launches a target command under a PTY, streams bytes into a `vt100` parser for faithful live display, and optionally writes a compact **append-only compressed file** of timestamped output. The TUI viewer (Ratatui) renders **directly from the in-memory vt100 model** and overlays annotations; it does **not** tail storage. Always provides real-time IPC communication for snapshot detection and UI interaction, enabling users to start agent tasks from detected snapshots even when no output file is saved. A post-run exporter replays the recording to compute the **final set of terminal output lines** and interleaves them with moments snapshots were taken for reporting and downstream Agent Time‑Travel flows.
+`ah agent record` launches a target command under a PTY, streams bytes into a `vt100` parser for faithful live display, and optionally writes a compact **append-only compressed file** of timestamped output. The recorder is UI-agnostic: whether SessionViewer, Agent Activity TUI, or json-normalized output is active, the recorder captures stdout/stderr plus shim streams; UIs only notify it about snapshots and forward shim data. The TUI viewer (Ratatui) renders **directly from the in-memory vt100 model** and overlays annotations; it does **not** tail storage. Always provides real-time IPC communication for snapshot detection and UI interaction, enabling users to start agent tasks from detected snapshots even when no output file is saved. A post-run exporter replays the recording to compute the **final set of terminal output lines** and interleaves them with moments snapshots were taken for reporting and downstream Agent Time‑Travel flows.
 
 **Why this shape**
 

@@ -16,13 +16,14 @@ use uuid;
 
 // Import snapshot types from parent and traits
 use crate::tui::FsSnapshotsType;
+use ah_domain_types::AcpLaunchCommand;
 use ah_domain_types::{AgentSoftware, OutputFormat};
 use ah_fs_snapshots::WorkingCopyMode;
 
 /// Agent start command arguments
 #[derive(Args, Clone)]
 pub struct AgentStartArgs {
-    /// Agent type to start
+    /// Agent type to start (includes `acp` to wrap an external ACP-compliant binary)
     #[arg(long, default_value = "mock")]
     pub agent: AgentSoftware,
 
@@ -57,6 +58,11 @@ pub struct AgentStartArgs {
     /// Working directory for agent execution
     #[arg(long)]
     pub cwd: Option<PathBuf>,
+
+    /// Command to launch an external ACP-compliant agent (used when --agent acp)
+    /// Examples: `mock-agent --scenario path.yaml`, `opencode acp`
+    #[arg(long = "acp-agent-cmd", value_name = "CMD", env = "AH_ACP_AGENT_CMD")]
+    pub acp_agent_cmd: Option<String>,
 
     /// Restore workspace from filesystem snapshot (enables fast task launch)
     #[arg(long)]
@@ -186,6 +192,7 @@ impl AgentStartArgs {
             AgentType::Copilot => Box::new(ah_agents::copilot_cli()),
             AgentType::CursorCli => Box::new(ah_agents::cursor_cli()),
             AgentType::Gemini => Box::new(ah_agents::gemini()),
+            AgentType::Acp => Box::new(ah_agents::acp()),
             // For agents not yet implemented in ah-agents, fall back to old logic
             AgentType::Opencode | AgentType::Qwen | AgentType::Goose => {
                 return self.run_legacy_agent(agent_type).await;
@@ -512,6 +519,12 @@ impl AgentStartArgs {
             config = config.web_search(true);
         }
 
+        if let Some(cmd) = &self.acp_agent_cmd {
+            let launch = AcpLaunchCommand::from_command_string(cmd)
+                .map_err(|e| anyhow::anyhow!("invalid --acp-agent-cmd: {e}"))?;
+            config = config.acp_stdio_command(launch);
+        }
+
         // Configure output format
         // Map OutputFormat to json_output flag for agents that support it
         match self.output {
@@ -554,6 +567,7 @@ impl AgentStartArgs {
                     .or_else(|| self.model.clone())
                     .unwrap_or_else(|| "gemini-2.5-pro".to_string())
             }
+            AgentType::Acp => self.model.clone().unwrap_or_default(),
             // For other agents, use the general model flag or None
             _ => self.model.clone().unwrap_or_default(),
         };
@@ -582,6 +596,7 @@ impl AgentStartArgs {
             AgentType::CursorCli => "cursor-cli",
             AgentType::Copilot => "copilot",
             AgentType::Gemini => "gemini",
+            AgentType::Acp => "acp",
             _ => "unknown",
         };
 
@@ -602,6 +617,7 @@ impl AgentStartArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     #[test]
     fn test_parse_bool() {
@@ -615,5 +631,31 @@ mod tests {
         assert!(!parse_bool("n").unwrap());
 
         assert!(parse_bool("invalid").is_err());
+    }
+
+    #[test]
+    fn parse_acp_agent_cmd_flag() {
+        #[derive(Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            args: AgentStartArgs,
+        }
+
+        let wrapper = Wrapper::parse_from([
+            "cmd",
+            "--agent",
+            "acp",
+            "--acp-agent-cmd",
+            "/tmp/acp-agent --flag-a foo",
+            "--prompt",
+            "hello",
+            "--non-interactive",
+        ]);
+
+        let config = wrapper.args.build_agent_config(AgentSoftware::Acp).expect("config builds");
+
+        let launch = config.acp_stdio_command.expect("command parsed");
+        assert_eq!(launch.binary, PathBuf::from("/tmp/acp-agent"));
+        assert_eq!(launch.args, vec!["--flag-a", "foo"]);
     }
 }

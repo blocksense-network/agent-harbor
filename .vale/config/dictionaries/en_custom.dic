@@ -1,4 +1,4 @@
-1384
+1389
 "Fran\xE7ois"
 "fa\xE7ade"
 ACCES
@@ -373,6 +373,7 @@ advapi
 affordances
 agentclientprotocol
 agentfs
+agentharbor
 agentic
 ahfs
 aiohttp
@@ -515,6 +516,7 @@ ctrlkey
 ctypes
 daemonctl
 daemonization
+daemonized
 dataclass
 dataclasses
 datagram
@@ -833,6 +835,7 @@ mbeta
 mbolin
 memcpy
 merkle
+mgmt
 microbenchmark
 microvm
 middleboxes
@@ -1148,6 +1151,7 @@ silgen
 simulable
 sixel
 slirp
+smoketest
 smoketests
 snapshotting
 socat
@@ -1254,6 +1258,7 @@ tmuxinator
 toml
 toolu
 topk
+touchpoints
 tracee
 tracepoint
 triager

@@ -239,9 +239,15 @@ impl AgentExecutor {
         task_manager_socket_path: Option<&str>,
     ) -> Result<Vec<String>, String> {
         let model = &params.models()[0]; // We validated there's at least one model
+        let acp_stdio_command = model.acp_stdio_launch_command.as_ref();
+        let agent_cli_arg = if acp_stdio_command.is_some() {
+            ah_domain_types::AgentSoftware::Acp.cli_arg()
+        } else {
+            model.agent.software.cli_arg()
+        };
         let mut agent_args = self.get_agent_command(
             session_id,
-            model.agent.software.cli_arg(),
+            agent_cli_arg,
             &model.model,
             params.description(),
             *params.working_copy_mode(),
@@ -251,6 +257,11 @@ impl AgentExecutor {
             params.record() && params.record_output().unwrap_or(false),
             task_manager_socket_path,
         )?;
+
+        if let Some(acp_cmd) = acp_stdio_command {
+            agent_args.push("--acp-agent-cmd".to_string());
+            agent_args.push(acp_cmd.to_command_string());
+        }
 
         // Add advanced launch options that are actually supported by the CLI
 

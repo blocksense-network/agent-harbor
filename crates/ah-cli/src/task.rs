@@ -596,6 +596,7 @@ impl TaskCreateArgs {
                     count: 1,
                     settings: HashMap::new(),
                     display_name: None,
+                    acp_stdio_launch_command: None,
                 });
             let agent_id = db_manager
                 .get_or_create_agent(&primary_agent.agent.software.to_string(), &primary_agent.agent.version)
@@ -1046,6 +1047,7 @@ impl TaskCreateArgs {
                     count: sel.instances as usize,
                     settings: HashMap::new(),
                     display_name: None,
+                    acp_stdio_launch_command: None,
                 })
             })
             .collect()
@@ -1062,6 +1064,7 @@ impl TaskCreateArgs {
             "qwen" => Ok(AgentSoftware::Qwen),
             "cursor-cli" | "cursor" => Ok(AgentSoftware::CursorCli),
             "goose" => Ok(AgentSoftware::Goose),
+            "acp" => Ok(AgentSoftware::Acp),
             other if other.starts_with("cloud-") => anyhow::bail!(
                 "Cloud agents are disabled for this release (requested '{}')",
                 name

@@ -11,7 +11,7 @@ The TUI leverages the same **Ratatui** ecosystem as the main dashboard:
 - **tui-input**: Single-line input for modals and forms
 - **crossterm**: Cross-platform terminal manipulation and event handling
 
-See [`TUI-PRD.md`](TUI-PRD.md) for the main dashboard design, [`ah-agent-record.md`](ah-agent-record.md) for the SessionViewer UI, and [`TUI-Color-Theme.md`](TUI-Color-Theme.md) for the shared color theme and semantic definitions.
+See [`TUI-PRD.md`](TUI-PRD.md) for the main dashboard design, [`ah-agent-record.md`](ah-agent-record.md) for the SessionViewer UI, and [`TUI-Color-Theme.md`](TUI-Color-Theme.md) for the shared color theme and semantic definitions. The choice of UI (SessionViewer vs Agent Activity TUI vs json-normalized) does **not** change how recording works: `ah agent record` always captures stdout/stderr plus shim streams; UIs simply notify the recorder about snapshots and forward shim data.
 
 ## Timeline Activity Layout
 

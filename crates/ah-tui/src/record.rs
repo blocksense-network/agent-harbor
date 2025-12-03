@@ -29,6 +29,7 @@ use clap::Parser;
 use crossterm::event::{Event, MouseButton, MouseEventKind};
 use ratatui;
 use std::env;
+use std::io::Write;
 // no std::os::fd items needed currently
 use std::path::PathBuf;
 use std::sync::{
@@ -410,7 +411,7 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
     );
 
     // Create PTY recorder configuration (PTY uses display area dimensions)
-    let pty_config = PtyRecorderConfig {
+    let mut pty_config = PtyRecorderConfig {
         cols: display_cols,
         rows: display_rows,
         env_vars,
@@ -451,6 +452,18 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
     let (tm_inject_tx, mut tm_inject_rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
     // Set up task manager socket for event streaming and coordination
+    if let Some(task_manager_socket) = args.task_manager_socket.as_ref() {
+        // Allow child processes (e.g., acp-client) to stream structured TaskEvents directly to
+        // the task manager socket without relying on PTY heuristics. This keeps the
+        // Agent Activity UI/recordings aligned with ACP-native events.
+        pty_config
+            .env_vars
+            .push(("AH_TASK_MANAGER_SOCKET".into(), task_manager_socket.clone()));
+        if let Some(session_id) = args.session_id.as_ref() {
+            pty_config.env_vars.push(("AH_SESSION_ID".into(), session_id.clone()));
+        }
+    }
+
     let mut events_sender: Option<OwnedWriteHalf> = if let Some(task_manager_socket) =
         args.task_manager_socket.as_ref()
     {
@@ -877,6 +890,16 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                             }
                         }
 
+                        // Mirror PTY output to stdout in headless mode so callers like
+                        // the ACP recorder smoke test can consume the child process output
+                        // (json-normalized TaskEvents) directly.
+                        if args.headless {
+                            if let PtyEvent::Data(data) = &pty_event {
+                                let _ = std::io::stdout().write_all(data);
+                                let _ = std::io::stdout().flush();
+                            }
+                        }
+
                         // Capture lightweight activity rows for the Agent Activity UI mode
                         if args.agent_activity_ui {
                             if let PtyEvent::Data(data) = &pty_event {
@@ -1010,6 +1033,8 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
             terminal_config: TerminalConfig::minimal(),
             ui_mode: AgentSessionUiMode::AgentActivity,
             activity_entries,
+            live_activity_rx: None,
+            prompt_tx: None,
         };
         // Best-effort playback; don't fail the recording if the viewer errors.
         if let Err(err) = run_session_viewer(deps).await {

@@ -18,8 +18,8 @@ pub mod task;
 
 // Re-export commonly used types
 pub use agent::{
-    AgentCapabilities, AgentCapability, AgentCatalog, AgentChoice, AgentMetadata, AgentSoftware,
-    AgentSoftwareBuild,
+    AcpLaunchCommand, AgentCapabilities, AgentCapability, AgentCatalog, AgentChoice, AgentMetadata,
+    AgentSoftware, AgentSoftwareBuild,
 };
 pub use experimental_features::ExperimentalFeature;
 pub use repository::*;
