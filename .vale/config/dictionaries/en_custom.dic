@@ -1,4 +1,4 @@
-1356
+1373
 "Fran\xE7ois"
 "fa\xE7ade"
 ACCES
@@ -18,7 +18,9 @@ AUTOCONFIRM
 AUTOINCREMENT
 Akihiro
 Alcoholless
+AppImage
 AppRole
+AppleScript
 Apriorit
 Archied
 Architecting
@@ -50,6 +52,7 @@ Ccolumn
 Charmbracelet
 Checkpointing
 Cloudflare
+ConPTY
 Conformances
 Crossterm
 Crossterm's
@@ -115,6 +118,7 @@ Firewalling
 Fitzl
 Flathub
 François
+FreeBSD
 Frontmatter
 Futhermore
 GETLK
@@ -141,6 +145,7 @@ IPBT
 Ilib
 Ioctls
 Isearch
+Iseconds
 Itest
 Justfile
 KAUTH
@@ -202,6 +207,7 @@ NTLM
 NTSTATUS
 NVRAM
 NXDOMAIN
+NetBSD
 NetBird
 Nohup
 Nord
@@ -273,6 +279,7 @@ SVID
 SVIDs
 Sandboxed
 Sandboxing
+Schannel
 Scrollable
 Sectigo
 Serialize
@@ -337,10 +344,12 @@ WCAG
 WDAG
 WRONLY
 WWDC
+Wayland
 Weaveworks
 Winspool
 Workstreams
 Worktrees
+XFAIL
 Xcodegen
 Xlinker
 Xqpgv
@@ -531,6 +540,7 @@ diskutil
 dispay
 distributables
 distro
+distros
 dladdr
 dlopen
 dlsym
@@ -618,6 +628,7 @@ fileno
 fileset
 findstr
 firejail
+fleetctl
 flexbox
 flistxattr
 flox
@@ -625,6 +636,7 @@ fmorroni
 fname
 fnid
 fobjc
+followerd
 fopen
 forkpty
 fpath
@@ -847,6 +859,7 @@ msgpack
 msvc
 mswin
 multimodal
+multiplexer
 multiprocessing
 multitool
 muxes
@@ -964,6 +977,7 @@ pjdfstests
 pkgs
 plists
 pluginkit
+pointd
 pointsize
 popd
 popen
@@ -1066,6 +1080,7 @@ rmcp
 rollouts
 rootfs
 rpath
+rprivate
 rstest
 rubocop
 runbook
@@ -1245,6 +1260,7 @@ ucred
 udata
 uiautomation
 uintptr
+ulimit
 unaccessed
 unalias
 unallowed
@@ -1343,6 +1359,7 @@ xcframework
 xcodeenv
 xcodeproj
 xcrun
+xfail
 xprop
 yaml
 ydotool
