@@ -60,11 +60,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: x86_64-linux (NixOS, self-hosted)
+          - name: x86_64-linux (NixOS)
             runner: [self-hosted, nixos, x86-64-v3]
             system: x86_64-linux
-          - name: aarch64-darwin (macOS, GitHub-hosted)
-            runner: macos-latest
+          - name: aarch64-darwin (MacOS)
+            runner: [self-hosted, nix-darwin, aarch64-darwin]
             system: aarch64-darwin
 
     name: Build devshell | ${{ matrix.name }}
@@ -90,11 +90,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: x86_64-linux (NixOS, self-hosted)
+          - name: x86_64-linux (NixOS)
             runner: [self-hosted, nixos, x86-64-v3]
             system: x86_64-linux
-          - name: aarch64-darwin (macOS, GitHub-hosted)
-            runner: macos-latest
+          - name: aarch64-darwin (MacOS)
+            runner: [self-hosted, nix-darwin, aarch64-darwin]
             system: aarch64-darwin
 
     name: Build package | ${{ matrix.name }}
