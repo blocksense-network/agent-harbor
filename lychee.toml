@@ -22,6 +22,7 @@ exclude = [
   "^https://www.paloaltonetworks.com/.*",
   "^https://man7.org/.*",
   "^https://openai.com/.*",
+  "^https://reverse.put.as/.*",
   "^https://unix.stackexchange.com/.*",
   "^https://stackoverflow.com/.*",
   "^https://opencode.dev/.*",

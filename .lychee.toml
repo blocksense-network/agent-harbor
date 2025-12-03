@@ -72,6 +72,7 @@ exclude = [
   "https://www.freedesktop.org/.*",
   "https://linux.die.net/.*",
   "https://news.ycombinator.com/.*",
+  "https://reverse.put.as/.*",
   "http://man7.org/.*",
   "https://man7.org/.*",
   "https://formulae.brew.sh/.*",
