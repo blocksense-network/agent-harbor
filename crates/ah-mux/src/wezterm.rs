@@ -318,9 +318,9 @@ impl WezTermMultiplexer {
             )));
         }
 
-        // set env var to the pane ID
-        std::env::set_var("WEZTERM_PANE", window);
-        debug!("WEZTERM_PANE set to: {}", window);
+        // // set env var to the pane ID
+        // std::env::set_var("WEZTERM_PANE", window);
+        // debug!("WEZTERM_PANE set to: {}", window);
 
         debug!("WezTerm tab '{}' focused for pane '{}'", tab_id, window);
         info!("Successfully focused WezTerm tab for pane: {}", window);
