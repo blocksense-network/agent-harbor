@@ -1020,6 +1020,13 @@ crates/agentfs-interpose-shim/**
 crates/agentfs-interpose-e2e-tests/**
 """, "\n", ",")
 
+# Cloud/Browser automation include patterns as a multiline string
+REPOMIX_CLOUD_AUTOMATION_PATTERNS := replace("""
+specs/Public/Agent-Browsers/Agent-Browser-Profiles.md
+specs/Public/Browser-Automation/**
+specs/Public/Cloud-Automation.status.md
+""", "\n", ",")
+
 # AgentFS specs-only include patterns as a multiline string
 REPOMIX_AGENTFS_SPECS_PATTERNS := replace("""
 specs/Public/AgentFS/**
@@ -1062,6 +1069,18 @@ repomix-agentfs-interpose:
         --style markdown \
         --header-text "AgentFS Interpose Implementation (Core, Proto, Shim, Server)" \
         --include "{{REPOMIX_AGENTFS_INTERPOSE_PATTERNS}}"
+
+# Create repomix bundle of browser automation plans/specs
+repomix-cloud-automation *args:
+    @echo "📦 Creating Cloud/Browser Automation repomix snapshot..."
+    mkdir -p {{REPOMIX_OUT_DIR}}
+    repomix \
+        . \
+        --output {{REPOMIX_OUT_DIR}}/Agent-Harbor-Cloud-Automation.md \
+        --style markdown \
+        --header-text "Cloud & Browser Automation Specifications and Status" \
+        --include "{{REPOMIX_CLOUD_AUTOMATION_PATTERNS}}" \
+        {{args}}
 
 # Record/Replay include patterns as a multiline string
 REPOMIX_RECORD_REPLAY_PATTERNS := replace("""

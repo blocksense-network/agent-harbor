@@ -13,8 +13,14 @@ Automate the Codex WebUI to initiate coding sessions for both local and cloud ag
    - If one or more profiles match, choose the best candidate (prompt if multiple).
    - If none match, create a new profile named `chatgpt-<username>` when a username is provided, otherwise `chatgpt`.
 5. Override behavior: if `--browser-profile` is provided, skip discovery/creation and use that profile name directly (create fresh if missing).
-6. Launch Playwright with a persistent context in headless mode.
-7. If the expected login is not present, relaunch in visible mode to let the user authenticate, then continue.
+6. Ask the Electron automation host to start a Codex session for the selected profile:
+   - Electron sets `userData` to `<profile>/browsers/chromium`.
+   - A hidden automation window is created with `show: false`.
+   - Playwright attaches to this window and drives navigation and interactions.
+7. If the expected login is not present:
+   - The same automation window is made visible (attached to a dedicated Browser Automation panel in the Electron UI).
+   - The user completes the login flow.
+   - Once login expectations pass, control returns to automation and the window can be hidden again if no further user interaction is needed.
 8. Navigate to Codex, select workspace and branch, enter the task description, and press "Code":
    - Workspace comes from `--codex-workspace` or `config: codex-workspace` (see [Configuration.md](../Configuration.md)).
    - Branch comes from the `ah task --branch` value.
@@ -25,7 +31,10 @@ If the automation code fails to execute due to potential changes in the Codex We
 
 ### Visibility and Login Flow
 
-- Runs headless by default; when login is not present, restarts headful to allow the user to log in, then proceeds automatically.
+- Runs in a hidden Electron automation window by default:
+  - When login is known good, the window remains hidden and automation proceeds without user intervention.
+  - When login is unknown/expired or a login probe fails, the same window is shown in the Electron UI so the user can authenticate.
+  - After successful login, the window may be hidden again while automation continues in the same session (no browser restart).
 
 ### Configuration
 

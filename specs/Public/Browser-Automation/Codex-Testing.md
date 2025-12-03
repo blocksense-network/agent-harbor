@@ -10,40 +10,42 @@ Goal: validate Playwright-driven automation that navigates `https://chatgpt.com/
 - Validate parsing and semantics of `meta.json` (visibility policy, login expectations, TTL/grace).
 - Validate selector maps/config fallbacks without launching a browser.
 
-2. Playwright integration tests (headless/headful):
+2. Playwright + Electron integration tests (hidden/visible automation window):
 
 - Use persistent contexts tied to ephemeral copies of real profiles (or synthetic profiles) to avoid mutating a user’s primary profiles.
 - Mock or guard network calls as needed, but prefer real navigation to detect UI drift.
 
-3. OS‑level visibility assertions:
+3. OS‑level visibility assertions for Electron automation windows:
 
-- Verify that the browser starts hidden (headless) when login is known good.
-- Verify that the browser is displayed (headful) only when login is unknown/expired/failing or when UI drift is detected.
+- Verify that the automation window stays hidden when login is known good.
+- Verify that the automation window is shown only when login is unknown/expired/failing or when UI drift is detected.
 
-### Headless vs Headful Verification
+### Hidden vs Visible Automation Window Verification
 
-- Headless: Assert Playwright is launched with `headless: true` and no windows are created at the OS level. For Linux/macOS/Windows, implement a platform helper that samples top‑level windows via:
-  - macOS: `CGWindowListCopyWindowInfo` via a small helper binary or `osascript -e 'tell app "System Events" to ...'` as fallback.
-  - Linux: `xprop`/`wmctrl` on X11; `gdbus`/`gsettings`/`swaymsg` on Wayland (best‑effort; may skip when unavailable).
-  - Windows: Win32 `EnumWindows` via a helper, or `powershell` COM query fallback.
-- Headful required: Assert at least one top‑level browser window becomes visible within a timeout after a failed login probe or drift detection.
+- Hidden automation:
+  - Assert the Electron automation host process is running with a dedicated Codex session window created using `show: false`.
+  - At the OS level, confirm that either no user-facing Electron windows exist for the automation session or only a minimized/non-visible window exists (platform-specific).
+  - Use Electron IPC to assert the internal automation window is alive (e.g., `webContents.isDestroyed() === false`) and has navigated to the expected Codex URL.
+- Visible required:
+  - Under stale/failed login scenarios or simulated UI drift, assert that the automation window is promoted to a visible `BrowserWindow` or attached to a visible `<webview>` in the Electron UI and is enumerated as a top-level window where possible.
+  - After the user completes login and automation resumes, assert the same window continues to be used (no session restart) and can be hidden again via IPC.
 
-These helpers should be wrapped with feature detection and skipped when the environment cannot reliably report window state (e.g., headless CI without a virtual display).
+OS helpers (CGWindowListCopyWindowInfo, `wmctrl`, Win32 `EnumWindows`, etc.) should be used when available to corroborate Electron IPC state but skipped when the environment cannot reliably report window state.
 
 ### CI Considerations
 
 - Use containerized jobs with a virtual display (Xvfb or Xwayland) and a minimal window manager to support headful tests.
-- For macOS runners, prefer native headless for most tests; restrict window‑visibility tests to self‑hosted runners capable of GUI automation.
+- For macOS runners, prefer hidden-window automation for most tests; restrict window-visibility tests to self-hosted runners capable of GUI automation.
 - For Windows, run in a session with desktop interaction enabled.
 
 ### Login Expectation Scenarios
 
 Test cases should cover:
 
-- Known good login: `lastValidated` fresh and check passes → remain headless.
-- Stale login: `lastValidated` older than `graceSeconds` → perform probe; if probe fails, switch to headful and wait for user.
-- No expectations configured: proceed headless by default; do not block.
-- Cookie present but selector absent: treat as not logged in (conservative), switch to headful.
+- Known good login: `lastValidated` fresh and check passes → keep the automation window hidden.
+- Stale login: `lastValidated` older than `graceSeconds` → perform probe; if probe fails, show the automation window and wait for the user.
+- No expectations configured: run hidden by default; do not block, but allow an override to show the window on demand.
+- Cookie present but selector absent: treat as not logged in (conservative), show the automation window and pause automation.
 
 ### UI Drift and Resilience
 
@@ -67,7 +69,23 @@ Tests:
 
 ### Rate Limits and Captcha Handling
 
-- If navigation returns a rate‑limit or captcha page, switch to headful, surface instructions, and pause. Tests simulate this by stubbing responses to return challenge pages and assert the fallback behavior.
+- If navigation returns a rate‑limit or captcha page, show the automation window, surface instructions, and pause. Tests simulate this by stubbing responses to return challenge pages and assert the fallback behavior.
+
+### Electron Host Smoke Tests
+
+Goal: verify Electron automation wiring independent of provider logic.
+
+- Test: "Can open a hidden Codex session"
+  - Start `cloud-worker` with a disposable Agent Browser Profile.
+  - Assert an Electron automation host process is spawned.
+  - Assert via IPC that a hidden Codex window reached `https://chatgpt.com/codex`.
+- Test: "Login promotion and return to hidden"
+  - Seed the profile with a stale login expectation.
+  - Assert the automation window is shown to the user.
+  - After a test login flow, assert login expectations pass, the same window continues, and it can be hidden again.
+- Test: "Profile isolation via userData"
+  - Run two sessions in parallel with different profiles.
+  - Assert cookies/storage from one profile are not visible in the other.
 
 ### Telemetry and Artifacts
 
@@ -78,7 +96,7 @@ Tests:
 
 - Provide a test harness that:
   - Creates a temporary profile directory seeded with synthetic cookies/selectors to emulate login.
-  - Runs headless success path and asserts no windows.
+- Runs the hidden-window success path and asserts no visible windows.
   - Runs stale/failed login paths and asserts window visibility transitioned as expected.
   - Runs UI drift scenarios using selector overrides.
   - Cleans up all temporary artifacts.

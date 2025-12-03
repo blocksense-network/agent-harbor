@@ -44,6 +44,7 @@ Notes:
 
 - Only `metadata.json` is required by this spec. Subdirectories under `browsers/` are optional and created on demand.
 - Data in these directories may contain secrets (cookies, tokens). Store them in user scope; do not commit to VCS.
+- Electron-based automation MAY use `<profile>/browsers/chromium` as its `userData` directory, allowing Electron and standalone Playwright sessions to share authentication state for the same profile.
 
 ### Metadata File: `metadata.json` (Schema v1)
 
