@@ -857,18 +857,32 @@ impl Multiplexer for WezTermMultiplexer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::detection::is_in_wezterm;
     use std::path::Path;
     use std::sync::Mutex;
     use std::thread;
     use std::time::Duration;
 
     // Global test WezTerm instance management
+    // Tracks whether we spawned a WezTerm instance that needs to be stopped
     static TEST_WEZTERM: Mutex<Option<std::process::Child>> = Mutex::new(None);
 
-    /// Start a test WezTerm instance with CLI enabled
+    /// Start a test WezTerm instance with CLI enabled.
+    ///
+    /// If already running inside WezTerm (detected via environment variables),
+    /// this function does nothing and returns Ok(()).
+    ///
+    /// Otherwise, it spawns a new WezTerm process and waits for CLI connectivity.
     fn start_test_wezterm() -> Result<(), Box<dyn std::error::Error>> {
+        // Check if we're already running inside WezTerm
+        if is_in_wezterm() {
+            tracing::debug!("Already running inside WezTerm, no need to spawn new instance");
+            return Ok(());
+        }
+
         let mut wezterm_guard = TEST_WEZTERM.lock().unwrap();
         if wezterm_guard.is_some() {
+            tracing::debug!("Test WezTerm instance already spawned");
             return Ok(()); // Already started
         }
 
@@ -925,11 +939,22 @@ mod tests {
         Ok(())
     }
 
-    /// Stop the test WezTerm instance
+    /// Stop the test WezTerm instance if one was spawned.
+    ///
+    /// If we're running inside an existing WezTerm instance (detected earlier),
+    /// this function does nothing. It only kills and cleans up WezTerm instances
+    /// that were spawned by start_test_wezterm().
     #[cfg(test)]
     fn stop_test_wezterm() {
+        // If we're running inside WezTerm, we didn't spawn an instance, so nothing to stop
+        if is_in_wezterm() {
+            tracing::debug!("Running inside WezTerm, no spawned instance to stop");
+            return;
+        }
+
         let mut wezterm_guard = TEST_WEZTERM.lock().unwrap();
         if let Some(mut child) = wezterm_guard.take() {
+            tracing::debug!(pid=?child.id(), "Stopping spawned test WezTerm instance");
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -1296,6 +1321,7 @@ mod tests {
         mux.focus_pane(&window1).expect("Should focus pane");
         thread::sleep(Duration::from_millis(100));
         tracing::debug!(window1, "Pane focused");
+
         stop_test_wezterm();
     }
 
@@ -1464,6 +1490,7 @@ mod tests {
         mux.focus_pane(&agent_pane).expect("Should focus agent pane");
         thread::sleep(Duration::from_millis(50));
         mux.focus_pane(&logs_pane).expect("Should focus logs pane");
+
         stop_test_wezterm();
     }
 
