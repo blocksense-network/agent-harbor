@@ -2097,7 +2097,7 @@ pub struct AdvancedLaunchOptions {
 impl Default for AdvancedLaunchOptions {
     fn default() -> Self {
         Self {
-            sandbox_profile: "local".to_string(),
+            sandbox_profile: "disabled".to_string(),
             working_copy_mode: "auto".to_string(),
             fs_snapshots: "auto".to_string(),
             devcontainer_path: "".to_string(),
