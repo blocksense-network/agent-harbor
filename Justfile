@@ -236,6 +236,10 @@ allow-words *words:
     ./scripts/allow_words.py {{words}}
     @git add .cspell.json
 
+# Sync spell-check dictionaries (cspell + vale) without adding new words
+sync-spell-dicts:
+    python3 scripts/allow_words.py --sync
+
 # Test that spell checking tools (cspell and vale) work correctly
 test-spell-checking:
     ./scripts/test_spell_checking.py

@@ -1,0 +1,28 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-credentials-tests"
+version = "0.1.0"
+edition = "2021"
+description = "Shared fixtures and mock-agent harnesses for credentials integration tests"
+authors = ["Agent Harbor Team <team@agent-harbor.dev>"]
+license = "AGPL-3.0-only"
+
+[dependencies]
+# Core credentials crate
+ah-credentials = { path = "../ah-credentials" }
+
+# Testing utilities
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
+
+# Serialization for fixtures
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Mockall for mocking
+mockall = { workspace = true }
+
+# Time handling
+chrono = { workspace = true }

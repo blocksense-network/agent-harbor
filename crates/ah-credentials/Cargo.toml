@@ -1,0 +1,50 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-credentials"
+version = "0.1.0"
+edition = "2021"
+description = "Library-first crate for secure multi-account credential storage and management"
+authors = ["Agent Harbor Team <team@agent-harbor.dev>"]
+license = "AGPL-3.0-only"
+
+[dependencies]
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# System interfaces
+dirs = { workspace = true }
+
+# Time handling
+chrono = { workspace = true }
+
+# Configuration integration
+ah-config-types = { path = "../ah-config-types" }
+config-core = { path = "../config-core" }
+
+# Logging
+tracing = { workspace = true }
+
+# File system operations
+tokio = { workspace = true, features = ["fs"] }
+
+# Regular expressions
+regex = "1.10"
+
+# JSON Schema generation
+schemars = "0.8"
+
+# JSON Schema validation
+jsonschema = "0.17"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
+config-core = { path = "../config-core" }

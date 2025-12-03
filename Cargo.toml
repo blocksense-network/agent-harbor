@@ -4,6 +4,9 @@
 [workspace]
 members = [
   "crates/ah-cli",
+  # Credentials management
+  "crates/ah-credentials",
+  "crates/ah-credentials-tests",
   # Agent abstraction layer (monolith + facades)
   "crates/ah-agents",
   # "crates/ah-agent-claude", # Temporarily disabled
