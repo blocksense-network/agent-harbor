@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 # Copyright 2025 Schelling Point Labs Inc
 # SPDX-License-Identifier: AGPL-3.0-only
+#
+# Start the AgentFS snapshots daemon. Requires sudo for the daemon process and mount.
 
 set -euo pipefail
 
 SOCKET_PATH="/tmp/agent-harbor/ah-fs-snapshots-daemon"
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DAEMON_BIN="$REPO_ROOT/target/release/ah-fs-snapshots-daemon"
 CLI_BIN="$REPO_ROOT/target/release/ah-fs-snapshots-daemonctl"
 HOST_BIN="${AGENTFS_FUSE_HOST_BIN:-$REPO_ROOT/target/release/agentfs-fuse-host}"
 LOG_DIR="$HOME/Library/Logs/agent-harbor"
 
+# If socket exists and responds, refuse to start a second instance
 if [ -e "$SOCKET_PATH" ]; then
-  # Check if socket is actually accepting connections by trying to connect
   if ruby -e "require 'socket'; UNIXSocket.open('$SOCKET_PATH').close" 2>/dev/null; then
     echo "AH filesystem snapshots daemon is already running (socket exists: $SOCKET_PATH)"
     exit 1
   else
-    echo "Warning: Found stale socket file, cleaning up..."
+    echo "Warning: found stale socket, removing..."
     sudo rm -f "$SOCKET_PATH"
   fi
 fi
@@ -28,7 +31,7 @@ cargo build --release --package agentfs-fuse-host --features fuse
 
 echo "Launching AH filesystem snapshots daemon with sudo (debug logging to file)..."
 echo "Stop it with: just stop-ah-fs-snapshots-daemon"
-echo "Logs will be written to: $LOG_DIR/ah-fs-snapshots-daemon.log (macOS) or platform-standard location"
+echo "Logs: $LOG_DIR/ah-fs-snapshots-daemon.log (platform-default if dir missing)"
 sudo -b AGENTFS_FUSE_HOST_BIN="$HOST_BIN" "$DAEMON_BIN" --log-level debug --log-dir "$LOG_DIR"
 
 echo -n "Waiting for daemon socket $SOCKET_PATH ..."
@@ -41,7 +44,8 @@ for _ in {1..30}; do
 done
 
 if [ ! -e "$SOCKET_PATH" ]; then
-  echo "\nTimed out waiting for daemon socket; check sudo logs"
+  echo
+  echo "Timed out waiting for daemon socket; check sudo/logs"
   exit 1
 fi
 
@@ -52,15 +56,15 @@ else
   AUTOMOUNT="${AGENTFS_FUSE_AUTOMOUNT:-0}"
 fi
 
-# Default mount point uses XDG_RUNTIME_DIR (typically /run/user/<uid>) to avoid
-# conflicts with sandbox /tmp isolation. Falls back to /tmp/agentfs if not set.
+# Default mount point uses XDG_RUNTIME_DIR to avoid /tmp conflicts
 if [ -n "${AGENTFS_FUSE_MOUNT_POINT:-}" ]; then
   MOUNT_POINT="$AGENTFS_FUSE_MOUNT_POINT"
-elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-  MOUNT_POINT="$XDG_RUNTIME_DIR/agentfs"
 else
-  MOUNT_POINT="/tmp/agentfs"
+  RUNTIME_BASE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  MOUNT_POINT="$RUNTIME_BASE/agentfs"
 fi
+
+mkdir -p "$(dirname "$MOUNT_POINT")"
 ALLOW_OTHER="${AGENTFS_FUSE_ALLOW_OTHER:-1}"
 ALLOW_ROOT="${AGENTFS_FUSE_ALLOW_ROOT:-0}"
 AUTO_UNMOUNT="${AGENTFS_FUSE_AUTO_UNMOUNT:-1}"
@@ -70,10 +74,8 @@ HOSTFS_ROOT="${AGENTFS_FUSE_HOSTFS_ROOT:-$REPO_ROOT/tmp/agentfs-hostfs}"
 RAMDISK_MB="${AGENTFS_FUSE_RAMDISK_MB:-2048}"
 
 if [ "$AUTOMOUNT" = "1" ]; then
-  if [ "$BACKSTORE" = "hostfs" ]; then
-    mkdir -p "$HOSTFS_ROOT"
-  fi
-  echo "Requesting AgentFS FUSE mount at $MOUNT_POINT via daemonctl..."
+  [ "$BACKSTORE" = "hostfs" ] && mkdir -p "$HOSTFS_ROOT"
+  echo "Requesting AgentFS FUSE mount at $MOUNT_POINT via daemonctl (sudo)..."
   MOUNT_CMD=("$CLI_BIN" --socket-path "$SOCKET_PATH" fuse mount --mount-point "$MOUNT_POINT")
   [ "$ALLOW_OTHER" = "1" ] && MOUNT_CMD+=(--allow-other)
   [ "$ALLOW_ROOT" = "1" ] && MOUNT_CMD+=(--allow-root)
@@ -81,15 +83,11 @@ if [ "$AUTOMOUNT" = "1" ]; then
   [ "$WRITEBACK" = "1" ] && MOUNT_CMD+=(--writeback-cache)
   MOUNT_CMD+=(--backstore "$BACKSTORE")
   case "$BACKSTORE" in
-  hostfs)
-    MOUNT_CMD+=(--hostfs-root "$HOSTFS_ROOT")
-    ;;
-  ramdisk)
-    MOUNT_CMD+=(--ramdisk-size-mb "$RAMDISK_MB")
-    ;;
+  hostfs) MOUNT_CMD+=(--hostfs-root "$HOSTFS_ROOT") ;;
+  ramdisk) MOUNT_CMD+=(--ramdisk-size-mb "$RAMDISK_MB") ;;
   esac
   if ! sudo "${MOUNT_CMD[@]}"; then
-    echo "Daemon mount request failed; inspect the logs and rerun the mount command manually."
+    echo "Daemon mount request failed; inspect the logs and rerun manually."
     exit 1
   fi
 
@@ -98,7 +96,7 @@ if [ "$AUTOMOUNT" = "1" ]; then
 fi
 
 if [ "$(uname -s)" = "Linux" ]; then
-  echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage FUSE mounts as needed."
+  echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage FUSE mounts."
 else
-  echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage interpose mounts as needed."
+  echo "AH filesystem snapshots daemon is running. Use ah-fs-snapshots-daemonctl to manage interpose mounts."
 fi

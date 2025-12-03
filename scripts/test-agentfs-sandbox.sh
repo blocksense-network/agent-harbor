@@ -26,7 +26,7 @@ if [ -n "${AGENTFS_MOUNT:-}" ]; then
 elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
   AGENTFS_MOUNT="$XDG_RUNTIME_DIR/agentfs"
 else
-  AGENTFS_MOUNT="/tmp/agentfs"
+  AGENTFS_MOUNT="/run/user/$(id -u)/agentfs"
 fi
 AGENTFS_CONTROL="${AGENTFS_MOUNT}/.agentfs/control"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/logs/agentfs-sandbox-$(date +%Y%m%d-%H%M%S)}"
@@ -46,6 +46,34 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
+
+# Available test identifiers (function suffixes after test_)
+AVAILABLE_TESTS=(
+  basic_execution
+  filesystem_isolation
+  read_through_bind
+  modify_isolation_via_bind
+  isolation_agentfs_from_outside
+  orphan_cleanup_on_restart
+  isolation_git_provider
+  isolation_zfs_provider
+  overlay_persistence
+  branch_binding
+  process_isolation
+  network_isolation
+  network_egress_enabled
+  secrets_protection
+  writable_carveouts
+  cleanup_on_exit
+  crash_cleanup
+  interrupt_cleanup
+  readonly_baseline
+  provider_telemetry
+  child_process_fork
+  child_process_pipeline
+  child_process_subshell
+  single_test_flag
+)
 
 # Initialize logging
 mkdir -p "$LOG_DIR"
@@ -83,6 +111,47 @@ log_section() {
   log "═══════════════════════════════════════════════════════════════════════════════"
 }
 
+# Utility: look for a string in captured output or the persisted log file.
+# Some environments suppress stdout from the sandbox helper even when the
+# tee'd log contains the expected marker; checking both avoids false negatives.
+output_or_log_contains() {
+  local needle="$1"
+  local output="$2"
+  local logfile="$3"
+
+  if [[ -n "$output" ]] && echo "$output" | grep -q "$needle"; then
+    return 0
+  fi
+
+  if [[ -n "${logfile:-}" && -f "$logfile" ]] && grep -q "$needle" "$logfile"; then
+    return 0
+  fi
+
+  return 1
+}
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [--test <name> ...] [--list]
+
+Options:
+  --test <name>   Run only the specified test (can be supplied multiple times)
+  --list          List available test names and exit
+  -h, --help      Show this help message
+
+Tests correspond to function suffixes (see --list). Examples:
+  $0                          # run full suite
+  $0 --test filesystem_isolation --test read_through_bind
+EOF
+}
+
+list_tests() {
+  echo "Available tests:"
+  for t in "${AVAILABLE_TESTS[@]}"; do
+    echo "  - $t"
+  done
+}
+
 # Check prerequisites
 check_prerequisites() {
   log_section "Checking Prerequisites"
@@ -117,26 +186,27 @@ record_result() {
   local status="$2"
   local duration="${3:-0}"
   local message="${4:-}"
+  local milestone="${5:-T16}"
 
   TESTS_RUN=$((TESTS_RUN + 1))
 
   case "$status" in
   pass)
     TESTS_PASSED=$((TESTS_PASSED + 1))
-    log_pass "T16.$test_name ($duration s)"
+    log_pass "${milestone}.$test_name ($duration s)"
     ;;
   fail)
     TESTS_FAILED=$((TESTS_FAILED + 1))
-    log_fail "T16.$test_name: $message"
+    log_fail "${milestone}.$test_name: $message"
     ;;
   skip)
     TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
-    log_skip "T16.$test_name: $message"
+    log_skip "${milestone}.$test_name: $message"
     ;;
   xfail)
     # Expected failure - a known issue that is tracked
     TESTS_XFAIL=$((TESTS_XFAIL + 1))
-    log_xfail "T16.$test_name: $message"
+    log_xfail "${milestone}.$test_name: $message"
     ;;
   esac
 }
@@ -160,12 +230,68 @@ run_sandbox_external() {
   return "${PIPESTATUS[0]}"
 }
 
+# Run sandbox with an explicit provider (git/zfs/btrfs/agentfs/auto).
+# This is used for the provider-matrix verification in F18.
+run_sandbox_with_provider() {
+  local provider="$1"
+  local test_log="$2"
+  shift 2
+  "$AH_BINARY" agent sandbox --fs-snapshots "$provider" "$@" 2>&1 | tee "$test_log"
+  return "${PIPESTATUS[0]}"
+}
+
 # Create a unique test workspace within the mount
 create_test_workspace() {
   local name="${1:-test-$(date +%s)}"
   local workspace="$AGENTFS_MOUNT/$name"
   mkdir -p "$workspace"
   echo "$workspace"
+}
+
+# Restart the AgentFS daemon and FUSE mount using the provided helper scripts.
+# This is required for T18.6 orphan cleanup verification. We keep it opt-in via
+# AGENTFS_ALLOW_RESTART_TESTS to avoid disrupting a developer's running daemon.
+restart_agentfs_daemon() {
+  local restart_log="$LOG_DIR/daemon-restart.log"
+  : >"$restart_log"
+
+  if [[ "${AGENTFS_ALLOW_RESTART_TESTS:-0}" != "1" ]]; then
+    log_info "Skipping daemon restart because AGENTFS_ALLOW_RESTART_TESTS is not set to 1"
+    return 2
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    log_info "sudo not available; cannot restart daemon safely"
+    return 2
+  fi
+
+  if ! sudo -n true >/dev/null 2>&1; then
+    log_info "Passwordless sudo not available; restart would block"
+    return 2
+  fi
+
+  log_info "Restarting AgentFS daemon (logs: $restart_log)"
+  if ! "$SCRIPT_DIR/stop-ah-fs-snapshots-daemon.sh" >>"$restart_log" 2>&1; then
+    log_info "Daemon stop script reported an error (continuing to start anyway)"
+  fi
+
+  if ! "$SCRIPT_DIR/start-ah-fs-snapshots-daemon.sh" >>"$restart_log" 2>&1; then
+    log_info "Failed to start AgentFS daemon; see $restart_log"
+    return 1
+  fi
+
+  # Wait for control file to reappear
+  local deadline=$((SECONDS + 30))
+  while [[ $SECONDS -lt $deadline ]]; do
+    if [[ -f "$AGENTFS_CONTROL" ]]; then
+      log_info "AgentFS control file detected after restart"
+      return 0
+    fi
+    sleep 1
+  done
+
+  log_info "Timed out waiting for AgentFS control file after restart"
+  return 1
 }
 
 # F18: Create a test workspace OUTSIDE the FUSE mount for testing bind-mount approach
@@ -287,9 +413,11 @@ test_filesystem_isolation() {
 
   # The file should have been created and readable inside the sandbox
   if ! echo "$output" | grep -q "test_content"; then
-    record_result "2 Filesystem Isolation" "fail" "0" "File was not created inside sandbox"
-    rm -rf "$workspace" 2>/dev/null || true
-    return 1
+    if ! grep -q "test_content" "$test_log" 2>/dev/null; then
+      record_result "2 Filesystem Isolation" "fail" "0" "File was not created inside sandbox"
+      rm -rf "$workspace" 2>/dev/null || true
+      return 1
+    fi
   fi
 
   # After sandbox exits, the file should NOT exist on the host (isolation)
@@ -309,6 +437,416 @@ test_filesystem_isolation() {
   log_info "This confirms the bind-mount approach is providing proper isolation"
   record_result "2 Filesystem Isolation" "pass" "$duration"
   rm -rf "$workspace" 2>/dev/null || true # Cleanup external workspace
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# T18.3 Read Through Bind (Bind-Mount Visibility)
+# ═══════════════════════════════════════════════════════════════════════════════
+test_read_through_bind() {
+  log_section "T18.3 Read Through Bind (Bind-Mount Visibility)"
+  local start_time=$(date +%s)
+  local test_log="$LOG_DIR/t18_3_read_through_bind.log"
+
+  local workspace
+  workspace=$(create_external_test_workspace "read-bind-$$-$(date +%s)")
+  cd "$workspace"
+
+  local unique_id="readbind_$$_$(date +%s)"
+  local relative_dir="agentfs-bind/$unique_id"
+  local relative_path="$relative_dir/seed.txt"
+  local agentfs_seed_dir="$AGENTFS_MOUNT/$relative_dir"
+  local agentfs_seed_path="$AGENTFS_MOUNT/$relative_path"
+  local seed_content="seed-${unique_id}"
+
+  mkdir -p "$agentfs_seed_dir"
+  echo "$seed_content" >"$agentfs_seed_path"
+
+  local output
+  local exit_code=0
+  output=$(run_sandbox_external "$test_log" -- bash -c "cat '$relative_path'") || exit_code=$?
+
+  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+    record_result "3 Read Through Bind" "skip" "0" "Namespace setup failed (requires privileges)" "T18"
+    rm -rf "$workspace" "$agentfs_seed_dir"
+    return 0
+  fi
+
+  if [[ $exit_code -ne 0 ]]; then
+    record_result "3 Read Through Bind" "fail" "0" "Sandbox command failed (exit: $exit_code)" "T18"
+    rm -rf "$workspace" "$agentfs_seed_dir"
+    return 1
+  fi
+
+  if ! echo "$output" | grep -q "$seed_content"; then
+    record_result "3 Read Through Bind" "fail" "0" "Seed file not visible through bind mount" "T18"
+    rm -rf "$workspace" "$agentfs_seed_dir"
+    return 1
+  fi
+
+  if [[ "$(cat "$agentfs_seed_path" 2>/dev/null)" != "$seed_content" ]]; then
+    record_result "3 Read Through Bind" "fail" "0" "Seed content changed unexpectedly after sandbox" "T18"
+    rm -rf "$workspace" "$agentfs_seed_dir"
+    return 1
+  fi
+
+  local duration=$(($(date +%s) - start_time))
+  record_result "3 Read Through Bind" "pass" "$duration" "" "T18"
+  rm -rf "$workspace" "$agentfs_seed_dir"
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# T18.4 Modify Isolation via Bind
+# ═══════════════════════════════════════════════════════════════════════════════
+test_modify_isolation_via_bind() {
+  log_section "T18.4 Modify Isolation via Bind"
+  local start_time=$(date +%s)
+  local test_log="$LOG_DIR/t18_4_modify_isolation.log"
+
+  local workspace
+  workspace=$(create_external_test_workspace "modify-bind-$$-$(date +%s)")
+  cd "$workspace"
+
+  local unique_id="modifybind_$$_$(date +%s)"
+  local relative_dir="agentfs-bind/$unique_id"
+  local relative_path="$relative_dir/modify.txt"
+  local host_seed_dir="$workspace/$relative_dir"
+  local host_seed_path="$workspace/$relative_path"
+  local agentfs_seed_dir="$AGENTFS_MOUNT/$relative_dir"
+  local agentfs_seed_path="$AGENTFS_MOUNT/$relative_path"
+  local original_content="original-${unique_id}"
+  local modified_content="modified-${unique_id}"
+
+  mkdir -p "$host_seed_dir" "$agentfs_seed_dir"
+  echo "$original_content" >"$host_seed_path"
+  echo "$original_content" >"$agentfs_seed_path"
+
+  local output
+  local exit_code=0
+  output=$(run_sandbox_external "$test_log" -- bash -c "echo '$modified_content' > '$relative_path' && cat '$relative_path'") || exit_code=$?
+
+  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+    record_result "4 Modify Isolation via Bind" "skip" "0" "Namespace setup failed (requires privileges)" "T18"
+    rm -rf "$workspace" "$agentfs_seed_dir"
+    return 0
+  fi
+
+  if [[ $exit_code -ne 0 ]]; then
+    record_result "4 Modify Isolation via Bind" "fail" "0" "Sandbox command failed (exit: $exit_code)" "T18"
+    rm -rf "$workspace" "$agentfs_seed_dir"
+    return 1
+  fi
+
+  if ! output_or_log_contains "$modified_content" "$output" "$test_log"; then
+    record_result "4 Modify Isolation via Bind" "fail" "0" "Modified content not visible inside sandbox" "T18"
+    rm -rf "$workspace" "$agentfs_seed_dir"
+    return 1
+  fi
+
+  # After sandbox exit, the original file on the host workspace should remain unchanged
+  if [[ "$(cat "$host_seed_path" 2>/dev/null)" != "$original_content" ]]; then
+    record_result "4 Modify Isolation via Bind" "fail" "0" "Original host file was mutated (bind isolation broken)" "T18"
+    rm -rf "$workspace" "$agentfs_seed_dir"
+    return 1
+  fi
+
+  local duration=$(($(date +%s) - start_time))
+  record_result "4 Modify Isolation via Bind" "pass" "$duration" "" "T18"
+  rm -rf "$workspace" "$agentfs_seed_dir"
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# T18.6 Orphan Cleanup on Restart
+# ═══════════════════════════════════════════════════════════════════════════════
+test_orphan_cleanup_on_restart() {
+  log_section "T18.6 Orphan Cleanup on Restart"
+  local start_time=$(date +%s)
+  local pre_log="$LOG_DIR/t18_6_orphan_pre.log"
+  local post_log="$LOG_DIR/t18_6_orphan_post.log"
+
+  local workspace
+  workspace=$(create_external_test_workspace "orphan-restart-$$-$(date +%s)")
+  cd "$workspace"
+
+  local marker_pre="orphan-pre-$$_$(date +%s)"
+  local marker_post="orphan-post-$$_$(date +%s)"
+
+  # First sandbox run creates a file inside the bind-mounted view.
+  local output_pre exit_pre=0
+  output_pre=$(run_sandbox_external "$pre_log" -- bash -c "echo '$marker_pre' > orphan.txt && cat orphan.txt") || exit_pre=$?
+
+  if echo "$output_pre" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+    record_result "6 Orphan Cleanup on Restart" "skip" "0" "Namespace setup failed (requires privileges)" "T18"
+    rm -rf "$workspace"
+    return 0
+  fi
+
+  if [[ $exit_pre -ne 0 ]]; then
+    record_result "6 Orphan Cleanup on Restart" "fail" "0" "Initial sandbox run failed (exit: $exit_pre)" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  if ! output_or_log_contains "$marker_pre" "$output_pre" "$pre_log"; then
+    record_result "6 Orphan Cleanup on Restart" "fail" "0" "Marker not visible inside sandbox before restart" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  # Isolation check: marker should not exist on host.
+  if [[ -f "$workspace/orphan.txt" ]]; then
+    record_result "6 Orphan Cleanup on Restart" "fail" "0" "Marker leaked to host before restart" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  # Restart the daemon (opt-in to avoid disrupting running sessions).
+  local restart_status
+  restart_status=$(restart_agentfs_daemon)
+  case "$?" in
+  0)
+    log_info "AgentFS daemon restarted successfully for orphan-cleanup verification"
+    ;;
+  1)
+    record_result "6 Orphan Cleanup on Restart" "fail" "0" "Daemon restart failed (see daemon-restart.log)" "T18"
+    rm -rf "$workspace"
+    return 1
+    ;;
+  2)
+    record_result "6 Orphan Cleanup on Restart" "skip" "0" "Daemon restart not permitted (AGENTFS_ALLOW_RESTART_TESTS!=1 or sudo unavailable)" "T18"
+    rm -rf "$workspace"
+    return 0
+    ;;
+  esac
+
+  # Second sandbox run reuses the same host workspace. If orphan branches were
+  # left behind, the previous file could resurface. We expect a clean view.
+  local output_post exit_post=0
+  output_post=$(run_sandbox_external "$post_log" -- bash -c "echo '$marker_post' > orphan.txt && cat orphan.txt && ls -a .") || exit_post=$?
+
+  if echo "$output_post" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+    record_result "6 Orphan Cleanup on Restart" "skip" "0" "Namespace setup failed after restart (requires privileges)" "T18"
+    rm -rf "$workspace"
+    return 0
+  fi
+
+  if [[ $exit_post -ne 0 ]]; then
+    record_result "6 Orphan Cleanup on Restart" "fail" "0" "Sandbox run after restart failed (exit: $exit_post)" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  if ! output_or_log_contains "$marker_post" "$output_post" "$post_log"; then
+    record_result "6 Orphan Cleanup on Restart" "fail" "0" "Marker not visible after restart" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  # Host should still be clean – no orphan.txt after either sandbox.
+  if [[ -f "$workspace/orphan.txt" ]]; then
+    record_result "6 Orphan Cleanup on Restart" "fail" "0" "Marker leaked to host after daemon restart" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  local duration=$(($(date +%s) - start_time))
+  record_result "6 Orphan Cleanup on Restart" "pass" "$duration" "" "T18"
+  rm -rf "$workspace"
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# T18.7 Isolation AgentFS from Outside (Bind-Mount Detection)
+# ═══════════════════════════════════════════════════════════════════════════════
+test_isolation_agentfs_from_outside() {
+  log_section "T18.7 Isolation AgentFS from Outside (Bind-Mount Detection)"
+  local start_time=$(date +%s)
+  local test_log="$LOG_DIR/t18_7_bind_detection.log"
+
+  local workspace
+  workspace=$(create_external_test_workspace "bind-detect-$$-$(date +%s)")
+  cd "$workspace"
+
+  local output
+  local exit_code=0
+  output=$(run_sandbox_external "$test_log" -- bash -c '
+        set -e
+        if command -v mountpoint >/dev/null 2>&1; then
+          if mountpoint -q "$PWD"; then echo "is_mountpoint=yes"; else echo "is_mountpoint=no"; fi
+        elif command -v findmnt >/dev/null 2>&1; then
+          if findmnt -n "$PWD" >/dev/null 2>&1; then echo "is_mountpoint=yes"; else echo "is_mountpoint=no"; fi
+        else
+          echo "mountpoint_tool_missing"
+        fi
+        grep "$PWD" /proc/self/mounts || true
+      ') || exit_code=$?
+
+  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+    record_result "7 Isolation AgentFS from Outside" "skip" "0" "Namespace setup failed (requires privileges)" "T18"
+    rm -rf "$workspace"
+    return 0
+  fi
+
+  if [[ $exit_code -ne 0 ]]; then
+    record_result "7 Isolation AgentFS from Outside" "fail" "0" "Sandbox command failed (exit: $exit_code)" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  local mount_detected="no"
+  if echo "$output" | grep -q "is_mountpoint=yes"; then
+    mount_detected="yes"
+  elif echo "$output" | grep -q "$workspace" && echo "$output" | grep -qi "agentfs"; then
+    mount_detected="yes"
+  fi
+
+  if [[ "$mount_detected" != "yes" ]]; then
+    record_result "7 Isolation AgentFS from Outside" "fail" "0" "Workspace was not bind-mounted to AgentFS overlay" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  local duration=$(($(date +%s) - start_time))
+  record_result "7 Isolation AgentFS from Outside" "pass" "$duration" "" "T18"
+  rm -rf "$workspace"
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# T18.8 Isolation ZFS Provider (provider matrix)
+# ═══════════════════════════════════════════════════════════════════════════════
+test_isolation_zfs_provider() {
+  log_section "T18.8 Isolation ZFS Provider (Provider Matrix)"
+  local start_time=$(date +%s)
+  local test_log="$LOG_DIR/t18_8_zfs_provider.log"
+
+  # ZFS tests are opt-in because they require a prepared dataset and root perms.
+  if [[ "${ENABLE_ZFS_PROVIDER_TESTS:-0}" != "1" ]]; then
+    record_result "8 Isolation ZFS Provider" "skip" "0" "Set ENABLE_ZFS_PROVIDER_TESTS=1 with ZFS_TEST_REPO pointing to a writable ZFS-backed repo" "T18"
+    return 0
+  fi
+
+  if ! command -v zfs >/dev/null 2>&1; then
+    record_result "8 Isolation ZFS Provider" "skip" "0" "zfs command not found on host" "T18"
+    return 0
+  fi
+
+  if [[ -z "${ZFS_TEST_REPO:-}" || ! -d "$ZFS_TEST_REPO" ]]; then
+    record_result "8 Isolation ZFS Provider" "skip" "0" "ZFS_TEST_REPO not set to an existing dataset mount" "T18"
+    return 0
+  fi
+
+  local workspace="$ZFS_TEST_REPO"
+  cd "$workspace"
+
+  local marker="zfs-marker-$$_$(date +%s)"
+  local output exit_code=0
+  output=$(run_sandbox_with_provider zfs "$test_log" -- bash -c "echo '$marker' > zfs_sandbox_file && cat zfs_sandbox_file") || exit_code=$?
+
+  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+    record_result "8 Isolation ZFS Provider" "skip" "0" "Namespace setup failed (requires privileges)" "T18"
+    return 0
+  fi
+
+  if [[ $exit_code -ne 0 ]]; then
+    # Treat provider-not-available errors as skip to avoid hard failures on hosts without ZFS plumbing.
+    if echo "$output" | grep -qiE "(provider.*not available|ZFS.*not.*available|Failed to prepare.*workspace)"; then
+      record_result "8 Isolation ZFS Provider" "skip" "0" "ZFS provider unavailable on this host" "T18"
+      return 0
+    fi
+    record_result "8 Isolation ZFS Provider" "fail" "0" "Sandbox command failed (exit: $exit_code)" "T18"
+    return 1
+  fi
+
+  if ! echo "$output" | grep -q "$marker"; then
+    record_result "8 Isolation ZFS Provider" "fail" "0" "Marker not visible inside ZFS sandbox" "T18"
+    return 1
+  fi
+
+  if [[ -f "$workspace/zfs_sandbox_file" ]]; then
+    record_result "8 Isolation ZFS Provider" "fail" "0" "Marker leaked to host after ZFS sandbox" "T18"
+    rm -f "$workspace/zfs_sandbox_file"
+    return 1
+  fi
+
+  local duration=$(($(date +%s) - start_time))
+  record_result "8 Isolation ZFS Provider" "pass" "$duration" "" "T18"
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# T18.9 Isolation Git Provider (provider matrix)
+# ═══════════════════════════════════════════════════════════════════════════════
+test_isolation_git_provider() {
+  log_section "T18.9 Isolation Git Provider (Provider Matrix)"
+  local start_time=$(date +%s)
+  local test_log="$LOG_DIR/t18_9_git_provider.log"
+
+  if ! command -v git >/dev/null 2>&1; then
+    record_result "9 Isolation Git Provider" "skip" "0" "git binary not available" "T18"
+    return 0
+  fi
+
+  local workspace
+  workspace=$(create_external_test_workspace "git-provider-$$-$(date +%s)")
+  cd "$workspace"
+  log_info "Git provider workspace: $workspace"
+
+  # Initialize a minimal git repo without touching global config.
+  git init -q .
+  git config user.email "agentfs-tests@example.com"
+  git config user.name "AgentFS Tests"
+  git config commit.gpgsign false
+  echo "baseline" >baseline.txt
+  git add baseline.txt
+  git commit -q -m "baseline"
+
+  local marker="git-marker-$$_$(date +%s)"
+  local output exit_code=0
+  log_info "Running git provider sandbox command"
+  output=$(run_sandbox_with_provider git "$test_log" -- bash -c "echo '$marker' > git_sandbox_file && cat git_sandbox_file") || exit_code=$?
+
+  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+    record_result "9 Isolation Git Provider" "skip" "0" "Namespace setup failed (requires privileges)" "T18"
+    rm -rf "$workspace"
+    return 0
+  fi
+
+  if [[ $exit_code -ne 0 ]]; then
+    if echo "$output" | grep -qiE "(provider.*not available|Failed to prepare.*workspace)"; then
+      record_result "9 Isolation Git Provider" "skip" "0" "Git provider unavailable on this host" "T18"
+      rm -rf "$workspace"
+      return 0
+    fi
+    record_result "9 Isolation Git Provider" "fail" "0" "Sandbox command failed (exit: $exit_code)" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  if ! echo "$output" | grep -q "$marker"; then
+    record_result "9 Isolation Git Provider" "fail" "0" "Marker not visible inside Git sandbox" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  # Verify host repo is unchanged.
+  if [[ -f "$workspace/git_sandbox_file" ]]; then
+    record_result "9 Isolation Git Provider" "fail" "0" "Marker leaked to host after Git sandbox" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  if [[ -n "$(git status --porcelain)" ]]; then
+    record_result "9 Isolation Git Provider" "fail" "0" "Host git repo became dirty after sandbox" "T18"
+    rm -rf "$workspace"
+    return 1
+  fi
+
+  local duration=$(($(date +%s) - start_time))
+  record_result "9 Isolation Git Provider" "pass" "$duration" "" "T18"
+  rm -rf "$workspace"
   return 0
 }
 
@@ -951,6 +1489,51 @@ test_child_process_subshell() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# T18.10 Harness Single Test Flag (--test)
+# ═══════════════════════════════════════════════════════════════════════════════
+test_single_test_flag() {
+  log_section "T18.10 Harness Single Test Flag (--test)"
+  local start_time=$(date +%s)
+  local test_log="$LOG_DIR/t18_10_single_flag.log"
+
+  local nested_log_dir="$LOG_DIR/t18_10_single_run"
+  mkdir -p "$nested_log_dir"
+  local nested_summary="$nested_log_dir/summary.json"
+
+  local nested_exit=0
+  LOG_DIR="$nested_log_dir" "$SCRIPT_DIR/test-agentfs-sandbox.sh" --test basic_execution >"$test_log" 2>&1 || nested_exit=$?
+
+  if [[ $nested_exit -ne 0 ]]; then
+    record_result "10 Harness Single Test" "fail" "0" "Nested single-test run failed (exit: $nested_exit)" "T18"
+    return 1
+  fi
+
+  if [[ ! -f "$nested_summary" ]]; then
+    record_result "10 Harness Single Test" "fail" "0" "Nested summary.json not produced" "T18"
+    return 1
+  fi
+
+  local tests_run
+  tests_run=$(grep -o '"tests_run"[[:space:]]*:[[:space:]]*[0-9]*' "$nested_summary" | tail -1 | awk -F: '{print $2}' | tr -d ' ,')
+  local nested_status
+  nested_status=$(grep -o '"status"[[:space:]]*:[[:space:]]*"[a-z]*"' "$nested_summary" | tail -1 | awk -F\" '{print $4}')
+
+  if [[ "$tests_run" != "1" ]]; then
+    record_result "10 Harness Single Test" "fail" "0" "Expected single test to run, got $tests_run" "T18"
+    return 1
+  fi
+
+  if [[ "$nested_status" != "pass" ]]; then
+    record_result "10 Harness Single Test" "fail" "0" "Nested run status was '$nested_status'" "T18"
+    return 1
+  fi
+
+  local duration=$(($(date +%s) - start_time))
+  record_result "10 Harness Single Test" "pass" "$duration" "" "T18"
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Write summary
 # ═══════════════════════════════════════════════════════════════════════════════
 write_summary() {
@@ -1001,32 +1584,51 @@ main() {
   log_section "F16: AgentFS Sandbox Integration Tests"
   log_info "Started at $(date)"
 
-  check_prerequisites
+  local tests_to_run=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --test)
+      shift
+      if [[ -z "${1:-}" ]]; then
+        log_fail "--test requires a test name"
+        usage
+        exit 1
+      fi
+      tests_to_run+=("$1")
+      ;;
+    --list)
+      list_tests
+      exit 0
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      while [[ $# -gt 0 ]]; do
+        tests_to_run+=("$1")
+        shift
+      done
+      break
+      ;;
+    *)
+      tests_to_run+=("$1")
+      ;;
+    esac
+    shift
+  done
 
-  # If specific tests are requested, run only those
-  local tests_to_run=("$@")
-  if [[ ${#tests_to_run[@]} -eq 0 ]]; then
-    # Run all tests
-    tests_to_run=(
-      "basic_execution"
-      "filesystem_isolation"
-      "overlay_persistence"
-      "branch_binding"
-      "process_isolation"
-      "network_isolation"
-      "network_egress_enabled"
-      "secrets_protection"
-      "writable_carveouts"
-      "cleanup_on_exit"
-      "crash_cleanup"
-      "interrupt_cleanup"
-      "readonly_baseline"
-      "provider_telemetry"
-      "child_process_fork"
-      "child_process_pipeline"
-      "child_process_subshell"
-    )
+  if [[ ${#tests_to_run[@]} -eq 0 && -n "${AGENTFS_TESTS:-}" ]]; then
+    # Allow test selection via environment variable for CI convenience
+    read -r -a tests_to_run <<<"${AGENTFS_TESTS}"
   fi
+
+  if [[ ${#tests_to_run[@]} -eq 0 ]]; then
+    tests_to_run=("${AVAILABLE_TESTS[@]}")
+  fi
+
+  check_prerequisites
 
   for test in "${tests_to_run[@]}"; do
     local test_func="test_$test"

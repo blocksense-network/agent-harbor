@@ -280,6 +280,10 @@ start-ah-fs-snapshots-daemon:
 stop-ah-fs-snapshots-daemon:
     scripts/stop-ah-fs-snapshots-daemon.sh
 
+# Restart the new Rust AH filesystem snapshots daemon
+restart-ah-fs-snapshots-daemon:
+    scripts/restart-ah-fs-snapshots-daemon.sh
+
 # Check status of the new Rust AH filesystem snapshots daemon
 check-ah-fs-snapshots-daemon:
     scripts/check-ah-fs-snapshots-daemon.sh

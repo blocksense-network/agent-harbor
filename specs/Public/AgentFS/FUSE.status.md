@@ -1101,6 +1101,7 @@ This milestone implements the overlay materialization policies described in [Age
     - `AgentFsOverlayConfig` struct holds bind-mount configuration (fuse_mount_path, branch_view_path, branch_id)
     - `mount_agentfs_overlay()` performs bind mount after mount namespace is private
     - Bind mount skipped if working directory is already under the FUSE mount (direct access)
+    - `/tmp` tmpfs isolation remains enabled; AgentFS mount is now kept outside `/tmp` to avoid hiding the FUSE source
   - **CLI Integration** (`crates/ah-cli/src/sandbox.rs`):
     - Detects when working directory is different from exec_path (indicating external workspace)
     - Configures `AgentFsOverlayConfig` with FUSE mount root and branch view path
@@ -1114,7 +1115,10 @@ This milestone implements the overlay materialization policies described in [Age
   - **Test Harness** (`scripts/test-agentfs-sandbox.sh`):
     - `create_external_test_workspace()` creates directories in `test-runs/` (outside FUSE mount)
     - T16.2 updated to use external workspace and test bind-mount isolation
+    - New `--test` flag and `AGENTFS_TESTS` env var allow running targeted sandbox scenarios without the full suite (used for T18 verification)
     - Test no longer marked as XFAIL – should pass with bind-mount approach
+  - **Daemon Mount Location**:
+    - `scripts/start-ah-fs-snapshots-daemon.sh` now mounts AgentFS under `$XDG_RUNTIME_DIR/agentfs` (or `/run/user/<uid>/agentfs` fallback) instead of `/tmp/agentfs` to preserve sandbox `/tmp` isolation
 
 - **Key Source Files**:
   - `crates/agentfs-proto/src/messages.rs` – BranchDelete/BranchUnbind RPC types
@@ -1128,14 +1132,25 @@ This milestone implements the overlay materialization policies described in [Age
 - **Verification Results** (Dec 2025):
   - [x] T18.1 Bind Mount to Working Dir – **IMPLEMENTED** – `mount_agentfs_overlay()` performs bind mount when working dir is outside FUSE mount
   - [x] T18.2 Write Isolation via Bind – **IMPLEMENTED** – T16.2 test updated to use external workspace; verifies file doesn't persist
-  - [ ] T18.3 Read Through Bind – pending verification
-  - [ ] T18.4 Modify Isolation via Bind – pending verification
-  - [x] T18.5 Branch Delete Basic – **IMPLEMENTED** – `branch_delete()` implemented in VFS and FUSE adapter
-  - [ ] T18.6 Orphan Cleanup on Restart – pending
-  - [ ] T18.7 Isolation AgentFS from Outside – pending
-  - [ ] T18.8 Isolation ZFS – pending (skip if unavailable)
-  - [ ] T18.9 Isolation Git – pending
-  - [ ] T18.10 Harness Single Test – pending
+- [x] T18.3 Read Through Bind – verified via `just test-agentfs-sandbox` (AGENTFS_TESTS filter) log `logs/agentfs-sandbox-20251202-004221/` – seeded baseline in AgentFS mount and confirmed bind-mounted workspace can read it
+- [x] T18.4 Modify Isolation via Bind – verified in `logs/agentfs-sandbox-20251202-004221/`; host workspace seed remained unchanged while branch view mutated through bind mount
+- [x] T18.5 Branch Delete Basic – **IMPLEMENTED** – `branch_delete()` implemented in VFS and FUSE adapter
+- [ ] T18.6 Orphan Cleanup on Restart – harness implemented in `scripts/test-agentfs-sandbox.sh` (opt-in via `AGENTFS_ALLOW_RESTART_TESTS=1`); still needs a sudo-capable run to validate on this host. Latest attempt skipped due to non-passwordless sudo (`logs/agentfs-sandbox-20251203-114200/`).
+- [x] T18.7 Isolation AgentFS from Outside – verified bind-mount detection (`mountpoint`/`/proc/self/mounts`) in `logs/agentfs-sandbox-20251202-004221/`
+- [x] T18.8 Isolation ZFS – **PASS** – ZFS provider isolation validated using `/AH_test_zfs/test_dataset` with `ENABLE_ZFS_PROVIDER_TESTS=1`; log `logs/agentfs-sandbox-20251203-115000/`
+- [x] T18.9 Isolation Git – **PASS** – git provider sandbox isolation verified after disabling per-repo GPG signing; log `logs/agentfs-sandbox-20251203-114200/`
+- [x] T18.10 Harness Single Test – harness now supports `--test` flag and `AGENTFS_TESTS` env var; self-test re-invokes harness and passed in `logs/agentfs-sandbox-20251202-004221/`
+
+**F19. User-Mode Restart/Orphan Cleanup Harness (no-sudo path)** 🆕 PROPOSED
+
+- **Goal:** Provide a restart/orphan-cleanup verification path that runs entirely in user space (no passwordless sudo), so crash-recovery can be validated in CI and developer machines without privileged mounts.
+- **Hypothesis:** AgentFS FUSE mounts can run unprivileged (without `allow_other`/`allow_root`), enabling a user-owned daemon + FUSE host + mount + restart cycle. ZFS/Btrfs backends still need root, but the in-memory/hostfs backstores should suffice for this test’s purpose.
+- **Experiment:** Launch `agentfs-fuse-host` and daemon in user mode, mount to a temp dir, run a sandbox to create a marker, kill the daemon, restart it, remount, and confirm the marker does not reappear (orphan cleaned). If confirmed, formalize in the harness.
+- **Deliverables:**
+  - Python-based integration test that starts/stops a user-mode AgentFS daemon + FUSE host, simulates crash/restart, and asserts orphan branches are purged.
+  - Helper script to start/stop the user-mode daemon for tests (no sudo).
+  - CI fallback: when sudo is unavailable, run this user-mode restart test; keep T18.6 for privileged coverage.
+- **Success criteria:** User-mode restart test passes without sudo; T18.6 continues to pass on sudo-capable hosts; documentation clearly distinguishes privileged vs user-mode restart coverage.
 
 ### Test strategy & tooling
 

@@ -172,9 +172,16 @@ impl FuseHarness {
         let socket_path = std::env::var_os(ENV_SOCKET_PATH)
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_SOCKET_PATH));
-        let mount_point = std::env::var_os(ENV_MOUNT_POINT)
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/tmp/agentfs"));
+        let mount_point =
+            std::env::var_os(ENV_MOUNT_POINT).map(PathBuf::from).unwrap_or_else(|| {
+                // Match the default used by start-ah-fs-snapshots-daemon.sh:
+                // XDG_RUNTIME_DIR/agentfs (or /run/user/<uid>/agentfs).
+                if let Ok(xdg_runtime) = std::env::var("XDG_RUNTIME_DIR") {
+                    PathBuf::from(xdg_runtime).join("agentfs")
+                } else {
+                    PathBuf::from(format!("/run/user/{}/agentfs", unsafe { libc::geteuid() }))
+                }
+            });
         let repo_root = std::env::var_os(ENV_REPO_PARENT)
             .map(PathBuf::from)
             .unwrap_or_else(|| mount_point.join("fs-snapshots"));
