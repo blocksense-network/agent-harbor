@@ -73,11 +73,13 @@ pub async fn load_registry(config: &CredentialsConfig) -> Result<AccountRegistry
     let content = async_fs::read_to_string(&accounts_file).await?;
     let mut registry: AccountRegistry = toml::from_str(&content)?;
 
-    // Validate against schema
-    validate_registry_schema(&registry)?;
-
-    // Clean up stale metadata (e.g., long-lived error accounts)
+    // Clean up stale metadata (e.g., long-lived error accounts) before semantic validation.
+    // This allows us to drop obviously expired/error entries even if their timestamps are
+    // inconsistent (which can otherwise cause validation to fail during load).
     let removed = cleanup_stale_metadata(&mut registry);
+
+    // Validate against schema after cleanup so only relevant entries are checked.
+    validate_registry_schema(&registry)?;
     if !removed.is_empty() {
         tracing::info!(
             "Removed {} stale account(s) from registry: {:?}",
