@@ -1,0 +1,12 @@
+/**
+ * Copyright 2025 Schelling Point Labs Inc
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+import * as a11yAddonAnnotations from '@storybook/addon-a11y/preview';
+import { setProjectAnnotations } from 'storybook-solidjs-vite';
+import * as projectAnnotations from './preview';
+
+// This is an important step to apply the right configuration when testing your stories.
+// More info at: https://storybook.js.org/docs/api/portable-stories/portable-stories-vitest#setprojectannotations
+setProjectAnnotations([a11yAddonAnnotations, projectAnnotations]);

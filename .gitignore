@@ -171,3 +171,7 @@ webui/shared/dist/
 .next
 _pagefind
 out/
+
+# Storybook build artifacts
+storybook-static/
+.webpack/
