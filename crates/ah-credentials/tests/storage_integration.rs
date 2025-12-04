@@ -5,9 +5,10 @@
 
 use ah_credentials::{
     config::CredentialsConfig,
+    crypto::KdfParams,
     storage::{
-        ensure_credentials_dirs, load_registry, save_registry, validate_permissions,
-        write_credential_file,
+        ensure_credentials_dirs, load_registry, read_account_credentials, save_registry,
+        validate_permissions, write_account_credentials, write_credential_file,
     },
     test_utils,
     types::{Account, AccountRegistry, AgentType},
@@ -36,6 +37,7 @@ async fn test_ensure_credentials_dirs() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -98,6 +100,7 @@ async fn test_schema_validation_rejects_malformed_data() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -135,6 +138,7 @@ async fn test_registry_save_load() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -178,6 +182,7 @@ async fn test_empty_registry_save_load() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -198,6 +203,7 @@ async fn test_registry_load_nonexistent_file() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -205,6 +211,62 @@ async fn test_registry_load_nonexistent_file() {
     // Load from non-existent file should return empty registry
     let loaded_registry = load_registry(&config).await.unwrap();
     assert!(loaded_registry.is_empty());
+}
+
+#[tokio::test]
+async fn test_plain_and_encrypted_credentials_coexist() {
+    let log_path = test_utils::setup_test_logging("test_plain_and_encrypted_credentials_coexist");
+
+    let temp_dir = TempDir::new().unwrap();
+    let config = CredentialsConfig {
+        storage_path: Some(temp_dir.path().to_path_buf()),
+        default_accounts: HashMap::new(),
+        auto_verify: Default::default(),
+        crypto: Default::default(),
+        base_config_dir: None,
+        ah_home_override: None,
+    };
+
+    let mut plain = Account::new("plain".into(), AgentType::Codex);
+    plain.encrypted = false;
+    let mut enc = Account::new("enc".into(), AgentType::Claude);
+    enc.encrypted = true;
+
+    let plain_data = serde_json::json!({"token": "plain-token"});
+    let enc_data = serde_json::json!({"token": "secret-token"});
+
+    // Write both accounts
+    write_account_credentials(&config, &plain, &plain_data, None, None)
+        .await
+        .unwrap();
+    write_account_credentials(
+        &config,
+        &enc,
+        &enc_data,
+        Some("pass"),
+        Some(KdfParams::secure_defaults().unwrap()),
+    )
+    .await
+    .unwrap();
+
+    // Ensure encrypted file does not contain plaintext token
+    let enc_path = config.keys_dir().unwrap().join("enc.enc");
+    let enc_contents = std::fs::read(&enc_path).unwrap();
+    assert!(!String::from_utf8_lossy(&enc_contents).contains("secret-token"));
+
+    // Plain file should include plaintext
+    let plain_path = config.keys_dir().unwrap().join("plain.json");
+    let plain_contents = std::fs::read(&plain_path).unwrap();
+    assert!(String::from_utf8_lossy(&plain_contents).contains("plain-token"));
+
+    // Read back both
+    let loaded_plain = read_account_credentials(&config, &plain, None).await.unwrap();
+    let loaded_enc = read_account_credentials(&config, &enc, Some("pass")).await.unwrap();
+
+    assert_eq!(plain_data, loaded_plain);
+    assert_eq!(enc_data, loaded_enc);
+
+    assert!(log_path.exists());
 }
 
 #[cfg(unix)]
@@ -217,6 +279,7 @@ async fn test_directory_permissions() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -246,6 +309,7 @@ async fn test_validate_permissions_success() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -267,6 +331,7 @@ async fn test_file_permissions_accounts_toml() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -305,6 +370,7 @@ async fn test_credential_file_permissions_and_validation() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -340,6 +406,7 @@ async fn test_stale_metadata_cleanup_on_load() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };

@@ -44,6 +44,14 @@ schemars = "0.8"
 # JSON Schema validation
 jsonschema = "0.17"
 
+# Encryption & key management
+aes-gcm = { version = "0.10.3", features = ["zeroize"] }
+argon2 = { version = "0.5", features = ["std", "password-hash"] }
+base64 = "0.22"
+password-hash = "0.5"
+rand = { version = "0.8", features = ["std"] }
+zeroize = { version = "1.6", features = ["zeroize_derive"] }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }

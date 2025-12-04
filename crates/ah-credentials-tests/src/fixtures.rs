@@ -27,6 +27,7 @@ impl TestCredentialsFixture {
             storage_path: Some(storage_path),
             default_accounts: Default::default(),
             auto_verify: Default::default(),
+            crypto: Default::default(),
             base_config_dir: None,
             ah_home_override: None,
         };

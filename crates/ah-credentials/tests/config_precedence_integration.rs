@@ -232,6 +232,7 @@ async fn test_ah_home_environment_override() {
         storage_path: None, // No custom storage path set
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: Some(ah_home.clone()),
     };
@@ -271,6 +272,7 @@ async fn test_ah_home_custom_storage_path_precedence() {
         storage_path: Some("/explicit/custom/path".into()), // Explicit storage path
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: Some(ah_home.clone()),
     };
@@ -310,6 +312,7 @@ async fn test_credentials_config_serialization() {
             on_start: true,
             interval: Some(7200),
         },
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -460,6 +463,7 @@ async fn test_full_config_precedence_system_user_repo_ah_home() {
         storage_path: Some("/explicit/custom/path".into()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: credentials_config.base_config_dir,
         ah_home_override: None,
     };

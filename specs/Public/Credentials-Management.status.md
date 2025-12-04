@@ -22,20 +22,20 @@ Goal: Implement the Credentials Management system described in [Credentials-Mana
   - [ ] Config precedence tests covering AH_HOME override and repo/user/system layering.
   - [ ] In-memory registry operations (add/update/delete/list) fuzzed for alias collisions and duplicate agents.
 
-**M2. Encryption & Key Management**
+**M2. Encryption & Key Management** _(Status: Complete – Dec 4, 2025)_
 
 - **Deliverables:**
-  - AES-256-GCM encryption module with PBKDF2 passphrase derivation, per-account salt/iterations, and authenticated envelopes for credential payloads.
-  - Session unlock cache (per-process) with secure zeroization and inactivity timeout.
+  - AES-256-GCM encryption module with Argon2id passphrase derivation (PHC strings stored per account) and authenticated envelopes for credential payloads.
+  - Session unlock cache (per-process) with secure zeroization and configurable inactivity timeout surfaced via config.
   - Key rotation flow supporting re-encryption of existing `*.enc` files with new passphrases/ciphers.
   - Optional plaintext support maintained for non-sensitive accounts; mixed encrypted/unencrypted coexistence.
 - **Library guidance:** Use RustCrypto `aes-gcm` crate (audit by NCC Group) and pin to >=0.10.3 (or >=0.11 once stable) to avoid recent AEAD CVEs; enable the `zeroize` feature.
-- **KDF guidance:** Derive keys with RustCrypto `argon2` (Argon2id default) and store PHC strings with per-account salt; expose tunable params with secure defaults (e.g., m≥64 MiB, t≥3, p=1) informed by current hardening guidance.
+  - **KDF guidance:** Derive keys with RustCrypto `argon2` (Argon2id default) and store PHC strings with per-account salt; expose tunable params with secure defaults (e.g., m≥64 MiB, t≥3, p=1) informed by current hardening guidance.
 - **Verification:**
-  - [ ] Crypto property tests (encrypt→decrypt round-trip, tag tampering detection, salt/iteration variation).
-  - [ ] Rotation tests migrating sample payloads between ciphers/keys without data loss.
-  - [ ] Memory hygiene tests (drop wipes buffers, no plaintext persisted on disk after operations).
-  - [ ] CLI unlock prompt mocked to ensure no repeated passphrase asks within a session cache window.
+  - [x] Crypto property tests (encrypt→decrypt round-trip, tag tampering detection, salt/iteration variation).
+  - [x] Rotation tests migrating sample payloads between ciphers/keys without data loss.
+  - [x] Memory hygiene tests (drop wipes buffers, no plaintext persisted on disk after operations).
+  - [x] CLI unlock prompt mocked to ensure no repeated passphrase asks within a session cache window.
 
 **M3. Credential Acquisition Pipelines**
 
