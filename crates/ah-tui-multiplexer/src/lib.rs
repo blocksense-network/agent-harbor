@@ -78,7 +78,7 @@ impl<M: Multiplexer> AwMultiplexer<M> {
             return self.create_task_layout_tilix(config);
         }
 
-        let window_id = match config.split_mode {
+        let (window_id, editor_pane) = match config.split_mode {
             SplitMode::None => {
                 // Create new window
                 let window_opts = WindowOptions {
@@ -88,34 +88,67 @@ impl<M: Multiplexer> AwMultiplexer<M> {
                     init_command: None,
                     focus: true,
                 };
-                self.mux.open_window(&window_opts)?
+                let window_id = self.mux.open_window(&window_opts)?;
+
+                // The window_id is the initial pane ID for new windows
+                let editor_pane = window_id.clone();
+                let editor_cmd = config.editor_cmd.unwrap_or("bash");
+                self.mux.run_command(
+                    &editor_pane,
+                    editor_cmd,
+                    &CommandOptions {
+                        cwd: Some(config.working_dir),
+                        env: None,
+                    },
+                )?;
+
+                (window_id, editor_pane)
             }
             SplitMode::Auto | SplitMode::Horizontal | SplitMode::Vertical => {
-                // Split the current window
-                self.mux.current_window()?.ok_or_else(|| {
+                // Get current pane to split from
+                let current_pane = self.mux.current_pane()?.ok_or_else(|| {
+                    AwMuxError::Layout(
+                        "Not running in a multiplexer pane, cannot create split view".to_string(),
+                    )
+                })?;
+
+                // Get the window that contains this pane
+                let window_id = self.mux.current_window()?.ok_or_else(|| {
                     AwMuxError::Layout(
                         "Not running in a multiplexer window, cannot create split view".to_string(),
                     )
-                })?
+                })?;
+
+                // Determine split direction for the editor pane
+                let split_direction = match config.split_mode {
+                    SplitMode::Horizontal => SplitDirection::Horizontal,
+                    SplitMode::Vertical => SplitDirection::Vertical,
+                    SplitMode::Auto => SplitDirection::Auto,
+                    SplitMode::None => unreachable!(),
+                };
+
+                // Split from the current pane to create the editor pane
+                let editor_cmd = config.editor_cmd.unwrap_or("bash");
+                let editor_pane = self.mux.split_pane(
+                    None,
+                    Some(&current_pane), // Split from the current pane
+                    split_direction,
+                    Some(50), // 50/50 split initially
+                    &CommandOptions {
+                        cwd: Some(config.working_dir),
+                        env: None,
+                    },
+                    Some(editor_cmd),
+                )?;
+
+                (window_id, editor_pane)
             }
         };
 
         let mut panes = HashMap::new();
+        panes.insert(PaneRole::Editor, editor_pane.clone());
 
-        // The window_id is session:window; initial pane id is derived directly
-        let editor_pane = window_id.to_string();
-        let editor_cmd = config.editor_cmd.unwrap_or("bash");
-        self.mux.run_command(
-            &editor_pane,
-            editor_cmd,
-            &CommandOptions {
-                cwd: Some(config.working_dir),
-                env: None,
-            },
-        )?;
-        panes.insert(PaneRole::Editor, editor_pane);
-
-        // Split for agent pane
+        // Split for agent pane from the editor pane
         let split_direction = match config.split_mode {
             SplitMode::Horizontal => SplitDirection::Horizontal,
             SplitMode::Vertical => SplitDirection::Vertical,
@@ -123,10 +156,10 @@ impl<M: Multiplexer> AwMultiplexer<M> {
         };
 
         let agent_pane = self.mux.split_pane(
-            None, // Split the current window
-            None, // Split the window itself
+            None,               // Split the current window
+            Some(&editor_pane), // Split from the editor pane
             split_direction,
-            Some(70), // 70% for editor, 30% for agent
+            Some(30), // 70% for editor, 30% for agent
             &CommandOptions {
                 cwd: Some(config.working_dir),
                 env: None,
