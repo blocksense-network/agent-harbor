@@ -443,50 +443,116 @@ mod tests {
     use std::sync::Mutex;
     use std::thread;
     use std::time::Duration;
+    use tracing_subscriber::{EnvFilter, fmt};
 
     // Global test iTerm2 instance tracker
     static TEST_ITERM2: Mutex<Option<()>> = Mutex::new(None);
 
+    /// Initialize tracing for tests with detailed output
+    fn init_test_tracing() {
+        let _ = fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")),
+            )
+            .with_test_writer()
+            .try_init();
+    }
+
     /// Start iTerm2 if not already running
     ///
-    /// iTerm2 doesn't need special configuration like kitty, but we track
-    /// whether we've initialized it to avoid multiple concurrent initializations
+    /// This function explicitly opens iTerm2 using AppleScript and ensures it's ready for testing.
+    /// It tracks whether we've initialized it to avoid multiple concurrent initializations.
     fn start_test_iterm2() -> Result<(), Box<dyn std::error::Error>> {
         let mut iterm_guard = TEST_ITERM2.lock().unwrap();
         if iterm_guard.is_some() {
+            tracing::debug!("iTerm2 test instance already running");
             return Ok(()); // Already initialized
         }
 
-        // Check if iTerm2 is available
-        let available = Command::new("osascript")
-            .arg("-e")
-            .arg(r#"tell application "iTerm2" to version"#)
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false);
+        tracing::info!("Starting iTerm2 test instance");
 
-        if !available {
-            return Err("iTerm2 is not available".into());
+        // First, use AppleScript to launch and activate iTerm2
+        // This is the most reliable method as it ensures the app is both launched and activated
+        let launch_script = r#"
+            tell application "iTerm2"
+                activate
+                -- Ensure we have at least one window
+                if (count of windows) is 0 then
+                    create window with default profile
+                end if
+            end tell
+        "#;
+
+        tracing::debug!("Launching iTerm2 via AppleScript");
+        let launch_result = Command::new("osascript").arg("-e").arg(launch_script).output();
+
+        match launch_result {
+            Ok(output) if output.status.success() => {
+                tracing::info!("iTerm2 launched and activated successfully via AppleScript");
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!("iTerm2 AppleScript launch warning: {}", stderr);
+
+                // Fallback: try using the open command
+                tracing::debug!("Trying fallback method with 'open' command");
+                let _ = Command::new("open").arg("-a").arg("iTerm").output();
+            }
+            Err(e) => {
+                tracing::error!("Failed to launch iTerm2 via AppleScript: {}", e);
+
+                // Fallback: try using the open command
+                tracing::debug!("Trying fallback method with 'open' command");
+                match Command::new("open").arg("-a").arg("iTerm").output() {
+                    Ok(_) => tracing::info!("iTerm2 launched via 'open' command"),
+                    Err(e2) => {
+                        tracing::error!("All launch methods failed: {}", e2);
+                        return Err(format!("Failed to launch iTerm2: {}", e2).into());
+                    }
+                }
+            }
         }
 
-        // Ensure iTerm2 is running
-        let _ = Command::new("osascript")
+        // Give iTerm2 time to fully start and initialize
+        tracing::debug!("Waiting for iTerm2 to initialize...");
+        std::thread::sleep(Duration::from_millis(1500));
+
+        // Verify iTerm2 is actually running by checking if we can get its version
+        let verify_result = Command::new("osascript")
             .arg("-e")
-            .arg(r#"tell application "iTerm2" to activate"#)
+            .arg(r#"tell application "iTerm2" to version"#)
             .output();
 
-        // Give iTerm2 time to start
-        std::thread::sleep(Duration::from_millis(500));
+        match verify_result {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                tracing::info!("iTerm2 is running (version: {})", version);
+            }
+            _ => {
+                tracing::warn!("Could not verify iTerm2 version, but continuing...");
+            }
+        }
 
         *iterm_guard = Some(());
+        tracing::info!("iTerm2 test instance ready");
         Ok(())
     }
 
-    /// Stop/cleanup test iTerm2 instance
-    #[allow(dead_code)]
+    /// Stop/cleanup test iTerm2 instance by force quitting iTerm2 without confirmation
     fn stop_test_iterm2() {
         let mut iterm_guard = TEST_ITERM2.lock().unwrap();
+
+        tracing::info!("Stopping iTerm2 test instance");
+
+        // Force quit immediately without prompts using killall
+        tracing::debug!("Force quitting iTerm2 without confirmation");
+        let _ = Command::new("killall").arg("-9").arg("iTerm2").output();
+
+        // Give system time to clean up
+        std::thread::sleep(Duration::from_millis(500));
+
         *iterm_guard = None;
+        tracing::info!("iTerm2 test instance stopped");
     }
 
     #[test]
@@ -556,6 +622,9 @@ mod tests {
     #[test]
     #[serial_test::file_serial]
     fn test_open_window_with_title_and_cwd() {
+        init_test_tracing();
+        tracing::info!("Starting test_open_window_with_title_and_cwd");
+
         // Skip if not on macOS or in CI
         if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
             tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
@@ -574,18 +643,26 @@ mod tests {
         };
 
         let window_id = mux.open_window(&opts).unwrap();
+        tracing::info!("Window created with ID: {}", window_id);
 
         // Verify the window ID was created
         assert!(window_id.starts_with("iterm2-window-"));
-        tracing::debug!("Created window: {}", window_id);
+        tracing::debug!("Window ID validation passed: {}", window_id);
 
         // Give iTerm2 time to create the window
         thread::sleep(Duration::from_millis(500));
+
+        tracing::info!("Test completed successfully");
+
+        stop_test_iterm2();
     }
 
     #[test]
     #[serial_test::file_serial]
     fn test_open_window_focus() {
+        init_test_tracing();
+        tracing::info!("Starting test_open_window_focus");
+
         // Skip if not on macOS or in CI
         if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
             tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
@@ -604,18 +681,26 @@ mod tests {
         };
 
         let window_id = mux.open_window(&opts).unwrap();
+        tracing::info!("Focused window created with ID: {}", window_id);
 
         // Verify the window ID was created
         assert!(window_id.starts_with("iterm2-window-"));
-        tracing::debug!("Created and focused window: {}", window_id);
+        tracing::debug!("Window ID validation passed: {}", window_id);
+        tracing::info!("Window focus attribute was set to true");
 
         // Give iTerm2 time to focus
         thread::sleep(Duration::from_millis(500));
+        tracing::info!("Test completed successfully");
+
+        stop_test_iterm2();
     }
 
     #[test]
     #[serial_test::file_serial]
     fn test_split_pane() {
+        init_test_tracing();
+        tracing::info!("Starting test_split_pane");
+
         // Skip if not on macOS or in CI
         if cfg!(not(target_os = "macos")) || std::env::var("CI").is_ok() {
             tracing::info!("Skipping iTerm2 test (not on macOS or in CI)");
@@ -670,6 +755,8 @@ mod tests {
         assert!(pane_id2.starts_with("iterm2-pane-"));
         assert_ne!(pane_id2, pane_id);
         tracing::debug!("Created vertical pane: {}", pane_id2);
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -710,6 +797,8 @@ mod tests {
         assert!(pane_id.starts_with("iterm2-pane-"));
         assert_ne!(pane_id, window_id);
         tracing::debug!("Created pane with command: {}", pane_id);
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -749,6 +838,8 @@ mod tests {
         mux.send_text(&window_id, "some input text").unwrap();
         tracing::debug!("Text sent successfully");
         thread::sleep(Duration::from_millis(200));
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -795,6 +886,8 @@ mod tests {
         // Test pane focusing (same as window in iTerm2)
         mux.focus_pane(&window1).unwrap();
         tracing::debug!("Focused pane/window1");
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -861,6 +954,8 @@ mod tests {
         let none_windows = mux.list_windows(Some("nonexistent-unique-title-xyz")).unwrap();
         tracing::debug!("Found {} nonexistent windows", none_windows.len());
         // Should be empty or not contain our test windows
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -897,6 +992,8 @@ mod tests {
 
         let current = mux.current_window().unwrap();
         tracing::debug!("Current window after focus: {:?}", current);
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -945,6 +1042,8 @@ mod tests {
                 tracing::warn!("Unexpected error: {:?}", e);
             }
         }
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -1020,6 +1119,8 @@ mod tests {
         thread::sleep(Duration::from_millis(200));
 
         tracing::debug!("Complex layout test completed successfully");
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -1049,6 +1150,8 @@ mod tests {
         let panes = mux.list_panes(&window_id).unwrap();
         tracing::debug!("Found {} panes", panes.len());
         assert!(!panes.is_empty(), "Window should have at least one pane");
+
+        stop_test_iterm2();
     }
 
     #[test]
@@ -1088,5 +1191,7 @@ mod tests {
         tracing::debug!("iTerm2 has {} windows", count);
         // Just verify we can get the count without error
         // count is usize so it's always >= 0
+
+        stop_test_iterm2();
     }
 }
