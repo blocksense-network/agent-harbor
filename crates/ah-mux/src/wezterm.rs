@@ -859,105 +859,74 @@ mod tests {
     use super::*;
     use crate::detection::is_in_wezterm;
     use std::path::Path;
-    use std::sync::Mutex;
     use std::thread;
     use std::time::Duration;
 
-    // Global test WezTerm instance management
-    // Tracks whether we spawned a WezTerm instance that needs to be stopped
-    static TEST_WEZTERM: Mutex<Option<std::process::Child>> = Mutex::new(None);
-
-    /// Start a test WezTerm instance with CLI enabled.
+    /// Start a headless WezTerm mux-server suitable for CI environments.
     ///
-    /// If already running inside WezTerm (detected via environment variables),
-    /// this function does nothing and returns Ok(()).
+    /// This function ensures that a wezterm mux-server is running **without**
+    /// launching the GUI frontend, making it safe for headless environments
+    /// such as GitHub Actions, Docker containers, and remote CI runners.
     ///
-    /// Otherwise, it spawns a new WezTerm process and waits for CLI connectivity.
+    /// Behavior:
+    /// - If running inside an existing WezTerm session (detected via environment
+    ///   variables), no mux server is started.
+    ///
+    /// - If a mux-server is already running (determined by checking whether the
+    ///   `wezterm cli` commands can connect), this function **reuses** the
+    ///   existing server and does not attempt to start a new one.
+    ///
+    /// - If no mux-server is running, this function starts one using
+    ///   `wezterm-mux-server --daemonize` and waits until CLI connectivity
+    ///   succeeds.
+    ///
+    /// - Because a daemonized mux-server detaches and manages its own lifetime,
+    ///   this function does **not** track or kill it. The server will exit
+    ///   automatically when idle.
+    ///
+    /// The function is fully idempotent: calling it multiple times is safe and
+    /// will never spawn duplicate mux-server instances or trigger pid-file
+    /// locking errors.
     fn start_test_wezterm() -> Result<(), Box<dyn std::error::Error>> {
-        // Check if we're already running inside WezTerm
+        // If we're already inside wezterm, no need to spawn anything
         if is_in_wezterm() {
-            tracing::debug!("Already running inside WezTerm, no need to spawn new instance");
+            tracing::debug!("Already inside wezterm; no need to launch mux server");
             return Ok(());
         }
 
-        let mut wezterm_guard = TEST_WEZTERM.lock().unwrap();
-        if wezterm_guard.is_some() {
-            tracing::debug!("Test WezTerm instance already spawned");
-            return Ok(()); // Already started
+        // If CLI already works, a mux-server is already running.
+        if WezTermMultiplexer::test_cli_connectivity().is_ok() {
+            tracing::debug!("WezTerm mux server already running; not starting a new one");
+            // Ensure WEZTERM_PANE is always available for tests
+            unsafe { std::env::set_var("WEZTERM_PANE", "9999") };
+
+            return Ok(());
         }
 
-        // Try to start WezTerm with GUI in background
-        tracing::debug!("Attempting to start WezTerm for testing");
-        let mut child = match std::process::Command::new("wezterm")
-            .arg("start")
-            .arg("--always-new-process")
-            .spawn()
-        {
-            Ok(child) => {
-                tracing::debug!(pid=?child.id(), "WezTerm spawned successfully");
-                child
-            }
-            Err(e) => {
-                tracing::error!(error=%e, "Failed to spawn WezTerm");
-                return Err(format!("Failed to spawn WezTerm: {}", e).into());
-            }
-        };
+        tracing::debug!("Starting headless wezterm-mux-server (no existing server)");
 
-        // Give WezTerm time to start up and establish CLI connection
-        std::thread::sleep(Duration::from_secs(3));
+        let status = std::process::Command::new("wezterm-mux-server")
+            .arg("--daemonize")
+            .status()
+            .map_err(|e| format!("Failed to start wezterm-mux-server: {}", e))?;
 
-        // Check if WezTerm is still running
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                tracing::error!(status=?status, "WezTerm exited unexpectedly");
-                return Err(format!("WezTerm exited immediately with status: {}", status).into());
-            }
-            Ok(None) => {
-                tracing::debug!("WezTerm still running after initial wait");
-                // Test CLI connectivity
-                let cli_test = WezTermMultiplexer::test_cli_connectivity();
-                if cli_test.is_err() {
-                    tracing::warn!("WezTerm CLI not responding yet, waiting longer");
-                    std::thread::sleep(Duration::from_secs(2));
-                    let cli_test_2 = WezTermMultiplexer::test_cli_connectivity();
-                    if cli_test_2.is_err() {
-                        let _ = child.kill();
-                        return Err("WezTerm started but CLI not responding".into());
-                    }
-                }
-                tracing::debug!("WezTerm CLI is responsive");
-            }
-            Err(e) => {
-                let _ = child.kill();
-                return Err(format!("Failed to check WezTerm status: {}", e).into());
-            }
+        if !status.success() {
+            return Err(format!("wezterm-mux-server exited with {:?}", status).into());
         }
 
-        *wezterm_guard = Some(child);
-        // This is a hack for when tests run outside wezterm
-        std::env::set_var("WEZTERM_PANE", "42");
-        Ok(())
-    }
+        // Wait for mux server to initialize
+        for i in 0..20 {
+            if WezTermMultiplexer::test_cli_connectivity().is_ok() {
+                tracing::debug!("Mux server is now ready (after {i} checks)");
+                unsafe { std::env::set_var("WEZTERM_PANE", "9999") };
+                return Ok(());
+            }
 
-    /// Stop the test WezTerm instance if one was spawned.
-    ///
-    /// If we're running inside an existing WezTerm instance (detected earlier),
-    /// this function does nothing. It only kills and cleans up WezTerm instances
-    /// that were spawned by start_test_wezterm().
-    #[cfg(test)]
-    fn stop_test_wezterm() {
-        // If we're running inside WezTerm, we didn't spawn an instance, so nothing to stop
-        if is_in_wezterm() {
-            tracing::debug!("Running inside WezTerm, no spawned instance to stop");
-            return;
+            tracing::debug!("Waiting for mux server to become ready...");
+            std::thread::sleep(Duration::from_millis(250));
         }
 
-        let mut wezterm_guard = TEST_WEZTERM.lock().unwrap();
-        if let Some(mut child) = wezterm_guard.take() {
-            tracing::debug!(pid=?child.id(), "Stopping spawned test WezTerm instance");
-            let _ = child.kill();
-            let _ = child.wait();
-        }
+        Err("wezterm-mux-server failed to become ready".into())
     }
 
     #[test]
@@ -1096,7 +1065,6 @@ mod tests {
         tracing::debug!("Testing start_test_wezterm function");
         start_test_wezterm().expect("start_test_wezterm should succeed");
         tracing::debug!("start_test_wezterm succeeded");
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1117,8 +1085,6 @@ mod tests {
         // Verify the window ID is numeric
         assert!(window_id.parse::<u32>().is_ok());
         tracing::debug!(window_id, "Window created successfully");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1150,8 +1116,6 @@ mod tests {
             );
         }
         tracing::debug!(window_id, "Focused window created successfully");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1202,8 +1166,6 @@ mod tests {
         assert!(v_pane_id.parse::<u32>().is_ok());
         assert_ne!(v_pane_id, h_pane_id);
         tracing::debug!(v_pane_id, "Vertical split created");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1241,8 +1203,6 @@ mod tests {
         // Command executed successfully if pane was created - we can't directly
         // capture output, but the split_pane call would have failed if command failed immediately
         tracing::debug!(pane_id, "Split with command created and executed");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1275,8 +1235,6 @@ mod tests {
         mux.send_text(&window_id, "test input").expect("send_text should succeed");
         thread::sleep(Duration::from_millis(100));
         tracing::debug!("Text sent successfully");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1321,8 +1279,6 @@ mod tests {
         mux.focus_pane(&window1).expect("Should focus pane");
         thread::sleep(Duration::from_millis(100));
         tracing::debug!(window1, "Pane focused");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1379,8 +1335,6 @@ mod tests {
         tracing::debug!(count = beta_windows.len(), "Listed beta windows");
 
         tracing::debug!("Successfully created {} panes", created_panes.len());
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1419,8 +1373,6 @@ mod tests {
         // We created one split, so should have at least 2 panes
         assert!(panes.len() >= 2, "Should have at least 2 panes after split");
         tracing::debug!(count = panes.len(), "Listed panes");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1490,8 +1442,6 @@ mod tests {
         mux.focus_pane(&agent_pane).expect("Should focus agent pane");
         thread::sleep(Duration::from_millis(50));
         mux.focus_pane(&logs_pane).expect("Should focus logs pane");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1519,8 +1469,6 @@ mod tests {
         // Try to send text to non-existent pane
         let result = mux.send_text(&invalid_pane, "test");
         assert!(result.is_ok() || matches!(result, Err(MuxError::CommandFailed(_))));
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1551,8 +1499,6 @@ mod tests {
         // Note: We can't directly read the title back, but we can verify the operation didn't fail
         let windows = mux.list_windows(Some("new-title-010")).expect("Should list windows");
         assert!(!windows.is_empty(), "Should find window with new title");
-
-        stop_test_wezterm();
     }
 
     #[test]
@@ -1607,7 +1553,5 @@ mod tests {
             count_before - 1,
             "Pane count should decrease by one after kill"
         );
-
-        stop_test_wezterm();
     }
 }
