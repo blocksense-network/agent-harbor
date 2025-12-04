@@ -627,6 +627,7 @@ impl Multiplexer for KittyMultiplexer {
         let location = match dir {
             SplitDirection::Horizontal => "hsplit".to_string(),
             SplitDirection::Vertical => "vsplit".to_string(),
+            SplitDirection::Auto => "hsplit".to_string(), // Fall back to horizontal split for now
         };
         debug!(direction = ?dir, location = %location, "Using explicit split direction");
 

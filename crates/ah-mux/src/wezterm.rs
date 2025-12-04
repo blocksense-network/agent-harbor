@@ -318,9 +318,9 @@ impl WezTermMultiplexer {
             )));
         }
 
-        // set env var to the pane ID
-        std::env::set_var("WEZTERM_PANE", window);
-        debug!("WEZTERM_PANE set to: {}", window);
+        // // set env var to the pane ID
+        // std::env::set_var("WEZTERM_PANE", window);
+        // debug!("WEZTERM_PANE set to: {}", window);
 
         debug!("WezTerm tab '{}' focused for pane '{}'", tab_id, window);
         info!("Successfully focused WezTerm tab for pane: {}", window);
@@ -576,6 +576,9 @@ impl Multiplexer for WezTermMultiplexer {
             }
             SplitDirection::Vertical => {
                 cmd.arg("--right"); // Vertical split creates right pane
+            }
+            SplitDirection::Auto => {
+                cmd.arg("--bottom"); // Fall back to horizontal split for now
             }
         }
 
@@ -852,6 +855,51 @@ impl Multiplexer for WezTermMultiplexer {
         );
         Ok(result)
     }
+
+    #[instrument(skip(self))]
+    fn current_pane(&self) -> Result<Option<PaneId>, MuxError> {
+        info!("Getting current WezTerm pane");
+
+        // WezTerm sets the WEZTERM_PANE environment variable with the current pane ID
+        if let Ok(pane_id) = std::env::var("WEZTERM_PANE") {
+            debug!(
+                "Found current WezTerm pane from WEZTERM_PANE env var: {}",
+                pane_id
+            );
+            info!("Successfully retrieved current WezTerm pane: {}", pane_id);
+            Ok(Some(pane_id))
+        } else {
+            debug!("WEZTERM_PANE environment variable not set");
+            Ok(None)
+        }
+    }
+
+    #[instrument(skip(self))]
+    fn current_window(&self) -> Result<Option<WindowId>, MuxError> {
+        info!("Getting current WezTerm window (tab)");
+
+        // Get the current pane first
+        let pane_id = match self.current_pane()? {
+            Some(id) => id,
+            None => {
+                debug!("No current pane found, cannot determine current window");
+                return Ok(None);
+            }
+        };
+
+        // Find the tab (Multiplexer "window") that contains this pane
+        match self.find_tab_for_pane_id(&pane_id) {
+            Ok(tab_id) => {
+                debug!("Found current WezTerm tab (window): {}", tab_id);
+                info!("Successfully retrieved current WezTerm window: {}", tab_id);
+                Ok(Some(tab_id))
+            }
+            Err(e) => {
+                warn!("Failed to find tab for current pane '{}': {}", pane_id, e);
+                Ok(None)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -921,7 +969,7 @@ mod tests {
 
         *wezterm_guard = Some(child);
         // This is a hack for when tests run outside wezterm
-        std::env::set_var("WEZTERM_PANE", "42");
+        // std::env::set_var("WEZTERM_PANE", "42");
         Ok(())
     }
 
@@ -1428,7 +1476,6 @@ mod tests {
 
     #[test]
     #[serial_test::file_serial]
-    #[ignore = "This test hit known bug that will be fixed soon"]
     fn test_list_panes() {
         let _ = start_test_wezterm();
 
@@ -1474,7 +1521,6 @@ mod tests {
 
     #[test]
     #[serial_test::file_serial]
-    #[ignore = "This test hit known bug that will be fixed soon"]
     fn test_complex_layout_creation() {
         let _ = start_test_wezterm();
 
@@ -1587,7 +1633,6 @@ mod tests {
 
     #[test]
     #[serial_test::file_serial]
-    #[ignore = "This test hit known bug that will be fixed soon"]
     fn test_set_tab_title() {
         let _ = start_test_wezterm();
 
@@ -1628,7 +1673,6 @@ mod tests {
 
     #[test]
     #[serial_test::file_serial]
-    #[ignore = "This test hit known bug that will be fixed soon"]
     fn test_kill_pane() {
         let _ = start_test_wezterm();
 

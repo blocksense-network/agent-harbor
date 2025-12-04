@@ -221,6 +221,7 @@ impl Multiplexer for ScreenMultiplexer {
         let focus_dir = match dir {
             SplitDirection::Horizontal => "down",
             SplitDirection::Vertical => "right",
+            SplitDirection::Auto => "down", // Fall back to horizontal split for now
         };
 
         // -- Start split --

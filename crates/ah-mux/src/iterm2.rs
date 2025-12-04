@@ -234,6 +234,7 @@ impl Multiplexer for ITerm2Multiplexer {
         let direction = match dir {
             SplitDirection::Horizontal => "horizontally",
             SplitDirection::Vertical => "vertically",
+            SplitDirection::Auto => "horizontally", // Fall back to horizontal split for now
         };
 
         let mut script = format!(
