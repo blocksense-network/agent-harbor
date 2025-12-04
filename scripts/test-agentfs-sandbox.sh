@@ -31,6 +31,9 @@ fi
 AGENTFS_CONTROL="${AGENTFS_MOUNT}/.agentfs/control"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/logs/agentfs-sandbox-$(date +%Y%m%d-%H%M%S)}"
 AH_BINARY="${AH_BINARY:-$REPO_ROOT/target/debug/ah}"
+SANDBOX_PROVIDERS=()
+DEFAULT_PROVIDER=""
+AGENTFS_MOUNT_AVAILABLE=1
 
 # Test state
 TESTS_RUN=0
@@ -111,6 +114,53 @@ log_section() {
   log "═══════════════════════════════════════════════════════════════════════════════"
 }
 
+# Provider selection ----------------------------------------------------------
+init_providers() {
+  if [[ -n "${SANDBOX_PROVIDER:-}" ]]; then
+    # backward‑compatible single provider variable
+    SANDBOX_PROVIDERS=("$SANDBOX_PROVIDER")
+  elif [[ -n "${SANDBOX_PROVIDERS:-}" ]]; then
+    read -r -a SANDBOX_PROVIDERS <<<"${SANDBOX_PROVIDERS}"
+  elif [[ -n "${SANDBOX_PROVIDERS_RAW:-${SANDBOX_PROVIDERS_INPUT:-}}" ]]; then
+    read -r -a SANDBOX_PROVIDERS <<<"${SANDBOX_PROVIDERS_RAW:-${SANDBOX_PROVIDERS_INPUT:-}}"
+  elif [[ -n "${SANDBOX_PROVIDERS_CSV:-}" ]]; then
+    SANDBOX_PROVIDERS=(${SANDBOX_PROVIDERS_CSV//,/ })
+  else
+    SANDBOX_PROVIDERS=("agentfs")
+  fi
+
+  # Trim blanks and set default
+  local cleaned=()
+  for p in "${SANDBOX_PROVIDERS[@]}"; do
+    if [[ -n "$p" ]]; then
+      cleaned+=("$p")
+    fi
+  done
+  SANDBOX_PROVIDERS=("${cleaned[@]}")
+  DEFAULT_PROVIDER="${SANDBOX_PROVIDERS[0]}"
+  log_info "Using snapshot providers: ${SANDBOX_PROVIDERS[*]}"
+}
+
+# Workspace selection helper. Returns workspace path on stdout.
+# If require_mount=1 and the AgentFS mount is not available, returns 2.
+select_workspace_for_provider() {
+  local provider="$1"
+  local name="$2"
+  local require_mount="${3:-0}"
+
+  if [[ "$provider" == "agentfs" ]]; then
+    if [[ -d "$AGENTFS_MOUNT" ]]; then
+      echo "$AGENTFS_MOUNT"
+      return 0
+    elif [[ $require_mount -eq 1 ]]; then
+      return 2
+    fi
+  fi
+
+  create_external_test_workspace "${name}-${provider}"
+  return 0
+}
+
 # Utility: look for a string in captured output or the persisted log file.
 # Some environments suppress stdout from the sandbox helper even when the
 # tee'd log contains the expected marker; checking both avoids false negatives.
@@ -163,20 +213,18 @@ check_prerequisites() {
   fi
 
   if [[ ! -d "$AGENTFS_MOUNT" ]]; then
-    log_fail "AgentFS mount not found at $AGENTFS_MOUNT"
-    log_info "Start daemon with: just start-ah-fs-snapshots-daemon"
-    exit 1
+    AGENTFS_MOUNT_AVAILABLE=0
+    log_info "AgentFS mount not found at $AGENTFS_MOUNT (continuing; mountless mode)"
   fi
 
-  if [[ ! -f "$AGENTFS_CONTROL" ]]; then
-    log_fail "AgentFS control file not found at $AGENTFS_CONTROL"
-    log_info "Ensure FUSE mount is active and daemon is running"
-    exit 1
+  if [[ $AGENTFS_MOUNT_AVAILABLE -eq 1 && ! -f "$AGENTFS_CONTROL" ]]; then
+    AGENTFS_MOUNT_AVAILABLE=0
+    log_info "AgentFS control file not found at $AGENTFS_CONTROL (continuing; mountless mode)"
   fi
 
-  log_pass "All prerequisites satisfied"
+  log_pass "Binary check satisfied"
   log_info "  ah binary: $AH_BINARY"
-  log_info "  AgentFS mount: $AGENTFS_MOUNT"
+  log_info "  AgentFS mount: ${AGENTFS_MOUNT:-<unset>} (available=$AGENTFS_MOUNT_AVAILABLE)"
   log_info "  Log directory: $LOG_DIR"
 }
 
@@ -215,7 +263,8 @@ record_result() {
 run_sandbox() {
   local test_log="$1"
   shift
-  "$AH_BINARY" agent sandbox --fs-snapshots agentfs "$@" 2>&1 | tee "$test_log"
+  local provider="${ACTIVE_PROVIDER:-$DEFAULT_PROVIDER:-agentfs}"
+  "$AH_BINARY" agent sandbox --fs-snapshots "$provider" "$@" 2>&1 | tee "$test_log"
   return "${PIPESTATUS[0]}"
 }
 
@@ -316,35 +365,46 @@ create_external_test_workspace() {
 test_basic_execution() {
   log_section "T16.1 Basic Execution"
   local start_time=$(date +%s)
-  local test_log="$LOG_DIR/t16_1_basic.log"
-
-  cd "$AGENTFS_MOUNT"
-
-  local output
-  local exit_code=0
-  output=$(run_sandbox "$test_log" -- echo "sandbox test" 2>&1) || exit_code=$?
-
-  # Check if the output contains our test string (the command ran successfully)
-  if echo "$output" | grep -q "sandbox test"; then
-    local duration=$(($(date +%s) - start_time))
-    record_result "1 Basic Execution" "pass" "$duration"
-    return 0
-  fi
-
-  # If the command ran but we didn't see output, check if it was just a provider issue
-  if echo "$output" | grep -qi "agentfs"; then
-    log_info "Command ran with AgentFS provider (exit code: $exit_code)"
-    # If AgentFS was detected but command didn't produce output, that's still a pass
-    # for basic execution (provider selection works)
-    if [[ $exit_code -eq 0 ]]; then
-      local duration=$(($(date +%s) - start_time))
-      record_result "1 Basic Execution" "pass" "$duration"
-      return 0
+  for provider in "${SANDBOX_PROVIDERS[@]}"; do
+    ACTIVE_PROVIDER="$provider"
+    local test_log="$LOG_DIR/t16_1_basic_${provider}.log"
+    local workspace
+    if ! workspace=$(select_workspace_for_provider "$provider" "basic" 0); then
+      local rc=$?
+      if [[ $rc -eq 2 ]]; then
+        record_result "1 Basic Execution [$provider]" "skip" "0" "AgentFS mount unavailable for provider"
+        continue
+      fi
+      record_result "1 Basic Execution [$provider]" "fail" "0" "Workspace selection failed"
+      continue
     fi
-  fi
 
-  record_result "1 Basic Execution" "fail" "0" "Command failed or output not found (exit: $exit_code)"
-  return 1
+    cd "$workspace"
+
+    local output
+    local exit_code=0
+    output=$(run_sandbox "$test_log" -- echo "sandbox test" 2>&1) || exit_code=$?
+
+    # Check if the output contains our test string (the command ran successfully)
+    if echo "$output" | grep -q "sandbox test"; then
+      local duration=$(($(date +%s) - start_time))
+      record_result "1 Basic Execution [$provider]" "pass" "$duration"
+      continue
+    fi
+
+    # If the command ran but we didn't see output, treat provider detection as soft pass
+    if echo "$output" | grep -qi "$provider"; then
+      log_info "Command ran with provider '$provider' (exit code: $exit_code)"
+      if [[ $exit_code -eq 0 ]]; then
+        local duration=$(($(date +%s) - start_time))
+        record_result "1 Basic Execution [$provider]" "pass" "$duration"
+        continue
+      fi
+    fi
+
+    record_result "1 Basic Execution [$provider]" "fail" "0" "Command failed or output not found (exit: $exit_code)"
+  done
+  return 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -961,30 +1021,48 @@ test_overlay_persistence() {
 test_branch_binding() {
   log_section "T16.4 Branch Binding"
   local start_time=$(date +%s)
-  local test_log="$LOG_DIR/t16_4_branch.log"
 
-  cd "$AGENTFS_MOUNT"
+  for provider in "${SANDBOX_PROVIDERS[@]}"; do
+    ACTIVE_PROVIDER="$provider"
+    local test_log="$LOG_DIR/t16_4_branch_${provider}.log"
+    local workspace
+    if ! workspace=$(select_workspace_for_provider "$provider" "branch" 0); then
+      local rc=$?
+      if [[ $rc -eq 2 ]]; then
+        record_result "4 Branch Binding [$provider]" "skip" "0" "Mount not available for provider"
+        continue
+      fi
+      record_result "4 Branch Binding [$provider]" "fail" "0" "Workspace selection failed"
+      continue
+    fi
 
-  # Run sandbox with RUST_LOG to capture branch binding telemetry
-  local output
-  if output=$(RUST_LOG=debug run_sandbox "$test_log" -- echo "branch test" 2>&1); then
+    cd "$workspace"
+
+    local output
+    local exit_code=0
+    if output=$(RUST_LOG=debug run_sandbox "$test_log" -- echo "branch test" 2>&1); then
+      exit_code=0
+    else
+      exit_code=$?
+    fi
+
     # Check for branch binding messages in telemetry
     if echo "$output" | grep -qiE "(branch|binding|prepared.*workspace)"; then
       local duration=$(($(date +%s) - start_time))
-      record_result "4 Branch Binding" "pass" "$duration"
-      return 0
+      record_result "4 Branch Binding [$provider]" "pass" "$duration"
+      continue
     fi
-  fi
 
-  # Even if no explicit log, pass if the command succeeded
-  if [[ $? -eq 0 ]]; then
-    local duration=$(($(date +%s) - start_time))
-    record_result "4 Branch Binding" "pass" "$duration"
-    return 0
-  fi
+    # Even if no explicit log, pass if the command succeeded
+    if [[ $exit_code -eq 0 ]]; then
+      local duration=$(($(date +%s) - start_time))
+      record_result "4 Branch Binding [$provider]" "pass" "$duration"
+      continue
+    fi
 
-  record_result "4 Branch Binding" "fail" "0" "Branch binding not detected"
-  return 1
+    record_result "4 Branch Binding [$provider]" "fail" "0" "Branch binding not detected"
+  done
+  return 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1382,23 +1460,37 @@ test_readonly_baseline() {
 test_provider_telemetry() {
   log_section "T16.16 Provider Telemetry"
   local start_time=$(date +%s)
-  local test_log="$LOG_DIR/t16_16_telemetry.log"
 
-  cd "$AGENTFS_MOUNT"
-
-  # Run with debug logging
-  local output
-  if output=$(RUST_LOG=debug run_sandbox "$test_log" -- echo "telemetry test" 2>&1); then
-    # Check for expected telemetry fields
-    if echo "$output" | grep -qiE "(provider|agentfs|workspace|mount)"; then
-      local duration=$(($(date +%s) - start_time))
-      record_result "16 Provider Telemetry" "pass" "$duration"
-      return 0
+  for provider in "${SANDBOX_PROVIDERS[@]}"; do
+    ACTIVE_PROVIDER="$provider"
+    local test_log="$LOG_DIR/t16_16_telemetry_${provider}.log"
+    local workspace
+    if ! workspace=$(select_workspace_for_provider "$provider" "telemetry" 0); then
+      local rc=$?
+      if [[ $rc -eq 2 ]]; then
+        record_result "16 Provider Telemetry [$provider]" "skip" "0" "Mount not available for provider"
+        continue
+      fi
+      record_result "16 Provider Telemetry [$provider]" "fail" "0" "Workspace selection failed"
+      continue
     fi
-  fi
 
-  record_result "16 Provider Telemetry" "fail" "0" "Expected telemetry not found"
-  return 1
+    cd "$workspace"
+
+    # Run with debug logging
+    local output
+    if output=$(RUST_LOG=debug run_sandbox "$test_log" -- echo "telemetry test" 2>&1); then
+      # Check for expected telemetry fields
+      if echo "$output" | grep -qiE "(provider|agentfs|workspace|mount)"; then
+        local duration=$(($(date +%s) - start_time))
+        record_result "16 Provider Telemetry [$provider]" "pass" "$duration"
+        continue
+      fi
+    fi
+
+    record_result "16 Provider Telemetry [$provider]" "fail" "0" "Expected telemetry not found"
+  done
+  return 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1407,34 +1499,47 @@ test_provider_telemetry() {
 test_child_process_fork() {
   log_section "T16.17 Child Process Fork"
   local start_time=$(date +%s)
-  local test_log="$LOG_DIR/t16_17_fork.log"
 
-  cd "$AGENTFS_MOUNT"
+  for provider in "${SANDBOX_PROVIDERS[@]}"; do
+    ACTIVE_PROVIDER="$provider"
+    local test_log="$LOG_DIR/t16_17_fork_${provider}.log"
+    local workspace
+    if ! workspace=$(select_workspace_for_provider "$provider" "fork" 0); then
+      local rc=$?
+      if [[ $rc -eq 2 ]]; then
+        record_result "17 Child Process Fork [$provider]" "skip" "0" "Mount not available for provider"
+        continue
+      fi
+      record_result "17 Child Process Fork [$provider]" "fail" "0" "Workspace selection failed"
+      continue
+    fi
+    cd "$workspace"
 
-  # Test that forked processes work correctly in sandbox (parent/child relationship)
-  local output
-  local exit_code=0
-  output=$(run_sandbox "$test_log" -- bash -c "
+    # Test that forked processes work correctly in sandbox (parent/child relationship)
+    local output
+    local exit_code=0
+    output=$(run_sandbox "$test_log" -- bash -c "
         echo 'parent: '\$\$
         (echo 'child: '\$\$)
         echo 'done'
     " 2>&1) || exit_code=$?
 
-  # Check if command execution worked - both parent and child should report
-  if echo "$output" | grep -q "parent" && echo "$output" | grep -q "child" && echo "$output" | grep -q "done"; then
-    local duration=$(($(date +%s) - start_time))
-    record_result "17 Child Process Fork" "pass" "$duration"
-    return 0
-  fi
+    # Check if command execution worked - both parent and child should report
+    if echo "$output" | grep -q "parent" && echo "$output" | grep -q "child" && echo "$output" | grep -q "done"; then
+      local duration=$(($(date +%s) - start_time))
+      record_result "17 Child Process Fork [$provider]" "pass" "$duration"
+      continue
+    fi
 
-  # Check if namespace operations actually failed
-  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
-    record_result "17 Child Process Fork" "skip" "0" "Namespace setup failed"
-    return 0
-  fi
+    # Check if namespace operations actually failed
+    if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+      record_result "17 Child Process Fork [$provider]" "skip" "0" "Namespace setup failed"
+      continue
+    fi
 
-  record_result "17 Child Process Fork" "fail" "0" "Fork in sandbox failed (exit: $exit_code)"
-  return 1
+    record_result "17 Child Process Fork [$provider]" "fail" "0" "Fork in sandbox failed (exit: $exit_code)"
+  done
+  return 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1443,32 +1548,45 @@ test_child_process_fork() {
 test_child_process_pipeline() {
   log_section "T16.23 Child Process Shell Pipeline"
   local start_time=$(date +%s)
-  local test_log="$LOG_DIR/t16_23_pipeline.log"
 
-  cd "$AGENTFS_MOUNT"
+  for provider in "${SANDBOX_PROVIDERS[@]}"; do
+    ACTIVE_PROVIDER="$provider"
+    local test_log="$LOG_DIR/t16_23_pipeline_${provider}.log"
+    local workspace
+    if ! workspace=$(select_workspace_for_provider "$provider" "pipeline" 0); then
+      local rc=$?
+      if [[ $rc -eq 2 ]]; then
+        record_result "23 Child Process Pipeline [$provider]" "skip" "0" "Mount not available for provider"
+        continue
+      fi
+      record_result "23 Child Process Pipeline [$provider]" "fail" "0" "Workspace selection failed"
+      continue
+    fi
+    cd "$workspace"
 
-  # Test that pipeline processes work in sandbox
-  local output
-  local exit_code=0
-  output=$(run_sandbox "$test_log" -- bash -c "
+    # Test that pipeline processes work in sandbox
+    local output
+    local exit_code=0
+    output=$(run_sandbox "$test_log" -- bash -c "
         echo 'hello world' | tr 'a-z' 'A-Z' | grep -o 'HELLO'
     " 2>&1) || exit_code=$?
 
-  # Check if command execution worked (look for "HELLO" in output)
-  if echo "$output" | grep -q "HELLO"; then
-    local duration=$(($(date +%s) - start_time))
-    record_result "23 Child Process Pipeline" "pass" "$duration"
-    return 0
-  fi
+    # Check if command execution worked (look for "HELLO" in output)
+    if echo "$output" | grep -q "HELLO"; then
+      local duration=$(($(date +%s) - start_time))
+      record_result "23 Child Process Pipeline [$provider]" "pass" "$duration"
+      continue
+    fi
 
-  # Check if namespace operations actually failed
-  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
-    record_result "23 Child Process Pipeline" "skip" "0" "Namespace setup failed"
-    return 0
-  fi
+    # Check if namespace operations actually failed
+    if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+      record_result "23 Child Process Pipeline [$provider]" "skip" "0" "Namespace setup failed"
+      continue
+    fi
 
-  record_result "23 Child Process Pipeline" "fail" "0" "Pipeline in sandbox failed (exit: $exit_code)"
-  return 1
+    record_result "23 Child Process Pipeline [$provider]" "fail" "0" "Pipeline in sandbox failed (exit: $exit_code)"
+  done
+  return 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1477,33 +1595,46 @@ test_child_process_pipeline() {
 test_child_process_subshell() {
   log_section "T16.24 Child Process Subshell"
   local start_time=$(date +%s)
-  local test_log="$LOG_DIR/t16_24_subshell.log"
 
-  cd "$AGENTFS_MOUNT"
+  for provider in "${SANDBOX_PROVIDERS[@]}"; do
+    ACTIVE_PROVIDER="$provider"
+    local test_log="$LOG_DIR/t16_24_subshell_${provider}.log"
+    local workspace
+    if ! workspace=$(select_workspace_for_provider "$provider" "subshell" 0); then
+      local rc=$?
+      if [[ $rc -eq 2 ]]; then
+        record_result "24 Child Process Subshell [$provider]" "skip" "0" "Mount not available for provider"
+        continue
+      fi
+      record_result "24 Child Process Subshell [$provider]" "fail" "0" "Workspace selection failed"
+      continue
+    fi
+    cd "$workspace"
 
-  # Test that subshell processes work in sandbox
-  local output
-  local exit_code=0
-  output=$(run_sandbox "$test_log" -- bash -c "
+    # Test that subshell processes work in sandbox
+    local output
+    local exit_code=0
+    output=$(run_sandbox "$test_log" -- bash -c "
         result=\$(echo 'subshell works' | cat)
         echo \"\$result\"
     " 2>&1) || exit_code=$?
 
-  # Check if command execution worked
-  if echo "$output" | grep -q "subshell works"; then
-    local duration=$(($(date +%s) - start_time))
-    record_result "24 Child Process Subshell" "pass" "$duration"
-    return 0
-  fi
+    # Check if command execution worked
+    if echo "$output" | grep -q "subshell works"; then
+      local duration=$(($(date +%s) - start_time))
+      record_result "24 Child Process Subshell [$provider]" "pass" "$duration"
+      continue
+    fi
 
-  # Check if namespace operations actually failed
-  if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
-    record_result "24 Child Process Subshell" "skip" "0" "Namespace setup failed"
-    return 0
-  fi
+    # Check if namespace operations actually failed
+    if echo "$output" | grep -qiE "(namespace.*failed|Failed to.*namespace|unshare.*failed|Operation not permitted)"; then
+      record_result "24 Child Process Subshell [$provider]" "skip" "0" "Namespace setup failed"
+      continue
+    fi
 
-  record_result "24 Child Process Subshell" "fail" "0" "Subshell in sandbox failed (exit: $exit_code)"
-  return 1
+    record_result "24 Child Process Subshell [$provider]" "fail" "0" "Subshell in sandbox failed (exit: $exit_code)"
+  done
+  return 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1646,6 +1777,7 @@ main() {
     tests_to_run=("${AVAILABLE_TESTS[@]}")
   fi
 
+  init_providers
   check_prerequisites
 
   for test in "${tests_to_run[@]}"; do
