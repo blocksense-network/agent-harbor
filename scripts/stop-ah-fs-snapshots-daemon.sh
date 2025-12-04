@@ -6,7 +6,14 @@
 
 set -euo pipefail
 
-SOCKET_PATH="/tmp/agent-harbor/ah-fs-snapshots-daemon"
+OS_NAME="$(uname -s)"
+if [ "$OS_NAME" = "Darwin" ]; then
+  RUNTIME_BASE="${XDG_RUNTIME_DIR:-$HOME/Library/Caches/agent-harbor/run}"
+else
+  RUNTIME_BASE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+fi
+
+SOCKET_PATH="${AGENTFS_FUSE_SOCKET_PATH:-$RUNTIME_BASE/agentfsd/ah-fs-snapshots-daemon}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DAEMON_BIN="$REPO_ROOT/target/release/ah-fs-snapshots-daemon"
