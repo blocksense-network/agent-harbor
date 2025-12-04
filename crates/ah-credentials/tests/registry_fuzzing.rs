@@ -26,6 +26,7 @@ async fn test_registry_alias_collision_detection() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -66,6 +67,7 @@ async fn test_registry_name_collision_prevention() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -98,6 +100,7 @@ async fn test_registry_edge_case_names() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -172,6 +175,7 @@ async fn test_registry_operations_with_many_accounts() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -254,6 +258,7 @@ async fn test_registry_concurrent_operations() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -357,6 +362,7 @@ async fn test_identifier_uniqueness_tracking() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };

@@ -5,7 +5,9 @@
 
 use crate::{
     config::CredentialsConfig,
+    crypto::{KdfParams, decrypt_credential_data, encrypt_credential_data},
     error::{Error, Result},
+    types::Account,
     types::AccountRegistry,
     validation::cleanup_stale_metadata,
 };
@@ -207,6 +209,48 @@ pub fn credential_file_path(
     let keys_dir = config.keys_dir()?;
     let extension = if encrypted { "enc" } else { "json" };
     Ok(keys_dir.join(format!("{}.{}", account_name, extension)))
+}
+
+/// Write credentials for an account respecting the account's encryption flag.
+pub async fn write_account_credentials(
+    config: &CredentialsConfig,
+    account: &Account,
+    data: &serde_json::Value,
+    passphrase: Option<&str>,
+    kdf_params: Option<KdfParams>,
+) -> Result<std::path::PathBuf> {
+    if account.encrypted {
+        let pass = passphrase
+            .ok_or_else(|| Error::Encryption("Passphrase required for encrypted account".into()))?;
+        let ciphertext = encrypt_credential_data(data, pass, kdf_params)?;
+        write_credential_file(config, &account.name, true, &ciphertext).await
+    } else {
+        let bytes = serde_json::to_vec(data)?;
+        write_credential_file(config, &account.name, false, &bytes).await
+    }
+}
+
+/// Read credentials for an account, decrypting when necessary.
+pub async fn read_account_credentials(
+    config: &CredentialsConfig,
+    account: &Account,
+    passphrase: Option<&str>,
+) -> Result<serde_json::Value> {
+    let path = credential_file_path(config, &account.name, account.encrypted)?;
+
+    if !path.exists() {
+        return Err(Error::FileCorruption(path));
+    }
+
+    let bytes = async_fs::read(&path).await?;
+
+    if account.encrypted {
+        let pass = passphrase
+            .ok_or_else(|| Error::Encryption("Passphrase required for encrypted account".into()))?;
+        decrypt_credential_data(&bytes, pass)
+    } else {
+        Ok(serde_json::from_slice(&bytes)?)
+    }
 }
 
 /// Write credential payload to disk with strict permissions (0600)

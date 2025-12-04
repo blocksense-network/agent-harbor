@@ -21,8 +21,8 @@ pub mod validation;
 /// Re-export key types for convenience
 pub use config::CredentialsConfig;
 pub use crypto::{
-    KeyCache, decrypt_credential_data, derive_key_from_passphrase, encrypt_credential_data,
-    generate_salt, rotate_account_key,
+    KdfParams, KeyCache, decrypt_credential_data, derive_key_from_passphrase,
+    encrypt_credential_data, generate_salt, rotate_account_key,
 };
 pub use error::{Error, Result};
 pub use registry::AccountRegistry;
@@ -69,28 +69,50 @@ pub mod test_utils {
 #[cfg(test)]
 mod crypto_tests {
     use super::crypto::*;
+    use crate::test_utils;
+    use std::time::Duration;
+    use zeroize::Zeroizing;
 
     #[test]
-    fn test_encryption_placeholders_return_errors() {
-        // Test that all encryption functions return appropriate errors
-        assert!(derive_key_from_passphrase("test", &[0u8; 32], 1000).is_err());
-        assert!(encrypt_credential_data(&serde_json::json!({"test": "data"}), &[0u8; 32]).is_err());
-        assert!(decrypt_credential_data(&[0u8; 32], &[0u8; 32]).is_err());
-        assert!(generate_salt().is_err());
-        assert!(rotate_account_key(&[0u8; 32], &[0u8; 32], &[0u8; 32]).is_err());
+    fn test_encrypt_decrypt_round_trip() {
+        let log = test_utils::setup_test_logging("crypto_round_trip");
+        std::fs::write(&log, "round trip start\n").unwrap();
+
+        let payload = serde_json::json!({"token": "abc123", "user": "test"});
+        let encrypted = encrypt_credential_data(&payload, "passphrase", None).unwrap();
+        let decrypted = decrypt_credential_data(&encrypted, "passphrase").unwrap();
+
+        assert_eq!(payload, decrypted);
+        assert!(log.exists());
     }
 
     #[test]
-    fn test_key_cache_basic_functionality() {
-        let mut cache = KeyCache::new();
+    fn test_tamper_detection() {
+        let log = test_utils::setup_test_logging("crypto_tamper_detection");
+        let payload = serde_json::json!({"token": "abc123"});
+        let mut encrypted = encrypt_credential_data(&payload, "passphrase", None).unwrap();
 
-        // Should return None for non-existent keys
-        assert!(cache.get_key("nonexistent").is_none());
+        // Flip a byte in the ciphertext section of the envelope
+        let pos = encrypted.len() / 2;
+        encrypted[pos] ^= 0b0000_0001;
 
-        // Should store and retrieve keys (placeholder implementation)
-        cache.store_key("test".to_string(), vec![1, 2, 3]);
-        assert!(cache.get_key("test").is_none()); // Will be None until implemented
+        let result = decrypt_credential_data(&encrypted, "passphrase");
+        assert!(result.is_err());
+        assert!(log.exists());
+    }
 
-        cache.clear_expired_keys(); // Should not panic
+    #[test]
+    fn test_key_cache_timeout_and_refresh() {
+        let mut cache = KeyCache::with_ttl(Duration::from_millis(50));
+        let key = Zeroizing::new(vec![9u8; 32]);
+        cache.store_key("acct".into(), key.clone());
+
+        // First fetch succeeds
+        assert!(cache.get_key("acct").is_some());
+
+        // After TTL expires, key should be evicted
+        std::thread::sleep(Duration::from_millis(60));
+        cache.clear_expired_keys();
+        assert!(cache.get_key("acct").is_none());
     }
 }

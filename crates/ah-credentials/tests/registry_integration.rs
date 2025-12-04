@@ -23,6 +23,7 @@ async fn test_registry_full_lifecycle() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -129,6 +130,7 @@ async fn test_registry_error_cases() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -174,6 +176,7 @@ async fn test_registry_with_aliases() {
         storage_path: Some(temp_dir.path().to_path_buf()),
         default_accounts: HashMap::new(),
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };
@@ -232,6 +235,7 @@ async fn test_default_account_for_agent() {
         storage_path: None,
         default_accounts,
         auto_verify: Default::default(),
+        crypto: Default::default(),
         base_config_dir: None,
         ah_home_override: None,
     };

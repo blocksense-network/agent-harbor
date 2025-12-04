@@ -23,6 +23,10 @@ pub struct CredentialsConfig {
     #[serde(default)]
     pub auto_verify: AutoVerifyConfig,
 
+    /// Cryptography tunables (Argon2 + cache TTL)
+    #[serde(default)]
+    pub crypto: CryptoTunables,
+
     /// Base configuration directory (resolved by config-core)
     /// This is set when extracting from resolved configuration
     #[serde(skip)]
@@ -44,6 +48,53 @@ pub struct AutoVerifyConfig {
     /// Interval for background verification (in seconds)
     /// None means no background verification
     pub interval: Option<u64>,
+}
+
+/// Cryptography tuning options surfaced via config
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub struct CryptoTunables {
+    /// Argon2 memory cost in KiB (default 64 MiB)
+    #[serde(default = "CryptoTunables::default_memory_kib")]
+    pub memory_kib: u32,
+
+    /// Argon2 iterations/time cost (default 3)
+    #[serde(default = "CryptoTunables::default_iterations")]
+    pub iterations: u32,
+
+    /// Argon2 parallelism (lanes) (default 1)
+    #[serde(default = "CryptoTunables::default_parallelism")]
+    pub parallelism: u32,
+
+    /// Session cache TTL in seconds (default 900s = 15m)
+    #[serde(default = "CryptoTunables::default_cache_ttl_secs")]
+    pub cache_ttl_secs: u64,
+}
+
+impl Default for CryptoTunables {
+    fn default() -> Self {
+        Self {
+            memory_kib: crate::crypto::DEFAULT_MEMORY_KIB,
+            iterations: crate::crypto::DEFAULT_ITERATIONS,
+            parallelism: crate::crypto::DEFAULT_PARALLELISM,
+            cache_ttl_secs: crate::crypto::DEFAULT_CACHE_TTL.as_secs(),
+        }
+    }
+}
+
+impl CryptoTunables {
+    const fn default_memory_kib() -> u32 {
+        crate::crypto::DEFAULT_MEMORY_KIB
+    }
+    const fn default_iterations() -> u32 {
+        crate::crypto::DEFAULT_ITERATIONS
+    }
+    const fn default_parallelism() -> u32 {
+        crate::crypto::DEFAULT_PARALLELISM
+    }
+    const fn default_cache_ttl_secs() -> u64 {
+        crate::crypto::DEFAULT_CACHE_TTL.as_secs()
+    }
 }
 
 impl CredentialsConfig {
@@ -118,6 +169,23 @@ impl CredentialsConfig {
     pub fn default_account_for_agent(&self, agent: &str) -> Option<&str> {
         self.default_accounts.get(agent).map(|s| s.as_str())
     }
+
+    /// Build KDF parameters from tunables, generating a fresh salt.
+    pub fn kdf_params(&self) -> crate::error::Result<crate::crypto::KdfParams> {
+        crate::crypto::KdfParams::new(
+            self.crypto.memory_kib,
+            self.crypto.iterations,
+            self.crypto.parallelism,
+            None,
+        )
+    }
+
+    /// Build a key cache honoring configured TTL
+    pub fn key_cache(&self) -> crate::crypto::KeyCache {
+        crate::crypto::KeyCache::with_ttl(std::time::Duration::from_secs(
+            self.crypto.cache_ttl_secs,
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -132,6 +200,7 @@ mod tests {
             storage_path: Some("/custom/path".into()),
             default_accounts: HashMap::new(),
             auto_verify: Default::default(),
+            crypto: Default::default(),
             base_config_dir: None,
             ah_home_override: None,
         };
@@ -159,6 +228,7 @@ mod tests {
             storage_path: None,
             default_accounts,
             auto_verify: Default::default(),
+            crypto: Default::default(),
             base_config_dir: None,
             ah_home_override: None,
         };
