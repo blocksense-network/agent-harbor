@@ -185,11 +185,28 @@ def main() -> int:
     else:
         session_root = Path(tempfile.mkdtemp(prefix="agentfs-user-restart-", dir=REPO_ROOT / "logs"))
 
+    # Choose a Unix socket path that fits within the kernel's SUN_LEN limit (~108 bytes).
+    # Long repository paths can exceed this, so fall back to /tmp with a short name.
+    def choose_socket_path() -> Path:
+        env_sock = os.environ.get("AGENTFS_USER_SOCKET")
+        if env_sock:
+            return Path(env_sock)
+        default = session_root / "agentfs.sock"
+        if len(str(default)) <  ninety_limit:
+            return default
+        fd, tmp_path = tempfile.mkstemp(prefix="agentfs-sock-", dir="/tmp")
+        os.close(fd)
+        os.unlink(tmp_path)
+        return Path(tmp_path)
+
+    ninety_limit = 90  # leave headroom under 108 (SUN_LEN) for Linux abstract/path sockets
+    socket_path = choose_socket_path()
+
     paths = SessionPaths(
         root=session_root,
         runtime_dir=session_root / "runtime",
         mount_point=session_root / "mnt",
-        socket_path=session_root / "agentfs.sock",
+        socket_path=socket_path,
         log_dir=session_root,
         workspace=session_root / "workspace",
     )
