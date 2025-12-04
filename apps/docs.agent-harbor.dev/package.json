@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.17",
-    "next": "^16.0.3",
+    "next": "16.0.7",
     "nextra": "^4.6.0",
     "nextra-theme-docs": "^4.6.0",
     "postcss": "^8.5.6",
