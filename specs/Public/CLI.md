@@ -81,7 +81,7 @@ Shell completions are provided via the `ah shell-completion` command group. They
 
 ### Subcommands
 
-#### 1) TUI
+### 1) TUI
 
 - `ah` or `ah tui [--multiplexer <tmux|zellij|screen|auto>] [--attach] [--new] [--remote-server <NAME|URL>]` — Auto-attaches to or launches the configured multiplexer session, then starts the TUI dashboard within it. See [TUI-PRD](TUI-PRD.md) for full UI details and flows.
 - `ah tui dashboard [--multiplexer <tmux|zellij|screen>] [--remote-server <NAME|URL>]` — Launches the TUI dashboard directly (for use within multiplexer windows).
@@ -92,23 +92,29 @@ The default value of the `tui.multiplexer` configuration value is `auto` which a
 
 When multiplexer is set to a specific value, `ah tui` attaches to an existing AH session of the specified multiplexer or launches a new one. Specifying the `--new` flag forces the creation of a new session. Specifying `--attach` results in an error when an existing session is not present.
 
-#### 2) Tasks
+### 2) Tasks
 
-```
+#### ah task
+
+```text
 ah task [OPTIONS] [BRANCH_NAME]
 
-Note: `[BRANCH_NAME]` is optional. When omitted, behavior follows the flow in this spec: if already on an agent branch, a follow‑up task is recorded; otherwise a new branch name is required (via flag or prompt unless `--non-interactive`).
+DESCRIPTION
+  Create or continue an agent task in the current or specified repository. When
+  [BRANCH_NAME] is omitted, behavior follows this spec: if already on an agent
+  branch, a follow‑up task is recorded; otherwise a new branch name is required
+  (via flag or prompt unless --non-interactive).
 
-OPTIONS:
+OPTIONS
   --prompt <TEXT>                    Use TEXT as the task prompt
   --prompt-file <FILE>               Read task prompt from FILE
   --repo <PATH|URL>                  Target repository path or URL
   --branch <NAME>                    Branch name for the task
-  --agent <TYPE>[@VERSION]           Agent type and optional version (can be specified multiple times)
-  --model <NAME>                     LLM model to use (applies ot the last --agent parameter)
-  --instances <N>                    Number of agent instances (applies to the last --agent parameter)
+  --agent <TYPE>[@VERSION]           Agent type and optional version (repeatable)
+  --model <NAME>                     LLM model for the last --agent
+  --instances <N>                    Instance count for the last --agent
   --sandbox <local|devcontainer|vm|disabled>
-                                      Sandbox profile to use
+                                     Sandbox profile to use
   --devcontainer <PATH|TAG>          Devcontainer path or image/tag
   --labels k=v ...                   Key-value labels for the task
   --delivery <pr|branch|patch>       Delivery method for results
@@ -135,7 +141,7 @@ Notes:
 - Delivery: `--delivery pr` requires `--target-branch` and an explicit push to a configured remote (non-interactive requires `--push-to-remote true`). `--delivery patch` never pushes; branch delivery prompts unless push intent is provided.
 - Notifications default to `yes` and propagate to spawned task managers. `--follow` triggers a monitoring hand-off (TUI/WebUI per `ui` config) focused on the newly created session.
 
-#### Multiple Agent Support
+##### Multiple Agent Support
 
 The `--agent` flag can be supplied more than once to launch multiple agents working in parallel in isolated FS branches (see [FS-Snapshots-Overview](../Public/FS Snapshots/FS-Snapshots-Overview.md)). Each `--agent` parameter specifies a different agent type that will run concurrently on the same task.
 
@@ -154,7 +160,7 @@ The `--agent` flag can be supplied more than once to launch multiple agents work
 
 This enables sophisticated workflows where different AI agents can collaborate on the same task, each bringing their unique strengths to different aspects of the work.
 
-#### Cloud Agent Support
+##### Cloud Agent Support
 
 See [Cloud-Automation.status.md](Cloud-Automation.status.md) for the dedicated implementation roadmap covering browser automation workers, secure tunnels, and provider-specific adapters.
 
@@ -206,7 +212,7 @@ Behavior overview:
 - Sandbox/runtime: Local runs honor `--sandbox`: `devcontainer` (when available), `local` (default, process sandbox/profile using namespaces/seccomp on Linux or Seatbelt profiles on macOS), or `disabled` (policy‑gated, direct host process execution). See [Sandbox-Profiles](Sandbox-Profiles.md) and [FS-Snapshots-Overview](../Public/FS Snapshots/FS-Snapshots-Overview.md).
 - Target branch: `--target-branch` specifies the branch where agent results should be delivered/pushed (used with `--delivery branch` or `--delivery pr` modes).
 
-#### Preserved `agent-task` Behaviors
+##### Preserved `agent-task` Behaviors
 
 The `ah task` command preserves and extends the core functionality of the existing `agent-task` command. The preserved behavior is implemented in the following Ruby modules:
 
@@ -464,7 +470,7 @@ Push to default remote? [Y/n]:
   - Any interactive confirmation (e.g., push prompt) MUST abort with exit code 10 unless the corresponding flag (`--push-to-remote` or `--yes`) is provided.
   - Editor launch is disallowed; the user MUST provide `--prompt` or `--prompt-file`. Otherwise, exit code 10.
 
-#### Exit Codes
+##### Exit Codes
 
 The `ah task` command returns the following exit codes:
 
@@ -482,16 +488,16 @@ The `ah task` command returns the following exit codes:
 | 9         | Browser automation error | Browser unavailable, automation script failure  |
 | 10        | Interactive required     | `--non-interactive` used but user input needed  |
 
-#### Notifications System
+##### Notifications System
 
 The `--notifications` option (default: "yes") controls whether OS-level notifications are emitted when tasks complete.
 The behavior is defined in the [Handling-AH-URL-Scheme](Handling-AH-URL-Scheme.md) document.
 
-#### Agent Execution Architecture
+##### Agent Execution Architecture
 
 When agents are spawned, the execution follows this detailed process:
 
-##### Local Agent Execution
+###### Local Agent Execution
 
 1. **SQLite Recording**: Agent spawn details are immediately recorded in the local SQLite database with session metadata
 2. **Thin Wrapper Process**: Local agents are executed via `ah agent record` command that:
@@ -504,7 +510,7 @@ When agents are spawned, the execution follows this detailed process:
    - Agent-specific completion signals
 4. **Result Storage**: All outputs, logs, and artifacts are stored in the SQLite database
 
-##### Cloud Agent Execution
+###### Cloud Agent Execution
 
 See the implementation roadmap in [Cloud-Automation.status.md](Cloud-Automation.status.md) for detailed milestones covering browser automation workers, access-point tunnels, and CLI integration.
 
@@ -518,7 +524,7 @@ See the implementation roadmap in [Cloud-Automation.status.md](Cloud-Automation.
    - **TUI Integration**: Launch `ah tui` interface to monitor cloud agent progress alongside local activities
 3. **Unified Recording**: Cloud monitoring processes are recorded using the same `ah agent record` mechanism as local agents
 
-##### Notification and Result Delivery
+###### Notification and Result Delivery
 
 When tasks complete:
 
@@ -535,12 +541,17 @@ When tasks complete:
 
 3. **Cross-Platform Support**: The notification system works across all supported platforms with appropriate fallbacks for systems without native notification support.
 
-#### 3) Sessions
+### 3) Sessions
 
-```
+#### ah session list
+
+```text
 ah session list [OPTIONS]
 
-OPTIONS:
+DESCRIPTION
+  List sessions, optionally filtered by status, workspace, or repository.
+
+OPTIONS
   --status <...>              Filter by session status
   --workspace <...>           Filter by workspace
   --repo <...>                Filter by repository
@@ -555,100 +566,137 @@ SESSION IDENTIFIERS:
 - If still ambiguous (multiple sessions with same `<repo>/<branch_name>`), numeric suffix: `<repo>/<branch_name>.<N>` (N starts at 1).
 - `ah session list` includes repo name and creation time; output is sorted by creation time (most recent first).
 
-```
+#### ah session attach
+
+```text
 ah session attach <SESSION_ID>
 
-DESCRIPTION: Attaches to the terminal multiplexer started for this session.
+DESCRIPTION
+  Attach to the terminal multiplexer started for this session.
 ```
 
-```
+#### ah session run
+
+```text
 ah session run <SESSION_ID> <PROCESS> [ARGS...]
 
-DESCRIPTION: Launch a process (e.g. VS Code, Debugger, etc) inside the session namespace,
-             so you can inspect the state of the filesystem, the running processes, etc.
+DESCRIPTION
+  Launch a process (e.g., VS Code, debugger) inside the session namespace to
+  inspect the filesystem and running processes safely.
 
-PROCESS: Process to launch inside session (e.g., vscode, debugger)
-ARGS:    Arguments to pass to the process
+ARGS
+  PROCESS   Process to launch (e.g., vscode, debugger)
+  ARGS      Arguments to pass to the process
 ```
 
-```
+#### ah session logs
+
+```text
 ah session logs <SESSION_ID> [OPTIONS]
 
-OPTIONS:
-  -f                         Follow log output
-  --tail <N>                 Show last N lines
+DESCRIPTION
+  Stream or tail session logs.
+
+OPTIONS
+  -f           Follow log output
+  --tail <N>   Show last N lines
 ```
 
-```
+#### ah session pause
+
+```text
 ah session pause <SESSION_ID>
+
+DESCRIPTION
+  Pause a running session.
 ```
 
-```
+#### ah session resume
+
+```text
 ah session resume <SESSION_ID> [PROMPT]
+
+DESCRIPTION
+  Resume a paused session; if PROMPT is omitted, uses "Please continue".
 ```
 
-PROMPT behavior: When omitted, the session is resumed with the prompt "Please continue".
+#### ah session cancel
 
-```
+```text
 ah session cancel <SESSION_ID>
+
+DESCRIPTION
+  Cancel a running session.
 ```
 
-```
+#### ah session files
+
+```text
 ah session files <SESSION_ID> [OPTIONS]
 
-DESCRIPTION: List all files modified during the specified session.
+DESCRIPTION
+  List files for the session workspace (subject to server capabilities).
 
-OPTIONS:
+OPTIONS
   --status <added|modified|deleted|renamed>  Filter by file status
-  --path <PATTERN>                          Filter by file path (supports wildcards)
-  --json                                    Output in JSON format
+  --path <PATTERN>                           Filter by file path (supports wildcards)
+  --json                                     Output in JSON format
 
-ARGUMENTS:
-  SESSION_ID                                Session identifier
+ARGUMENTS
+  SESSION_ID                                 Session identifier
+```
 
 BEHAVIOR:
+
 - Lists all files that were modified during the agent session
 - Shows file status, lines added/removed, and modification timestamps
 - Supports filtering and JSON output for scripting
-```
 
-```
+#### ah session diff
+
+```text
 ah session diff <SESSION_ID> [FILE_PATH] [OPTIONS]
 
-DESCRIPTION: Show file diffs for the specified session or individual file.
+DESCRIPTION
+  Show file diffs for the specified session or individual file.
 
-OPTIONS:
-  --context <N>                             Number of context lines (default: 3, max: 10)
-  --full                                    Include full file content instead of just diff
-  --format <unified|split|html>             Diff format (default: unified)
-  --files <FILE1,FILE2,...>                 Specific files to include (default: all modified files)
-  --json                                    Output in JSON format
+OPTIONS
+  --context <N>                   Number of context lines (default: 3, max: 10)
+  --full                          Include full file content instead of just diff
+  --format <unified|split|html>   Diff format (default: unified)
+  --files <FILE1,FILE2,...>       Specific files to include (default: all modified files)
+  --json                          Output in JSON format
 
-ARGUMENTS:
-  SESSION_ID                                Session identifier
-  FILE_PATH                                 Optional specific file path
+ARGUMENTS
+  SESSION_ID                      Session identifier
+  FILE_PATH                       Optional specific file path
+```
 
 BEHAVIOR:
+
 - Shows unified diff format by default with configurable context lines
 - Supports showing diffs for all modified files or specific files
 - Can display full file content when --full is specified
 - Supports HTML format for web integration
-```
 
-```
+#### ah session snapshots
+
+```text
 ah session snapshots <SESSION_ID> [OPTIONS]
 
-DESCRIPTION: List all filesystem snapshots for the session.
+DESCRIPTION
+  List all filesystem snapshots for the session.
 
-OPTIONS:
-  --format <table|json>             Output format (default: table)
-  --json                            Output in JSON format
+OPTIONS
+  --format <table|json>   Output format (default: table)
+  --json                  Output in JSON format
+```
 
 BEHAVIOR:
+
 - Lists all available filesystem snapshots for the session
 - Shows snapshot metadata including size, creation time, and usability for branching
 - Provides detailed information for snapshot management and cleanup
-```
 
 Defaults: When `<SESSION_ID>` is omitted from `logs`, `attach`, `pause`, `resume`, `cancel`, `files`, `diff`, and `snapshots`, the CLI targets the most recently launched session.
 
@@ -661,43 +709,58 @@ Remote sessions:
 - When a session runs on another machine (VM or remote host), the REST service returns SSH connection details. `ah attach` uses these to open a remote multiplexer session (e.g., `ssh -t host tmux attach -t <name>`), or zellij/screen equivalents.
 - Connectivity when hosts lack public IPs: SSH over HTTP CONNECT via access points, with optional client‑side relay in hybrid fleets. See [Multi‑OS Testing](Multi-OS-Testing.md) and [Can SSH work over HTTPS?](../Research/Can-SSH-work-over-HTTPS.md).
 
-#### 5) Repositories and Projects
+### 5) Repositories and Projects
 
-```
+#### ah repo list
+
+```text
 ah repo list
+
+DESCRIPTION
+  List repositories. Local mode reads recent usage; remote mode returns workspaces from the server.
 ```
 
-Local: from recent usage; REST: from server workspaces.
+#### ah repo add
 
-```
+```text
 ah repo add <PATH|URL>
+
+DESCRIPTION
+  Add a repository path or URL to the workspace (local only by default).
 ```
 
-Local only by default.
+#### ah repo remove
 
-```
+```text
 ah repo remove <PATH|URL>
+
+DESCRIPTION
+  Remove a repository path or URL from the workspace (local; prompts for confirmation).
 ```
 
-Local; protected confirm.
+#### ah workspace list
 
-```
+```text
 ah workspace list
+
+DESCRIPTION
+  List workspaces. Local mode lists local workspace groups; remote mode lists server-defined workspaces. When `--agent codex-cloud` is specified, the list returns workspaces from the Codex Cloud service.
 ```
 
-Workspaces represent named collections of repositories. In local mode, a workspace is a logical grouping stored in local state (workspace name plus a list of repository paths). In server mode, workspaces are defined by admins and contain curated repository URLs. Commands operate against the selected workspace when provided.
+#### ah workspace create
 
-When the `codex-cloud` agent is specified with `--agent`, the list returns the workspaces defined in the Codex Cloud service.
-
-```
+```text
 ah workspace create [OPTIONS] <DIR_OR_URL>...
 
-OPTIONS:
-  --name <NAME>                 Workspace name (required in local mode)
-  --description <TEXT>          Optional description
+DESCRIPTION
+  Create a workspace and populate it with repository paths or URLs.
 
-ARGUMENTS:
-  DIR_OR_URL                    One or more repository directories or git URLs
+OPTIONS
+  --name <NAME>         Workspace name (required in local mode)
+  --description <TEXT>  Optional description
+
+ARGUMENTS
+  DIR_OR_URL            One or more repository directories or git URLs
 ```
 
 Behavior:
@@ -705,18 +768,22 @@ Behavior:
 - Local mode: creates/updates a named workspace in local state with the provided repositories; directories are validated; git URLs are recorded for future cloning.
 - Server mode: proxies to REST to create a workspace; repository URLs must be reachable by the server.
 
-#### 5a) Repo Init & Instructions
+### 5a) Repo Init & Instructions
 
-```
+#### ah repo init
+
+```text
 ah repo init [OPTIONS] [PROJECT-DESCRIPTION]
 
-OPTIONS:
+DESCRIPTION
+  Initialize a repository with dev environment scaffolding and agent instructions (agent-driven).
+
+OPTIONS
   --template <url|github-slug>
   --vcs <git|hg|bzr|fossil>                Version control system (default: git)
   --devenv <nix|nix-shell|devbox|devenv|spack|mise|flox|guix|conda|bazel|buck2|pants|please|brioche|custom|none>
                                            Specifies how the development environment will be managed (default: nix)
-  --pin-toolchains <yes|no>                Relevant only when devenv is set to 'none'.
-                                           Enables lighter language-specific toolchain pinning.
+  --pin-toolchains <yes|no>                Relevant only when devenv is set to 'none'. Enables lighter language-specific toolchain pinning.
   --direnv <yes|no>                        Enable direnv (default: yes)
   --devcontainer <yes|no>                  Enable devcontainer (default: yes)
   --task-runner <just|make|...>            Task runner tool (default: just)
@@ -724,7 +791,8 @@ OPTIONS:
                                            Supported agent types (default: all)
   --dynamic-agent-instructions <yes|no>    Creates agent instructions files from a single file stored
                                            in `.agents/dynamic-instructions.md` (default: yes)
-ARGUMENTS:
+
+ARGUMENTS
   PROJECT-DESCRIPTION                      Description of the project
 ```
 
@@ -743,7 +811,7 @@ Behavior and defaults:
 
 The whole repo initialization is performed as an agentic task. The `ah repo` tool combines automated steps with prompt engineering to adapt to the specifics of the user project.
 
-### Repo init templates
+#### Repo init templates
 
 1. The provided template may include a slot for the project description. When a slot description is not provided, the project description follows the text in the template.
 2. The provided template declares variables that the user can provide as command-line flags. The flags listed above are merely the variables of the default template.
@@ -768,10 +836,15 @@ ah repo init --task-runner just --deps nix --devcontainer yes --direnv yes "CLI 
 ah repo init --vcs hg --devenv none --devcontainer no --direnv no  # no dev env scaffolding
 ```
 
-```
+#### ah repo instructions create
+
+```text
 ah repo instructions create [OPTIONS]
 
-OPTIONS:
+DESCRIPTION
+  Generate or update agent instruction files for an existing repository.
+
+OPTIONS
   --dynamic-agent-instructions <yes|no>    Creates agent instructions files from a single file stored
                                            in `.agents/dynamic-instructions.md` (default: yes)
   --supported-agents <all|codex|claude|cursor|windsurf|zed|copilot|...>
@@ -786,20 +859,25 @@ Output and exit codes:
 
 - Mirrors `repo init` keys where applicable; adds `reviewFindings` list in `--json` mode.
 
-```
+#### ah repo instructions link
+
+```text
 ah repo instructions link [OPTIONS] [SOURCE-FILE]
 
-DESCRIPTION: Create relative symlinks from per‑agent instruction paths to a single source file.
+DESCRIPTION
+  Create relative symlinks from per‑agent instruction paths to a single source file.
 
-OPTIONS:
+OPTIONS
   --supported-agents <all|codex|claude|cursor|windsurf|zed|copilot|...>
                                            Supported agent types (default: all)
   --force                                  Force overwrite existing symlinks
   --dry-run                                Show what would be done without making changes
 
-ARGUMENTS:
+ARGUMENTS
   SOURCE-FILE                              Source instruction file (default: AGENTS.md)
 ```
+
+````
 
 Behavior:
 
@@ -818,13 +896,18 @@ Notes:
 
 - In `repo init` and `repo instructions create`, this symlink step is executed automatically after [AGENTS.md](../AGENTS.md) exists.
 
-```
+#### ah repo check
+
+```text
 ah repo check [OPTIONS]
 
-OPTIONS:
+DESCRIPTION
+  Validate repository state against configuration and best practices.
+
+OPTIONS
   --supported-agents <all|codex|claude|cursor|windsurf|zed|copilot|...>
                                   Supported agent types (default: all)
-```
+````
 
 Behavior:
 
@@ -837,16 +920,18 @@ Output and exit codes:
 
 - Human‑readable summary with per‑check status; `--json` emits a structured report: `{ instructions: { ok, missing:[], extra:[] }, devcontainer: { ok, health: { passed, details } }, devenv: { ok, details } }`. Non‑zero exit if any critical check fails.
 
-```
+#### ah health
 
+```text
 ah health [OPTIONS]
 
-OPTIONS:
---supported-agents <all|codex|claude|cursor|windsurf|zed|copilot|...>
-Supported agent types (default: all)
---with-credentials
-Include sensitive credential information in output (WARNING: exposes tokens/secrets)
+DESCRIPTION
+  Perform diagnostic health checks for configured agent tools.
 
+OPTIONS
+  --supported-agents <all|codex|claude|cursor|windsurf|zed|copilot|...>
+                               Supported agent types (default: all)
+  --with-credentials           Include sensitive credential information in output (WARNING: exposes tokens/secrets)
 ```
 
 Behavior:
@@ -863,7 +948,7 @@ Output and exit codes:
 
 - The command also prints the detected terminal environment and the availability of supported terminal multiplexers.
 
-#### 6) Runtimes, Agents, Hosts (capabilities)
+### 6) Runtimes, Agents, Hosts (capabilities)
 
 ```
 
@@ -887,24 +972,29 @@ REST-backed: proxies to `/api/v1/agents`, `/api/v1/runtimes` and `/api/v1/execut
 
 Useful for inspecting the capabilities of the remote server.
 
-#### 7) Config (Git-like)
+### 7) Config (Git-like)
 
-```
+#### ah config
+
+```text
 ah config [OPTIONS] [KEY [VALUE]]
 
-ARGUMENTS:
+DESCRIPTION
+  Get, set, or list configuration values (Git-style layered scopes).
+
+ARGUMENTS
   KEY                          Configuration key to get or set (optional)
   VALUE                        Value to set for the key (optional)
 
-OPTIONS:
-  --system                    Target system-wide configuration
-  --user                      Target user-level configuration (default)
-  --repo                      Target repository/project-level configuration
-  --repo-user                 Target repository user-specific configuration
-  --show-origin               Show where each setting comes from (when listing)
-  --explain                   Show detailed explanation of the key (when getting)
-  --delete                    Delete the specified configuration key
-  --enforced                  Enforce this setting (system scope only, when setting)
+OPTIONS
+  --system                     Target system-wide configuration
+  --user                       Target user-level configuration (default)
+  --repo                       Target repository/project-level configuration
+  --repo-user                  Target repository user-specific configuration
+  --show-origin                Show where each setting comes from (when listing)
+  --explain                    Show detailed explanation of the key (when getting)
+  --delete                     Delete the specified configuration key
+  --enforced                   Enforce this setting (system scope only, when setting)
 ```
 
 **Usage Patterns:**
@@ -916,34 +1006,73 @@ OPTIONS:
 
 **Examples:**
 
-```bash
-# List all configuration
+#### ah config
+
+```text
 ah config
 
-# Get a specific setting
-ah config ui.theme
+DESCRIPTION
+  List all configuration settings.
+```
 
-# Set a configuration value
-ah config ui.theme dark
+#### ah config <KEY>
 
-# Delete a configuration key
-ah config codex-workspace --delete
+```text
+ah config <KEY>
 
-# Show configuration with origins
+DESCRIPTION
+  Get the value of a configuration key.
+```
+
+#### ah config <KEY> <VALUE>
+
+```text
+ah config <KEY> <VALUE>
+
+DESCRIPTION
+  Set a configuration key to a value.
+```
+
+#### ah config <KEY> --delete
+
+```text
+ah config <KEY> --delete
+
+DESCRIPTION
+  Delete a configuration key.
+```
+
+#### ah config --show-origin
+
+```text
 ah config --show-origin
 
-# Set with specific scope
-ah config --user ui.theme dark
+DESCRIPTION
+  Show configuration settings with their origin files.
+```
+
+#### ah config --user <KEY> <VALUE>
+
+```text
+ah config --user <KEY> <VALUE>
+
+DESCRIPTION
+  Set a configuration key at user scope.
 ```
 
 Mirrors [Configuration.md](Configuration.md) including provenance, precedence, and Windows behavior.
 
-#### 8) Service and WebUI (local developer convenience)
+### 8) Service and WebUI (local developer convenience)
 
-```
+#### ah webui
+
+```text
 ah webui [OPTIONS]
 
-OPTIONS:
+DESCRIPTION
+  Launch the local WebUI (starts an access point daemon when no remote server is provided).
+
+OPTIONS
   --bind <ADDRESS>            Bind address (default: 127.0.0.1)
   --port <P>                  Port to serve WebUI on
   --max-concurrent-tasks <N>  Maximum concurrent tasks (default: auto-detect)
@@ -954,97 +1083,160 @@ BEHAVIOR:
 - If `--remote-server` is not provided, `ah webui` starts a local access point daemon
   in‑process (same code path as `ah agent access-point`) and points the WebUI at it.
 
-#### 9) Shell Completion
+### 9) Shell Completion
 
-```
+#### ah shell-completion install
+
+```text
 ah shell-completion install [--shell <bash|zsh|fish|pwsh>] [--dest <DIR>] [--force]
 
-DESCRIPTION: Install the completion script for your shell.
+DESCRIPTION
+  Install the completion script for your shell.
 
-OPTIONS:
+OPTIONS
   --shell <SHELL>               Shell type (bash|zsh|fish|pwsh). Defaults to detection from $SHELL
   --dest <DIR>                  Install directory. Defaults to a standard per-shell user location
   --force                       Overwrite existing file if present
+```
 
 DEFAULT INSTALL LOCATIONS:
-  bash: ~/.local/share/bash-completion/completions/ah
-  zsh:  ~/.zsh/completions/_ah  (ensures fpath contains ~/.zsh/completions)
-  fish: ~/.config/fish/completions/ah.fish
-  pwsh: Appends to $PROFILE to dot-source the generated script on startup
+bash: ~/.local/share/bash-completion/completions/ah
+zsh: ~/.zsh/completions/\_ah (ensures fpath contains ~/.zsh/completions)
+fish: ~/.config/fish/completions/ah.fish
+pwsh: Appends to $PROFILE to dot-source the generated script on startup
 
 NOTES:
-  - Detects Homebrew bash completion dirs on macOS when possible; falls back to user dir.
-  - Creates parent directories when needed.
-```
 
-```
+- Detects Homebrew bash completion dirs on macOS when possible; falls back to user dir.
+- Creates parent directories when needed.
+
+#### ah shell-completion script
+
+```text
 ah shell-completion script [SHELL]
 
-DESCRIPTION: Print the completion script to stdout.
+DESCRIPTION
+  Print the completion script to stdout.
 
-ARGUMENTS:
+ARGUMENTS
   SHELL                         Shell type (bash|zsh|fish|pwsh). When omitted, detected from $SHELL
+```
 
 USAGE:
-  # Bash (per-user)
-  mkdir -p ~/.local/share/bash-completion/completions && \
-  ah shell-completion script bash > ~/.local/share/bash-completion/completions/ah
 
-  # Zsh
-  mkdir -p ~/.zsh/completions && \
-  ah shell-completion script zsh > ~/.zsh/completions/_ah && \
-  echo 'fpath=(~/.zsh/completions $fpath); autoload -U compinit && compinit' >> ~/.zshrc
+```bash
+# Bash (per-user)
+mkdir -p ~/.local/share/bash-completion/completions && \
+ ah shell-completion script bash > ~/.local/share/bash-completion/completions/ah
 
-  # Fish
-  mkdir -p ~/.config/fish/completions && \
-  ah shell-completion script fish > ~/.config/fish/completions/ah.fish
+# Zsh
+mkdir -p ~/.zsh/completions && \
+ ah shell-completion script zsh > ~/.zsh/completions/_ah && \
+ echo 'fpath=(~/.zsh/completions $fpath); autoload -U compinit && compinit' >> ~/.zshrc
 
-  # PowerShell (current session)
-  ah shell-completion script pwsh | Out-String | Invoke-Expression
+# Fish
+mkdir -p ~/.config/fish/completions && \
+ ah shell-completion script fish > ~/.config/fish/completions/ah.fish
+
+# PowerShell (current session)
+ah shell-completion script pwsh | Out-String | Invoke-Expression
+```
 
 NOTES:
-  - Scripts are generated from the CLI definition (`clap_complete`).
-```
 
-```
+- Scripts are generated from the CLI definition (`clap_complete`).
+
+#### ah shell-completion complete
+
+```text
 ah shell-completion complete [--shell <SHELL>] [--line <LINE>] [--cursor <N>]
 
-DESCRIPTION: Emit dynamic completion suggestions for the current input line.
+DESCRIPTION
+  Emit dynamic completion suggestions for the current input line.
 
-OPTIONS:
+OPTIONS
   --shell <SHELL>               Shell type (bash|zsh|fish|pwsh). Defaults to detection
   --line <LINE>                 Full command line buffer. Defaults to shell-provided env
   --cursor <N>                  Cursor position in bytes. Defaults to shell-provided env
+```
 
 BEHAVIOR:
-  - Outputs one suggestion per line. The installed shell script invokes this command
-    to compute context-aware completions (e.g., repo branches, agents, flags, paths).
-  - When flags are omitted, arguments are inferred from standard shell env vars:
-      bash: COMP_LINE, COMP_POINT
-      zsh:  BUFFER, CURSOR
-      fish: commandline --current-process --tokenize / --cursor
-      pwsh: $args or $PSBoundParameters as wired by the script
+
+- Outputs one suggestion per line. The installed shell script invokes this command
+  to compute context-aware completions (e.g., repo branches, agents, flags, paths).
+- When flags are omitted, arguments are inferred from standard shell env vars:
+  bash: COMP_LINE, COMP_POINT
+  zsh: BUFFER, CURSOR
+  fish: commandline --current-process --tokenize / --cursor
+  pwsh: $args or $PSBoundParameters as wired by the script
 
 NOTES:
-  - Static scripts call back into this command to support dynamic algorithms when needed.
-  - The exact dynamic sources (e.g., listing branches or workspaces) are described in
-    the relevant sections of this spec (see Branch autocompletion under Tasks).
+
+- Static scripts call back into this command to support dynamic algorithms when needed.
+- The exact dynamic sources (e.g., listing branches or workspaces) are described in
+  the relevant sections of this spec (see Branch autocompletion under Tasks).
+
+#### ah acp
+
+```text
+ah acp [OPTIONS]
+
+DESCRIPTION
+  Connect to an ACP access point. For ACP endpoints, acts as a thin byte-forwarding bridge over WS/UDS/stdio. For Harbor REST servers, translates REST/SSE TaskEvents into ACP `session/update` and forwards ACP RPCs upstream.
+
+OPTIONS
+  --endpoint <URL|PATH>      Access point WS URL or UDS path (defaults to platform ACP socket path)
+  --ws                       Force WebSocket transport (overrides endpoint type)
+  --uds                      Force Unix socket transport (overrides endpoint type)
+  --remote-server <NAME|URL> Target Harbor REST server for REST→ACP bridging
+  --session <SESSION_ID>     Load and attach to an existing ACP session on startup
+  --daemonize <auto|never|disabled>
+                              Behavior when no access point is running (config key: `acp.daemonize`; default: auto)
+  --idle-timeout <DURATION>  Idle shutdown when daemonized (default: 24h; only with daemonize=auto)
 ```
 
-#### 10) Agent Utilities (`ah agent ...`)
+BEHAVIOR:
 
-- Subcommands used only in agent dev environments live under `ah agent ...`. This keeps end‑user command space clean while still scriptable for agents.
+- Endpoint resolution order: explicit transport flags → `--endpoint` → config keys (`acp.socket-path` / `acp.ws-url`) → platform default UDS path.
+- `daemonize=auto`: if no access point is running, start it in the background (prefer installer-provisioned service; otherwise double-fork/LaunchAgent/Scheduled Task/DETACHED_PROCESS), then connect; enforces idle shutdown (default 24h).
+- `daemonize=never`: run the hybrid access-point bridge inline in the `ah acp` process over stdio; no multi-client reuse—session dies with the process. If no access point is reachable, this spins up the same stdio ACP transport used by the access-point daemon.
+- `daemonize=disabled`: refuse to start a daemon; error if none is running.
+- REST bridge mode (`--remote-server`): streams REST SSE TaskEvents as ACP `session/update`; ACP RPCs become REST calls.
+- Session sharing: ACP permits multiple drivers; `--session` uses standard `session/load` to join an existing session and receives the same `session/update` stream (including echoes of its own actions). All connected clients see the same updates; no Harbor-specific policy or roles are required.
+- Motivation: a shared access point allows multiple `ah acp` invocations/clients to observe and drive the same ACP session concurrently while Harbor owns execution, edits, and snapshots.
 
+EXAMPLES (updated):
+
+```bash
+# Use local default UDS; auto-start daemon if missing
+ah acp
+
+# Connect to remote WS access point
+ah acp --endpoint wss://ah.example.com/acp/v1/connect
+
+# Bridge to REST server without daemon auto-start
+ah acp --remote-server https://ah.example.com --daemonize=disabled
+
+# Bridge to REST server without daemon auto-start
+ah acp --remote-server staging --daemonize=disabled
 ```
+
+### 10) Agent Utilities (`ah agent ...`)
+
+Subcommands used only in agent dev environments live under `ah agent ...`. This keeps end‑user command space clean while still scriptable for agents.
+
+#### ah agent access-point
+
+```text
 ah agent access-point [OPTIONS]
 
-DESCRIPTION: Run a local access point daemon for executors. The access point accepts
-             QUIC control connections from executors, exposes an HTTP CONNECT handler
-             for SSH/Mutagen tunneling, and provides the REST/SSE API for UIs and CLI.
-             When `--max-concurrent-tasks > 0`, this daemon also acts as an executor
-             on the same host (dual role).
+DESCRIPTION
+  Run a local access point daemon for executors. The access point accepts QUIC control
+  connections, exposes an HTTP CONNECT handler for SSH/Mutagen tunneling, and provides
+  the REST/SSE API for UIs and CLI. When `--max-concurrent-tasks > 0`, this daemon also
+  acts as an executor on the same host (dual role).
 
-OPTIONS:
+OPTIONS
   --bind <ADDRESS>            Bind address (default: 0.0.0.0)
   --port <P>                  Port to listen on
   --db <URL|PATH>             Database URL or path
@@ -1063,13 +1255,16 @@ BEHAVIOR:
 NOTE: The following command is part of the same daemon code path; flags select
 identity provider and optional embedded REST API.
 
-```
+#### ah agent enroll
+
+```text
 ah agent enroll [OPTIONS]
 
-DESCRIPTION: Enrolls an executor machine with an Agent Harbor access point server.
-             Once enrolled, the executor remains connected and ready to receive tasks.
+DESCRIPTION
+  Enroll an executor machine with an Agent Harbor access point server. The executor
+  stays connected and ready to receive tasks.
 
-OPTIONS (choose identity via --identity; SPIFFE is default):
+OPTIONS (choose identity via --identity; SPIFFE is default)
   --remote-server <URL>          Access point server URL (default: from config)
   --rest-api <yes|no>            Enable the REST API (default: no)
   --bind <ADDRESS>               Bind address for the REST API (default: 0.0.0.0)
@@ -1102,13 +1297,15 @@ OPTIONS (choose identity via --identity; SPIFFE is default):
   --dynamic-cert-cmd <CMD>       [exec] Command that prints PEM materials on stdout
   --dynamic-cert-ttl <DURATION>  [exec] Refresh interval (e.g., 30m)
 
-DEV‑ONLY:
+DEV‑ONLY
   --identity insecure            Dev: insecure mode (no peer verification). Not allowed in release builds unless explicitly enabled.
+```
 
 BEHAVIOR:
+
 - Exactly one `--identity` mode is active. If omitted, `spiffe` is assumed.
-- SPIFFE mode: the agent obtains and auto‑rotates its X.509 SVID from the [SPIFFE Workload API](<https://spiffe.io/docs/latest/spiffe-about/overview/>); file‑based mTLS flags are invalid.
-- Files/Vault/Exec modes: `--server-san` is required to define peer verification policy (SAN allowlist and optional SPKI pinning). When using Vault, certificates are issued from the [Vault PKI secrets engine](<https://developer.hashicorp.com/vault/docs/secrets/pki>); exec mode can wrap custom brokers.
+- SPIFFE mode: the agent obtains and auto‑rotates its X.509 SVID from the [SPIFFE Workload API](https://spiffe.io/docs/latest/spiffe-about/overview/); file‑based mTLS flags are invalid.
+- Files/Vault/Exec modes: `--server-san` is required to define peer verification policy (SAN allowlist and optional SPKI pinning). When using Vault, certificates are issued from the [Vault PKI secrets engine](https://developer.hashicorp.com/vault/docs/secrets/pki); exec mode can wrap custom brokers.
 - Insecure mode: for development only; refused unless explicitly permitted by build/config.
 - `--ssh` defaults to `enabled`; when `disabled`, CONNECT/OpenTcp to this executor is refused.
 - `--ssh-dst` specifies the exact destination enforced by the agent for `OpenTcp` (default `127.0.0.1:22`).
@@ -1116,119 +1313,63 @@ BEHAVIOR:
 When `--rest-api yes` and `--bind/--port` are set, the daemon also serves the REST API documented in [REST-Service/API.md](REST-Service/API.md). This is the same code path used by `ah agent access-point`, so enabling it effectively turns the enrolling executor into a valid `remote-server` for `ah task` clients.
 
 ACP TRANSPORT OPTIONS (access-point path):
+
 - `--acp-uds <PATH>`: Enable ACP over Unix domain socket at PATH (defaults to platform-specific standard location).
 - `--acp-ws <yes|no>`: Enable ACP over WebSocket at `/acp/v1/connect` (default: yes).
 - All ACP transports share identical JSON-RPC framing; enabling multiple transports is supported concurrently.
 
-```
+#### ah agent get-task
 
-ah acp [OPTIONS]
-
-DESCRIPTION: Connect to an ACP access point. For ACP endpoints, acts as a thin
-byte-forwarding bridge over WS/UDS/stdio. For Harbor REST servers,
-translates REST/SSE TaskEvents into ACP `session/update` and forwards
-ACP RPCs upstream.
-
-OPTIONS:
---endpoint <URL|PATH> Access point WS URL or UDS path (defaults to platform ACP socket path)
---ws Force WebSocket transport (overrides endpoint type)
---uds Force Unix socket transport (overrides endpoint type)
---remote-server <NAME|URL> Target Harbor REST server for REST→ACP bridging
---session <SESSION_ID> Load and attach to an existing ACP session on startup
---daemonize <auto|never|disabled>
-Behavior when no access point is running (config key: `acp.daemonize`; default: auto)
---idle-timeout <DURATION> Idle shutdown when daemonized (default: 24h; only with daemonize=auto)
-
-BEHAVIOR:
-
-- Endpoint resolution order: explicit transport flags → `--endpoint` → config keys (`acp.socket-path` / `acp.ws-url`) → platform default UDS path.
-- `daemonize=auto`: if no access point is running, start it in the background (prefer installer-provisioned service; otherwise double-fork/LaunchAgent/Scheduled Task/DETACHED_PROCESS), then connect; enforces idle shutdown (default 24h).
-- `daemonize=never`: run the hybrid access-point bridge inline in the `ah acp` process over stdio; no multi-client reuse—session dies with the process. If no access point is reachable, this spins up the same stdio ACP transport used by the access-point daemon.
-- `daemonize=disabled`: refuse to start a daemon; error if none is running.
-- REST bridge mode (`--remote-server`): streams REST SSE TaskEvents as ACP `session/update`; ACP RPCs become REST calls.
-- Session sharing: ACP permits multiple drivers; `--session` uses standard `session/load` to join an existing session and receives the same `session/update` stream (including echoes of its own actions). All connected clients see the same updates; no Harbor-specific policy or roles are required.
-- Motivation: a shared access point allows multiple `ah acp` invocations/clients to observe and drive the same ACP session concurrently while Harbor owns execution, edits, and snapshots.
-
-EXAMPLES (updated):
-
-```bash
-# Use local default UDS; auto-start daemon if missing
-ah acp
-
-# Connect to remote WS access point
-ah acp --endpoint wss://ah.example.com/acp/v1/connect
-
-# Bridge to REST server without daemon auto-start
-ah acp --remote-server https://ah.example.com --daemonize=disabled
-
-# Bridge to REST server without daemon auto-start
-ah acp --remote-server staging --daemonize=disabled
-```
-
-```
-
-```
-
+```text
 ah agent get-task [OPTIONS]
 
-DESCRIPTION: Prints the current task prompt for agents. When --autopush is specified,
-automatically configures VCS hooks to push changes on each commit.
-Auto-discovers repository root and supports multi-repo scenarios.
+DESCRIPTION
+  Print the current task prompt for agents. With --autopush, configure VCS hooks to push after each commit. Auto-discovers the repository root and supports multi-repo scenarios.
 
-OPTIONS:
---autopush Configure VCS hooks for automatic pushing
---agent <TYPE> Agent kind (for prompt inspection context)
---model <MODEL> Model kind (for prompt inspection context)
---repo <PATH> Repository path
-
+OPTIONS
+  --autopush              Configure VCS hooks for automatic pushing
+  --agent <TYPE>          Agent kind (for prompt inspection context)
+  --model <MODEL>         Model kind (for prompt inspection context)
+  --repo <PATH>           Repository path
 ```
 
-```
+#### ah agent get-setup-env
 
+```text
 ah agent get-setup-env [OPTIONS]
 
-DESCRIPTION: Extracts and prints environment variables from @agents-setup directives
-in the current task file(s). Processes all tasks (initial task + follow-up tasks)
-on the current agent branch, parsing @agents-setup directives to extract
-environment variables. Supports both VAR=value and VAR+=value syntax for
-setting and appending values. Merges environment variables from multiple tasks,
-with append operations combining values. Outputs in KEY=VALUE format, one per line.
-In multi-repo scenarios, auto-discovers all repositories in subdirectories and
-prefixes each repository's output with "In directory dirname:" followed by the
-environment variables. Requires being on an agent branch with a valid task file.
+DESCRIPTION
+  Extract and print environment variables from @agents-setup directives across initial and follow-up tasks. Supports VAR=value and VAR+=value syntax, merges multi-task values, and outputs KEY=VALUE per line. Auto-discovers repos in multi-repo layouts and prefixes output per repo. Requires being on an agent branch with a valid task file.
 
-OPTIONS:
---repo <PATH> Repository path
-
+OPTIONS
+  --repo <PATH>           Repository path
 ```
 
-```
+#### ah agent sandbox
 
+```text
 ah agent sandbox [OPTIONS] -- <CMD> [ARGS...]
 
-DESCRIPTION: Launches a process inside the configured sandbox profile. Supported on Linux (namespaces/seccomp) and macOS (Seatbelt profiles). Useful for testing.
+DESCRIPTION
+  Launch a process inside the configured sandbox profile (Linux namespaces/seccomp; macOS Seatbelt). Useful for testing.
 
-OPTIONS:
---type <local|devcontainer|vm> Sandbox profile (default: local).
---allow-egress <yes|no> Override default egress policy (default: no).
---allow-ingress <PORT[/PROTO]> Allow inbound tunnels on specific ports (repeatable).
---allow-containers <yes|no> Permit launching nested containers (default: no).
---allow-vms <yes|no> Permit nested virtualization inside the sandbox.
---allow-kvm <yes|no> Expose /dev/kvm (implies --allow-vms).
---mount-rw <PATH>... Additional host paths to mount writable (policy checked).
---mount-ro <PATH>... Extra read-only mounts.
---overlay <PATH>... Promote read-only paths to copy-on-write overlays.
---env <KEY=VALUE>... Inject environment variables (filtered against policy).
---timeout <DURATION> Auto-terminate sandbox after wall clock timeout.
---fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
-Filesystem snapshot provider (default: auto).
---overlay-materialization <lazy|eager|clone-eager>
-Control when files are copied from the base layer
-to the AgentFS overlay (default: lazy). Use lazy in
-controlled environments; eager/clone-eager on user
-machines where user or background activity may modify files.
---agentfs-socket <PATH> Path to existing AgentFS daemon socket (reuses existing daemon).
-
+OPTIONS
+  --type <local|devcontainer|vm>    Sandbox profile (default: local)
+  --allow-egress <yes|no>           Override default egress policy (default: no)
+  --allow-ingress <PORT[/PROTO]>    Allow inbound tunnels on specific ports (repeatable)
+  --allow-containers <yes|no>       Permit launching nested containers (default: no)
+  --allow-vms <yes|no>              Permit nested virtualization inside the sandbox
+  --allow-kvm <yes|no>              Expose /dev/kvm (implies --allow-vms)
+  --mount-rw <PATH>...              Additional host paths to mount writable (policy checked)
+  --mount-ro <PATH>...              Extra read-only mounts
+  --overlay <PATH>...               Promote read-only paths to copy-on-write overlays
+  --env <KEY=VALUE>...              Inject environment variables (policy filtered)
+  --timeout <DURATION>              Auto-terminate sandbox after wall-clock timeout
+  --fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
+                                    Filesystem snapshot provider (default: auto)
+  --overlay-materialization <lazy|eager|clone-eager>
+                                    When to copy files from base layer to AgentFS overlay (default: lazy)
+  --agentfs-socket <PATH>           Use an existing AgentFS daemon socket
 ```
 
 BEHAVIOR:
@@ -1270,48 +1411,45 @@ TODO: Verify that these align with everything described in [Sandbox-Profiles.md]
 
 See also: Local-Sandboxing-on-Linux.md for detailed semantics.
 
-```
+#### ah agent start
 
+```text
 ah agent start [OPTIONS]
 
-DESCRIPTION: Starts an agent by setting up an isolated working copy, configuring the
-chosen sandbox environment (Linux: namespaces/seccomp, macOS: Seatbelt profiles),
-and launching the coding agent software with the provided prompt. This command
-is used internally by the TUI to execute agents in the agent pane and by the REST
-server for task execution.
+DESCRIPTION
+  Start an agent by preparing an isolated working copy, configuring sandboxing, and launching the agent with the provided prompt. Used by the TUI and REST server for task execution.
 
-OPTIONS:
---agent <TYPE>[@VERSION] Agent type and optional version to use
---prompt <TEXT> Prompt text to pass to the agent (optional, required when --non-interactive is specified)
---from-snapshot <SNAPSHOT_ID> The initial file system snapshot from where the agent execution will start
---non-interactive Enable non-interactive mode (e.g., codex exec)
---output <text|text-normalized|json|json-normalized>
-Output format: text (default), text-normalized, json, or json-normalized
---llm-api <URI> Custom LLM API URI for agent backend
---llm-api-key <KEY> API key for custom LLM API
---llm-api-proxy-url <URL> LLM API proxy URL to use for routing requests
---acp-agent-cmd <CMD> When --agent acp: full command to launch an ACP agent (env: AH_ACP_AGENT_CMD)
---repo <PATH> Repository path (auto-detected if not provided)
---working-copy <auto|cow-overlay|worktree|in-place>
-Working copy mode for isolation (default: auto)
---fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
-Filesystem snapshot provider (default: auto)
---sandbox <local|devcontainer|vm|disabled>
-Sandbox profile to use (default: local)
---devcontainer <PATH|TAG> Devcontainer path or image/tag
---allow-egress <yes|no> Allow network egress from sandbox (default: no)
---allow-containers <yes|no> Permit nested containers (default: no)
---allow-vms <yes|no> Permit nested virtualization (default: no)
---allow-web-search Allow web search capabilities for agents that support it
---model <MODEL> Model to use for the agent (can be overridden by agent-specific flags)
---codex-model <MODEL> Model to use specifically for Codex agent (default: gpt-5-codex)
---claude-model <MODEL> Model to use specifically for Claude agent (default: sonnet)
---env <KEY=VALUE>... Additional environment variables for agent
---timeout <DURATION> Maximum execution time before auto-termination
---output-dir <PATH> Directory for recordings and artifacts
---follow Monitor execution and emit notifications on completion
-
-````
+OPTIONS
+  --agent <TYPE>[@VERSION]      Agent type and optional version to use
+  --prompt <TEXT>               Prompt text to pass to the agent (required with --non-interactive)
+  --from-snapshot <SNAPSHOT_ID> Snapshot to restore before starting
+  --non-interactive             Enable non-interactive mode (e.g., codex exec)
+  --output <text|text-normalized|json|json-normalized>
+                                 Output format (default: text)
+  --llm-api <URI>               Custom LLM API URI for agent backend
+  --llm-api-key <KEY>           API key for custom LLM API
+  --llm-api-proxy-url <URL>     LLM API proxy URL
+  --acp-agent-cmd <CMD>         When --agent acp: command to launch an ACP agent (env: AH_ACP_AGENT_CMD)
+  --repo <PATH>                 Repository path (auto-detected if omitted)
+  --working-copy <auto|cow-overlay|worktree|in-place>
+                                 Working copy mode for isolation (default: auto)
+  --fs-snapshots <auto|zfs|btrfs|agentfs|git|disable>
+                                 Filesystem snapshot provider (default: auto)
+  --sandbox <local|devcontainer|vm|disabled>
+                                 Sandbox profile to use (default: local)
+  --devcontainer <PATH|TAG>     Devcontainer path or image/tag
+  --allow-egress <yes|no>       Allow network egress from sandbox (default: no)
+  --allow-containers <yes|no>   Permit nested containers (default: no)
+  --allow-vms <yes|no>          Permit nested virtualization (default: no)
+  --allow-web-search            Allow web search capabilities for supported agents
+  --model <MODEL>               Model to use for the agent (overridable per agent)
+  --codex-model <MODEL>         Model for Codex agent (default: gpt-5-codex)
+  --claude-model <MODEL>        Model for Claude agent (default: sonnet)
+  --env <KEY=VALUE>...          Additional environment variables for agent
+  --timeout <DURATION>          Maximum execution time before auto-termination
+  --output-dir <PATH>           Directory for recordings and artifacts
+  --follow                      Monitor execution and emit notifications on completion
+```
 
 BEHAVIOR:
 
@@ -1416,24 +1554,24 @@ ah agent start --agent codex --llm-api-proxy-url http://localhost:18081 --prompt
 
 # Use LLM API proxy with explicit API key
 ah agent start --agent claude --llm-api-proxy-url http://localhost:18081 --llm-api-key sk-custom-key-123 --prompt "Review the code changes"
-````
-
 ```
+
+#### ah agent instructions
+
+```text
 ah agent instructions [OPTIONS] [SOURCE-FILE]
 
-DESCRIPTION: Process a dynamic agent instruction file into the final prompt text
-             that an agent will use. Expands workflow commands (see [Workflows.md](Workflows.md))
-             and consumes `@agents-setup` directives without printing them.
+DESCRIPTION
+  Process a dynamic agent instruction file into the final prompt text, expanding workflow commands (see Workflows.md) and consuming `@agents-setup` directives without printing them.
 
-OPTIONS:
+OPTIONS
   --output <FILE>                 Write processed prompt to FILE (default: stdout)
   --json                          Emit JSON { prompt, diagnostics:[], env:{} }
   --print-diagnostics <yes|no>    Also print diagnostics to stderr (default: yes)
   --cwd <PATH>                    Resolve workflows relative to PATH (default: repo root)
 
-ARGUMENTS:
-  SOURCE-FILE                     Dynamic instruction file path
-                                  (default: .agents/dynamic-instructions.md)
+ARGUMENTS
+  SOURCE-FILE                     Dynamic instruction file path (default: .agents/dynamic-instructions.md)
 ```
 
 Behavior:
@@ -1454,61 +1592,72 @@ Notes:
 - Useful for manual testing and editor shebang usage. Example shebang: `#!/usr/bin/env ah agent instructions`.
 - Linking per‑agent instruction file paths is handled by `ah repo instructions link`.
 
-```
+#### ah agent starting-cloud-task
+
+```text
 ah agent starting-cloud-task [OPTIONS]
 
-DESCRIPTION: Records a task description and optionally creates a new branch.
-             When on an existing agent branch, appends the description as a follow-up task.
-             When not on an agent branch, requires --branch-name and creates a new agent
-             branch with the initial task. This command is executed by cloud agents
-             (via prompt engineering) when they begin processing a task.
+DESCRIPTION
+  Record a task description and optionally create a new branch. On an existing agent branch, append as a follow-up task; otherwise requires --branch-name to create a new agent branch. Used by cloud agents at task start.
 
-OPTIONS:
+OPTIONS
   --task-description <DESC>   Record the given task description
   --branch-name <NAME>        Name to use for the task description file
 ```
 
-```
+#### ah agent network get-keys
+
+```text
 ah agent network get-keys [OPTIONS]
 
-DESCRIPTION: Request session connectivity credentials.
+DESCRIPTION
+  Request session connectivity credentials.
 
-OPTIONS:
-  --provider <netbird|tailscale|auto>
-                            Connectivity provider
-  --tag <name>              Tag for the connection
+OPTIONS
+  --provider <netbird|tailscale|auto>   Connectivity provider
+  --tag <name>                          Tag for the connection
 ```
 
-```
+#### ah agent relay tail
+
+```text
 ah agent relay tail --session <ID> --host <NAME> [OPTIONS]
 
-DESCRIPTION: Relay utilities (fallback).
+DESCRIPTION
+  Relay utilities (fallback).
 
-OPTIONS:
+OPTIONS
+  --session <ID>                 Session identifier (required)
+  --host <NAME>                  Host name (required)
   --stream <stdout|stderr|status>
-                           Stream to tail (default: stdout)
+                                 Stream to tail (default: stdout)
 ```
 
-```
+#### ah agent relay send
+
+```text
 ah agent relay send --session <ID> --host <NAME> --control <JSON>
+
+DESCRIPTION
+  Send relay control payloads (fallback).
 ```
 
-Relay send control payloads (fallback).
+#### ah agent fs status
 
-```
+```text
 ah agent fs status [OPTIONS]
 
-DESCRIPTION: Run filesystem detection and report capabilities, provider selection,
-             and mount point information for the current working directory or specified path.
+DESCRIPTION
+  Run filesystem detection and report capabilities, provider selection, and mount point information for the current working directory or specified path.
 
-OPTIONS:
-  --path <PATH>               Path to analyze (default: current working directory)
-  --json                      Emit machine-readable JSON output
-  --verbose                   Include detailed capability information
-  --detect-only               Only perform detection without provider selection
+OPTIONS
+  --path <PATH>         Path to analyze (default: current working directory)
+  --json                Emit machine-readable JSON output
+  --verbose             Include detailed capability information
+  --detect-only         Only perform detection without provider selection
 
-ARGUMENTS:
-  PATH                        Optional path to analyze filesystem capabilities
+ARGUMENTS
+  PATH                  Optional path to analyze filesystem capabilities
 ```
 
 Behavior:
@@ -1558,46 +1707,57 @@ ah agent fs init-session [OPTIONS]
 The `init-session` command was present in earlier versions of the CLI, but it was removed.
 All remaining references to it in the code or elsewhere in this spec should be removed.
 
-```
+#### ah agent followers accept-connections
+
+```text
 ah agent followers accept-connections --session <ID> [OPTIONS]
 
-DESCRIPTION: Initiate and wait for follower acks; prints per-host status.
+DESCRIPTION
+  Initiate and wait for follower acknowledgements; prints per-host status.
 
-OPTIONS:
+OPTIONS
   --hosts <list>            List of hosts to handshake with
   --timeout <sec>           Timeout in seconds
 ```
 
-```
+#### ah agent followers list
+
+```text
 ah agent followers list
+
+DESCRIPTION
+  List configured follower hosts and tags (diagnostics; same data as GET /api/v1/followers when in REST mode).
 ```
 
-List configured follower hosts and tags (diagnostics; same data as GET /api/v1/followers when in REST mode).
+#### ah agent followers sync-fence
 
-```
+```text
 ah agent followers sync-fence [OPTIONS]
 
-DESCRIPTION: Perform a synchronization fence ensuring followers match the leader snapshot
-             before execution; emits per-host status.
+DESCRIPTION
+  Perform a synchronization fence ensuring followers match the leader snapshot before execution; emits per-host status.
 
-OPTIONS:
+OPTIONS
   --timeout <sec>             Timeout in seconds
   --tag <k=v>                 Tag filter
   --host <name>               Host filter
   --all                       Apply to all followers
 ```
 
-```
+#### ah agent followers run
+
+```text
 ah agent followers run [OPTIONS] [--] <COMMAND> [ARGS...]
 
-DESCRIPTION: Run a command on selected followers (multi‑OS fleet execution).
+DESCRIPTION
+  Run a command on selected followers (multi‑OS fleet execution).
 
-OPTIONS:
+OPTIONS
   --tag <k=v>                 Tag filter
   --host <name>               Host filter
   --all                       Apply to all followers
 
-ARGUMENTS:
+ARGUMENTS
   COMMAND                     Command to run on followers
   ARGS                        Arguments for the command
 ```
@@ -1607,26 +1767,25 @@ Execution model:
 - These `ah agent` subcommands execute on the leader for the session and fan out to followers over SSH (via HTTP CONNECT, with optional client‑side relay in hybrid fleets). The REST service never connects to followers; it only receives events for observability.
 - For remote sessions, prefer: `ssh <leader> -- ah agent ...` so execution remains leader‑local.
 
-```
+#### ah agent record
+
+```text
 ah agent record [OPTIONS] [--] <COMMAND> [ARGS...]
 
-DESCRIPTION: Records terminal output of any command with byte-perfect fidelity.
-             Captures PTY output, resizes, and timing information for replay and analysis.
-             Always provides real-time snapshot detection for UI interaction, allowing users
-             to start agent tasks from detected snapshots. Used internally by ah agent start
-             for session recording.
+DESCRIPTION
+  Record terminal output of any command with byte-perfect fidelity. Captures PTY output, resize events, and timing for replay/analysis. Provides real-time snapshot detection for UI interaction. Used internally by `ah agent start` for session recording.
 
-OPTIONS:
-  -o, --out-file <FILE>              Output .ahr file path (no file created if not specified)
-  --rows <N>                         Terminal rows (attempts to resize terminal; default: current size)
-  --cols <N>                         Terminal columns (attempts to resize terminal; default: current size)
-  --brotli-q <0-11>                  Brotli compression quality (default: 4)
-  --gutter <left|right|none>         Position of snapshot indicator gutter (default: left)
-  --headless                         Run without live viewer UI
-  --env <KEY=VALUE>                  Environment variable to set
-  --task-manager-socket <PATH>       Path to the task manager socket for event streaming and coordination
+OPTIONS
+  -o, --out-file <FILE>      Output .ahr file path (no file created if omitted)
+  --rows <N>                 Terminal rows (attempts to resize; default: current size)
+  --cols <N>                 Terminal columns (attempts to resize; default: current size)
+  --brotli-q <0-11>          Brotli compression quality (default: 4)
+  --gutter <left|right|none> Position of snapshot indicator gutter (default: left)
+  --headless                 Run without live viewer UI
+  --env <KEY=VALUE>          Environment variable to set (repeatable)
+  --task-manager-socket <PATH> Path to task manager socket for event streaming/coordination
 
-ARGUMENTS:
+ARGUMENTS
   COMMAND                    Command to execute and record
   ARGS                       Arguments for the command
 ```
@@ -1642,49 +1801,53 @@ BEHAVIOR:
   - Other Unix systems: `/tmp/ah/task-manager.sock`
 - **Recorder IPC Socket**: For communication with `ah agent fs snapshot` commands, a temporary IPC socket is created in a temporary directory with the name `recorder.sock` and exposed via the `AH_RECORDER_IPC_SOCKET` environment variable.
 
-```
+#### ah agent follow-cloud-task
+
+```text
 ah agent follow-cloud-task [OPTIONS] <TASK_ID>
 
-DESCRIPTION: Monitor cloud agent execution by translating live browser output
-              to terminal display. Enables TUI monitoring of cloud agents.
+DESCRIPTION
+  Monitor cloud agent execution by translating live browser output to terminal display. Enables TUI monitoring of cloud agents.
 
-OPTIONS:
-  --browser-profile <NAME>   Browser profile for monitoring
-  --refresh-interval <SEC>   Output refresh interval (default: 5)
+OPTIONS
+  --browser-profile <NAME>    Browser profile for monitoring
+  --refresh-interval <SEC>    Output refresh interval (default: 5)
   --output-format <text|json> Output format for monitoring data
 
-ARGUMENTS:
-  TASK_ID                    Cloud task ID to monitor
+ARGUMENTS
+  TASK_ID                     Cloud task ID to monitor
 ```
 
-```
+#### ah agent follow-remote-task
+
+```text
 ah agent follow-remote-task [OPTIONS] <TASK_ID>
 
-DESCRIPTION: Monitor remote task execution by connecting to server SSE events
-              and translating them into terminal output. Enables real-time monitoring
-              of tasks running on remote AH servers.
+DESCRIPTION
+  Monitor remote task execution by connecting to server SSE events and translating them into terminal output.
 
-OPTIONS:
-  --remote-server <NAME|URL>  Remote server to connect to (uses configured server if not specified)
-  --output-format <text|json> Output format for monitoring data (default: text)
-  --retry-interval <SEC>     Interval between reconnection attempts (default: 5)
+OPTIONS
+  --remote-server <NAME|URL>   Remote server to connect to (uses configured server if not specified)
+  --output-format <text|json>  Output format for monitoring data (default: text)
+  --retry-interval <SEC>       Interval between reconnection attempts (default: 5)
 
-ARGUMENTS:
-  TASK_ID                    Remote task ID to monitor
+ARGUMENTS
+  TASK_ID                      Remote task ID to monitor
 ```
 
 - Filesystem (AgentFS) snapshot/branch utilities:
   - `ah agent fs status [OPTIONS]` — Run filesystem detection and report capabilities, provider selection, and mount point information.
   - `ah agent fs snapshot [--recorder-socket <PATH>]` — Create a snapshot of the enclosing repository session.
 
-```
+#### ah agent fs snapshot
+
+```text
 ah agent fs snapshot [OPTIONS]
 
-DESCRIPTION: Create a filesystem snapshot at the current state using the detected
-             snapshot provider. When used during agent recording sessions, the
-             snapshot creation is coordinated with the recorder via IPC.
+DESCRIPTION
+  Create a filesystem snapshot at the current state using the detected snapshot provider. During agent recording sessions, coordinates snapshot creation with the recorder via IPC.
 
-OPTIONS:
+OPTIONS
   --recorder-socket <PATH>    IPC socket path for recorder notification (optional)
 ```
 
