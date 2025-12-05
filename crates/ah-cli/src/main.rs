@@ -68,6 +68,7 @@ async fn main() -> Result<()> {
     }
 
     match cli.command {
+        Commands::Acp(args) => args.run().await,
         Commands::Config { subcommand } => subcommand.run(cli.config.as_deref()).await,
         Commands::Task { subcommand } => {
             let fs_snapshots = cli.fs_snapshots.clone().unwrap_or_default();

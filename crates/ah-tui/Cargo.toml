@@ -18,6 +18,7 @@ ah-test-scenarios = { workspace = true }
 ah-domain-types = { workspace = true }
 ah-scenario-format = { workspace = true }
 ah-core = { workspace = true }
+ah-acp-bridge = { workspace = true }
 ah-workflows = { workspace = true }
 ah-recorder = { workspace = true }
 ah-mux = { workspace = true }

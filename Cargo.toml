@@ -56,6 +56,7 @@ members = [
   "crates/ah-rest-client",
   "crates/ah-client-api",
   "crates/ah-rest-server",
+  "crates/ah-acp-bridge",
   "crates/ah-scenario-format",
   "crates/mock-agent",
   "crates/ah-test-scenarios",
@@ -156,6 +157,7 @@ ah-rest-api-contract = { path = "./crates/ah-rest-api-contract" }
 ah-rest-client = { path = "./crates/ah-rest-client" }
 ah-client-api = { path = "./crates/ah-client-api" }
 ah-rest-server = { path = "./crates/ah-rest-server" }
+ah-acp-bridge = { path = "./crates/ah-acp-bridge" }
 ah-scenario-format = { path = "./crates/ah-scenario-format" }
 mock-agent = { path = "./crates/mock-agent" }
 ah-test-scenarios = { path = "./crates/ah-test-scenarios" }

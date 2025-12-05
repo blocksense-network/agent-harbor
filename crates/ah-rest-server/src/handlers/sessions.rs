@@ -21,6 +21,9 @@ use std::time::Duration;
 use std::{convert::Infallible, pin::Pin};
 use tokio_stream::wrappers::BroadcastStream;
 
+/// Maximum prompt size; mirrors ACP limits for parity with session/prompt.
+const MAX_CONTEXT_CHARS: usize = 16_000;
+
 /// List sessions with optional filtering
 pub async fn list_sessions(
     State(state): State<AppState>,
@@ -115,6 +118,113 @@ pub async fn resume_session(
     } else {
         Err(ServerError::SessionNotFound(session_id))
     }
+}
+
+/// Inject a prompt/message into a running session.
+pub async fn prompt_session(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    Json(payload): Json<SessionPromptRequest>,
+) -> ServerResult<Json<SessionPromptResponse>> {
+    let message = payload.prompt.trim();
+    if message.is_empty() {
+        return Err(ServerError::BadRequest("prompt cannot be empty".into()));
+    }
+    let message_chars = message.chars().count();
+    if message_chars > MAX_CONTEXT_CHARS {
+        return Ok(Json(SessionPromptResponse {
+            session_id,
+            accepted: false,
+            stop_reason: Some("context_limit".into()),
+            limit_chars: Some(MAX_CONTEXT_CHARS),
+            used_chars: Some(message_chars),
+            current_chars: Some(0),
+            over_limit_by: Some(message_chars.saturating_sub(MAX_CONTEXT_CHARS)),
+            remaining_chars: Some(0),
+        }));
+    }
+
+    let Some(mut session) = state.session_store.get_session(&session_id).await? else {
+        return Err(ServerError::SessionNotFound(session_id));
+    };
+
+    // Reject prompts when a session is paused to align with REST spec language.
+    if matches!(
+        session.session.status,
+        SessionStatus::Paused | SessionStatus::Pausing
+    ) {
+        return Err(ServerError::BadRequest(
+            "session is paused; resume before prompting".into(),
+        ));
+    }
+
+    let current_context = current_context_chars(&state, &session_id, &session.session).await?;
+    if current_context + message_chars > MAX_CONTEXT_CHARS {
+        let over_by = current_context + message_chars - MAX_CONTEXT_CHARS;
+        let remaining = MAX_CONTEXT_CHARS.saturating_sub(current_context);
+        return Ok(Json(SessionPromptResponse {
+            session_id,
+            accepted: false,
+            stop_reason: Some("context_limit".into()),
+            limit_chars: Some(MAX_CONTEXT_CHARS),
+            used_chars: Some(current_context + message_chars),
+            current_chars: Some(current_context),
+            over_limit_by: Some(over_by),
+            remaining_chars: Some(remaining),
+        }));
+    }
+
+    // Ensure session is marked running and event stream is primed.
+    if matches!(
+        session.session.status,
+        SessionStatus::Queued | SessionStatus::Provisioning
+    ) {
+        session.session.status = SessionStatus::Running;
+        state.session_store.update_session(&session_id, &session).await?;
+        state
+            .session_store
+            .add_session_event(
+                &session_id,
+                SessionEvent::status(
+                    SessionStatus::Running,
+                    chrono::Utc::now().timestamp_millis() as u64,
+                ),
+            )
+            .await?;
+    }
+
+    state
+        .session_store
+        .add_session_event(
+            &session_id,
+            SessionEvent::log(
+                SessionLogLevel::Info,
+                format!("user: {}", message),
+                None,
+                chrono::Utc::now().timestamp_millis() as u64,
+            ),
+        )
+        .await?;
+
+    let controller = state
+        .task_controller
+        .as_ref()
+        .ok_or_else(|| ServerError::NotImplemented("live prompt delivery unavailable".into()))?;
+    controller
+        .inject_message(&session_id, message)
+        .await
+        .map_err(|e| ServerError::Internal(format!("failed to deliver prompt: {e}")))?;
+
+    Ok(Json(SessionPromptResponse {
+        session_id,
+        accepted: true,
+        stop_reason: None,
+        limit_chars: None,
+        used_chars: None,
+        current_chars: None,
+        over_limit_by: None,
+        remaining_chars: None,
+    }))
 }
 
 /// Get session logs
@@ -228,6 +338,25 @@ fn pty_to_sse(msg: TaskManagerMessage) -> Result<Event, Infallible> {
         }
         _ => Ok(Event::default().event("pty").data("{}")),
     }
+}
+
+async fn current_context_chars(
+    state: &AppState,
+    session_id: &str,
+    session: &Session,
+) -> ServerResult<usize> {
+    let mut total = session.task.prompt.chars().count();
+    if let Ok(events) = state.session_store.get_session_events(session_id).await {
+        for event in events {
+            if let SessionEvent::Log(log) = event {
+                let msg = String::from_utf8_lossy(&log.message);
+                if let Some(stripped) = msg.strip_prefix("user: ") {
+                    total += stripped.chars().count();
+                }
+            }
+        }
+    }
+    Ok(total)
 }
 
 /// Get session info (fleet and endpoints)

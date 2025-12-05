@@ -6,8 +6,8 @@
 //! WebSocket transport authenticates using the REST auth config (API key or JWT)
 //! passed via `?api_key=` query param or `Authorization` header, applies a
 //! connection-limit guard/idle timeout, and delegates JSON-RPC handling to the
-//! ACP runtime via the vendored SDK dispatcher. Stdio plumbing reuses the same
-//! dispatcher.
+//! ACP runtime via the vendored SDK dispatcher. UDS and stdio transports reuse
+//! the same dispatcher with line-delimited JSON framing.
 
 use crate::{
     acp::{
@@ -26,6 +26,10 @@ use agent_client_protocol::{
     ResponseResult, SessionId, SessionNotification, SessionUpdate, Side, TextContent,
     ValueDispatcher, WrappedRequest,
 };
+use ah_acp_bridge::{
+    ensure_uds_parent, notification_envelope, session_event_to_notification,
+    value_to_session_notification,
+};
 use axum::{
     Json, Router,
     extract::{
@@ -42,9 +46,10 @@ use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::broadcast::Receiver;
 use tokio::{
     sync::{Mutex, Semaphore},
@@ -53,6 +58,28 @@ use tokio::{
 use tokio_tungstenite;
 use tokio_tungstenite::tungstenite::Message as ClientMessage;
 use url::Url;
+
+type AnyWriter = Arc<Mutex<Box<dyn AsyncWrite + Send + Unpin>>>;
+
+static STDIO_BOUND: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug)]
+struct StdioGuard;
+
+impl Drop for StdioGuard {
+    fn drop(&mut self) {
+        STDIO_BOUND.store(false, Ordering::SeqCst);
+    }
+}
+
+fn assert_stdio_guard() -> StdioGuard {
+    let already = STDIO_BOUND.swap(true, Ordering::SeqCst);
+    assert!(
+        !already,
+        "ACP stdio transport bound twice in the same process; this is a bug"
+    );
+    StdioGuard
+}
 
 use crate::acp::recorder::follower_command;
 use ah_core::task_manager_wire::TaskManagerMessage;
@@ -246,12 +273,14 @@ pub fn router(state: AcpTransportState) -> Router {
         .with_state(Arc::new(state))
 }
 
-/// Run ACP over stdio using the same dispatcher that powers the WebSocket
-/// transport. This is intended for `ah agent access-point --stdio-acp`.
+/// Run ACP over stdio using the same dispatcher that powers WebSocket/UDS.
+/// Intended for inline launches (e.g. `ah acp --daemonize=never`).
 pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
+    let _guard = assert_stdio_guard();
+
     let reader = BufReader::new(io::stdin());
     let mut lines = reader.lines();
-    let writer = Arc::new(Mutex::new(io::stdout()));
+    let writer: AnyWriter = Arc::new(Mutex::new(Box::new(io::stdout())));
 
     let notifier = Notifier::new_threaded();
 
@@ -268,7 +297,7 @@ pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
         let writer_clone = writer.clone();
         tokio::spawn(async move {
             while let Ok(payload) = rx.recv().await {
-                if send_json_stdout(&writer_clone, payload).await.is_err() {
+                if send_json_lines(&writer_clone, payload).await.is_err() {
                     break;
                 }
             }
@@ -303,7 +332,7 @@ pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
                                 id,
                                 result: ResponseResult::from(result),
                             };
-                            if send_outgoing_stdout(&driver, &writer, &outgoing).await.is_err() {
+                            if send_outgoing_lines(&driver, &writer, &outgoing).await.is_err() {
                                 break;
                             }
                             idle_timer.as_mut().reset(Instant::now() + idle_timeout);
@@ -327,19 +356,173 @@ pub async fn run_stdio(state: AcpTransportState) -> crate::acp::AcpResult<()> {
                                     guard.handle_json(value).await
                                 };
                                 if let Some(payload) = immediate {
-                                    if send_json_stdout(&writer, payload).await.is_err() {
+                                    if send_json_lines(&writer, payload).await.is_err() {
                                         break;
                                     }
                                 }
                                 idle_timer.as_mut().reset(Instant::now() + idle_timeout);
                             }
                             Err(_) => {
-                                let _ = send_json_stdout(&writer, json_error(Value::Null, -32700, "invalid_json")).await;
+                                let _ = send_json_lines(&writer, json_error(Value::Null, -32700, "invalid_json")).await;
                             }
                         }
                     }
                     Ok(None) => break, // EOF
                     Err(_) => break,
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Run ACP over a Unix-domain socket using the same line-based framing as
+/// stdio. This allows local clients (and ssh port-forwards) to reuse the ACP
+/// gateway without HTTP upgrade when the access point runs as a daemon. The
+/// same dispatcher is used for stdio when launched inline (e.g. by `ah acp`).
+#[cfg(unix)]
+pub async fn run_uds(
+    state: AcpTransportState,
+    path: std::path::PathBuf,
+) -> crate::acp::AcpResult<()> {
+    use std::os::unix::fs::PermissionsExt;
+    use tokio::fs;
+    use tokio::net::UnixListener;
+
+    ensure_uds_parent(&path).map_err(|e| crate::acp::errors::AcpError::Internal(e.to_string()))?;
+    if path.exists() {
+        let _ = fs::remove_file(&path).await;
+    }
+
+    let listener = UnixListener::bind(&path)?;
+    let _cleanup = SocketCleanup(path.clone());
+    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    let shared_state = Arc::new(state);
+
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let state_clone = shared_state.clone();
+        tokio::spawn(async move {
+            if let Err(err) = handle_uds_stream(stream, state_clone).await {
+                tracing::debug!(?err, "UDS ACP connection terminated");
+            }
+        });
+    }
+}
+
+#[cfg(not(unix))]
+pub async fn run_uds(
+    _state: AcpTransportState,
+    _path: std::path::PathBuf,
+) -> crate::acp::AcpResult<()> {
+    Err(crate::acp::errors::AcpError::Internal(
+        "UDS ACP transport not supported on this platform".to_string(),
+    ))
+}
+
+/// Removes the socket file when the listener task exits so repeated invocations
+/// do not fail on stale paths.
+#[cfg(unix)]
+struct SocketCleanup(std::path::PathBuf);
+
+#[cfg(unix)]
+impl Drop for SocketCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+#[cfg(unix)]
+async fn handle_uds_stream(
+    stream: tokio::net::UnixStream,
+    state: Arc<AcpTransportState>,
+) -> crate::acp::AcpResult<()> {
+    let (reader_half, writer_half) = stream.into_split();
+    let reader = BufReader::new(reader_half);
+    let mut lines = reader.lines();
+    let writer: AnyWriter = Arc::new(Mutex::new(Box::new(writer_half)));
+
+    let notifier = Notifier::new_threaded();
+    let context = Arc::new(Mutex::new(AcpSessionContext {
+        auth_claims: None,
+        notifier: notifier.clone(),
+        ..Default::default()
+    }));
+    let (dispatcher, _streams) = ValueDispatcher::<HarborAgentSide, OutgoingSide>::new();
+    let driver = Arc::new(Mutex::new(dispatcher));
+    let mut incoming_rx = driver.lock().await.take_incoming().fuse();
+
+    if let Some(mut rx) = notifier.subscribe() {
+        let writer_clone = writer.clone();
+        tokio::spawn(async move {
+            while let Ok(payload) = rx.recv().await {
+                if send_json_lines(&writer_clone, payload).await.is_err() {
+                    break;
+                }
+            }
+        });
+    }
+
+    let mut tick = interval(Duration::from_millis(100));
+    let idle_timeout = state.idle_timeout;
+    let idle_timer = sleep(idle_timeout);
+    tokio::pin!(idle_timer);
+
+    loop {
+        tokio::select! {
+            _ = &mut idle_timer => break,
+            _ = tick.tick() => {
+                let mut ctx = context.lock().await;
+                let notifier = ctx.notifier.clone();
+                let flushed_events = flush_session_events_stdio(&mut ctx, &notifier).await;
+                let flushed_pty = flush_pty_events_stdio(&mut ctx, &notifier).await;
+                if flushed_events || flushed_pty {
+                    idle_timer.as_mut().reset(Instant::now() + idle_timeout);
+                }
+            }
+            maybe_incoming = incoming_rx.next() => {
+                if let Some(message) = maybe_incoming {
+                    match message {
+                        IncomingMessage::Request { id, request } => {
+                            let result = route_request_stdio(state.as_ref(), &context, &driver, &writer, request, &HeaderMap::new()).await;
+                            let outgoing = OutgoingMessage::Response { id, result: ResponseResult::from(result) };
+                            if send_outgoing_lines(&driver, &writer, &outgoing).await.is_err() {
+                                break;
+                            }
+                            idle_timer.as_mut().reset(Instant::now() + idle_timeout);
+                        }
+                        IncomingMessage::Notification { notification } => {
+                            let _ = route_notification_stdio(state.as_ref(), &context, &driver, &writer, notification, &HeaderMap::new()).await;
+                            idle_timer.as_mut().reset(Instant::now() + idle_timeout);
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+            maybe_line = lines.next_line() => {
+                match maybe_line {
+                    Ok(Some(text)) => {
+                        match serde_json::from_str::<Value>(&text) {
+                            Ok(value) => {
+                                let immediate = {
+                                    let mut guard = driver.lock().await;
+                                    guard.handle_json(value).await
+                                };
+                                if let Some(payload) = immediate {
+                                    if send_json_lines(&writer, payload).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                idle_timer.as_mut().reset(Instant::now() + idle_timeout);
+                            }
+                            Err(_) => {
+                                let _ = send_json_lines(&writer, json_error(Value::Null, -32700, "invalid_json")).await;
+                            }
+                        }
+                    }
+                    Ok(None) | Err(_) => break,
                 }
             }
         }
@@ -687,7 +870,7 @@ async fn route_request_stdio(
     state: &AcpTransportState,
     ctx: &Arc<Mutex<AcpSessionContext>>,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    writer: &AnyWriter,
     request: WrappedRequest<agent_client_protocol::ClientRequest>,
     headers: &HeaderMap,
 ) -> Result<Value, Error> {
@@ -791,7 +974,7 @@ async fn route_notification_stdio(
     state: &AcpTransportState,
     ctx: &Arc<Mutex<AcpSessionContext>>,
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    writer: &AnyWriter,
     notification: WrappedRequest<agent_client_protocol::ClientNotification>,
     _headers: &HeaderMap,
 ) -> Result<(), Error> {
@@ -1029,7 +1212,7 @@ async fn handle_session_new_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    _writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _writer: &AnyWriter,
     params: Value,
 ) -> ServerResult<Value> {
     let prompt = params.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -1126,7 +1309,7 @@ async fn handle_terminal_write_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    _writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _writer: &AnyWriter,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1209,11 +1392,8 @@ async fn handle_terminal_follow(
                             | TaskManagerMessage::PtyResize(_)
                             | TaskManagerMessage::CommandChunk(_)
                     ) {
-                        let _ = send_session_notification(
-                            terminal_to_params(session_id, &msg),
-                            &notifier,
-                        )
-                        .await;
+                        let notif = session_update_from_json(&terminal_to_params(session_id, &msg));
+                        let _ = send_session_notification(notif, &notifier).await;
                     }
                 }
                 let notifier_clone = notifier.clone();
@@ -1226,11 +1406,9 @@ async fn handle_terminal_follow(
                                 | TaskManagerMessage::PtyResize(_)
                                 | TaskManagerMessage::CommandChunk(_)
                         ) {
-                            let _ = send_session_notification(
-                                terminal_to_params(&session, &msg),
-                                &notifier_clone,
-                            )
-                            .await;
+                            let notif =
+                                session_update_from_json(&terminal_to_params(&session, &msg));
+                            let _ = send_session_notification(notif, &notifier_clone).await;
                         }
                     }
                 });
@@ -1248,7 +1426,7 @@ async fn handle_terminal_follow_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    writer: &AnyWriter,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1275,15 +1453,9 @@ async fn handle_terminal_follow_stdio(
 
     let notifier = ctx.notifier.clone();
     let update = terminal_follow_params(session_id, execution_id, &cmd);
-    let _ = send_raw_session_update_stdout(writer, update.clone()).await;
-    let _ = notifier
-        .notify(
-            "sessionUpdate",
-            Some(AgentNotification::SessionNotification(
-                session_update_from_json(&update),
-            )),
-        )
-        .await;
+    let follow_notif = session_update_from_json(&update);
+    let _ = send_raw_session_update(writer, update.clone()).await;
+    let _ = send_session_notification(follow_notif, &notifier).await;
 
     if let Some(controller) = &state.app_state.task_controller {
         match controller.subscribe_pty(session_id).await {
@@ -1295,11 +1467,8 @@ async fn handle_terminal_follow_stdio(
                             | TaskManagerMessage::PtyResize(_)
                             | TaskManagerMessage::CommandChunk(_)
                     ) {
-                        let _ = send_session_notification(
-                            terminal_to_params(session_id, &msg),
-                            &notifier,
-                        )
-                        .await;
+                        let notif = session_update_from_json(&terminal_to_params(session_id, &msg));
+                        let _ = send_session_notification(notif, &notifier).await;
                     }
                 }
                 let notifier_clone = notifier.clone();
@@ -1312,11 +1481,9 @@ async fn handle_terminal_follow_stdio(
                                 | TaskManagerMessage::PtyResize(_)
                                 | TaskManagerMessage::CommandChunk(_)
                         ) {
-                            let _ = send_session_notification(
-                                terminal_to_params(&session, &msg),
-                                &notifier_clone,
-                            )
-                            .await;
+                            let notif =
+                                session_update_from_json(&terminal_to_params(&session, &msg));
+                            let _ = send_session_notification(notif, &notifier_clone).await;
                         }
                     }
                 });
@@ -1347,21 +1514,14 @@ async fn handle_terminal_detach(
 
     let update = terminal_detach_params(session_id, execution_id);
     let _ = send_raw_session_update_ws(sender, update.clone()).await;
-    let _ = notifier
-        .notify(
-            "sessionUpdate",
-            Some(AgentNotification::SessionNotification(
-                session_update_from_json(&update),
-            )),
-        )
-        .await;
+    let _ = send_session_notification(session_update_from_json(&update), notifier).await;
 
     Ok(json!({ "sessionId": session_id, "executionId": execution_id, "detached": true }))
 }
 
 async fn handle_terminal_detach_stdio(
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    writer: &AnyWriter,
     params: Value,
     notifier: &Notifier,
 ) -> ServerResult<Value> {
@@ -1375,15 +1535,8 @@ async fn handle_terminal_detach_stdio(
         .ok_or_else(|| ServerError::BadRequest("executionId is required".into()))?;
 
     let update = terminal_detach_params(session_id, execution_id);
-    let _ = send_raw_session_update_stdout(writer, update.clone()).await;
-    let _ = notifier
-        .notify(
-            "sessionUpdate",
-            Some(AgentNotification::SessionNotification(
-                session_update_from_json(&update),
-            )),
-        )
-        .await;
+    let _ = send_raw_session_update(writer, update.clone()).await;
+    let _ = send_session_notification(session_update_from_json(&update), notifier).await;
 
     Ok(json!({ "sessionId": session_id, "executionId": execution_id, "detached": true }))
 }
@@ -1448,7 +1601,7 @@ async fn handle_session_load_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    _writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _writer: &AnyWriter,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1576,7 +1729,7 @@ async fn handle_session_prompt_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    _writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _writer: &AnyWriter,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1731,7 +1884,7 @@ async fn handle_session_cancel_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    _writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _writer: &AnyWriter,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1833,7 +1986,7 @@ async fn handle_session_pause_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    _writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _writer: &AnyWriter,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1935,7 +2088,7 @@ async fn handle_session_resume_stdio(
     state: &AcpTransportState,
     ctx: &mut AcpSessionContext,
     _driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    _writer: &Arc<Mutex<tokio::io::Stdout>>,
+    _writer: &AnyWriter,
     params: Value,
 ) -> ServerResult<Value> {
     let session_id = params
@@ -1992,11 +2145,8 @@ async fn subscribe_session(ctx: &mut AcpSessionContext, app_state: &AppState, se
         if let Some(controller) = &app_state.task_controller {
             if let Ok((backlog, rx)) = controller.subscribe_pty(session_id).await {
                 for msg in backlog {
-                    let _ = send_session_notification(
-                        terminal_to_params(session_id, &msg),
-                        &ctx.notifier,
-                    )
-                    .await;
+                    let notif = session_update_from_json(&terminal_to_params(session_id, &msg));
+                    let _ = send_session_notification(notif, &ctx.notifier).await;
                 }
                 ctx.pty_receivers.insert(session_id.to_string(), rx);
             }
@@ -2018,11 +2168,8 @@ async fn subscribe_session_stdio(
         if let Some(controller) = &app_state.task_controller {
             if let Ok((backlog, rx)) = controller.subscribe_pty(session_id).await {
                 for msg in backlog {
-                    let _ = send_session_notification(
-                        terminal_to_params(session_id, &msg),
-                        &ctx.notifier,
-                    )
-                    .await;
+                    let notif = session_update_from_json(&terminal_to_params(session_id, &msg));
+                    let _ = send_session_notification(notif, &ctx.notifier).await;
                 }
                 ctx.pty_receivers.insert(session_id.to_string(), rx);
             }
@@ -2037,11 +2184,8 @@ async fn seed_history(
 ) -> Result<(), ()> {
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
         for event in events {
-            let params = json!({
-                "sessionId": session_id,
-                "event": event_to_json(session_id, &event),
-            });
-            send_session_notification(params, notifier).await?;
+            let notif = session_event_to_notification(session_id, &event);
+            send_session_notification(notif, notifier).await?;
         }
     }
     Ok(())
@@ -2054,11 +2198,8 @@ async fn seed_history_stdio(
 ) -> Result<(), ()> {
     if let Ok(events) = app_state.session_store.get_session_events(session_id).await {
         for event in events {
-            let params = json!({
-                "sessionId": session_id,
-                "event": event_to_json(session_id, &event),
-            });
-            send_session_notification(params, notifier).await?;
+            let notif = session_event_to_notification(session_id, &event);
+            send_session_notification(notif, notifier).await?;
         }
     }
     Ok(())
@@ -2107,10 +2248,7 @@ async fn flush_session_events(ctx: &mut AcpSessionContext, notifier: &Notifier) 
 
     for (session_id, event) in buffered {
         cache_execution_command(&mut ctx.execution_commands, &session_id, &event);
-        let update = json!({
-            "sessionId": session_id,
-            "event": event_to_json(&session_id, &event),
-        });
+        let update = session_event_to_notification(&session_id, &event);
         if send_session_notification(update, notifier).await.is_err() {
             dead_sessions.push(session_id.clone());
         } else {
@@ -2124,7 +2262,11 @@ async fn flush_session_events(ctx: &mut AcpSessionContext, notifier: &Notifier) 
                     let exec_id = String::from_utf8_lossy(&ev.tool_execution_id).to_string();
                     let follow_cmd = follower_command(&exec_id, &session_id, &cmd);
                     let follow_update = terminal_follow_params(&session_id, &exec_id, &follow_cmd);
-                    let _ = send_session_notification(follow_update, notifier).await;
+                    let _ = send_session_notification(
+                        session_update_from_json(&follow_update),
+                        notifier,
+                    )
+                    .await;
                 }
             }
         }
@@ -2161,10 +2303,7 @@ async fn flush_session_events_stdio(ctx: &mut AcpSessionContext, notifier: &Noti
 
     for (session_id, event) in buffered {
         cache_execution_command(&mut ctx.execution_commands, &session_id, &event);
-        let update = json!({
-            "sessionId": session_id,
-            "event": event_to_json(&session_id, &event),
-        });
+        let update = session_event_to_notification(&session_id, &event);
         if send_session_notification(update, notifier).await.is_err() {
             dead_sessions.push(session_id.clone());
         } else {
@@ -2177,7 +2316,11 @@ async fn flush_session_events_stdio(ctx: &mut AcpSessionContext, notifier: &Noti
                     let exec_id = String::from_utf8_lossy(&ev.tool_execution_id).to_string();
                     let follow_cmd = follower_command(&exec_id, &session_id, &cmd);
                     let follow_update = terminal_follow_params(&session_id, &exec_id, &follow_cmd);
-                    let _ = send_session_notification(follow_update, notifier).await;
+                    let _ = send_session_notification(
+                        session_update_from_json(&follow_update),
+                        notifier,
+                    )
+                    .await;
                 }
             }
         }
@@ -2198,7 +2341,7 @@ async fn flush_pty_events(ctx: &mut AcpSessionContext, notifier: &Notifier) -> b
         loop {
             match rx.try_recv() {
                 Ok(msg) => {
-                    let update = terminal_to_params(session_id, &msg);
+                    let update = session_update_from_json(&terminal_to_params(session_id, &msg));
                     if send_session_notification(update, notifier).await.is_err() {
                         dead.push(session_id.clone());
                         break;
@@ -2230,7 +2373,7 @@ async fn flush_pty_events_stdio(ctx: &mut AcpSessionContext, notifier: &Notifier
         loop {
             match rx.try_recv() {
                 Ok(msg) => {
-                    let update = terminal_to_params(session_id, &msg);
+                    let update = session_update_from_json(&terminal_to_params(session_id, &msg));
                     if send_session_notification(update, notifier).await.is_err() {
                         dead.push(session_id.clone());
                         break;
@@ -2252,82 +2395,6 @@ async fn flush_pty_events_stdio(ctx: &mut AcpSessionContext, notifier: &Notifier
     }
 
     sent
-}
-
-fn event_to_json(session_id: &str, event: &SessionEvent) -> Value {
-    match event {
-        SessionEvent::Status(status) => json!({
-            "type": "status",
-            "sessionId": session_id,
-            "status": status.status.to_string(),
-            "timestamp": status.timestamp,
-        }),
-        SessionEvent::Log(log) => json!({
-            "type": "log",
-            "sessionId": session_id,
-            "level": format!("{:?}", log.level).to_lowercase(),
-            "message": String::from_utf8_lossy(&log.message),
-            "timestamp": log.timestamp,
-        }),
-        SessionEvent::Error(err) => json!({
-            "type": "error",
-            "sessionId": session_id,
-            "message": String::from_utf8_lossy(&err.message),
-            "timestamp": err.timestamp,
-        }),
-        SessionEvent::Thought(thought) => json!({
-            "type": "thought",
-            "sessionId": session_id,
-            "text": String::from_utf8_lossy(&thought.thought),
-            "timestamp": thought.timestamp,
-        }),
-        SessionEvent::ToolUse(tool) => {
-            let derived = tool_event_command(&tool.tool_name, &tool.tool_args)
-                .unwrap_or_else(|| String::from_utf8_lossy(&tool.tool_name).to_string());
-            let follower = follower_command(
-                &String::from_utf8_lossy(&tool.tool_execution_id),
-                session_id,
-                &derived,
-            );
-            json!({
-                "type": "tool_use",
-                "sessionId": session_id,
-                "toolName": String::from_utf8_lossy(&tool.tool_name),
-                "args": String::from_utf8_lossy(&tool.tool_args),
-                "executionId": String::from_utf8_lossy(&tool.tool_execution_id),
-                "status": tool_status_str(&tool.status),
-                "timestamp": tool.timestamp,
-                "followerCommand": follower,
-            })
-        }
-        SessionEvent::ToolResult(result) => {
-            let derived = tool_event_command(&result.tool_name, &[])
-                .unwrap_or_else(|| String::from_utf8_lossy(&result.tool_name).to_string());
-            let follower = follower_command(
-                &String::from_utf8_lossy(&result.tool_execution_id),
-                session_id,
-                &derived,
-            );
-            json!({
-                "type": "tool_result",
-                "sessionId": session_id,
-                "toolName": String::from_utf8_lossy(&result.tool_name),
-                "output": String::from_utf8_lossy(&result.tool_output),
-                "executionId": String::from_utf8_lossy(&result.tool_execution_id),
-                "status": tool_status_str(&result.status),
-                "timestamp": result.timestamp,
-                "followerCommand": follower,
-            })
-        }
-        SessionEvent::FileEdit(edit) => json!({
-            "type": "file_edit",
-            "sessionId": session_id,
-            "path": String::from_utf8_lossy(&edit.file_path),
-            "added": edit.lines_added,
-            "removed": edit.lines_removed,
-            "timestamp": edit.timestamp,
-        }),
-    }
 }
 
 fn cache_execution_command(
@@ -2416,156 +2483,19 @@ fn terminal_detach_params(session_id: &str, execution_id: &str) -> Value {
 }
 
 fn session_update_from_json(params: &Value) -> SessionNotification {
-    let session_id =
-        params.get("sessionId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-    let event = params.get("event").cloned().unwrap_or(Value::Null);
-
-    let (update, meta) = match event.get("type").and_then(|v| v.as_str()) {
-        Some("status") => (
-            SessionUpdate::AgentMessageChunk {
-                content: ContentBlock::Text(TextContent {
-                    annotations: None,
-                    text: event
-                        .get("status")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                    meta: None,
-                }),
-            },
-            Some(event.clone()),
+    value_to_session_notification(params).unwrap_or_else(|| SessionNotification {
+        session_id: SessionId(
+            params.get("sessionId").and_then(|v| v.as_str()).unwrap_or_default().into(),
         ),
-        Some("log") => (
-            SessionUpdate::AgentMessageChunk {
-                content: ContentBlock::Text(TextContent {
-                    annotations: None,
-                    text: event
-                        .get("message")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                    meta: None,
-                }),
-            },
-            Some(event.clone()),
-        ),
-        Some("thought") => (
-            SessionUpdate::AgentThoughtChunk {
-                content: ContentBlock::Text(TextContent {
-                    annotations: None,
-                    text: event
-                        .get("text")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                    meta: None,
-                }),
-            },
-            Some(event.clone()),
-        ),
-        Some("tool_use") => {
-            let exec = event.get("executionId").and_then(|s| s.as_str()).unwrap_or_default();
-            let title = event
-                .get("followerCommand")
-                .or_else(|| event.get("toolName"))
-                .and_then(|s| s.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let status = match event.get("status").and_then(|s| s.as_str()).unwrap_or_default() {
-                "completed" => agent_client_protocol::ToolCallStatus::Completed,
-                "failed" => agent_client_protocol::ToolCallStatus::Failed,
-                _ => agent_client_protocol::ToolCallStatus::InProgress,
-            };
-            let raw_input = event.get("args").cloned();
-            (
-                SessionUpdate::ToolCall(agent_client_protocol::ToolCall {
-                    id: agent_client_protocol::ToolCallId(exec.into()),
-                    title,
-                    kind: agent_client_protocol::ToolKind::Execute,
-                    status,
-                    content: Vec::new(),
-                    locations: Vec::new(),
-                    raw_input,
-                    raw_output: None,
-                    meta: Some(event.clone()),
-                }),
-                Some(event.clone()),
-            )
-        }
-        Some("tool_result") => {
-            let exec = event.get("executionId").and_then(|s| s.as_str()).unwrap_or_default();
-            let status = match event.get("status").and_then(|s| s.as_str()).unwrap_or_default() {
-                "failed" => Some(agent_client_protocol::ToolCallStatus::Failed),
-                _ => Some(agent_client_protocol::ToolCallStatus::Completed),
-            };
-            let raw_output = event.get("output").cloned();
-            (
-                SessionUpdate::ToolCallUpdate(agent_client_protocol::ToolCallUpdate {
-                    id: agent_client_protocol::ToolCallId(exec.into()),
-                    fields: agent_client_protocol::ToolCallUpdateFields {
-                        status,
-                        content: None,
-                        locations: None,
-                        raw_input: None,
-                        raw_output,
-                        title: None,
-                        kind: None,
-                    },
-                    meta: Some(event.clone()),
-                }),
-                Some(event.clone()),
-            )
-        }
-        Some("file_edit") => (
-            SessionUpdate::AgentMessageChunk {
-                content: ContentBlock::Text(TextContent {
-                    annotations: None,
-                    text: format!(
-                        "[file_edit] {} (+{} -{})",
-                        event.get("path").and_then(|s| s.as_str()).unwrap_or("<unknown>"),
-                        event.get("added").and_then(|n| n.as_i64()).unwrap_or(0),
-                        event.get("removed").and_then(|n| n.as_i64()).unwrap_or(0)
-                    ),
-                    meta: None,
-                }),
-            },
-            Some(event.clone()),
-        ),
-        Some(kind) if kind.starts_with("terminal") => (
-            SessionUpdate::AgentMessageChunk {
-                content: ContentBlock::Text(TextContent {
-                    annotations: None,
-                    text: format!("[{}]", kind),
-                    meta: None,
-                }),
-            },
-            Some(event.clone()),
-        ),
-        _ => (
-            SessionUpdate::AgentMessageChunk {
-                content: ContentBlock::Text(TextContent {
-                    annotations: None,
-                    text: event.to_string(),
-                    meta: None,
-                }),
-            },
-            Some(event.clone()),
-        ),
-    };
-
-    SessionNotification {
-        session_id: SessionId(session_id.into()),
-        update,
-        meta,
-    }
-}
-
-fn tool_status_str(status: &SessionToolStatus) -> &'static str {
-    match status {
-        SessionToolStatus::Started => "started",
-        SessionToolStatus::Completed => "completed",
-        SessionToolStatus::Failed => "failed",
-    }
+        update: SessionUpdate::AgentMessageChunk {
+            content: ContentBlock::Text(TextContent {
+                annotations: None,
+                text: params.to_string(),
+                meta: None,
+            }),
+        },
+        meta: params.get("event").cloned(),
+    })
 }
 
 async fn send_json(
@@ -2604,22 +2534,23 @@ async fn send_outgoing(
     send_json(sender, payload).await
 }
 
-async fn send_session_notification(params: Value, notifier: &Notifier) -> Result<(), ()> {
-    notifier.push_raw_notification("session/update", params.clone());
+async fn send_session_notification(
+    notification: SessionNotification,
+    notifier: &Notifier,
+) -> Result<(), ()> {
+    notifier.push_raw(notification_envelope(&notification));
     notifier
         .notify(
             "sessionUpdate",
-            Some(AgentNotification::SessionNotification(
-                session_update_from_json(&params),
-            )),
+            Some(AgentNotification::SessionNotification(notification)),
         )
         .await
 }
 
-async fn send_json_stdout(
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
-    payload: Value,
-) -> Result<(), ()> {
+async fn send_json_lines<W>(writer: &Arc<Mutex<W>>, payload: Value) -> Result<(), ()>
+where
+    W: AsyncWrite + Unpin + Send,
+{
     let mut guard = writer.lock().await;
     let mut buf = serde_json::to_vec(&payload).map_err(|_| ())?;
     buf.push(b'\n');
@@ -2627,11 +2558,11 @@ async fn send_json_stdout(
     guard.flush().await.map_err(|_| ())
 }
 
-async fn send_raw_session_update_stdout(
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
-    params: Value,
-) -> Result<(), ()> {
-    send_json_stdout(
+async fn send_raw_session_update<W>(writer: &Arc<Mutex<W>>, params: Value) -> Result<(), ()>
+where
+    W: AsyncWrite + Unpin + Send,
+{
+    send_json_lines(
         writer,
         json!({
             "jsonrpc": "2.0",
@@ -2642,16 +2573,19 @@ async fn send_raw_session_update_stdout(
     .await
 }
 
-async fn send_outgoing_stdout(
+async fn send_outgoing_lines<W>(
     driver: &Arc<Mutex<ValueDispatcher<HarborAgentSide, OutgoingSide>>>,
-    writer: &Arc<Mutex<tokio::io::Stdout>>,
+    writer: &Arc<Mutex<W>>,
     message: &OutgoingMessage<HarborAgentSide, OutgoingSide>,
-) -> Result<(), ()> {
+) -> Result<(), ()>
+where
+    W: AsyncWrite + Unpin + Send,
+{
     let payload = {
         let dispatcher = driver.lock().await;
         dispatcher.outgoing_to_value(message).map_err(|_| ())?
     };
-    send_json_stdout(writer, payload).await
+    send_json_lines(writer, payload).await
 }
 
 async fn current_context_chars(
@@ -2980,7 +2914,8 @@ mod tests {
             "event": { "type": "terminal_follow", "executionId": "exec", "command": "cmd" }
         });
 
-        send_session_notification(params, &notifier).await.unwrap();
+        let notif = session_update_from_json(&params);
+        send_session_notification(notif, &notifier).await.unwrap();
 
         let payload = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
             .await
@@ -2992,11 +2927,7 @@ mod tests {
             Some("session/update")
         );
         assert_eq!(
-            payload
-                .get("params")
-                .and_then(|p| p.get("event"))
-                .and_then(|e| e.get("type"))
-                .and_then(|v| v.as_str()),
+            payload.pointer("/params/_meta/type").and_then(|v| v.as_str()),
             Some("terminal_follow")
         );
     }

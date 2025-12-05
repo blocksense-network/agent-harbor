@@ -113,6 +113,10 @@ impl Server {
                 "/sessions/:id/resume",
                 post(handlers::sessions::resume_session),
             )
+            .route(
+                "/sessions/:id/prompt",
+                post(handlers::sessions::prompt_session),
+            )
             // Logs and events
             .route(
                 "/sessions/:id/logs",

@@ -240,6 +240,37 @@ pub struct WebhookConfig {
     pub url: Url,
 }
 
+/// Prompt injection request for an existing session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct SessionPromptRequest {
+    /// Prompt content; `message` alias is accepted for compatibility.
+    #[serde(alias = "message")]
+    #[validate(length(min = 1, max = 16_000, message = "Prompt must be 1-16000 characters"))]
+    pub prompt: String,
+}
+
+/// Response payload for session prompt injection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct SessionPromptResponse {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub accepted: bool,
+    #[serde(rename = "stopReason", skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
+    #[serde(rename = "limitChars", skip_serializing_if = "Option::is_none")]
+    pub limit_chars: Option<usize>,
+    #[serde(rename = "usedChars", skip_serializing_if = "Option::is_none")]
+    pub used_chars: Option<usize>,
+    #[serde(rename = "currentChars", skip_serializing_if = "Option::is_none")]
+    pub current_chars: Option<usize>,
+    #[serde(rename = "overLimitBy", skip_serializing_if = "Option::is_none")]
+    pub over_limit_by: Option<usize>,
+    #[serde(rename = "remainingChars", skip_serializing_if = "Option::is_none")]
+    pub remaining_chars: Option<usize>,
+}
+
 /// Task creation response
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

@@ -80,13 +80,16 @@
 
 - `POST /api/v1/tasks`
 
-Request:
+Request (multi-modal prompt, ACP-compatible):
 
 ```json
 {
   "tenantId": "acme",
   "projectId": "storefront",
-  "prompt": "Fix flaky tests in checkout service and improve logging.",
+  "prompt": [
+    { "type": "text", "text": "Fix flaky checkout tests and show failing output." },
+    { "type": "image", "uri": "https://assets.acme.dev/checkout-screenshot.png" }
+  ],
   "repo": {
     "mode": "git",
     "url": "git@github.com:acme/storefront.git",
@@ -118,6 +121,10 @@ Request:
   "webhooks": [{ "event": "session.completed", "url": "https://hooks.acme.dev/agents" }]
 }
 ```
+
+Notes:
+
+- `prompt` mirrors ACP `session/prompt` content blocks: `text`, `image` (by URI or base64), `audio`, and `resource` are allowed. A legacy string `prompt` is still accepted for backward compatibility and is treated as a single `{ "type": "text" }` block.
 
 Response `201 Created`:
 
@@ -255,6 +262,51 @@ Auth: same as other session endpoints (API key/JWT/tenant scoped). Intended for 
 
 - `POST /api/v1/sessions/{id}/pause`
 - `POST /api/v1/sessions/{id}/resume`
+
+#### Send Prompt to Existing Session
+
+- `POST /api/v1/sessions/{id}/prompt`
+
+Request:
+
+```json
+{
+  "prompt": [
+    { "type": "text", "text": "rerun the failing checkout tests and paste the failure output" },
+    { "type": "image", "uri": "https://assets.acme.dev/failure.png" }
+  ]
+}
+```
+
+Behavior:
+
+- Appends the message to the session log stream and forwards it to the recorder/task controller as injected input so the running agent receives it immediately (mirrors `session/prompt` over ACP).
+- If the session is paused, the server responds `409 Conflict` and does not enqueue the prompt.
+- If the session is completed/failed/cancelled, the server responds `410 Gone`.
+- Rate limited per tenant/project (same bucket as `session/prompt` over ACP); bodies are capped at 16 KiB to align with recorder guardrails.
+
+Compatibility:
+
+- Legacy `message` (string) requests remain supported and are coerced to `prompt: [{ "type": "text", "text": message }]`.
+
+Responses:
+
+- `202 Accepted` with echo payload:
+
+```json
+{
+  "sessionId": "01HVZ6K9T1N8S6M3V3Q3F0X5B7",
+  "accepted": true,
+  "ts": "2025-12-04T12:00:00Z"
+}
+```
+
+- `4xx` Problem+JSON on validation/auth errors as per convention.
+
+Notes:
+
+- This endpoint is transport-parity with ACP `session/prompt`; IDE/TUI clients can use REST when ACP is unavailable.
+- Binary payloads are not supported; attach files via existing workspace/upload or chat attachment APIs.
 
 #### Logs and Events
 

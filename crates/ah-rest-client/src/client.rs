@@ -111,6 +111,16 @@ impl RestClient {
         self.post_empty(&url).await
     }
 
+    /// Inject a prompt into an existing session
+    pub async fn prompt_session(
+        &self,
+        session_id: &str,
+        request: &SessionPromptRequest,
+    ) -> RestClientResult<SessionPromptResponse> {
+        let url = format!("/api/v1/sessions/{}/prompt", session_id);
+        self.post(&url, request).await
+    }
+
     /// Get session logs
     pub async fn get_session_logs(
         &self,

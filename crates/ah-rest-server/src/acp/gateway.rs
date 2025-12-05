@@ -10,10 +10,14 @@
 //! changing default REST behavior.
 
 use crate::{auth::AuthConfig, config::AcpConfig, state::AppState};
+#[cfg(unix)]
+use ah_acp_bridge::default_uds_path;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
+use tokio::task::JoinSet;
 
 use super::{AcpResult, transport};
+use crate::acp::errors::AcpError;
 
 /// Handle to an ACP gateway instance.
 pub struct AcpGateway {
@@ -38,13 +42,18 @@ impl GatewayHandle {
 
 impl AcpGateway {
     /// Build a gateway from configuration and shared app state.
-    pub async fn bind(config: AcpConfig, state: AppState) -> AcpResult<Self> {
+    pub async fn bind(mut config: AcpConfig, state: AppState) -> AcpResult<Self> {
         if !config.enabled {
             return Ok(Self {
                 _config: config,
                 state,
                 listener: None,
             });
+        }
+
+        #[cfg(unix)]
+        if config.uds_path.is_none() {
+            config.uds_path = Some(default_uds_path());
         }
 
         let listener = if config.transport.uses_socket() {
@@ -86,15 +95,38 @@ impl AcpGateway {
             app_state: self.state.clone(),
         };
 
-        match self._config.transport {
-            crate::config::AcpTransportMode::WebSocket => {
-                if let Some(listener) = self.listener {
-                    let app = transport::router(transport_state);
-                    axum::serve(listener, app).await?;
-                }
+        let mut tasks: JoinSet<AcpResult<()>> = JoinSet::new();
+
+        if matches!(
+            self._config.transport,
+            crate::config::AcpTransportMode::Stdio
+        ) {
+            let state = transport_state.clone();
+            tasks.spawn(async move { transport::run_stdio(state).await });
+        }
+
+        if matches!(
+            self._config.transport,
+            crate::config::AcpTransportMode::WebSocket
+        ) {
+            if let Some(listener) = self.listener {
+                let state = transport_state.clone();
+                tasks.spawn(async move {
+                    let app = transport::router(state);
+                    axum::serve(listener, app).await.map_err(Into::into)
+                });
             }
-            crate::config::AcpTransportMode::Stdio => {
-                transport::run_stdio(transport_state).await?;
+        }
+
+        if let Some(path) = self._config.uds_path.clone() {
+            let state = transport_state.clone();
+            tasks.spawn(async move { transport::run_uds(state, path).await });
+        }
+
+        while let Some(res) = tasks.join_next().await {
+            match res {
+                Ok(inner) => inner?,
+                Err(err) => return Err(AcpError::Internal(err.to_string())),
             }
         }
 

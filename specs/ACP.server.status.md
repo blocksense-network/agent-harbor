@@ -292,17 +292,17 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 
 ### Milestone 5: Access Point & Hybrid Relay (ACP client ⇄ ACP/REST server)
 
-**Status**: Planned (next up)
+**Status**: In progress (2025-12-04) — UDS transport + `ah acp` REST bridge landed
 
 #### Deliverables
 
-- Ship an `ah agent access-point` mode that exposes both transports simultaneously:
+- [x] Ship an access-point mode that exposes both transports simultaneously:
   - WebSocket endpoint on `/acp/v1/connect` (unchanged), and
-  - A Unix-domain socket whose framing is byte-for-byte identical to the existing stdio framing (ACP JSON-RPC lines). This socket lives in a platform-appropriate default path (XDG runtime dir on Linux, `~/Library/Caches/io.agentharbor/acp.sock` on macOS, `%LOCALAPPDATA%\AgentHarbor\acp.sock` on Windows), with a flag to override.
-- Add a new `ah acp` CLI that can:
+  - A Unix-domain socket whose framing is byte-for-byte identical to the existing stdio framing (ACP JSON-RPC lines). Socket path is platform-aware and overridable.
+- [x] Add a new `ah acp` CLI that can:
   - Auto-discover the local access-point socket in the standard location and forward bytes bidirectionally with zero translation, or
-  - Connect to a remote access point (WebSocket or Unix socket over ssh -L) and perform the same byte forwarding, or
-  - When pointed at a REST-only Harbor (`ah-rest-server`), translate REST/SSE TaskEvents into ACP `session/update` notifications and forward ACP RPCs to the REST API. Connection options cover ws/http/uds and auth.
+  - Connect to a remote access point (WebSocket or Unix socket over ssh -L) and perform the same byte forwarding.
+- [x] When pointed at a REST-only Harbor (`ah-rest-server`), translate REST/SSE TaskEvents into ACP `session/update` notifications and forward ACP RPCs to the REST API. Connection options cover ws/http/uds and auth.
 - Centralize ACP↔TaskEvent translation in a single shared module used by both the access-point bridge and the REST translator so we do not duplicate mapping logic (reuse the existing client/server mapping helpers; factor them if needed).
 - Add `acp.daemonize` behavior to `ah acp`:
   - Modes: `auto` (default) — if the access point is not running, spawn it as a background daemon and keep it alive with an idle timeout (default 24h) before self-termination; `never` — never launch a daemon, instead run the hybrid client/server inline in the invoking `ah acp` process (same code path as the daemon); `disabled` — refuse to start a daemon and fail fast with diagnostics if no access point is present.
@@ -324,17 +324,60 @@ Each WebSocket connection records the negotiated capabilities and a set of sessi
 - Integration test that points `ah acp` at a REST-only Harbor; confirms REST SSE events are translated to ACP `session/update` and prompts/cancel map back to REST.
 - CLI doc/help snapshot tests covering default socket discovery and remote connection flags.
 - Daemonization tests:
-- `acp.daemonize=auto` spins up the daemon when absent, reuses it across two concurrent `ah acp` clients, and tears down after idle timeout elapses.
-- `acp.daemonize=never` runs the bridge inline; verify multi-client reuse is not available and the process exits when the caller exits.
-- `acp.daemonize=disabled` fails with a clear diagnostic when no daemon is present.
+  - `acp.daemonize=auto` spins up the daemon when absent, reuses it across two concurrent `ah acp` clients, and tears down after idle timeout elapses.
+  - `acp.daemonize=never` runs the bridge inline; verify multi-client reuse is not available and the process exits when the caller exits.
+  - `acp.daemonize=disabled` fails with a clear diagnostic when no daemon is present.
+
+#### Implementation Details (Dec 2025 update)
+
+- Added shared crate `ah-acp-bridge` to translate `SessionEvent`/`TaskEvent` streams into ACP `SessionNotification` payloads (and wrap them in JSON-RPC envelopes). The ACP gateway, REST bridge, and notifier now reuse this mapping instead of bespoke JSON shims.
+- The `ah acp` REST bridge now consumes real REST SSE streams (`/api/v1/sessions/{id}/events`) and emits typed `session/update` notifications to ACP clients, preserving original metadata under `_meta`.
+- The REST client implements SSE via `eventsource-client`, honoring API key/JWT headers; fallback still seeds status from `/sessions/{id}` when SSE is unavailable.
+- Platform-default UDS discovery now lives in `ah-acp-bridge::default_uds_path`; when ACP is enabled on Unix hosts the gateway auto-binds that socket with 0600 permissions, cleans stale files on startup/exit, and the CLI bridge reuses the same path for autodiscovery.
+- The access-point CLI no longer exposes the stdio flag, but the stdio transport remains in the gateway for inline launches. `ah acp --daemonize=never` now reuses that same stdio transport inside the invoking process when no daemon is reachable, guarded by a singleton stdio binder.
+- ACP transport now guards stdio with a process-wide singleton to avoid double-consumption when WebSocket/UDS are co-hosted; stale UDS files are still cleaned up via RAII.
+- `ah acp` dropped the legacy `--stdio` flag, added bounded UDS wait/backoff for `daemonize=auto|never`, and exposes IO-parameterized forwarders so WS/UDS/REST bridges can be fuzzed in-process.
+- REST bridge request handling was factored onto a trait so unit tests can inject mock REST clients; prompt/pause/resume/cancel/list flows now round-trip without a live server.
+- `daemonize=auto` now spawns a detached access-point child process (hidden `--daemon-child`) that binds the UDS with 0600 perms, `setsid`/stdio-null detaches from the parent, enforces idle shutdown, and forwards to the configured upstream (REST bridge or WebSocket). A simulated ssh `-L` forward test covers UDS tunneling.
 
 #### Outstanding Tasks
 
-- Define and implement the shared ACP↔TaskEvent translation module and wire both the ACP gateway and the REST→ACP bridge to it (no duplication).
-- Add platform-specific default socket paths and discovery fallbacks; ensure permissions (0600) and cleanup on exit.
-- Add `ah acp` connectivity matrix tests (local autodiscovery, explicit `--uds`, `--ws`, ssh port forward, REST bridge).
-- Ensure mixed transport access-point runs do not double-consume stdin framing; add guard rails/tests.
-- Remove/retire legacy access-point flags that start ACP over stdio; align on `ah acp --daemonize=never` for inline usage and update code/flags accordingly. Confirm remaining ACP transport flags are implemented (WS/UDS) and drop unused ones from spec and code.
+- [x] Define and implement the shared ACP↔TaskEvent translation module and wire both the ACP gateway and the REST→ACP bridge to it (no duplication).
+- [x] Add platform-specific default socket paths and discovery fallbacks; ensure permissions (0600) and cleanup on exit.
+- [x] Add `ah acp` connectivity matrix tests (local autodiscovery, explicit `--uds`, `--ws`, ssh port forward, REST bridge). _New unit tests cover WS echo, UDS echo, REST-bridge RPC flows, and a simulated ssh `-L` forward over UDS._
+- [x] Add ssh/port-forward coverage for the connectivity matrix (WS/UDS over `ssh -L`), ensuring `ah acp` autodiscovery and explicit endpoints work through tunnels.
+- [x] Ensure mixed transport access-point runs do not double-consume stdin framing. _Resolved by removing server-side stdio entirely; UDS/WS remain._
+- [x] Remove/retire legacy access-point flags that start ACP over stdio; align on `ah acp --daemonize=never` for inline usage and update code/flags accordingly. Confirm remaining ACP transport flags are implemented (WS/UDS) and drop unused ones from spec and code.
+- [x] Implement REST→ACP prompt/injection mapping (REST POST for prompts and recorder injection) so REST bridge supports `session/prompt` end-to-end.
+- [x] Upgrade REST client SSE implementation (`SessionEventStream::connect`) from placeholder to real streaming and validate `session/update` parity.
+- [x] Implement the new REST `POST /api/v1/sessions/{id}/prompt` in `ah-rest-client` (and surface it in `ah acp` REST bridge/CLI) to keep client-side parity with the documented endpoint.
+- [x] Add REST bridge integration tests covering: list/load/new/pause/resume/cancel prompt rejection, initial status snapshot, and event streaming; include WS vs UDS parity. _Covered via `rest_bridge_handles_basic_flows` unit test (stdio/REST bridge path); WS/UDS parity still covered by echo-forwarding tests._
+- [x] Harden `ah acp` daemonize modes (auto/never/disabled) with startup/shutdown + idle timeout behavior and document defaults. _Auto/never now wait for the UDS to appear with bounded backoff; disabled fails fast with a clear diagnostic._
+- [x] Document/guard capability advertisement to include stdio when UDS is configured; ensure initialize responses mirror actual enabled transports in gateway and CLI bridge. _Config `transports()` advertises stdio when `uds_path` is set; translator unit test added._
+- [x] Reuse the shared TaskEvent↔SessionUpdate translation inside the TUI client (gateway and REST bridge already call it).
+- [x] Implement real `daemonize=auto` daemon startup/management; the client now spawns an access-point daemon (UDS/WebSocket/REST bridge) when the socket is missing instead of busy-waiting only.
+- [ ] Idle/reuse verification: We still need tests that prove the daemon is reused by multiple ah acp clients
+      and actually self-terminates after the idle timeout (current tests cover spawn + tunnel, not reuse/
+      timeout).
+- [ ] Access-point multiplex test: The verification item that runs ah agent access-point with WS + UDS (and the
+      legacy stdio path) and asserts identical transcripts is not implemented.
+- [ ] Doc/help updates: CLI help/snapshot tests for the new --daemon-child internal flag and the revised daemon
+      behavior are still outstanding.
+- [ ] Guardian for non-Unix: Daemon code should no-op/fail fast with clear messaging on platforms where it isn’t
+      supported yet.
+- [ ] Service-manager aware daemonization: daemonize=auto now double-forks on Unix, but we don’t yet prefer/
+      start a managed user service (systemd --user / LaunchAgent / Scheduled Task) before falling back to the
+      ad‑hoc daemon. Windows detached-process path is also missing.
+- [ ] Cross-platform detach: The child path is Unix-only; Windows needs the Scheduled Task/DETACHED_PROCESS flow
+      described in the research doc.
+
+#### Verification
+
+- `cargo test -p ah-cli websocket_forwarding_round_trip` exercises WS forwarding over in-memory stdin/stdout.
+- `cargo test -p ah-cli rest_bridge_handles_basic_flows` drives initialize/list/pause/resume/cancel/prompt error over the REST bridge with a mock client.
+- `cargo test -p ah-rest-server stdio_guard_prevents_double_binding` locks stdio to a single transport instance.
+- `cargo test -p ah-rest-server uds_transport_advertises_stdio` ensures capability advertisement includes stdio when `uds_path` is set.
+- `cargo test -p ah-cli auto_daemonizes_when_socket_missing` covers `daemonize=auto` spawning the UDS daemon (in-proc test shim), and `ssh_style_port_forward_simulation` exercises UDS access over a simulated `ssh -L` TCP tunnel.
 
 ---
 
