@@ -3,6 +3,7 @@
 
 # Nix builds
 result
+result-*
 
 # Ruby/Rails
 .install-markers/
