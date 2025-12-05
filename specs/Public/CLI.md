@@ -1117,7 +1117,6 @@ When `--rest-api yes` and `--bind/--port` are set, the daemon also serves the RE
 
 ACP TRANSPORT OPTIONS (access-point path):
 - `--acp-uds <PATH>`: Enable ACP over Unix domain socket at PATH (defaults to platform-specific standard location).
-- `--acp-stdio <yes|no>`: Enable ACP over stdio framing (default: yes).
 - `--acp-ws <yes|no>`: Enable ACP over WebSocket at `/acp/v1/connect` (default: yes).
 - All ACP transports share identical JSON-RPC framing; enabling multiple transports is supported concurrently.
 
@@ -1134,7 +1133,6 @@ OPTIONS:
 --endpoint <URL|PATH> Access point WS URL or UDS path (defaults to platform ACP socket path)
 --ws Force WebSocket transport (overrides endpoint type)
 --uds Force Unix socket transport (overrides endpoint type)
---stdio Force stdio transport (for stdio-enabled access points)
 --remote-server <NAME|URL> Target Harbor REST server for REST→ACP bridging
 --session <SESSION_ID> Load and attach to an existing ACP session on startup
 --daemonize <auto|never|disabled>
@@ -1145,13 +1143,13 @@ BEHAVIOR:
 
 - Endpoint resolution order: explicit transport flags → `--endpoint` → config keys (`acp.socket-path` / `acp.ws-url`) → platform default UDS path.
 - `daemonize=auto`: if no access point is running, start it in the background (prefer installer-provisioned service; otherwise double-fork/LaunchAgent/Scheduled Task/DETACHED_PROCESS), then connect; enforces idle shutdown (default 24h).
-- `daemonize=never`: run the hybrid access-point bridge inline in the `ah acp` process; no multi-client reuse—session dies with the process.
+- `daemonize=never`: run the hybrid access-point bridge inline in the `ah acp` process over stdio; no multi-client reuse—session dies with the process. If no access point is reachable, this spins up the same stdio ACP transport used by the access-point daemon.
 - `daemonize=disabled`: refuse to start a daemon; error if none is running.
 - REST bridge mode (`--remote-server`): streams REST SSE TaskEvents as ACP `session/update`; ACP RPCs become REST calls.
 - Session sharing: ACP permits multiple drivers; `--session` uses standard `session/load` to join an existing session and receives the same `session/update` stream (including echoes of its own actions). All connected clients see the same updates; no Harbor-specific policy or roles are required.
 - Motivation: a shared access point allows multiple `ah acp` invocations/clients to observe and drive the same ACP session concurrently while Harbor owns execution, edits, and snapshots.
 
-EXAMPLES:
+EXAMPLES (updated):
 
 ```bash
 # Use local default UDS; auto-start daemon if missing
@@ -1159,6 +1157,9 @@ ah acp
 
 # Connect to remote WS access point
 ah acp --endpoint wss://ah.example.com/acp/v1/connect
+
+# Bridge to REST server without daemon auto-start
+ah acp --remote-server https://ah.example.com --daemonize=disabled
 
 # Bridge to REST server without daemon auto-start
 ah acp --remote-server staging --daemonize=disabled

@@ -3,7 +3,7 @@
 
 //! Server configuration
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, path::PathBuf};
 
 /// Server configuration
 #[derive(Debug, Clone)]
@@ -65,9 +65,8 @@ pub struct AcpConfig {
     /// ignored when running in stdio mode.
     pub bind_addr: SocketAddr,
 
-    /// How clients connect to the gateway. ACP supports both in-process stdio
-    /// pipes (for `ah agent access-point --stdio-acp`) and WebSocket upgrade
-    /// over HTTP; we negotiate capabilities during `initialize`.
+    /// How clients connect to the gateway. ACP supports WebSocket upgrade
+    /// over HTTP; stdio serving is available for embedders (e.g. inline `ah acp`).
     pub transport: AcpTransportMode,
 
     /// Authentication policy for `authenticate` frames. `InheritRestAuth`
@@ -81,6 +80,11 @@ pub struct AcpConfig {
     /// Idle timeout for ACP connections (seconds). If no frames are received in
     /// this window the gateway will close the socket defensively.
     pub idle_timeout_secs: u64,
+
+    /// Optional Unix-domain socket for ACP framing (identical to stdio
+    /// framing). When set, the gateway binds this socket **in addition** to
+    /// the primary transport so local tools can connect without HTTP upgrade.
+    pub uds_path: Option<PathBuf>,
 }
 
 impl Default for AcpConfig {
@@ -92,6 +96,7 @@ impl Default for AcpConfig {
             auth_policy: AcpAuthPolicy::InheritRestAuth,
             connection_limit: 32,
             idle_timeout_secs: 30,
+            uds_path: None,
         }
     }
 }
@@ -101,7 +106,7 @@ impl Default for AcpConfig {
 pub enum AcpTransportMode {
     /// Serve ACP over WebSocket (JSON-RPC over HTTP upgrade)
     WebSocket,
-    /// Serve ACP over stdio pipes (launched as a sidecar process)
+    /// Serve ACP over stdio pipes (embedded/inline launches only)
     Stdio,
 }
 
@@ -109,6 +114,23 @@ impl AcpTransportMode {
     /// Returns true when the transport expects a TCP listener.
     pub fn uses_socket(self) -> bool {
         matches!(self, AcpTransportMode::WebSocket)
+    }
+}
+
+impl AcpConfig {
+    /// List the transport names advertised during `initialize` capability
+    /// negotiation based on the current configuration.
+    pub fn transports(&self) -> Vec<String> {
+        let mut transports = Vec::new();
+        if matches!(self.transport, AcpTransportMode::WebSocket) {
+            transports.push("websocket".to_string());
+        }
+        if matches!(self.transport, AcpTransportMode::Stdio) || self.uds_path.is_some() {
+            // UDS uses the same framing as the legacy stdio transport; advertise
+            // it under the stdio capability for ACP compatibility.
+            transports.push("stdio".to_string());
+        }
+        transports
     }
 }
 
@@ -184,6 +206,7 @@ mod tests {
         assert_eq!(config.acp.auth_policy, AcpAuthPolicy::InheritRestAuth);
         assert_eq!(config.acp.connection_limit, 32);
         assert_eq!(config.acp.idle_timeout_secs, 30);
+        assert!(config.acp.uds_path.is_none());
     }
 }
 

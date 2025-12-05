@@ -75,7 +75,8 @@ Examples:
 - `tui-font-style`: string — TUI symbol style (values: `"nerdfont"` | `"unicode"` | `"ascii"`). Auto-detected based on terminal capabilities.
 - `tui-font`: string — TUI font name for advanced terminal font customization.
 - `acp.daemonize`: string — controls `ah acp` behavior when no access point is running (`auto` = start daemon with idle timeout, default; `never` = run inline; `disabled` = fail if absent).
-- `acp.socket-path`: string — preferred Unix-domain socket path for ACP access point discovery (overrides platform default).
+- `acp.socket-path` / `acp.uds_path`: string — preferred Unix-domain socket path for ACP access point discovery (overrides platform default). When set, the access point listens on this socket in addition to WebSocket.
+- `acp.transport`: `websocket` (default) or `stdio`. Stdio is only used by embedded/inline launchers (e.g. `ah acp --daemonize=never`) and is not exposed by `ah agent access-point` CLI flags.
 - `acp.ws-url`: string — preferred WebSocket URL for ACP access point discovery.
 
 ### Behavior

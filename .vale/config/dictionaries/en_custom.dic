@@ -1,4 +1,4 @@
-1389
+1390
 "Fran\xE7ois"
 "fa\xE7ade"
 ACCES
@@ -517,6 +517,7 @@ ctypes
 daemonctl
 daemonization
 daemonized
+daemonizes
 dataclass
 dataclasses
 datagram

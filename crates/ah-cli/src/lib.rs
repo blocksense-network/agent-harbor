@@ -6,6 +6,7 @@ use ah_logging::CliLoggingArgs;
 use clap::Subcommand;
 use serde_json::{Map, Value};
 
+pub mod acp;
 pub mod agent;
 pub mod config;
 pub mod config_commands;
@@ -49,6 +50,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    Acp(acp::AcpArgs),
     Tui(tui::TuiArgs),
     Task {
         #[command(subcommand)]
@@ -109,6 +111,7 @@ impl Cli {
         match &self.command {
             Commands::Tui(args) => self.merge_subcommand_config(map, args),
             Commands::Health(args) => self.merge_subcommand_config(map, args),
+            Commands::Acp(_) => {}
             Commands::Task { .. } => {}
             Commands::Agent { .. } => {}
             Commands::Config { .. } => {}

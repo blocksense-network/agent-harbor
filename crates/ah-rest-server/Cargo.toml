@@ -58,6 +58,7 @@ ah-rest-api-contract = { workspace = true }
 ah-domain-types = { workspace = true, features = ["clap"] }
 ah-rest-mock-client = { workspace = true }
 ah-scenario-format = { workspace = true }
+ah-acp-bridge = { workspace = true }
 
 # Core functionality
 ah-core = { workspace = true }

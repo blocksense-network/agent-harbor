@@ -37,9 +37,14 @@ impl JsonRpcTranslator {
     }
 
     pub fn negotiate_caps(config: &AcpConfig) -> AgentCapabilities {
-        let mut transports = vec!["websocket".to_string()];
-        if matches!(config.transport, AcpTransportMode::Stdio) {
-            transports.push("stdio".to_string());
+        let mut transports = config.transports();
+        // Preserve legacy single-transport behavior if callers constructed an
+        // AcpConfig without the helper fields.
+        if transports.is_empty() {
+            transports.push("websocket".to_string());
+            if matches!(config.transport, AcpTransportMode::Stdio) {
+                transports.push("stdio".to_string());
+            }
         }
         AgentCapabilities {
             load_session: true,
@@ -207,5 +212,28 @@ mod tests {
                 .map(|_| Ok(()))
                 .unwrap_or_else(|| Err("expected warning for mcp capability".to_string()))
         });
+    }
+
+    #[test]
+    fn uds_transport_advertises_stdio() {
+        let cfg = AcpConfig {
+            enabled: true,
+            uds_path: Some(std::path::PathBuf::from("/tmp/acp.sock")),
+            ..AcpConfig::default()
+        };
+        let caps = JsonRpcTranslator::negotiate_caps(&cfg);
+        let transports = caps
+            .meta
+            .as_ref()
+            .and_then(|m| m.pointer("/agent.harbor/transports"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let values: Vec<String> = transports
+            .into_iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        assert!(values.contains(&"stdio".to_string()));
+        assert!(values.contains(&"websocket".to_string()));
     }
 }

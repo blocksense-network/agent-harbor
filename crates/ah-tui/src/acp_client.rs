@@ -34,9 +34,11 @@ use ah_core::task_manager::{
 };
 use ah_core::task_manager_wire::TaskManagerMessage;
 use ah_domain_types::task::{TaskInfo, ToolStatus};
-use ah_domain_types::{AcpLaunchCommand, LogLevel, TaskExecution};
+use ah_domain_types::{AcpLaunchCommand, LogLevel, TaskExecution, TaskState};
 use ah_recorder::TerminalState;
-use ah_rest_api_contract::types::{SessionEvent, SessionLogLevel, SessionToolStatus};
+use ah_rest_api_contract::types::{
+    SessionEvent, SessionLogLevel, SessionStatus, SessionToolStatus,
+};
 use anyhow::Context;
 use chrono::Utc;
 use libc;
@@ -960,102 +962,108 @@ fn shell_escape(input: &str) -> String {
     }
 }
 
-fn log_level_to_session(level: &LogLevel) -> SessionLogLevel {
-    match level {
-        LogLevel::Error => SessionLogLevel::Error,
-        LogLevel::Warn => SessionLogLevel::Warn,
-        LogLevel::Info => SessionLogLevel::Info,
-        LogLevel::Debug | LogLevel::Trace => SessionLogLevel::Debug,
-    }
-}
-
-fn tool_status_to_session(status: ToolStatus) -> SessionToolStatus {
-    match status {
-        ToolStatus::Started => SessionToolStatus::Started,
-        ToolStatus::Completed => SessionToolStatus::Completed,
-        ToolStatus::Failed => SessionToolStatus::Failed,
-    }
-}
-
-fn task_event_to_session_event(event: &TaskEvent) -> Option<SessionEvent> {
-    let ts = match event {
-        TaskEvent::Status { ts, .. }
-        | TaskEvent::Log { ts, .. }
-        | TaskEvent::Thought { ts, .. }
-        | TaskEvent::ToolUse { ts, .. }
-        | TaskEvent::ToolResult { ts, .. }
-        | TaskEvent::FileEdit { ts, .. }
-        | TaskEvent::UserInput { ts, .. } => ts.timestamp_millis() as u64,
-    };
+fn task_event_to_session_event(_session_id: &str, event: &TaskEvent) -> Option<SessionEvent> {
     match event {
-        TaskEvent::Status { status, .. } => Some(SessionEvent::status((*status).into(), ts)),
+        TaskEvent::Thought {
+            thought,
+            reasoning,
+            ts,
+        } => Some(SessionEvent::thought(
+            thought.clone(),
+            reasoning.clone(),
+            ts.timestamp_millis() as u64,
+        )),
+        TaskEvent::Status { status, ts } => Some(SessionEvent::status(
+            map_task_state(status),
+            ts.timestamp_millis() as u64,
+        )),
         TaskEvent::Log {
             level,
             message,
             tool_execution_id,
-            ..
+            ts,
         } => Some(SessionEvent::log(
-            log_level_to_session(level),
+            map_log_level(level),
             message.clone(),
             tool_execution_id.clone(),
-            ts,
-        )),
-        TaskEvent::Thought {
-            thought, reasoning, ..
-        } => Some(SessionEvent::thought(
-            thought.clone(),
-            reasoning.clone(),
-            ts,
+            ts.timestamp_millis() as u64,
         )),
         TaskEvent::ToolUse {
             tool_name,
             tool_args,
             tool_execution_id,
             status,
-            ..
-        } => {
-            let args_str = serde_json::to_string(tool_args).unwrap_or_else(|_| "{}".into());
-            Some(SessionEvent::tool_use(
-                tool_name.clone(),
-                args_str,
-                tool_execution_id.clone(),
-                tool_status_to_session(*status),
-                ts,
-            ))
-        }
+            ts,
+        } => Some(SessionEvent::tool_use(
+            tool_name.clone(),
+            tool_args.to_string(),
+            tool_execution_id.clone(),
+            map_tool_status(status),
+            ts.timestamp_millis() as u64,
+        )),
         TaskEvent::ToolResult {
             tool_name,
             tool_output,
             tool_execution_id,
             status,
-            ..
+            ts,
         } => Some(SessionEvent::tool_result(
             tool_name.clone(),
             tool_output.clone(),
             tool_execution_id.clone(),
-            tool_status_to_session(*status),
-            ts,
+            map_tool_status(status),
+            ts.timestamp_millis() as u64,
         )),
         TaskEvent::FileEdit {
             file_path,
             lines_added,
             lines_removed,
             description,
-            ..
+            ts,
         } => Some(SessionEvent::file_edit(
             file_path.clone(),
             *lines_added,
             *lines_removed,
             description.clone(),
-            ts,
+            ts.timestamp_millis() as u64,
         )),
-        TaskEvent::UserInput {
-            author, content, ..
-        } => Some(SessionEvent::thought(
-            format!("{author}: {content}"),
-            None,
-            ts,
-        )),
+        TaskEvent::UserInput { .. } => None,
+    }
+}
+
+fn map_task_state(state: &TaskState) -> SessionStatus {
+    match state {
+        TaskState::Draft => SessionStatus::Queued,
+        TaskState::Queued => SessionStatus::Queued,
+        TaskState::Provisioning => SessionStatus::Provisioning,
+        TaskState::Running => SessionStatus::Running,
+        TaskState::Pausing => SessionStatus::Pausing,
+        TaskState::Paused => SessionStatus::Paused,
+        TaskState::Resuming => SessionStatus::Resuming,
+        TaskState::Stopping => SessionStatus::Stopping,
+        TaskState::Stopped => SessionStatus::Stopped,
+        TaskState::Completed => SessionStatus::Completed,
+        TaskState::Failed => SessionStatus::Failed,
+        TaskState::Cancelled => SessionStatus::Cancelled,
+        TaskState::Merged => SessionStatus::Completed,
+    }
+}
+
+fn map_log_level(level: &LogLevel) -> SessionLogLevel {
+    match level {
+        LogLevel::Error => SessionLogLevel::Error,
+        LogLevel::Warn => SessionLogLevel::Warn,
+        LogLevel::Info => SessionLogLevel::Info,
+        LogLevel::Debug => SessionLogLevel::Debug,
+        LogLevel::Trace => SessionLogLevel::Debug,
+    }
+}
+
+fn map_tool_status(status: &ToolStatus) -> SessionToolStatus {
+    match status {
+        ToolStatus::Started => SessionToolStatus::Started,
+        ToolStatus::Completed => SessionToolStatus::Completed,
+        ToolStatus::Failed => SessionToolStatus::Failed,
     }
 }
 
@@ -1093,7 +1101,7 @@ async fn spawn_task_event_forwarder(
                 });
 
                 while let Some(event) = rx.recv().await {
-                    if let Some(session_event) = task_event_to_session_event(&event) {
+                    if let Some(session_event) = task_event_to_session_event(&session_id, &event) {
                         let msg = TaskManagerMessage::SessionEvent(session_event);
                         if let Err(err) = msg.write_to(&mut writer).await {
                             tracing::warn!(error = %err, "failed to forward task event");
