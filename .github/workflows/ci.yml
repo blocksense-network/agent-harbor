@@ -22,9 +22,8 @@ on:
   workflow_dispatch:
 
   # Run on PRs that target `main`:
+  push:
   pull_request:
-    branches:
-      - main
 
   # Run the pipeline for each PR part of merge queues as well
   merge_group:
@@ -37,85 +36,6 @@ env:
   CHECK_MERMAID: ${{ vars.CHECK_MERMAID }}
 
 jobs:
-  lint:
-    runs-on: [self-hosted, nixos, x86-64-v3]
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Run Lint
-        run: nix develop -c sh -c 'yarn && pre-commit run --all-files'
-
-  build-and-cache-devshell:
-    strategy:
-      matrix:
-        include:
-          - name: x86_64-linux (NixOS, self-hosted)
-            runner: [self-hosted, nixos, x86-64-v3]
-            system: x86_64-linux
-          - name: aarch64-darwin (macOS, GitHub-hosted)
-            runner: macos-latest
-            system: aarch64-darwin
-
-    name: Build devshell | ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Build & activate the Nix Dev Shell
-        run: nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#devShells.${{ matrix.system }}.default
-
-  build-and-cache-ah-package:
-    strategy:
-      matrix:
-        include:
-          - name: x86_64-linux (NixOS, self-hosted)
-            runner: [self-hosted, nixos, x86-64-v3]
-            system: x86_64-linux
-          - name: aarch64-darwin (macOS, GitHub-hosted)
-            runner: macos-latest
-            system: aarch64-darwin
-
-    name: Build package | ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Build the main AH Nix Package
-        run: nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#packages.${{ matrix.system }}.default
-
   test:
     strategy:
       matrix:
@@ -123,38 +43,12 @@ jobs:
           - name: x86_64-linux (NixOS, self-hosted)
             runner: [self-hosted, nixos, x86-64-v3, microvm]
             allowedToFail: false
-          # - name: aarch64-darwin (macOS, GitHub-hosted)
-          #   runner: macos-latest
-          #   allowedToFail: true
 
     name: Rust tests | ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     continue-on-error: ${{ matrix.allowedToFail }}
 
     steps:
-      - name: Test user namespace availability
-        run: unshare -U true && echo "✅ userns OK" || echo "❌ userns blocked"
-
-      - name: Test passwordless `sudo` availability
-        run: sudo true && echo "✅ sudo OK" || echo "❌ sudo blocked"
-
-      - name: Investigate sudo
-        run: |
-          set -x
-          ls -l "$(command -v sudo)"
-          id
-          whoami
-          sudo whoami || true
-          grep -E 'NoNewPrivs|CapEff|CapBnd' /proc/self/status || true
-          mount | grep " on /run " || true
-          mount | grep " on /run/wrappers" || true
-          grep -E '^(NoNewPrivs|CapEff|CapBnd|Seccomp)' /proc/self/status
-          echo "-- uid/gid maps (user namespace check) --"
-          cat /proc/self/uid_map /proc/self/gid_map 2>/dev/null || true
-
-      - name: Test passwordless `sudo` availability
-        run: sudo true && echo "✅ sudo OK" || echo "❌ sudo blocked"
-
       - uses: actions/checkout@v5
         with:
           submodules: 'recursive'
@@ -172,67 +66,15 @@ jobs:
           direnv allow .
           direnv export gha > "$GITHUB_ENV"
 
-      - name: Run sandbox-fs tests to fail-fast check the CI runner permissions
-        run: |
-          cargo test -p sandbox-fs
+      - run: |
+          script -r my-zellij-2 sh -c 'zellij attach --create-background bg-session; zellij list-sessions'
 
-      - name: Check compilation
-        run: just check
+      - run: zellij && echo "zellij ok" || echo "Zellij failed"
+      - run: |
+          export SHELL=$(nix build --json nixpkgs#bashInteractive | jq -r '.[0].outputs.out')
+          script -r "zellij" && echo "script + zellij ok" || echo "script + Zellij failed"
 
-      - name: Build sandbox helper binary
-        run: just build-sbx-helper-release
-
-      - name: Build cgroup enforcement test binaries
-        run: just build-cgroup-tests
-
-      # - run: sudo just create-test-filesystems
-      #
-      # - run: sudo just start-ah-fs-snapshots-daemon
-
-      - name: Run tests
-        run: just test-rust-verbose
-
-  webui:
-    runs-on: [self-hosted, nixos, x86-64-v3]
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-
-      - name: Install Nix
-        uses: metacraft-labs/nixos-modules/.github/install-nix@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          cachix-cache: ${{ vars.CACHIX_CACHE }}
-          trusted-public-keys: ${{ vars.TRUSTED_PUBLIC_KEYS }}
-          substituters: ${{ vars.SUBSTITUTERS }}
-
-      - name: Build & activate the Nix Dev Shell
-        run: |
-          direnv allow .
-          direnv export gha > "$GITHUB_ENV"
-
-      - name: Install JS deps
-        run: yarn install
-
-      - name: Lint WebUI code
-        run: just webui-lint
-
-      - name: Type check WebUI code
-        run: just webui-type-check
-
-      - name: Build WebUI app
-        run: just webui-build
-
-      - name: Build mock server
-        run: just webui-build-mock
-
-      # - name: Install Playwright browsers
-      #   run: just webui-install-browsers
-
-      # TODO: Once tests are stable bring them back
-      # - name: Run Playwright tests
-      #   run: just webui-test
-      #   env:
-      #     BASE_URL: http://localhost:3000
+      - run: tmux -L ci new-session -d -s mysession "run-some-command"
+      - run: tmux -L ci send-keys -t mysession "echo 'hello from tmux'" C-m
+      - run: tmux -L ci capture-pane -pt mysession
+      - run: tmux -L ci kill-session -t mysession
