@@ -71,6 +71,76 @@ CARGO_BUILD_RUST_TEST_BINARIES := \
 default:
   @just --list
 
+# Run the full set of checks and builds that CI executes across workflows
+ci-all:
+    just ci-lint
+    just ci-build-devshell
+    just ci-build-package
+    just ci-test
+    just ci-webui
+    just ci-fuse-harness
+    just ci-pjdfstest
+    just ci-backstore-macos
+
+# Match the lint job in .github/workflows/ci.yml
+ci-lint:
+    yarn install
+    pre-commit run --all-files
+
+# Build the dev shell cache the same way CI does
+ci-build-devshell:
+    system=$(nix eval --impure --expr 'builtins.currentSystem' --raw)
+    nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#devShells.${system}.default
+
+# Build the main Agent Harbor package as in CI
+ci-build-package:
+    system=$(nix eval --impure --expr 'builtins.currentSystem' --raw)
+    nix run nixpkgs#nix-fast-build -L -- --no-nom --skip-cached --flake .#packages.${system}.default
+
+# Reproduce the Rust test job from CI
+ci-test:
+    cargo test -p sandbox-fs
+    just check
+    just build-sbx-helper-release
+    just build-cgroup-tests
+    just test-rust-verbose
+
+# Mirror the WebUI job steps
+ci-webui:
+    yarn install
+    just webui-lint
+    just webui-type-check
+    just webui-build
+    just webui-build-mock
+
+# Replicate the FUSE harness workflow (Linux only)
+ci-fuse-harness:
+    if [ "$(uname -s)" != "Linux" ]; then echo "Skipping FUSE harness: requires Linux"; exit 0; fi
+    cargo build -p agentfs-fuse-host --features fuse
+    cargo build -p agentfs-control-cli
+    export SKIP_FUSE_BUILD=1 SKIP_CONTROL_CLI_BUILD=1
+    just test-fuse-mount-cycle
+    just test-fuse-mount-failures
+    just test-fuse-mount-concurrent
+    just test-fuse-basic-ops
+    just test-fuse-negative-ops
+    just test-fuse-overlay-ops
+    just test-fuse-control-plane
+
+# Replicate the pjdfstest workflow (Linux only)
+ci-pjdfstest:
+    if [ "$(uname -s)" != "Linux" ]; then echo "Skipping pjdfstest suite: requires Linux"; exit 0; fi
+    just build-fuse-test-binaries
+    SKIP_FUSE_BUILD=1 just test-pjdfstest-full
+
+# Mirror the macOS backstore workflow (noop on non-macOS)
+ci-backstore-macos:
+    if [ "$(uname -s)" != "Darwin" ]; then echo "Skipping macOS backstore checks: requires macOS"; exit 0; fi
+    just fmt-rust-check
+    just lint-rust
+    just check
+    cargo nextest run -p agentfs-backstore-macos
+
 [doc('Run a command to clean the repository of untracked files')]
 clean:
   git clean -fdx \
