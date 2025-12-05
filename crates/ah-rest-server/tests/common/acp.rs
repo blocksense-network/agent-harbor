@@ -10,7 +10,15 @@ use ah_rest_server::{
     config::AcpConfig,
     mock_dependencies::{MockServerDependencies, ScenarioPlaybackOptions},
 };
+use tempfile::TempDir;
 use tokio::task::JoinHandle;
+
+/// Set a unique socket directory for this test process to avoid cross-test UDS collisions.
+pub fn set_unique_socket_dir() -> TempDir {
+    let dir = TempDir::new().expect("tmpdir");
+    std::env::set_var("AH_SOCKET_DIR", dir.path());
+    dir
+}
 
 /// Default test configuration shared by ACP integration tests.
 fn base_config() -> (ServerConfig, std::net::SocketAddr, std::net::SocketAddr) {

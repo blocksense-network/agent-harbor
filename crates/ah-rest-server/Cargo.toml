@@ -125,3 +125,4 @@ mockall = { workspace = true }
 ah-rest-client = { workspace = true }
 serde_yaml = { workspace = true }
 tracing-test = "0.2"
+serial_test = "3"

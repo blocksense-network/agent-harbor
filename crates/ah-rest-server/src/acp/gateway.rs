@@ -52,7 +52,9 @@ impl AcpGateway {
         }
 
         #[cfg(unix)]
-        if config.uds_path.is_none() {
+        if config.uds_path.is_none()
+            && matches!(config.transport, crate::config::AcpTransportMode::Stdio)
+        {
             config.uds_path = Some(default_uds_path());
         }
 

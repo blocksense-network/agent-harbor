@@ -9,7 +9,7 @@
 use crate::models::{DatabaseSessionStore, SessionStore};
 use ah_core::{
     AgentExecutionConfig, AgentExecutor,
-    task_manager_wire::{TaskManagerMessage, task_manager_socket_path},
+    task_manager_wire::{TaskManagerMessage, socket_dir},
 };
 use ah_local_db::Database;
 use ah_rest_api_contract::{Session, SessionEvent, SessionStatus};
@@ -118,6 +118,7 @@ pub struct TaskExecutor {
     recorder_senders: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<TaskManagerMessage>>>>,
     accept_loop_running: Arc<Mutex<bool>>,
     task_socket_hub: Arc<crate::task_socket::TaskSocketHub>,
+    task_manager_socket_path: PathBuf,
 }
 
 impl TaskExecutor {
@@ -141,6 +142,11 @@ impl TaskExecutor {
         };
 
         let agent_executor = Arc::new(AgentExecutor::new(config));
+        // Keep UDS path short to satisfy SUN_LEN (104 on macOS).
+        let short_uuid = uuid::Uuid::new_v4().as_simple().to_string();
+        let short_uuid = &short_uuid[..8];
+        let task_manager_socket_path =
+            socket_dir().join(format!("tm-{}-{}.sock", std::process::id(), short_uuid));
 
         Self {
             db,
@@ -154,6 +160,7 @@ impl TaskExecutor {
             recorder_senders: Arc::new(Mutex::new(HashMap::new())),
             accept_loop_running: Arc::new(Mutex::new(false)),
             task_socket_hub: Arc::new(crate::task_socket::TaskSocketHub::new()),
+            task_manager_socket_path,
         }
     }
 
@@ -164,8 +171,8 @@ impl TaskExecutor {
             return Ok(());
         }
 
-        let socket_path = task_manager_socket_path();
-        let _ = std::fs::remove_file(&socket_path);
+        let socket_path = self.task_manager_socket_path.clone();
+        let _ = std::fs::remove_file(socket_path.clone());
         let listener = UnixListener::bind(&socket_path)?;
         let listener = Arc::new(listener);
 
@@ -339,6 +346,7 @@ impl TaskExecutor {
             recorder_senders: Arc::clone(&self.recorder_senders),
             accept_loop_running: Arc::clone(&self.accept_loop_running),
             task_socket_hub: Arc::clone(&self.task_socket_hub),
+            task_manager_socket_path: self.task_manager_socket_path.clone(),
         });
 
         tokio::spawn(async move {
@@ -444,7 +452,7 @@ impl TaskExecutor {
 
         // Ensure the task manager socket is available for recorder interaction
         self.ensure_task_manager_listener().await?;
-        let tm_socket = task_manager_socket_path();
+        let tm_socket = self.task_manager_socket_path.clone();
 
         // Start the agent process
         let handle = self
@@ -877,16 +885,16 @@ mod tests {
     async fn inject_message_forwards_to_recorder_socket() -> anyhow::Result<()> {
         let db = Arc::new(Database::open_in_memory()?);
         let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
-        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
         let socket_dir = tempfile::tempdir()?;
         let prior_socket_dir = std::env::var("AH_SOCKET_DIR").ok();
         std::env::set_var("AH_SOCKET_DIR", socket_dir.path());
+        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
 
         let ids = session_store.create_session(&make_request()).await?;
         let session_id = ids.first().cloned().expect("session id");
 
         executor.ensure_task_manager_listener().await?;
-        let socket_path = task_manager_socket_path();
+        let socket_path = executor.task_manager_socket_path.clone();
 
         // Recorder simulation that captures injected bytes
         let (msg_tx, msg_rx) = tokio::sync::oneshot::channel();
@@ -928,16 +936,16 @@ mod tests {
 
         let db = Arc::new(Database::open_in_memory()?);
         let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
-        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
         let socket_dir = tempfile::tempdir()?;
         let prior_socket_dir = std::env::var("AH_SOCKET_DIR").ok();
         std::env::set_var("AH_SOCKET_DIR", socket_dir.path());
+        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
 
         let ids = session_store.create_session(&make_request()).await?;
         let session_id = ids.first().cloned().expect("session id");
 
         executor.ensure_task_manager_listener().await?;
-        let socket_path = task_manager_socket_path();
+        let socket_path = executor.task_manager_socket_path.clone();
 
         // Recorder simulation that sends PTY bytes and a resize
         let mut stream = UnixStream::connect(&socket_path).await?;
@@ -983,16 +991,16 @@ mod tests {
     async fn inject_bytes_writes_raw_without_newline() -> anyhow::Result<()> {
         let db = Arc::new(Database::open_in_memory()?);
         let session_store = Arc::new(DatabaseSessionStore::new(Arc::clone(&db)));
-        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
         let socket_dir = tempfile::tempdir()?;
         let prior_socket_dir = std::env::var("AH_SOCKET_DIR").ok();
         std::env::set_var("AH_SOCKET_DIR", socket_dir.path());
+        let executor = TaskExecutor::new(Arc::clone(&db), Arc::clone(&session_store), None);
 
         let ids = session_store.create_session(&make_request()).await?;
         let session_id = ids.first().cloned().expect("session id");
 
         executor.ensure_task_manager_listener().await?;
-        let socket_path = task_manager_socket_path();
+        let socket_path = executor.task_manager_socket_path.clone();
 
         // Recorder simulation that captures injected bytes
         let (msg_tx, msg_rx) = tokio::sync::oneshot::channel();

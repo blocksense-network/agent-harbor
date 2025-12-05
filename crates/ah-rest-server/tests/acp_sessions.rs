@@ -6,9 +6,10 @@ use std::net::TcpListener;
 use ah_rest_server::{
     Server, ServerConfig, config::AcpConfig, mock_dependencies::MockServerDependencies,
 };
-use common::acp::spawn_acp_server_basic;
+use common::acp::{set_unique_socket_dir, spawn_acp_server_basic};
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use serial_test::serial;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 mod common;
@@ -32,7 +33,9 @@ async fn read_response(
 }
 
 #[tokio::test]
+#[serial(acp_socket)]
 async fn acp_session_catalog_end_to_end() {
+    let _socket_dir = set_unique_socket_dir();
     let (acp_url, handle) = spawn_acp_server_basic().await;
     let acp_url = format!("{}?api_key=secret", acp_url);
 
@@ -136,7 +139,9 @@ async fn acp_session_catalog_end_to_end() {
 }
 
 #[tokio::test]
+#[serial(acp_socket)]
 async fn acp_session_new_infers_tenant_from_jwt() {
+    let _socket_dir = set_unique_socket_dir();
     use ah_rest_server::auth::Claims;
     use jsonwebtoken::{EncodingKey, Header};
     use tungstenite::client::IntoClientRequest;
@@ -226,7 +231,9 @@ async fn acp_session_new_infers_tenant_from_jwt() {
 }
 
 #[tokio::test]
+#[serial(acp_socket)]
 async fn acp_session_load_paused_marks_workspace_read_only() {
+    let _socket_dir = set_unique_socket_dir();
     let (acp_url, handle) = spawn_acp_server_basic().await;
     let acp_url = format!("{}?api_key=secret", acp_url);
 
@@ -280,7 +287,9 @@ async fn acp_session_load_paused_marks_workspace_read_only() {
 }
 
 #[tokio::test]
+#[serial(acp_socket)]
 async fn acp_session_new_respects_context_limit() {
+    let _socket_dir = set_unique_socket_dir();
     let (acp_url, handle) = spawn_acp_server_basic().await;
     let acp_url = format!("{}?api_key=secret", acp_url);
 

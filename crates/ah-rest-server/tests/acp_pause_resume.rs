@@ -3,15 +3,18 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use common::acp::spawn_acp_server_with_scenario;
+use common::acp::{set_unique_socket_dir, spawn_acp_server_with_scenario};
 use futures::{SinkExt, StreamExt};
 use serde_json::json;
+use serial_test::serial;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 mod common;
 
 #[tokio::test]
+#[serial(acp_socket)]
 async fn acp_pause_resume_status_streams() {
+    let _socket_dir = set_unique_socket_dir();
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/acp_bridge/scenarios/pause_resume.yaml");
     let (acp_url, handle) = spawn_acp_server_with_scenario(fixture).await;
@@ -51,7 +54,8 @@ async fn acp_pause_resume_status_streams() {
 
     let mut saw_paused = false;
     let mut saw_completed = false;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    // Give macOS/CI plenty of slack; the mock server occasionally pauses longer under load.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     while tokio::time::Instant::now() < deadline {
         if let Some(msg) = socket.next().await {
             let msg = msg.expect("frame");
@@ -86,7 +90,9 @@ async fn acp_pause_resume_status_streams() {
 }
 
 #[tokio::test]
+#[serial(acp_socket)]
 async fn acp_pause_and_resume_rpcs_emit_status() {
+    let _socket_dir = set_unique_socket_dir();
     let (acp_url, handle) = spawn_acp_server_with_scenario(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/acp_bridge/scenarios/prompt_turn_basic.yaml"),
@@ -159,7 +165,8 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
     // Expect a paused status event
     let mut saw_paused = false;
     let mut saw_running = false;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    // Extra slack for slower macOS CI VMs and heavier concurrent test loads.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
     while tokio::time::Instant::now() < deadline {
         if let Some(msg) = socket.next().await {
             let msg = msg.expect("frame");
@@ -209,7 +216,8 @@ async fn acp_pause_and_resume_rpcs_emit_status() {
     }
 
     // Expect running status again
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    // Allow slower macOS event delivery after resume.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
     while tokio::time::Instant::now() < deadline {
         if let Some(msg) = socket.next().await {
             let msg = msg.expect("frame");
