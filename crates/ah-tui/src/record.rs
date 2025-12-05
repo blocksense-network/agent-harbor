@@ -29,6 +29,7 @@ use clap::Parser;
 use crossterm::event::{Event, MouseButton, MouseEventKind};
 use ratatui;
 use std::env;
+use std::future;
 use std::io::Write;
 // no std::os::fd items needed currently
 use std::path::PathBuf;
@@ -641,8 +642,11 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         None
     };
 
-    // Set up input event handling (always available for responsiveness)
-    let mut input_rx = {
+    // Set up input event handling (skip when headless to avoid TTY-dependent reads)
+    let mut input_rx = if args.headless {
+        debug!("Headless mode: skipping input event handling");
+        None
+    } else {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
         // Event reader thread
         debug!("Setting up input event handling");
@@ -651,11 +655,13 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
                 // Send event to main thread (async)
                 let _ = tx.send(ev);
             }
+            // On macOS in CI, crossterm::event::read() returns an error when no TTY is attached.
+            // Exiting the thread should not abort the recorder; we simply stop forwarding input.
         });
-        rx
+        Some(rx)
     };
 
-    debug!("Input event handling set up");
+    debug!("Input event handling configured");
 
     // Set up signal handling for graceful shutdown
     let _sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
@@ -688,14 +694,17 @@ pub async fn execute(deps: TuiDependencies, args: RecordArgs) -> Result<()> {
         // Handle all events in unified tokio select (truly event-driven)
         // Includes periodic tick for potential UI animations (similar to dashboard_loop.rs)
         tokio::select! {
-            // Handle user input events (always available for responsiveness)
-            input_event = input_rx.recv() => {
-                let event = match input_event {
-                    Some(e) => e,
-                    None => {
-                        debug!("Input event channel closed");
-                        break;
-                    }
+            // Handle user input events (disabled when headless to avoid TTY errors)
+            input_event = async {
+                if let Some(rx) = &mut input_rx {
+                    rx.recv().await
+                } else {
+                    future::pending().await
+                }
+            } => {
+                let Some(event) = input_event else {
+                    debug!("Input event channel closed");
+                    continue;
                 };
 
 
