@@ -66,6 +66,8 @@ pub enum Commands {
         subcommand: config_commands::ConfigCommands,
     },
     Health(health::HealthArgs),
+    /// Credential management commands
+    Credentials(credentials::CredentialsArgs),
 }
 
 #[derive(Subcommand)]
@@ -116,6 +118,7 @@ impl Cli {
             Commands::Task { .. } => {}
             Commands::Agent { .. } => {}
             Commands::Config { .. } => {}
+            Commands::Credentials(_) => {}
         }
     }
 

@@ -948,6 +948,105 @@ Output and exit codes:
 
 - The command also prints the detected terminal environment and the availability of supported terminal multiplexers.
 
+#### ah credentials
+
+```text
+ah credentials [--json] [--compact] <SUBCOMMAND>
+
+DESCRIPTION
+  Manage credential accounts (registry, acquisition, encryption). Honors layered config; stores under `credentials.storage-path` (or resolved platform config dir/AH_HOME).
+
+GLOBAL OPTIONS
+ --json                         Emit machine-readable JSON for any subcommand output.
+ --compact                      Use dense human output (affects list/encrypt-status).
+```
+
+##### ah credentials add
+
+```text
+ah credentials add <codex|claude|cursor> [NAME] [--encrypted] [--passphrase <P>]
+
+DESCRIPTION
+  Launch agent-specific acquisition in an isolated temp HOME, extract credentials, write registry entry, and mark status active/expired based on extraction metadata.
+
+OPTIONS
+  --encrypted                   Store the new account encrypted at rest.
+  --passphrase <P>              Passphrase to use when `--encrypted` is set (prompts if omitted).
+
+EXAMPLES
+  ah credentials add codex "work-codex"
+  ah credentials add cursor --encrypted --passphrase "s3cr3t"
+```
+
+##### ah credentials list
+
+```text
+ah credentials list [--json] [--compact]
+
+DESCRIPTION
+  Display accounts grouped by agent with status indicators; JSON includes `name`, `agent`, `aliases`, `encrypted`, `status`, `created`, `last_used`.
+```
+
+##### ah credentials remove
+
+```text
+ah credentials remove <ACCOUNT> [--json]
+
+DESCRIPTION
+  Remove an account and delete both plaintext and encrypted credential files. Errors on unknown accounts.
+```
+
+##### ah credentials verify
+
+```text
+ah credentials verify <ACCOUNT> [--passphrase <P>] [--json]
+
+DESCRIPTION
+  Decrypts if needed and validates the stored credential payload. On success updates `last_used` and sets status to `active`.
+```
+
+##### ah credentials reauth
+
+```text
+ah credentials reauth <ACCOUNT> [--passphrase <P>] [--json]
+
+DESCRIPTION
+  Re-run acquisition for an existing account, replacing stored credentials and refreshing `last_used`/status.
+```
+
+##### ah credentials encrypt
+
+```text
+ah credentials encrypt <ACCOUNT> [--passphrase <P>] [--json]
+
+DESCRIPTION
+  Convert a plaintext account to AES-256-GCM using Argon2id-derived key (tunables from `credentials.crypto`). Removes the plaintext file after writing encrypted payload.
+```
+
+##### ah credentials decrypt
+
+```text
+ah credentials decrypt <ACCOUNT> [--passphrase <P>] [--json]
+
+DESCRIPTION
+  Decrypt an encrypted account back to plaintext and remove the encrypted file.
+```
+
+##### ah credentials encrypt-status
+
+```text
+ah credentials encrypt-status [ACCOUNT] [--json] [--compact]
+
+DESCRIPTION
+  Report encryption state (`encrypted`/`plaintext`) for all accounts or a specific one.
+```
+
+NOTES
+
+- Passphrases may be supplied via `--passphrase` or will be prompted from stdin.
+- Storage precedence: `credentials.storage-path` > `AH_HOME/credentials` > platform config dir; owner-only permissions enforced where supported.
+- Temp acquisition directories are cleaned automatically; stale temp dirs older than 24h are pruned opportunistically.
+
 ### 6) Runtimes, Agents, Hosts (capabilities)
 
 ```

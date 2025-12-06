@@ -100,5 +100,6 @@ async fn main() -> Result<()> {
             .await
         }
         Commands::Health(args) => args.run().await,
+        Commands::Credentials(args) => args.run(&config_result).await,
     }
 }

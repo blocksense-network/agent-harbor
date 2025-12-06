@@ -115,6 +115,10 @@ pub struct BrowserAutomationConfig {
 pub struct ConfigResult {
     pub config: Config,
     pub provenance: config_core::provenance::Provenance,
+    /// Raw resolved JSON used to derive subsystem configs (including credentials)
+    pub resolved_json: serde_json::Value,
+    /// Resolved config file paths (system/user/repo...) to reconstruct base dirs
+    pub paths: config_core::paths::Paths,
 }
 
 /// Load and merge configuration from all sources (system, user, repo, repo-user, env, CLI)
@@ -142,6 +146,8 @@ pub fn load_config(
     Ok(ConfigResult {
         config,
         provenance: resolved.provenance,
+        resolved_json: resolved.json,
+        paths,
     })
 }
 
@@ -191,6 +197,13 @@ impl Config {
     pub fn sandbox(&self) -> Option<&SandboxConfig> {
         self.sandbox.as_ref()
     }
+}
+
+/// Derive the base configuration directory used for credentials and other
+/// subsystems that rely on the resolved config location rather than a specific
+/// file. This is typically the parent directory of the user config file.
+pub fn base_config_dir(paths: &config_core::paths::Paths) -> std::path::PathBuf {
+    paths.user.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf()
 }
 
 #[cfg(test)]
