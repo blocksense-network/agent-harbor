@@ -408,6 +408,8 @@ dependencies = [
  "ah-agents",
  "ah-config-types",
  "ah-core",
+ "ah-credentials",
+ "ah-credentials-tests",
  "ah-domain-types",
  "ah-fs-snapshots",
  "ah-fs-snapshots-btrfs",
@@ -761,6 +763,10 @@ dependencies = [
  "napi-build",
  "napi-derive",
 ]
+
+[[package]]
+name = "ah-harness-local"
+version = "0.1.0"
 
 [[package]]
 name = "ah-local-db"

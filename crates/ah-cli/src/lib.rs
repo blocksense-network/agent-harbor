@@ -10,6 +10,7 @@ pub mod acp;
 pub mod agent;
 pub mod config;
 pub mod config_commands;
+pub mod credentials;
 pub mod health;
 pub mod sandbox;
 pub mod task;

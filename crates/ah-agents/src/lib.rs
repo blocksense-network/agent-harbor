@@ -54,6 +54,7 @@
 //! ```
 
 // Public re-exports
+pub mod credential_acquisition;
 pub mod credentials;
 pub mod oauth_key_exchange;
 pub mod session;
@@ -102,6 +103,11 @@ pub mod test_utils;
 // Test support utilities
 #[cfg(any(test, doctest))]
 pub mod test_support;
+
+// Re-export acquisition helpers
+pub use credential_acquisition::{
+    AcquisitionOptions, AcquisitionResult, CredentialAcquirer, run_acquisition,
+};
 
 // Convenience constructors for each agent
 #[cfg(feature = "claude")]

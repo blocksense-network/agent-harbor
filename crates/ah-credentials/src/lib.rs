@@ -9,7 +9,6 @@
 //! - Configuration integration with precedence rules
 //! - Validation routines for account names and agent types
 //! - Encryption support for sensitive credentials
-
 pub mod config;
 pub mod crypto;
 pub mod error;

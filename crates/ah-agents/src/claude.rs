@@ -1,8 +1,9 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/// Claude Code agent implementation
 use crate::common::AgentStatus;
+/// Claude Code agent implementation
+use crate::credential_acquisition::CredentialAcquirer;
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
@@ -788,6 +789,50 @@ impl AgentExecutor for ClaudeAgent {
 
     fn config_dir(&self, home: &Path) -> PathBuf {
         home.join(".claude")
+    }
+}
+
+#[async_trait]
+impl CredentialAcquirer for ClaudeAgent {
+    fn agent_kind(&self) -> &'static str {
+        "claude"
+    }
+
+    async fn launch_for_login(&self, home_dir: &Path) -> AgentResult<Child> {
+        let mut config = AgentLaunchConfig::new(home_dir).interactive(true).copy_credentials(false);
+        config = config.working_dir(home_dir);
+
+        let mut cmd = self.prepare_launch(config).await?;
+        cmd.env("HOME", home_dir);
+        cmd.env("USERPROFILE", home_dir);
+        cmd.env("XDG_CONFIG_HOME", home_dir.join(".config"));
+
+        let child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AgentError::AgentNotFound(self.binary_path.clone())
+            } else {
+                AgentError::ProcessSpawnFailed(e)
+            }
+        })?;
+
+        Ok(child)
+    }
+
+    async fn extract_credentials(&self, home_dir: &Path) -> AgentResult<serde_json::Value> {
+        // Reuse the hardened retrieval logic (Keychain/Linux file paths) by
+        // pointing it at the sandboxed HOME we created for acquisition.
+        match self.retrieve_credentials(Some(home_dir)).await? {
+            Some(json_str) => serde_json::from_str(&json_str).map_err(|e| {
+                AgentError::OutputParsingFailed(format!(
+                    "Failed to parse Claude credentials JSON from sandbox HOME: {}",
+                    e
+                ))
+            }),
+            None => Err(AgentError::CredentialCopyFailed(
+                "No Claude credentials found after login; ensure authentication completed"
+                    .to_string(),
+            )),
+        }
     }
 }
 

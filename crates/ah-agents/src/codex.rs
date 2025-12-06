@@ -1,8 +1,9 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/// Codex CLI agent implementation
 use crate::common::AgentStatus;
+/// Codex CLI agent implementation
+use crate::credential_acquisition::CredentialAcquirer;
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
@@ -24,6 +25,21 @@ impl CodexAgent {
             .unwrap_or_else(|| "codex".to_string());
 
         Self { binary_path }
+    }
+
+    /// Read the Codex auth file from a provided HOME directory.
+    ///
+    /// This centralizes the path and error handling so both runtime status checks
+    /// and acquisition flows reuse the same logic.
+    async fn read_auth_from_home(home_dir: &Path) -> AgentResult<String> {
+        let auth_path = home_dir.join(".codex").join("auth.json");
+        tokio::fs::read_to_string(&auth_path).await.map_err(|e| {
+            AgentError::CredentialCopyFailed(format!(
+                "Failed to read Codex auth file {}: {}",
+                auth_path.display(),
+                e
+            ))
+        })
     }
 
     /// Parse version from `codex --version` output
@@ -160,6 +176,44 @@ impl CodexAgent {
 impl Default for CodexAgent {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[async_trait]
+impl CredentialAcquirer for CodexAgent {
+    fn agent_kind(&self) -> &'static str {
+        "codex"
+    }
+
+    async fn launch_for_login(&self, home_dir: &Path) -> AgentResult<Child> {
+        let mut config = AgentLaunchConfig::new(home_dir).interactive(true).copy_credentials(false);
+        config = config.working_dir(home_dir);
+
+        let mut cmd = self.prepare_launch(config).await?;
+        cmd.env("HOME", home_dir);
+        cmd.env("USERPROFILE", home_dir);
+
+        let child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AgentError::AgentNotFound(self.binary_path.clone())
+            } else {
+                AgentError::ProcessSpawnFailed(e)
+            }
+        })?;
+
+        Ok(child)
+    }
+
+    async fn extract_credentials(&self, home_dir: &Path) -> AgentResult<serde_json::Value> {
+        // Reuse the shared auth-reader so we don't duplicate path/IO logic.
+        let content = Self::read_auth_from_home(home_dir).await?;
+
+        serde_json::from_str(&content).map_err(|e| {
+            AgentError::OutputParsingFailed(format!(
+                "Failed to parse Codex auth JSON in sandbox HOME: {}",
+                e
+            ))
+        })
     }
 }
 
