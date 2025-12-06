@@ -64,6 +64,7 @@ members = [
   "crates/ah-rest-mock-client",
   "crates/ah-mux-core",
   "crates/ah-mux",
+  "crates/ah-harness-local",
   "crates/ah-tui-multiplexer",
   # "crates/ah-tui-test", # Temporarily disabled - needs updates for new TUI architecture
   "crates/ah-tui",
@@ -110,6 +111,8 @@ resolver = "2"
 ah-cli = { path = "./crates/ah-cli" }
 # Agent abstraction layer (monolith + facades)
 ah-agents = { path = "./crates/ah-agents" }
+ah-credentials = { path = "./crates/ah-credentials" }
+ah-credentials-tests = { path = "./crates/ah-credentials-tests" }
 # ah-agent-claude = { path = "./ crates/ah-agent-claude" } # Temporarily disable
 # ah-agent-codex = { path = "./ crates/ah-agent-codex" } # Temporarily disable
 ah-config-types = { path = "./crates/ah-config-types" }

@@ -1,8 +1,9 @@
 // Copyright 2025 Schelling Point Labs Inc
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/// Cursor CLI agent implementation
 use crate::common::AgentStatus;
+/// Cursor CLI agent implementation
+use crate::credential_acquisition::CredentialAcquirer;
 use crate::session::{export_directory, import_directory};
 use crate::traits::*;
 use async_trait::async_trait;
@@ -24,6 +25,30 @@ impl CursorAgent {
             .unwrap_or_else(|| "cursor-agent".to_string());
 
         Self { binary_path }
+    }
+
+    /// Build the platform-specific Cursor database path for a given HOME root.
+    fn cursor_db_path_for_home(home_dir: &Path) -> PathBuf {
+        if cfg!(target_os = "macos") {
+            home_dir.join("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+        } else if cfg!(target_os = "windows") {
+            home_dir.join("AppData/Roaming/Cursor/User/globalStorage/state.vscdb")
+        } else {
+            // Linux and other Unix-like systems
+            home_dir.join(".config/Cursor/User/globalStorage/state.vscdb")
+        }
+    }
+
+    /// Extract cursorAuth rows from the database under the given HOME.
+    fn cursor_auth_data_for_home(
+        &self,
+        home_dir: &Path,
+    ) -> AgentResult<Option<std::collections::HashMap<String, String>>> {
+        let db_path = Self::cursor_db_path_for_home(home_dir);
+        if !db_path.exists() {
+            return Ok(None);
+        }
+        Self::extract_all_cursor_auth_data(&db_path).map(Some)
     }
 
     /// Parse version from `cursor-agent --version` output
@@ -443,9 +468,66 @@ impl AgentExecutor for CursorAgent {
     }
 }
 
+#[async_trait]
+impl CredentialAcquirer for CursorAgent {
+    fn agent_kind(&self) -> &'static str {
+        "cursor"
+    }
+
+    async fn launch_for_login(&self, home_dir: &Path) -> AgentResult<Child> {
+        let mut config = AgentLaunchConfig::new(home_dir).interactive(true).copy_credentials(false);
+        config = config.working_dir(home_dir);
+
+        let mut cmd = self.prepare_launch(config).await?;
+        cmd.env("HOME", home_dir);
+        cmd.env("USERPROFILE", home_dir);
+        cmd.env("XDG_CONFIG_HOME", home_dir.join(".config"));
+
+        let child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AgentError::AgentNotFound(self.binary_path.clone())
+            } else {
+                AgentError::ProcessSpawnFailed(e)
+            }
+        })?;
+
+        Ok(child)
+    }
+
+    async fn extract_credentials(&self, home_dir: &Path) -> AgentResult<serde_json::Value> {
+        // Reuse the robust Cursor DB parsing via a shared helper so both runtime
+        // status checks and acquisition flows stay in sync.
+        if let Some(cursor_auth) = self.cursor_auth_data_for_home(home_dir)? {
+            let mut map = serde_json::Map::new();
+            for (k, v) in cursor_auth {
+                map.insert(k, serde_json::json!(v));
+            }
+            return Ok(serde_json::Value::Object(map));
+        }
+
+        // Fallback for test/mocked environments: look for a simple auth.json
+        let auth_path = home_dir.join(".config").join("cursor").join("auth.json");
+        let content = tokio::fs::read_to_string(&auth_path).await.map_err(|e| {
+            AgentError::CredentialCopyFailed(format!(
+                "Failed to read Cursor auth file {}: {}",
+                auth_path.display(),
+                e
+            ))
+        })?;
+
+        serde_json::from_str(&content).map_err(|e| {
+            AgentError::OutputParsingFailed(format!(
+                "Failed to parse Cursor auth JSON {}: {}",
+                auth_path.display(),
+                e
+            ))
+        })
+    }
+}
+
 impl CursorAgent {
     /// Get the platform-specific Cursor globalStorage directory path
-    fn get_cursor_global_storage_path(home_dir: &Path) -> PathBuf {
+    pub fn get_cursor_global_storage_path(home_dir: &Path) -> PathBuf {
         // Cursor stores its globalStorage in different locations per platform
         if cfg!(target_os = "macos") {
             home_dir.join("Library/Application Support/Cursor/User/globalStorage")
@@ -458,7 +540,7 @@ impl CursorAgent {
     }
 
     /// Extract all cursorAuth data from a Cursor database
-    fn extract_all_cursor_auth_data(
+    pub fn extract_all_cursor_auth_data(
         db_path: &Path,
     ) -> AgentResult<std::collections::HashMap<String, String>> {
         use rusqlite::Connection;
@@ -527,57 +609,19 @@ impl CursorAgent {
     /// This is different from API keys that may be used for CI/CD authentication.
     /// The extracted token may not work with Cursor CLI's --api-key flag.
     pub fn check_cursor_login_status(&self) -> AgentResult<Option<String>> {
-        use rusqlite::Connection;
+        // Determine home dir from environment and reuse the same DB parsing helper.
+        let home = std::env::var("HOME").map(PathBuf::from).map_err(|_| {
+            AgentError::Other(anyhow::anyhow!(
+                "HOME not set; cannot locate Cursor database"
+            ))
+        })?;
 
-        // Determine the correct database path based on platform
-        let db_path = if cfg!(target_os = "macos") {
-            std::env::var("HOME").map(|home| {
-                PathBuf::from(home)
-                    .join("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
-            })
-        } else if cfg!(target_os = "windows") {
-            std::env::var("APPDATA").map(|app_data| {
-                PathBuf::from(app_data).join("Cursor\\User\\globalStorage\\state.vscdb")
-            })
-        } else {
-            // linux and others
-            std::env::var("HOME").map(|home| {
-                PathBuf::from(home).join(".config/Cursor/User/globalStorage/state.vscdb")
-            })
-        };
-
-        let db_path = match db_path {
-            Ok(path) => path,
-            Err(_) => return Ok(None),
-        };
-
+        let db_path = Self::cursor_db_path_for_home(&home);
         if !db_path.exists() {
             return Ok(None);
         }
 
-        let conn = Connection::open(&db_path).map_err(|e| {
-            AgentError::Other(anyhow::anyhow!("Failed to open Cursor database: {}", e))
-        })?;
-
-        // First try to get all keys to see what's available (not just cursorAuth)
-        let mut stmt = conn.prepare("SELECT key, value FROM ItemTable").map_err(|e| {
-            AgentError::Other(anyhow::anyhow!("Failed to prepare SQL statement: {}", e))
-        })?;
-
-        let mut all_data = std::collections::HashMap::new();
-        let rows = stmt
-            .query_map([], |row| {
-                let key: String = row.get(0)?;
-                let value: String = row.get(1)?;
-                Ok((key, value))
-            })
-            .map_err(|e| {
-                AgentError::Other(anyhow::anyhow!("Failed to query database data: {}", e))
-            })?;
-
-        for (key, value) in rows.flatten() {
-            all_data.insert(key, value);
-        }
+        let all_data = Self::extract_all_cursor_auth_data(&db_path)?;
 
         // Filter to cursorAuth keys for logging
         let cursor_auth_keys: Vec<_> =

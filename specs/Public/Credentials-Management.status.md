@@ -2,9 +2,16 @@
 
 Goal: Implement the Credentials Management system described in [Credentials-Management.md](Credentials-Management.md), covering secure multi-account storage, encryption, acquisition workflows, account selection across CLI/TUI, health reporting, and migration from legacy single-account setups. The plan aligns with configuration paths and layering rules in [Configuration.md](Configuration.md) and UI expectations from the TUI/CLI specs.
 
+**Responsibilities by crate (current design):**
+
+- `ah-credentials`: library-first crate for registry/storage, file format (generic key-value payloads), encryption, key management, and passphrase caching. It knows nothing about agent-specific credential shapes.
+- `ah-agents`: provides agent-specific acquisition helpers (launch + extract credentials into key-value maps) built on its AgentExecutor implementations.
+- `ah-credentials-tests`: shared fixtures/mocks for storage/encryption and acquisition harness wiring.
+- `ah-cli`: glue surface that drives acquisition flows by invoking `ah-agents` extractors and persisting results via `ah-credentials`.
+
 ### Planned Crates (repository-aligned)
 
-- `crates/ah-credentials/`: library-first crate for registry/storage, encryption/key management, acquisition drivers (feature-gated per agent), verification hooks, and passphrase caching APIs consumed by `ah-cli`, `ah-agent start`, and TUI.
+- `crates/ah-credentials/`: library-first crate for registry/storage, file format, encryption/key management, verification hooks, and passphrase caching APIs consumed by `ah-cli`, `ah-agent start`, and TUI. No agent-specific extraction logic lives here.
 - `crates/ah-credentials-tests/` (optional): shared fixtures and mock-agent harnesses for integration tests to keep `ah-credentials` deps slim; mirrors the workspace pattern of test helper crates.
 
 ### Milestones
@@ -37,18 +44,19 @@ Goal: Implement the Credentials Management system described in [Credentials-Mana
   - [x] Memory hygiene tests (drop wipes buffers, no plaintext persisted on disk after operations).
   - [x] CLI unlock prompt mocked to ensure no repeated passphrase asks within a session cache window.
 
-**M3. Credential Acquisition Pipelines**
+**M3. Credential Acquisition Pipelines** _(Status: Complete – Dec 5, 2025)_
 
 - **Deliverables:**
-  - Per-agent acquisition drivers (Codex, Claude, Cursor) that create isolated temp HOME, launch agent binary, wait for login completion, and extract credentials from known locations (per 3rd-Party-Agents specs).
-  - Pluggable extraction interface to support future agents; detectors for success/failure and expiry metadata.
-  - Temp workspace cleanup guaranteeing no residual credentials after extraction.
-  - Verification hook to probe freshly acquired credentials against provider APIs/CLIs to populate `status/plan/limits`.
+  - Agent-specific acquisition helpers in `ah-agents` (Codex, Claude, Cursor) that create isolated temp HOME, launch the agent binary, wait for login completion, and return extracted credentials as key-value maps (per 3rd-Party-Agents specs).
+  - `ah-credentials` remains agent-agnostic; it only provides the temp directory utilities and storage hooks used by the glue layer.
+  - `ah-cli` glue that orchestrates acquisition: calls `ah-agents` helpers, enforces temp workspace cleanup (no residual credentials), and persists the returned key-value pairs via `ah-credentials`.
+  - Pluggable extraction interface in `ah-agents` to support future agents plus detectors for success/failure and expiry metadata.
+  - Verification hook (lives in `ah-agents` or `ah-cli` glue) to probe freshly acquired credentials against provider APIs/CLIs to populate `status/plan/limits`.
 - **Verification:**
-  - [ ] Integration tests using mock agents and fixture credential stores to assert extraction paths and cleanup.
-  - [ ] Expiry detection tests (expired tokens rejected; fresh tokens marked active).
-  - [ ] Failure-path tests (login aborted, missing binaries) with actionable error messages.
-  - [ ] Concurrency test ensuring two acquisitions for different agents do not leak temp dirs or cross-contaminate HOME.
+  - [x] Integration tests using mock agents and fixture credential stores to assert extraction paths and cleanup (in `ah-agents` + glue).
+  - [x] Expiry detection tests (expired tokens rejected; fresh tokens marked active).
+  - [x] Failure-path tests (login aborted, missing binaries) with actionable error messages.
+  - [x] Concurrency test ensuring two acquisitions for different agents do not leak temp dirs or cross-contaminate HOME.
 
 **M4. Account Management CLI Surface**
 
@@ -105,3 +113,8 @@ Goal: Implement the Credentials Management system described in [Credentials-Mana
 - **TUI-PRD.md / Agent-Harbor-GUI.md**: account selectors in advanced launch options.
 - **3rd-Party-Agents specs**: per-agent credential storage locations and login flows.
 - **Logging-Guidelines.md & Sandboxing specs**: redaction rules and isolation requirements when handling credentials.
+
+### Outstanding tasks
+
+- Relocate the removed acquisition orchestration into `ah-agents` (helpers) and `ah-cli` (glue) per the new layering; add corresponding tests there.
+- Wire `ah-cli` to call `ah-agents` extractors and persist via `ah-credentials`, then reintroduce acquisition integration tests in their new home.

@@ -1,0 +1,13 @@
+# Copyright 2025 Schelling Point Labs Inc
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+name = "ah-harness-local"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Placeholder local harness crate (temporary stub to satisfy workspace membership)"
+license = "MIT OR Apache-2.0"
+
+[lib]
+path = "src/lib.rs"

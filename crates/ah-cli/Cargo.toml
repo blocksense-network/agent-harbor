@@ -33,6 +33,7 @@ ah-local-db = { workspace = true }
 config-core = { workspace = true }
 ah-config-types = { workspace = true }
 ah-agents = { workspace = true }
+ah-credentials = { workspace = true }
 ah-recorder = { workspace = true }
 vt100 = { workspace = true }
 crossterm = { workspace = true }
@@ -133,3 +134,5 @@ serial_test = "3"
 serde_yaml = "0.9"
 # T15.3 Schema validation tests - agentfs-proto already in main dependencies
 ethereum_ssz = { workspace = true }
+async-trait = "0.1"
+ah-credentials-tests = { path = "../ah-credentials-tests" }
